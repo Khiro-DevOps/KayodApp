@@ -41,6 +41,7 @@ export default async function ApplicantsPage({
     .from("applications")
     .select("*, profiles(full_name, email), resumes(file_name, file_url)")
     .eq("job_listing_id", id)
+    .order("match_score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .returns<Application[]>();
 
@@ -122,11 +123,22 @@ export default async function ApplicantsPage({
                         </div>
                       </div>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${config.classes}`}
-                    >
-                      {config.label}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {app.match_score !== null && (
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          app.match_score >= 70 ? 'bg-green-50 text-success' :
+                          app.match_score >= 40 ? 'bg-yellow-50 text-warning' :
+                          'bg-gray-100 text-text-secondary'
+                        }`}>
+                          {app.match_score}% match
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${config.classes}`}
+                      >
+                        {config.label}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Resume Link */}

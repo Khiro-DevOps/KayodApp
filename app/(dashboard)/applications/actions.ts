@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { computeMatchScore } from "@/lib/match-score";
 
 export async function submitApplication(formData: FormData) {
   const supabase = await createClient();
@@ -40,11 +41,36 @@ export async function submitApplication(formData: FormData) {
     redirect(`/jobs/${jobListingId}?error=${encodeURIComponent("You have already applied to this job.")}`);
   }
 
+  // Compute match score if resume has extracted text
+  let matchScore: number | null = null;
+
+  if (resumeId) {
+    const { data: resume } = await supabase
+      .from("resumes")
+      .select("extracted_text")
+      .eq("id", resumeId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (resume?.extracted_text) {
+      const { data: job } = await supabase
+        .from("job_listings")
+        .select("title, description, requirements, skills")
+        .eq("id", jobListingId)
+        .single();
+
+      if (job) {
+        matchScore = computeMatchScore(resume.extracted_text, job);
+      }
+    }
+  }
+
   // Submit application
   const { error } = await supabase.from("applications").insert({
     user_id: user.id,
     job_listing_id: jobListingId,
     resume_id: resumeId || null,
+    match_score: matchScore,
     status: "applied",
   });
 
