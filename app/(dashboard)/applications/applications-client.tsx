@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import type { Application } from "@/lib/types";
+import type { Application, Interview } from "@/lib/types";
 import Link from "next/link";
 import { withdrawApplication } from "./actions";
 
@@ -13,7 +13,13 @@ const statusConfig: Record<string, { label: string; classes: string }> = {
   hired: { label: "Hired", classes: "bg-green-50 text-success" },
 };
 
-function ApplicationsList({ applications }: { applications: Application[] }) {
+function ApplicationsList({
+  applications,
+  interviewMap,
+}: {
+  applications: Application[];
+  interviewMap: Record<string, Interview>;
+}) {
   const searchParams = useSearchParams();
   const success = searchParams.get("success");
 
@@ -77,6 +83,21 @@ function ApplicationsList({ applications }: { applications: Application[] }) {
               </div>
             </div>
 
+            {/* Interview Details */}
+            {(app.status === "interview" || app.status === "hired") &&
+              interviewMap[app.id] && (
+                <div className="rounded-xl bg-purple-50 p-3 space-y-1">
+                  <p className="text-xs font-medium text-purple-700">
+                    Interview: {new Date(interviewMap[app.id].scheduled_at).toLocaleString()}
+                  </p>
+                  {interviewMap[app.id].notes && (
+                    <p className="text-xs text-purple-600">
+                      {interviewMap[app.id].notes}
+                    </p>
+                  )}
+                </div>
+              )}
+
             <div className="flex items-center justify-between">
               <p className="text-xs text-text-secondary">
                 Applied {new Date(app.created_at).toLocaleDateString()}
@@ -103,12 +124,14 @@ function ApplicationsList({ applications }: { applications: Application[] }) {
 
 export default function ApplicationsClient({
   applications,
+  interviewMap,
 }: {
   applications: Application[];
+  interviewMap: Record<string, Interview>;
 }) {
   return (
     <Suspense fallback={<div className="text-sm text-text-secondary">Loading...</div>}>
-      <ApplicationsList applications={applications} />
+      <ApplicationsList applications={applications} interviewMap={interviewMap} />
     </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Application } from "@/lib/types";
+import type { Application, Interview } from "@/lib/types";
 import Link from "next/link";
 import ApplicationsClient from "./applications-client";
 
@@ -30,6 +30,21 @@ export default async function ApplicationsPage() {
     .order("created_at", { ascending: false })
     .returns<Application[]>();
 
+  // Fetch interviews for these applications
+  const applicationIds = applications?.map((a) => a.id) || [];
+  const { data: interviews } = applicationIds.length
+    ? await supabase
+        .from("interviews")
+        .select("*")
+        .in("application_id", applicationIds)
+        .returns<Interview[]>()
+    : { data: [] as Interview[] };
+
+  const interviewMap: Record<string, Interview> = {};
+  (interviews || []).forEach((i) => {
+    interviewMap[i.application_id] = i;
+  });
+
   return (
     <PageContainer>
       <div className="space-y-4">
@@ -37,7 +52,7 @@ export default async function ApplicationsPage() {
           My Applications
         </h1>
 
-        <ApplicationsClient applications={applications || []} />
+        <ApplicationsClient applications={applications || []} interviewMap={interviewMap} />
 
         {(!applications || applications.length === 0) && (
           <div className="rounded-2xl bg-surface border border-border p-6 text-center space-y-2">

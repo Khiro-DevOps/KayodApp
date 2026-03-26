@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Application } from "@/lib/types";
+import type { Application, Interview } from "@/lib/types";
 import Link from "next/link";
 import { updateApplicationStatus } from "@/app/(dashboard)/applications/actions";
 
@@ -44,6 +44,20 @@ export default async function ApplicantsPage({
     .order("match_score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .returns<Application[]>();
+
+  // Fetch interviews for all applications on this job
+  const applicationIds = applications?.map((a) => a.id) || [];
+  const { data: interviews } = applicationIds.length
+    ? await supabase
+        .from("interviews")
+        .select("*")
+        .in("application_id", applicationIds)
+        .returns<Interview[]>()
+    : { data: [] as Interview[] };
+
+  const interviewMap = new Map(
+    (interviews || []).map((i) => [i.application_id, i])
+  );
 
   const statusConfig: Record<string, { label: string; classes: string }> = {
     applied: { label: "Applied", classes: "bg-blue-50 text-info" },
@@ -97,6 +111,7 @@ export default async function ApplicantsPage({
                 file_url: string;
               } | null;
               const config = statusConfig[app.status] || statusConfig.applied;
+              const interview = interviewMap.get(app.id);
 
               const currentIdx = statusFlow.indexOf(app.status);
               const nextStatus = currentIdx < statusFlow.length - 1 ? statusFlow[currentIdx + 1] : null;
@@ -154,6 +169,41 @@ export default async function ApplicantsPage({
                       </svg>
                       <span className="truncate">{resume.file_name}</span>
                     </a>
+                  )}
+
+                  {/* Interview Details */}
+                  {(app.status === "interview" || app.status === "hired") && interview && (
+                    <div className="rounded-xl bg-purple-50 p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-purple-700">
+                          Interview: {new Date(interview.scheduled_at).toLocaleString()}
+                        </p>
+                        {app.status === "interview" && (
+                          <Link
+                            href={`/jobs/manage/${id}/applicants/${app.id}/interview`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Edit
+                          </Link>
+                        )}
+                      </div>
+                      {interview.notes && (
+                        <p className="text-xs text-purple-600">{interview.notes}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Schedule Interview Link */}
+                  {app.status === "interview" && !interview && (
+                    <Link
+                      href={`/jobs/manage/${id}/applicants/${app.id}/interview`}
+                      className="flex items-center gap-2 rounded-xl bg-purple-50 p-2 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                        <path fillRule="evenodd" d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clipRule="evenodd" />
+                      </svg>
+                      Schedule Interview
+                    </Link>
                   )}
 
                   {/* Applied Date + Actions */}
