@@ -22,6 +22,57 @@ export default async function DashboardPage() {
 
   const isEmployer = profile?.role === "employer";
 
+  // Fetch stats based on role
+  let stats: Record<string, number> = {};
+
+  if (isEmployer) {
+    const { data: employer } = await supabase
+      .from("employers")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (employer) {
+      const { count: jobCount } = await supabase
+        .from("job_listings")
+        .select("*", { count: "exact", head: true })
+        .eq("employer_id", employer.id);
+
+      const { count: applicantCount } = await supabase
+        .from("applications")
+        .select("*, job_listings!inner(employer_id)", { count: "exact", head: true })
+        .eq("job_listings.employer_id", employer.id);
+
+      const { count: hireCount } = await supabase
+        .from("applications")
+        .select("*, job_listings!inner(employer_id)", { count: "exact", head: true })
+        .eq("job_listings.employer_id", employer.id)
+        .eq("status", "hired");
+
+      stats = {
+        jobs: jobCount || 0,
+        applicants: applicantCount || 0,
+        hires: hireCount || 0,
+      };
+    }
+  } else {
+    const { count: appCount } = await supabase
+      .from("applications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id);
+
+    const { count: interviewCount } = await supabase
+      .from("applications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "interview");
+
+    stats = {
+      applications: appCount || 0,
+      interviews: interviewCount || 0,
+    };
+  }
+
   return (
     <PageContainer>
       <div className="space-y-6">
@@ -38,35 +89,42 @@ export default async function DashboardPage() {
         </div>
 
         {isEmployer ? (
-          <EmployerDashboard />
+          <EmployerDashboard stats={stats} />
         ) : (
-          <JobSeekerDashboard />
+          <JobSeekerDashboard stats={stats} />
         )}
       </div>
     </PageContainer>
   );
 }
 
-function EmployerDashboard() {
+function EmployerDashboard({ stats }: { stats: Record<string, number> }) {
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Jobs Posted" value="0" />
-        <SummaryCard label="Applicants" value="0" />
-        <SummaryCard label="Hires" value="0" />
+        <SummaryCard label="Jobs Posted" value={String(stats.jobs ?? 0)} />
+        <SummaryCard label="Applicants" value={String(stats.applicants ?? 0)} />
+        <SummaryCard label="Hires" value={String(stats.hires ?? 0)} />
       </div>
 
-      {/* Quick Actions */}
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
         <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
           Quick Actions
         </h2>
         <a
-          href="/jobs"
+          href="/jobs/manage/new"
           className="flex items-center justify-between rounded-xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
         >
           Post a New Job
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+          </svg>
+        </a>
+        <a
+          href="/jobs/manage"
+          className="flex items-center justify-between rounded-xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+        >
+          Manage Jobs
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
           </svg>
@@ -76,16 +134,14 @@ function EmployerDashboard() {
   );
 }
 
-function JobSeekerDashboard() {
+function JobSeekerDashboard({ stats }: { stats: Record<string, number> }) {
   return (
     <div className="space-y-4">
-      {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Applications" value="0" />
-        <SummaryCard label="Interviews" value="0" />
+        <SummaryCard label="Applications" value={String(stats.applications ?? 0)} />
+        <SummaryCard label="Interviews" value={String(stats.interviews ?? 0)} />
       </div>
 
-      {/* Quick Actions */}
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
         <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
           Quick Actions
