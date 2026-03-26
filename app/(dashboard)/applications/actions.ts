@@ -65,20 +65,42 @@ export async function submitApplication(formData: FormData) {
     }
   }
 
+  // Fetch the job title for notification message
+  const { data: jobForNotif } = await supabase
+    .from("job_listings")
+    .select("title")
+    .eq("id", jobListingId)
+    .single();
+
   // Submit application
-  const { error } = await supabase.from("applications").insert({
-    user_id: user.id,
-    job_listing_id: jobListingId,
-    resume_id: resumeId || null,
-    match_score: matchScore,
-    status: "applied",
-  });
+  const { data: newApp, error } = await supabase
+    .from("applications")
+    .insert({
+      user_id: user.id,
+      job_listing_id: jobListingId,
+      resume_id: resumeId || null,
+      match_score: matchScore,
+      status: "applied",
+    })
+    .select("id")
+    .single();
 
   if (error) {
     redirect(`/jobs/${jobListingId}/apply?error=${encodeURIComponent(error.message)}`);
   }
 
+  // Create notification for applicant
+  if (newApp) {
+    await supabase.from("notifications").insert({
+      user_id: user.id,
+      message: `Your application for "${jobForNotif?.title || "a job"}" has been submitted.`,
+      type: "apply",
+      related_application_id: newApp.id,
+    });
+  }
+
   revalidatePath("/applications");
+  revalidatePath("/notifications");
   revalidatePath(`/jobs/${jobListingId}`);
   revalidatePath("/dashboard");
   redirect(`/applications?success=${encodeURIComponent("Application submitted successfully!")}`);
@@ -153,6 +175,42 @@ export async function updateApplicationStatus(formData: FormData) {
     redirect(`/jobs/manage/${jobId}/applicants?error=${encodeURIComponent(error.message)}`);
   }
 
+  // Send notification to the applicant
+  const { data: appData } = await supabase
+    .from("applications")
+    .select("user_id, job_listings(title)")
+    .eq("id", applicationId)
+    .single();
+
+  if (appData) {
+    const jobTitle =
+      (appData.job_listings as unknown as { title: string })?.title || "a job";
+    const notifTypeMap: Record<string, { type: string; message: string }> = {
+      shortlisted: {
+        type: "shortlist",
+        message: `You've been shortlisted for "${jobTitle}"!`,
+      },
+      interview: {
+        type: "interview",
+        message: `You've been scheduled for an interview for "${jobTitle}"!`,
+      },
+      hired: {
+        type: "hire",
+        message: `Congratulations! You've been hired for "${jobTitle}"!`,
+      },
+    };
+
+    const notif = notifTypeMap[status];
+    if (notif) {
+      await supabase.from("notifications").insert({
+        user_id: appData.user_id,
+        message: notif.message,
+        type: notif.type,
+        related_application_id: applicationId,
+      });
+    }
+  }
+
   // Auto-create interview record when status moves to "interview"
   if (status === "interview") {
     const { data: existingInterview } = await supabase
@@ -212,6 +270,7 @@ export async function updateApplicationStatus(formData: FormData) {
 
   revalidatePath(`/jobs/manage/${jobId}/applicants`);
   revalidatePath("/applications");
+  revalidatePath("/notifications");
   revalidatePath("/employees");
   revalidatePath("/dashboard");
   redirect(`/jobs/manage/${jobId}/applicants`);
