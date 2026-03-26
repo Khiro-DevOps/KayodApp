@@ -28,12 +28,13 @@ export default async function JobDetailsPage({
   // Check if user already applied
   const { data: existingApplication } = await supabase
     .from("applications")
-    .select("id")
+    .select("id, match_score")
     .eq("user_id", user.id)
     .eq("job_listing_id", id)
     .maybeSingle();
 
   const hasApplied = !!existingApplication;
+  const matchScore = existingApplication?.match_score as number | null;
 
   // Check role
   const { data: profile } = await supabase
@@ -124,8 +125,17 @@ export default async function JobDetailsPage({
         {isJobSeeker && (
           <div className="space-y-2">
             {hasApplied ? (
-              <div className="rounded-2xl bg-green-50 border border-green-200 py-3 text-center text-sm font-medium text-success">
-                Already Applied
+              <div className="rounded-2xl bg-green-50 border border-green-200 py-3 text-center space-y-1">
+                <p className="text-sm font-medium text-success">Already Applied</p>
+                {matchScore !== null && (
+                  <p className={`text-xs font-bold ${
+                    matchScore >= 70 ? 'text-success' :
+                    matchScore >= 40 ? 'text-warning' :
+                    'text-text-secondary'
+                  }`}>
+                    Match Score: {matchScore}%
+                  </p>
+                )}
               </div>
             ) : (
               <Link
