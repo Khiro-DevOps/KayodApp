@@ -115,22 +115,33 @@ export default async function JobDetailManagePage({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="space-y-3">
           <Link
-            href={`/jobs/manage/${job.id}/edit`}
-            className="flex-1 rounded-2xl bg-primary py-3 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+            href={`/jobs/manage/${job.id}/applicants`}
+            className="flex items-center justify-between rounded-2xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
           >
-            Edit Job
+            View Applicants ({applicantCount || 0})
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+            </svg>
           </Link>
-          <form action={deleteJob} className="flex-1">
-            <input type="hidden" name="job_id" value={job.id} />
-            <button
-              type="submit"
-              className="w-full rounded-2xl border border-danger py-3 text-sm font-medium text-danger transition-colors hover:bg-red-50"
+          <div className="flex gap-3">
+            <Link
+              href={`/jobs/manage/${job.id}/edit`}
+              className="flex-1 rounded-2xl bg-primary py-3 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
             >
-              Delete
-            </button>
-          </form>
+              Edit Job
+            </Link>
+            <form action={deleteJob} className="flex-1">
+              <input type="hidden" name="job_id" value={job.id} />
+              <button
+                type="submit"
+                className="w-full rounded-2xl border border-danger py-3 text-sm font-medium text-danger transition-colors hover:bg-red-50"
+              >
+                Delete
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </PageContainer>

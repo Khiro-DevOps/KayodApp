@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { logout } from "@/app/(auth)/actions";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
+import Link from "next/link";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -49,6 +50,26 @@ export default async function ProfilePage() {
             </p>
           </div>
         </div>
+
+        {/* Resumes link for job seekers */}
+        {profile?.role === "job_seeker" && (
+          <Link
+            href="/resume"
+            className="flex items-center justify-between rounded-2xl bg-surface border border-border p-4 text-sm font-medium text-text-primary hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z" />
+                </svg>
+              </div>
+              My Resumes
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-text-secondary">
+              <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+            </svg>
+          </Link>
+        )}
 
         {/* Logout */}
         <form action={logout}>

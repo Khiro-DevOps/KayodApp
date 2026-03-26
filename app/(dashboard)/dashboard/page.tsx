@@ -156,7 +156,7 @@ function JobSeekerDashboard({ stats }: { stats: Record<string, number> }) {
           </svg>
         </a>
         <a
-          href="/profile"
+          href="/resume"
           className="flex items-center justify-between rounded-xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
         >
           Upload Resume
