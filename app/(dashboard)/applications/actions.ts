@@ -153,6 +153,126 @@ export async function updateApplicationStatus(formData: FormData) {
     redirect(`/jobs/manage/${jobId}/applicants?error=${encodeURIComponent(error.message)}`);
   }
 
+  // Auto-create interview record when status moves to "interview"
+  if (status === "interview") {
+    const { data: existingInterview } = await supabase
+      .from("interviews")
+      .select("id")
+      .eq("application_id", applicationId)
+      .maybeSingle();
+
+    if (!existingInterview) {
+      // Default to 3 days from now at 10:00 AM
+      const defaultDate = new Date();
+      defaultDate.setDate(defaultDate.getDate() + 3);
+      defaultDate.setHours(10, 0, 0, 0);
+
+      await supabase.from("interviews").insert({
+        application_id: applicationId,
+        scheduled_at: defaultDate.toISOString(),
+        notes: null,
+      });
+    }
+  }
+
+  // Auto-create employee record when status moves to "hired"
+  if (status === "hired") {
+    const { data: application } = await supabase
+      .from("applications")
+      .select("user_id, job_listing_id, job_listings(title), profiles(full_name)")
+      .eq("id", applicationId)
+      .single();
+
+    if (application) {
+      const fullName =
+        (application.profiles as unknown as { full_name: string })?.full_name ||
+        "New Employee";
+      const jobTitle =
+        (application.job_listings as unknown as { title: string })?.title ||
+        "Employee";
+
+      const { data: existingEmployee } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("application_id", applicationId)
+        .maybeSingle();
+
+      if (!existingEmployee) {
+        await supabase.from("employees").insert({
+          employer_id: employer.id,
+          application_id: applicationId,
+          full_name: fullName,
+          job_title: jobTitle,
+          start_date: new Date().toISOString().split("T")[0],
+          status: "active",
+        });
+      }
+    }
+  }
+
+  revalidatePath(`/jobs/manage/${jobId}/applicants`);
+  revalidatePath("/applications");
+  revalidatePath("/employees");
+  revalidatePath("/dashboard");
+  redirect(`/jobs/manage/${jobId}/applicants`);
+}
+
+export async function scheduleInterview(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const applicationId = formData.get("application_id") as string;
+  const scheduledAt = formData.get("scheduled_at") as string;
+  const notes = formData.get("notes") as string | null;
+  const jobId = formData.get("job_id") as string;
+
+  if (!applicationId || !scheduledAt || !jobId) redirect("/jobs/manage");
+
+  // Verify employer owns the job
+  const { data: employer } = await supabase
+    .from("employers")
+    .select("id")
+    .eq("user_id", user.id)
+    .single();
+
+  if (!employer) redirect("/dashboard");
+
+  // Check if interview exists, then insert or update
+  const { data: existingInterview } = await supabase
+    .from("interviews")
+    .select("id")
+    .eq("application_id", applicationId)
+    .maybeSingle();
+
+  let error;
+
+  if (existingInterview) {
+    ({ error } = await supabase
+      .from("interviews")
+      .update({
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        notes: notes || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingInterview.id));
+  } else {
+    ({ error } = await supabase.from("interviews").insert({
+      application_id: applicationId,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      notes: notes || null,
+    }));
+  }
+
+  if (error) {
+    redirect(
+      `/jobs/manage/${jobId}/applicants/${applicationId}/interview?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
   revalidatePath(`/jobs/manage/${jobId}/applicants`);
   revalidatePath("/applications");
   redirect(`/jobs/manage/${jobId}/applicants`);
