@@ -2,25 +2,44 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Notification } from "@/lib/types";
-import NotificationsClient from "./notifications-client";
+import Link from "next/link";
 
 export default async function NotificationsPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: notifications } = await supabase
     .from("notifications")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("recipient_id", user.id)
     .order("created_at", { ascending: false })
     .returns<Notification[]>();
 
-  const unreadCount =
-    notifications?.filter((n) => !n.is_read).length || 0;
+  const unreadCount = notifications?.filter((n) => !n.is_read).length ?? 0;
+
+  // Mark all as read
+  if (unreadCount > 0) {
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("recipient_id", user.id)
+      .eq("is_read", false);
+  }
+
+  const typeIcons: Record<string, string> = {
+    application_submitted:      "📄",
+    application_status_changed: "📋",
+    interview_scheduled:        "📅",
+    interview_reminder:         "⏰",
+    interview_cancelled:        "❌",
+    offer_letter:               "📨",
+    leave_status_changed:       "🏖️",
+    payroll_processed:          "💰",
+    schedule_published:         "🗓️",
+    general:                    "🔔",
+  };
 
   return (
     <PageContainer>
@@ -36,19 +55,47 @@ export default async function NotificationsPage() {
           )}
         </div>
 
-        <NotificationsClient notifications={notifications || []} />
-
-        {(!notifications || notifications.length === 0) && (
+        {!notifications || notifications.length === 0 ? (
           <div className="rounded-2xl bg-surface border border-border p-6 text-center space-y-2">
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-text-secondary">
-                <path fillRule="evenodd" d="M10 2a6 6 0 0 0-6 6c0 1.887-.454 3.665-1.257 5.234a.75.75 0 0 0 .515 1.076 32.91 32.91 0 0 0 3.256.508 3.5 3.5 0 0 0 6.972 0 32.903 32.903 0 0 0 3.256-.508.75.75 0 0 0 .515-1.076A11.448 11.448 0 0 1 16 8a6 6 0 0 0-6-6ZM8.05 14.943a33.54 33.54 0 0 0 3.9 0 2 2 0 0 1-3.9 0Z" clipRule="evenodd" />
-              </svg>
-            </div>
             <p className="text-sm text-text-secondary">No notifications yet</p>
             <p className="text-xs text-text-secondary">
-              You&apos;ll be notified about application updates here
+              You&apos;ll be notified about application updates, interviews, and more
             </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {notifications.map((notif) => (
+              <Link
+                key={notif.id}
+                href={notif.action_url ?? "#"}
+                className={`flex items-start gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 ${
+                  !notif.is_read
+                    ? "border-primary/30 bg-primary/5"
+                    : "border-border bg-surface"
+                }`}
+              >
+                <span className="text-xl shrink-0" style={{ fontSize: 18 }}>
+                  {typeIcons[notif.type] ?? "🔔"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-text-primary">
+                    {notif.title}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {notif.body}
+                  </p>
+                  <p className="text-xs text-text-tertiary mt-1">
+                    {new Date(notif.created_at).toLocaleDateString("en-PH", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "numeric", minute: "2-digit"
+                    })}
+                  </p>
+                </div>
+                {!notif.is_read && (
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-primary mt-1" />
+                )}
+              </Link>
+            ))}
           </div>
         )}
       </div>

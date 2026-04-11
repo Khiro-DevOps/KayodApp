@@ -16,7 +16,7 @@ export default function RegisterPage() {
 function RegisterForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  const [role, setRole] = useState<"job_seeker" | "employer">("job_seeker");
+  const [role, setRole] = useState<"candidate" | "hr_manager">("candidate");
 
   return (
     <div className="space-y-6">
@@ -44,9 +44,9 @@ function RegisterForm() {
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setRole("job_seeker")}
+              onClick={() => setRole("candidate")}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-sm font-medium transition-colors ${
-                role === "job_seeker"
+                role === "candidate"
                   ? "border-primary bg-blue-50 text-primary"
                   : "border-border text-text-secondary hover:border-gray-300"
               }`}
@@ -58,9 +58,9 @@ function RegisterForm() {
             </button>
             <button
               type="button"
-              onClick={() => setRole("employer")}
+              onClick={() => setRole("hr_manager")}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-sm font-medium transition-colors ${
-                role === "employer"
+                role === "hr_manager"
                   ? "border-primary bg-blue-50 text-primary"
                   : "border-border text-text-secondary hover:border-gray-300"
               }`}
@@ -68,23 +68,38 @@ function RegisterForm() {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
                 <path fillRule="evenodd" d="M4.5 2.25a.75.75 0 0 0 0 1.5v16.5h-.75a.75.75 0 0 0 0 1.5h16.5a.75.75 0 0 0 0-1.5h-.75V3.75a.75.75 0 0 0 0-1.5h-15ZM9 6a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5H9Zm-.75 3.75A.75.75 0 0 1 9 9h1.5a.75.75 0 0 1 0 1.5H9a.75.75 0 0 1-.75-.75ZM9 12a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5H9Zm3.75-5.25A.75.75 0 0 1 13.5 6H15a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM13.5 9a.75.75 0 0 0 0 1.5H15a.75.75 0 0 0 0-1.5h-1.5Zm-.75 3.75a.75.75 0 0 1 .75-.75H15a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM9 19.5v-2.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v2.25H9Z" clipRule="evenodd" />
               </svg>
-              Employer
+              HR Manager
             </button>
           </div>
           <input type="hidden" name="role" value={role} />
         </div>
 
-        {/* Full Name */}
+        {/* First Name */}
         <div className="space-y-1">
-          <label htmlFor="full_name" className="text-sm font-medium text-text-primary">
-            Full Name
+          <label htmlFor="first_name" className="text-sm font-medium text-text-primary">
+            First Name
           </label>
           <input
-            id="full_name"
-            name="full_name"
+            id="first_name"
+            name="first_name"
             type="text"
             required
-            placeholder="Juan Dela Cruz"
+            placeholder="Juan"
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* Last Name */}
+        <div className="space-y-1">
+          <label htmlFor="last_name" className="text-sm font-medium text-text-primary">
+            Last Name
+          </label>
+          <input
+            id="last_name"
+            name="last_name"
+            type="text"
+            required
+            placeholder="Dela Cruz"
             className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
@@ -137,4 +152,3 @@ function RegisterForm() {
     </div>
   );
 }
-
