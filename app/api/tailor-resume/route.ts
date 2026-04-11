@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "job_seeker") {
+  if (profile?.role !== "candidate") {
     return NextResponse.json({ error: "Only job seekers can tailor resumes" }, { status: 403 });
   }
 

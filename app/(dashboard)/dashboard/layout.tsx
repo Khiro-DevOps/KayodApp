@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import BottomNav from "@/components/layout/bottom-nav";
 import type { UserRole } from "@/lib/types";
-import { effectiveRole } from "@/lib/roles";
 
 export default async function DashboardLayout({
   children,
@@ -14,13 +13,12 @@ export default async function DashboardLayout({
   let role: UserRole = "candidate";
 
   if (user) {
-    const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")        
+      .select("role")
       .eq("id", user.id)
       .single();
-    role = effectiveRole(profile?.role, authRole);
+    role = (profile?.role as UserRole) ?? "candidate";
   }
 
   return (

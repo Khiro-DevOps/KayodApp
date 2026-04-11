@@ -43,7 +43,7 @@ export default async function JobDetailsPage({
     .eq("id", user.id)
     .single();
 
-  const isJobSeeker = profile?.role === "job_seeker";
+  const isJobSeeker = profile?.role === "candidate";
 
   return (
     <PageContainer>

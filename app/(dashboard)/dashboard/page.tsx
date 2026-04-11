@@ -3,24 +3,22 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
+import { effectiveRole } from "@/lib/roles";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single<Profile>();
 
-  const role = profile?.role ?? "candidate";
-
+  const role = effectiveRole(profile?.role, authRole);
   let stats: Record<string, number> = {};
 
   if (role === "hr_manager" || role === "admin") {
@@ -37,7 +35,6 @@ export default async function DashboardPage() {
       supabase.from("employees").select("*", { count: "exact", head: true }).eq("employment_status", "active"),
       supabase.from("leave_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
     ]);
-
     stats = {
       jobs: jobCount ?? 0,
       applicants: applicantCount ?? 0,
@@ -47,44 +44,27 @@ export default async function DashboardPage() {
     };
   } else if (role === "employee") {
     const { data: employee } = await supabase
-      .from("employees")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
+      .from("employees").select("id").eq("profile_id", user.id).single();
     if (employee) {
-      const [
-        { count: leaveCount },
-        { count: payslipCount },
-      ] = await Promise.all([
+      const [{ count: leaveCount }, { count: payslipCount }] = await Promise.all([
         supabase.from("leave_requests").select("*", { count: "exact", head: true }).eq("employee_id", employee.id).eq("status", "pending"),
         supabase.from("payslips").select("*", { count: "exact", head: true }).eq("employee_id", employee.id).eq("status", "paid"),
       ]);
-
-      stats = {
-        pendingLeaves: leaveCount ?? 0,
-        payslips: payslipCount ?? 0,
-      };
+      stats = { pendingLeaves: leaveCount ?? 0, payslips: payslipCount ?? 0 };
     }
   } else {
-    // candidate
-    const [
-      { count: appCount },
-      { count: interviewCount },
-    ] = await Promise.all([
+    const [{ count: appCount }, { count: interviewCount }] = await Promise.all([
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id),
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id).eq("status", "interview_scheduled"),
     ]);
-
-    stats = {
-      applications: appCount ?? 0,
-      interviews: interviewCount ?? 0,
-    };
+    stats = { applications: appCount ?? 0, interviews: interviewCount ?? 0 };
   }
 
-  const fullName = profile
-    ? `${profile.first_name} ${profile.last_name}`.trim()
-    : "there";
+  const fullName = profile?.first_name
+    ? profile.first_name
+    : profile?.last_name
+    ? profile.last_name
+    : profile?.email?.split("@")[0] || "there";
 
   return (
     <PageContainer>
@@ -102,15 +82,9 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        {(role === "hr_manager" || role === "admin") && (
-          <HRDashboard stats={stats} />
-        )}
-        {role === "employee" && (
-          <EmployeeDashboard stats={stats} />
-        )}
-        {role === "candidate" && (
-          <CandidateDashboard stats={stats} />
-        )}
+        {(role === "hr_manager" || role === "admin") && <HRDashboard stats={stats} />}
+        {role === "employee" && <EmployeeDashboard stats={stats} />}
+        {role === "candidate" && <CandidateDashboard stats={stats} />}
       </div>
     </PageContainer>
   );
@@ -127,28 +101,23 @@ function HRDashboard({ stats }: { stats: Record<string, number> }) {
       </div>
 
       {(stats.pendingLeaves ?? 0) > 0 && (
-        <div className="rounded-2xl bg-yellow-50 border border-yellow-200 p-4 flex items-center justify-between">
+        <Link href="/leaves" className="flex items-center justify-between rounded-2xl bg-yellow-50 border border-yellow-200 p-4">
           <div>
             <p className="text-sm font-medium text-yellow-800">Pending leave requests</p>
-            <p className="text-xs text-yellow-600 mt-0.5">Requires your approval</p>
+            <p className="text-xs text-yellow-600 mt-0.5">Tap to review and approve</p>
           </div>
           <span className="rounded-full bg-yellow-200 px-3 py-1 text-sm font-bold text-yellow-800">
             {stats.pendingLeaves}
           </span>
-        </div>
+        </Link>
       )}
 
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-        <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
-          Quick actions
-        </h2>
-        <QuickLink href="/jobs/manage/new" label="Post a new job" />
+      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
         <QuickLink href="/applications" label="Review applicants" />
-        <QuickLink href="/employees" label="Manage employees" />
-        <QuickLink href="/interviews" label="Schedule interviews" />
-        <QuickLink href="/payroll" label="Run payroll" />
-        <QuickLink href="/schedules" label="Manage schedules" />
-        <QuickLink href="/leaves" label="Review leave requests" />
+        <QuickLink href="/interviews/schedule" label="Schedule an interview" />
+        <QuickLink href="/interviews" label="View all interviews" />
+        <QuickLink href="/jobs/manage/new" label="Post a new job" />
       </div>
     </div>
   );
@@ -161,14 +130,11 @@ function EmployeeDashboard({ stats }: { stats: Record<string, number> }) {
         <SummaryCard label="Pending Leaves" value={String(stats.pendingLeaves ?? 0)} color="amber" />
         <SummaryCard label="Payslips" value={String(stats.payslips ?? 0)} color="green" />
       </div>
-
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-        <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
-          Quick actions
-        </h2>
-        <QuickLink href="/schedule" label="View my schedule" />
+      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
+        <QuickLink href="/schedules" label="View my schedule" />
         <QuickLink href="/leaves" label="File a leave request" />
-        <QuickLink href="/payslips" label="View my payslips" />
+        <QuickLink href="/payroll" label="View my payslips" />
       </div>
     </div>
   );
@@ -181,11 +147,8 @@ function CandidateDashboard({ stats }: { stats: Record<string, number> }) {
         <SummaryCard label="Applications" value={String(stats.applications ?? 0)} color="blue" />
         <SummaryCard label="Interviews" value={String(stats.interviews ?? 0)} color="purple" />
       </div>
-
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-        <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
-          Quick actions
-        </h2>
+      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
         <QuickLink href="/jobs" label="Browse jobs" />
         <QuickLink href="/resume" label="Manage my resume" />
         <QuickLink href="/applications" label="Track my applications" />
@@ -195,13 +158,8 @@ function CandidateDashboard({ stats }: { stats: Record<string, number> }) {
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  color = "blue",
-}: {
-  label: string;
-  value: string;
+function SummaryCard({ label, value, color = "blue" }: {
+  label: string; value: string;
   color?: "blue" | "green" | "purple" | "amber" | "red";
 }) {
   const colors = {
@@ -211,12 +169,9 @@ function SummaryCard({
     amber:  "bg-yellow-50 text-yellow-700",
     red:    "bg-red-50 text-red-700",
   };
-
   return (
     <div className={`rounded-2xl border border-border p-4 text-center ${colors[color]}`}>
-      <p className="font-(family-name:--font-heading) text-2xl font-bold">
-        {value}
-      </p>
+      <p className="font-(family-name:--font-heading) text-2xl font-bold">{value}</p>
       <p className="text-xs mt-1 opacity-80">{label}</p>
     </div>
   );

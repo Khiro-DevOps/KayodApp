@@ -102,12 +102,13 @@ create table profiles (
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer as $$
 begin
-  insert into profiles (id, email, first_name, last_name)
+  insert into profiles (id, email, first_name, last_name, role)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'first_name', ''),
-    coalesce(new.raw_user_meta_data->>'last_name', '')
+    coalesce(new.raw_user_meta_data->>'last_name', ''),
+    coalesce(new.raw_user_meta_data->>'role', 'candidate')::user_role
   );
   return new;
 end;
