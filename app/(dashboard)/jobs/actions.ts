@@ -4,6 +4,23 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+import { effectiveRole, isHRRole } from "@/lib/roles";
+
+async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: any) {
+  const authRole =
+    (user.user_metadata as any)?.role ??
+    ((user as any).raw_user_meta_data as any)?.role;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const role = effectiveRole(profile?.role, authRole);
+  return isHRRole(role);
+}
+
 export async function createJob(formData: FormData) {
   const supabase = await createClient();
 
@@ -11,6 +28,8 @@ export async function createJob(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  if (!(await verifyHR(supabase, user.id))) redirect("/dashboard");
 
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
