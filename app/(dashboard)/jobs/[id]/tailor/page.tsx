@@ -25,7 +25,7 @@ export default async function TailorResumePage({
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "job_seeker") redirect("/dashboard");
+  if (profile?.role !== "candidate") redirect("/dashboard");
 
   // Fetch job
   const { data: job } = await supabase

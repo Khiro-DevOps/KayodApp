@@ -4,6 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import type { Resume } from "@/lib/types";
 import Link from "next/link";
 import ResumeUploadClient from "./resume-upload-client";
+import { effectiveRole, isCandidateRole } from "@/lib/roles";
 
 export default async function ResumePage() {
   const supabase = await createClient();
@@ -13,14 +14,15 @@ export default async function ResumePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Only job seekers should access this
+  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "job_seeker") redirect("/dashboard");
+  const role = effectiveRole(profile?.role, authRole);
+  if (!isCandidateRole(role)) redirect("/dashboard");
 
   // Fetch user's resumes
   const { data: resumes } = await supabase
