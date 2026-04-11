@@ -7,9 +7,15 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
+import { PHILIPPINE_CITIES, JOB_INDUSTRIES } from "@/lib/constants";
 
-export default async function JobsPage() {
+interface Props {
+  searchParams: Promise<{ industry?: string; location?: string }>;
+}
+
+export default async function JobsPage({ searchParams }: Props) {
   const supabase = await createClient();
+  const { industry, location } = await searchParams;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -23,11 +29,20 @@ export default async function JobsPage() {
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (isHR) redirect("/jobs/manage");
 
-  const { data: jobs } = await supabase
+  let query = supabase
     .from("job_postings")
     .select("*, departments(name)")
-    .eq("is_published", true)
-    .order("created_at", { ascending: false });
+    .eq("is_published", true);
+
+  if (industry && industry !== "all") {
+    query = query.eq("industry", industry);
+  }
+  
+  if (location && location !== "all") {
+    query = query.eq("location", location);
+  }
+
+  const { data: jobs } = await query.order("created_at", { ascending: false });
 
   return (
     <PageContainer>
@@ -36,10 +51,53 @@ export default async function JobsPage() {
           Browse Jobs
         </h1>
 
+        {/* Filters */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-text-secondary uppercase">Industry</label>
+            <select
+              defaultValue={industry ?? "all"}
+              onChange={(e) => {
+                const newIndustry = e.target.value === "all" ? "" : e.target.value;
+                const newLocation = location ? `&location=${location}` : "";
+                window.location.href = `/jobs${newIndustry ? `?industry=${newIndustry}` : ""}${newLocation}`;
+              }}
+              className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+            >
+              <option value="all">All Industries</option>
+              {JOB_INDUSTRIES.map((ind) => (
+                <option key={ind.id} value={ind.id}>
+                  {ind.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-text-secondary uppercase">Location</label>
+            <select
+              defaultValue={location ?? "all"}
+              onChange={(e) => {
+                const newLocation = e.target.value === "all" ? "" : e.target.value;
+                const newIndustry = industry ? `&industry=${industry}` : "";
+                window.location.href = `/jobs${newLocation ? `?location=${newLocation}` : ""}${newIndustry}`;
+              }}
+              className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+            >
+              <option value="all">All Locations</option>
+              {PHILIPPINE_CITIES.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {!jobs || jobs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center">
             <p className="text-sm text-text-secondary">
-              No jobs available right now. Check back soon!
+              No jobs available matching your filters. Try adjusting your search!
             </p>
           </div>
         ) : (
@@ -69,6 +127,7 @@ function JobCard({ job }: { job: JobPosting }) {
           </h3>
           <p className="text-xs text-text-secondary">
             {dept?.name ?? "General"}
+            {job.job_category && ` • ${job.job_category}`}
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 capitalize">

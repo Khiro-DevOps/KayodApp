@@ -157,6 +157,8 @@ export interface JobPosting {
   responsibilities: string | null;
   location: string | null;
   is_remote: boolean;
+  industry: string | null;
+  job_category: string | null;
   employment_type: EmploymentType;
   salary_min: number | null;
   salary_max: number | null;

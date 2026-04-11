@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import PageContainer from "@/components/ui/page-container";
 import { createJob } from "../../actions";
+import { PHILIPPINE_CITIES, JOB_INDUSTRIES } from "@/lib/constants";
 
 export default function NewJobPage() {
   return (
@@ -55,6 +56,40 @@ function NewJobForm() {
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label htmlFor="industry" className="text-sm font-medium text-text-primary">
+                Industry *
+              </label>
+              <select
+                id="industry"
+                name="industry"
+                required
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+              >
+                <option value="">Select Industry</option>
+                {JOB_INDUSTRIES.map((industry) => (
+                  <option key={industry.id} value={industry.id}>
+                    {industry.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="job_category" className="text-sm font-medium text-text-primary">
+                Job Category/Position
+              </label>
+              <input
+                id="job_category"
+                name="job_category"
+                type="text"
+                placeholder="e.g. Senior Developer"
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+
           <div className="space-y-1">
             <label htmlFor="description" className="text-sm font-medium text-text-primary">
               Description *
@@ -98,15 +133,21 @@ function NewJobForm() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="location" className="text-sm font-medium text-text-primary">
-                Location
+                Location *
               </label>
-              <input
+              <select
                 id="location"
                 name="location"
-                type="text"
-                placeholder="e.g. Manila, Remote"
-                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
+                required
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+              >
+                <option value="">Select City</option>
+                {PHILIPPINE_CITIES.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1">
@@ -117,7 +158,7 @@ function NewJobForm() {
                 id="salary_range"
                 name="salary_range"
                 type="text"
-                placeholder="e.g. 30k-50k"
+                placeholder="e.g. 30000-50000"
                 className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
