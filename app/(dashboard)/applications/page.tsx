@@ -1,73 +1,156 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Application, Interview } from "@/lib/types";
+import type { Application, Profile } from "@/lib/types";
+import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
-import ApplicationsClient from "./applications-client";
 
 export default async function ApplicationsPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single();
+    .single<Pick<Profile, "role">>();
 
-  // Employers don't have applications, redirect to manage
-  if (profile?.role === "employer") redirect("/jobs/manage");
+  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
 
-  // Fetch applications with job details
-  const { data: applications } = await supabase
-    .from("applications")
-    .select("*, job_listings(*, employers(company_name))")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .returns<Application[]>();
+  let applications: Application[] = [];
 
-  // Fetch interviews for these applications
-  const applicationIds = applications?.map((a) => a.id) || [];
-  const { data: interviews } = applicationIds.length
-    ? await supabase
-        .from("interviews")
-        .select("*")
-        .in("application_id", applicationIds)
-        .returns<Interview[]>()
-    : { data: [] as Interview[] };
-
-  const interviewMap: Record<string, Interview> = {};
-  (interviews || []).forEach((i) => {
-    interviewMap[i.application_id] = i;
-  });
+  if (isHR) {
+    // HR sees all applications
+    const { data } = await supabase
+      .from("applications")
+      .select(`
+        *,
+        job_postings ( title, location, employment_type ),
+        profiles ( first_name, last_name, email ),
+        resumes ( title )
+      `)
+      .order("submitted_at", { ascending: false });
+    applications = (data as Application[]) ?? [];
+  } else {
+    // Candidates see their own applications
+    const { data } = await supabase
+      .from("applications")
+      .select(`
+        *,
+        job_postings ( title, location, employment_type ),
+        resumes ( title )
+      `)
+      .eq("candidate_id", user.id)
+      .order("submitted_at", { ascending: false });
+    applications = (data as Application[]) ?? [];
+  }
 
   return (
     <PageContainer>
       <div className="space-y-4">
-        <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-          My Applications
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+            {isHR ? "All Applications" : "My Applications"}
+          </h1>
+          <span className="text-sm text-text-secondary">
+            {applications.length} total
+          </span>
+        </div>
 
-        <ApplicationsClient applications={applications || []} interviewMap={interviewMap} />
-
-        {(!applications || applications.length === 0) && (
+        {applications.length === 0 ? (
           <div className="rounded-2xl bg-surface border border-border p-6 text-center space-y-2">
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-text-secondary">
-                <path fillRule="evenodd" d="M6 3.75A2.75 2.75 0 0 1 8.75 1h2.5A2.75 2.75 0 0 1 14 3.75v.443c.572.055 1.14.122 1.706.2C17.053 4.582 18 5.75 18 7.07v3.469c0 1.126-.694 2.191-1.83 2.54-1.952.599-4.024.921-6.17.921s-4.219-.322-6.17-.921C2.694 12.73 2 11.665 2 10.539V7.07c0-1.321.947-2.489 2.294-2.676A41.047 41.047 0 0 1 6 4.193V3.75ZM8.75 2.5c-.69 0-1.25.56-1.25 1.25v.1c.832-.07 1.663-.1 2.5-.1s1.668.03 2.5.1v-.1c0-.69-.56-1.25-1.25-1.25h-2.5ZM10 10a.75.75 0 0 1-.75-.75v-1.5a.75.75 0 0 1 1.5 0v1.5A.75.75 0 0 1 10 10Zm-3.5 5.85c0-.463.14-.917.401-1.3A41.472 41.472 0 0 0 10 15a41.46 41.46 0 0 0 3.099-.45c.261.383.401.837.401 1.3v.75a.75.75 0 0 1-.75.75h-5.5a.75.75 0 0 1-.75-.75v-.75Z" clipRule="evenodd" />
-              </svg>
-            </div>
             <p className="text-sm text-text-secondary">No applications yet</p>
-            <Link
-              href="/jobs"
-              className="inline-block text-sm font-medium text-primary hover:underline"
-            >
-              Browse Jobs
-            </Link>
+            {!isHR && (
+              <Link
+                href="/jobs"
+                className="inline-block text-sm font-medium text-primary hover:underline"
+              >
+                Browse Jobs
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {applications.map((app) => {
+              const job = app.job_postings as unknown as {
+                title: string;
+                location: string | null;
+                employment_type: string;
+              };
+              const candidate = app.profiles as unknown as {
+                first_name: string;
+                last_name: string;
+                email: string;
+              } | null;
+
+              return (
+                <div
+                  key={app.id}
+                  className="rounded-2xl bg-surface border border-border p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">
+                        {job?.title ?? "Position"}
+                      </p>
+                      {isHR && candidate && (
+                        <p className="text-xs text-text-secondary">
+                          {candidate.first_name} {candidate.last_name} · {candidate.email}
+                        </p>
+                      )}
+                      {job?.location && (
+                        <p className="text-xs text-text-secondary">{job.location}</p>
+                      )}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${APPLICATION_STATUS_COLORS[app.status]}`}>
+                      {app.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  {app.match_score !== null && (
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 rounded-full bg-gray-100">
+                        <div
+                          className="h-1.5 rounded-full bg-primary"
+                          style={{ width: `${app.match_score}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-text-secondary shrink-0">
+                        {Math.round(app.match_score)}% match
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-text-secondary">
+                    <span>
+                      Applied {new Date(app.submitted_at).toLocaleDateString("en-PH", {
+                        month: "short", day: "numeric", year: "numeric"
+                      })}
+                    </span>
+                    {isHR && (
+                      <div className="flex gap-2">
+                        {(["under_review", "shortlisted", "interview_scheduled", "offer_sent", "hired", "rejected"] as const).map((s) => (
+                          app.status !== s && (
+                            <form key={s} method="POST" action="/api/applications/status">
+                              <input type="hidden" name="application_id" value={app.id} />
+                              <input type="hidden" name="status" value={s} />
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-text-secondary hover:bg-gray-200 capitalize"
+                              >
+                                {s.replace(/_/g, " ")}
+                              </button>
+                            </form>
+                          )
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
