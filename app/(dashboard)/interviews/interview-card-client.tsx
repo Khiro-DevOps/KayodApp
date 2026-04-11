@@ -1,7 +1,7 @@
 "use client";
 
 import { Interview } from "@/lib/types";
-import { updateInterviewPreference } from "../actions";
+import { updateInterviewPreference } from "./actions";
 import { useState } from "react";
 
 interface InterviewCardClientProps {
