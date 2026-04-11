@@ -193,6 +193,10 @@ create table job_postings (
   published_at        timestamptz,
   closes_at           timestamptz,                -- application deadline
 
+  -- Industry and job category for filtering
+  industry            text,                       -- e.g., 'it', 'finance', 'healthcare'
+  job_category        text,                       -- e.g., 'Software Engineer', 'Data Analyst'
+
   -- Skills/keywords extracted for resume matching
   required_skills     text[] default '{}',
 

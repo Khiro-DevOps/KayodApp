@@ -119,40 +119,77 @@ export async function cancelInterview(formData: FormData) {
   redirect("/interviews");
 }
 
-export async function completeInterview(formData: FormData) {
+export async function updateInterviewPreference(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
 
   const interviewId = formData.get("interview_id") as string;
-  const notes       = formData.get("interviewer_notes") as string | null;
-  const score       = formData.get("interview_score") as string | null;
+  const interviewType = formData.get("interview_type") as string;
 
-  await supabase
-    .from("interviews")
-    .update({
-      status:             "completed",
-      interviewer_notes:  notes || null,
-      interview_score:    score ? parseInt(score) : null,
-    })
-    .eq("id", interviewId);
+  if (!interviewId || !interviewType) redirect("/interviews");
 
-  // Update application status
+  // Verify the user is the candidate for this interview
   const { data: interview } = await supabase
     .from("interviews")
-    .select("application_id")
+    .select(`
+      id,
+      applications (
+        candidate_id
+      )
+    `)
     .eq("id", interviewId)
     .single();
 
-  if (interview?.application_id) {
-    await supabase
-      .from("applications")
-      .update({ status: "interviewed" })
-      .eq("id", interview.application_id);
+  if (!interview) redirect("/interviews");
+
+  const app = interview.applications as unknown as { candidate_id: string };
+  if (app.candidate_id !== user.id) redirect("/interviews");
+
+  let videoRoomUrl = null;
+  let videoRoomName = null;
+
+  // Create Daily.co room for online interviews
+  if (interviewType === "online" && process.env.DAILY_API_KEY) {
+    try {
+      const roomName = `kayod-interview-${interviewId.slice(0, 8)}-${Date.now()}`;
+      const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+        },
+        body: JSON.stringify({
+          name: roomName,
+          properties: {
+            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+            enable_chat: true,
+            enable_screenshare: true,
+          },
+        }),
+      });
+      if (dailyRes.ok) {
+        const room = await dailyRes.json();
+        videoRoomUrl = room.url;
+        videoRoomName = room.name;
+      }
+    } catch {
+      // If Daily.co fails, continue without video room
+    }
   }
 
+  const { error } = await supabase
+    .from("interviews")
+    .update({
+      interview_type: interviewType,
+      video_room_url: videoRoomUrl,
+      video_room_name: videoRoomName,
+      video_provider: interviewType === "online" ? "daily.co" : null,
+    })
+    .eq("id", interviewId);
+
+  if (error) redirect(`/interviews?error=${encodeURIComponent(error.message)}`);
+
   revalidatePath("/interviews");
-  revalidatePath("/applications");
   redirect("/interviews");
 }

@@ -4,6 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { logout } from "@/app/(auth)/actions";
+import { effectiveRole, isHRRole, roleLabel } from "@/lib/roles";
 
 export default async function HRMorePage() {
   const supabase = await createClient();
@@ -11,14 +12,15 @@ export default async function HRMorePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single<Profile>();
 
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (!isHR) redirect("/dashboard");
+  const effective = effectiveRole(profile?.role, authRole);
+  if (!isHRRole(effective)) redirect("/dashboard");
 
   const fullName = profile
     ? `${profile.first_name} ${profile.last_name}`.trim()
@@ -35,7 +37,7 @@ export default async function HRMorePage() {
           <div>
             <p className="font-semibold text-text-primary">{fullName}</p>
             <p className="text-xs text-text-secondary capitalize">
-              {profile?.role?.replace("_", " ")}
+              {roleLabel(effective)}
             </p>
             <p className="text-xs text-text-tertiary">{profile?.email}</p>
           </div>
