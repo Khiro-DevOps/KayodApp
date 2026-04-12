@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
-import { scheduleInterview } from "@/app/(dashboard)/applications/actions";
+import { scheduleInterview } from "@/app/(dashboard)/interviews/actions";
 
 export default async function InterviewPage({
   params,

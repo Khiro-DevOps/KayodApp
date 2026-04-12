@@ -57,32 +57,86 @@ export default async function InterviewsPage() {
     (i) => new Date(i.scheduled_at) < new Date() || i.status === "completed"
   );
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const todaysInterviews = interviews.filter(
+    (i) => {
+      const scheduled = new Date(i.scheduled_at);
+      return scheduled >= today && scheduled < tomorrow && i.status !== "cancelled";
+    }
+  );
+
   return (
-    <PageContainer>
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
-              </svg>
-            </Link>
-            <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-              Interviews
-            </h1>
+    <div className="flex gap-6">
+      {/* Today's Interviews Sidebar */}
+      <div className="w-80 shrink-0">
+        <div className="sticky top-4 space-y-4">
+          <div className="rounded-2xl bg-surface border border-border p-4">
+            <h2 className="text-sm font-semibold text-text-primary mb-3">
+              Today's Interviews ({todaysInterviews.length})
+            </h2>
+            {todaysInterviews.length === 0 ? (
+              <p className="text-xs text-text-secondary">No interviews scheduled for today</p>
+            ) : (
+              <div className="space-y-2">
+                {todaysInterviews.map((interview) => {
+                  const app = interview.applications as any;
+                  const jobTitle = app?.job_postings?.title ?? "Interview";
+                  const candidate = isHR ? app?.profiles : null;
+                  const candidateName = candidate
+                    ? `${candidate.first_name} ${candidate.last_name}`
+                    : "You";
+
+                  return (
+                    <div key={interview.id} className="rounded-xl bg-gray-50 p-3">
+                      <p className="text-xs font-medium text-text-primary">
+                        {new Date(interview.scheduled_at).toLocaleTimeString("en-PH", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </p>
+                      <p className="text-xs text-text-secondary mt-1">{jobTitle}</p>
+                      <p className="text-xs text-text-secondary">{candidateName}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          {isHR && (
-            <Link
-              href="/interviews/schedule"
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
-            >
-              Schedule
-            </Link>
-          )}
         </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 min-w-0">
+        <PageContainer>
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboard"
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
+                  </svg>
+                </Link>
+                <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+                  Interviews
+                </h1>
+              </div>
+              {isHR && (
+                <Link
+                  href="/interviews/schedule"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+                >
+                  Schedule
+                </Link>
+              )}
+            </div>
 
         {/* Calendar View for HR */}
         {isHR && (
@@ -126,8 +180,10 @@ export default async function InterviewsPage() {
             ))}
           </section>
         )}
+          </div>
+        </PageContainer>
       </div>
-    </PageContainer>
+    </div>
   );
 }
 
