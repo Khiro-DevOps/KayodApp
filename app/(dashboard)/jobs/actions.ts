@@ -11,11 +11,15 @@ async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user
     (user.user_metadata as any)?.role ??
     ((user as any).raw_user_meta_data as any)?.role;
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("verifyHR profile fetch error:", profileError);
+  }
 
   const role = effectiveRole(profile?.role, authRole);
   return isHRRole(role);
@@ -29,7 +33,7 @@ export async function createJob(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  if (!(await verifyHR(supabase, user.id))) redirect("/dashboard");
+  if (!(await verifyHR(supabase, user))) redirect("/dashboard");
 
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
@@ -51,7 +55,18 @@ export async function createJob(formData: FormData) {
     ? parseInt(salary_range.split("-")[1])
     : null;
 
-  const { error } = await supabase.from("job_postings").insert({
+  console.log("Creating job with:", {
+    created_by: user.id,
+    title,
+    description,
+    requirements,
+    required_skills: skills,
+    location,
+    salary_min: salaryMin,
+    salary_max: salaryMax,
+  });
+
+  const { error, data } = await supabase.from("job_postings").insert({
     created_by: user.id,
     title,
     description,
@@ -63,13 +78,18 @@ export async function createJob(formData: FormData) {
     currency: "PHP",
     industry: industry || null,
     job_category: job_category || null,
-  });
+    is_published: false,
+    slots: 1,
+  }).select();
 
   if (error) {
+    console.error("Job creation error:", error);
     redirect(`/jobs/manage/new?error=${encodeURIComponent(error.message)}`);
   }
 
+  console.log("Job created successfully:", data);
   revalidatePath("/jobs");
+  revalidatePath("/jobs/manage");
   redirect("/jobs/manage");
 }
 

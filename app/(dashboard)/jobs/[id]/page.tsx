@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { JobListing } from "@/lib/types";
+import type { JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
 
 export default async function JobDetailsPage({
@@ -18,10 +18,10 @@ export default async function JobDetailsPage({
   if (!user) redirect("/login");
 
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("*, employers(company_name)")
+    .from("job_postings")
+    .select("*, departments(name)")
     .eq("id", id)
-    .single<JobListing>();
+    .single<JobPosting>();
 
   if (!job) notFound();
 
@@ -29,8 +29,8 @@ export default async function JobDetailsPage({
   const { data: existingApplication } = await supabase
     .from("applications")
     .select("id, match_score")
-    .eq("user_id", user.id)
-    .eq("job_listing_id", id)
+    .eq("candidate_id", user.id)
+    .eq("job_posting_id", id)
     .maybeSingle();
 
   const hasApplied = !!existingApplication;
@@ -41,9 +41,9 @@ export default async function JobDetailsPage({
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single();
+    .single<Pick<Profile, "role">>();
 
-  const isJobSeeker = profile?.role === "candidate";
+  const isCandidate = profile?.role === "candidate";
 
   return (
     <PageContainer>
@@ -62,11 +62,9 @@ export default async function JobDetailsPage({
             <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary truncate">
               {job.title}
             </h1>
-            {job.employers && (
-              <p className="text-sm text-text-secondary">
-                {(job.employers as unknown as { company_name: string }).company_name}
-              </p>
-            )}
+            <p className="text-sm text-text-secondary">
+              {(job.departments as unknown as { name: string } | null)?.name ?? "General"}
+            </p>
           </div>
         </div>
 
@@ -78,15 +76,19 @@ export default async function JobDetailsPage({
                 <path fillRule="evenodd" d="m7.539 14.841.003.003.002.002a.755.755 0 0 0 .912 0l.002-.002.003-.003.012-.009a5.57 5.57 0 0 0 .19-.153 15.588 15.588 0 0 0 2.046-2.082c1.101-1.362 2.291-3.342 2.291-5.597A5 5 0 0 0 3 7c0 2.255 1.19 4.235 2.291 5.597a15.591 15.591 0 0 0 2.236 2.236l.012.008ZM8 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" clipRule="evenodd" />
               </svg>
               {job.location}
+              {job.is_remote && " (Remote)"}
             </span>
           )}
-          {job.salary_range && (
+          {job.salary_min && job.salary_max && (
             <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-text-secondary">
-              {job.salary_range}
+              ₱{job.salary_min.toLocaleString()} – ₱{job.salary_max.toLocaleString()}
             </span>
           )}
           <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-text-secondary">
-            {new Date(job.created_at).toLocaleDateString()}
+            {job.employment_type.replace("_", " ")}
+          </span>
+          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-text-secondary">
+            Posted {new Date(job.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
           </span>
         </div>
 
@@ -104,11 +106,11 @@ export default async function JobDetailsPage({
             </div>
           )}
 
-          {job.skills && job.skills.length > 0 && (
+          {job.required_skills && job.required_skills.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Skills</p>
+              <p className="text-xs font-medium text-text-secondary mb-1">Required Skills</p>
               <div className="flex flex-wrap gap-1.5">
-                {job.skills.map((skill) => (
+                {job.required_skills.map((skill) => (
                   <span
                     key={skill}
                     className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
@@ -121,16 +123,16 @@ export default async function JobDetailsPage({
           )}
         </div>
 
-        {/* Actions for Job Seekers */}
-        {isJobSeeker && (
+        {/* Actions for Candidates */}
+        {isCandidate && (
           <div className="space-y-2">
             {hasApplied ? (
               <div className="rounded-2xl bg-green-50 border border-green-200 py-3 text-center space-y-1">
-                <p className="text-sm font-medium text-success">Already Applied</p>
+                <p className="text-sm font-medium text-green-700">✓ Already Applied</p>
                 {matchScore !== null && (
                   <p className={`text-xs font-bold ${
-                    matchScore >= 70 ? 'text-success' :
-                    matchScore >= 40 ? 'text-warning' :
+                    matchScore >= 70 ? 'text-green-700' :
+                    matchScore >= 40 ? 'text-yellow-600' :
                     'text-text-secondary'
                   }`}>
                     Match Score: {matchScore}%

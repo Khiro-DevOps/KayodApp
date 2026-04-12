@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { deleteJob } from "../../actions";
-import type { JobListing } from "@/lib/types";
+import type { JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
 
 export default async function JobDetailManagePage({
@@ -19,10 +19,10 @@ export default async function JobDetailManagePage({
   if (!user) redirect("/login");
 
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("*, employers(*)")
+    .from("job_postings")
+    .select("*, departments(name)")
     .eq("id", id)
-    .single<JobListing>();
+    .single<JobPosting>();
 
   if (!job) notFound();
 
@@ -30,7 +30,7 @@ export default async function JobDetailManagePage({
   const { count: applicantCount } = await supabase
     .from("applications")
     .select("*", { count: "exact", head: true })
-    .eq("job_listing_id", id);
+    .eq("job_posting_id", id);
 
   return (
     <PageContainer>
@@ -54,12 +54,12 @@ export default async function JobDetailManagePage({
         <div className="flex items-center gap-2">
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              job.status === "active"
-                ? "bg-green-50 text-success"
+              job.is_published
+                ? "bg-green-50 text-green-700"
                 : "bg-gray-100 text-text-secondary"
             }`}
           >
-            {job.status}
+            {job.is_published ? "Published" : "Draft"}
           </span>
           <span className="text-xs text-text-secondary">
             {applicantCount || 0} applicant{applicantCount !== 1 ? "s" : ""}
@@ -80,11 +80,11 @@ export default async function JobDetailManagePage({
             </div>
           )}
 
-          {job.skills && job.skills.length > 0 && (
+          {job.required_skills && job.required_skills.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Skills</p>
+              <p className="text-xs font-medium text-text-secondary mb-1">Required Skills</p>
               <div className="flex flex-wrap gap-1.5">
-                {job.skills.map((skill) => (
+                {job.required_skills.map((skill) => (
                   <span
                     key={skill}
                     className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
@@ -96,22 +96,32 @@ export default async function JobDetailManagePage({
             </div>
           )}
 
-          {(job.location || job.salary_range) && (
-            <div className="flex gap-4">
-              {job.location && (
-                <div>
-                  <p className="text-xs font-medium text-text-secondary mb-1">Location</p>
-                  <p className="text-sm text-text-primary">{job.location}</p>
-                </div>
-              )}
-              {job.salary_range && (
-                <div>
-                  <p className="text-xs font-medium text-text-secondary mb-1">Salary</p>
-                  <p className="text-sm text-text-primary">{job.salary_range}</p>
-                </div>
-              )}
+          <div className="space-y-3">
+            {job.location && (
+              <div>
+                <p className="text-xs font-medium text-text-secondary mb-1">Location</p>
+                <p className="text-sm text-text-primary">{job.location} {job.is_remote && "(Remote)"}</p>
+              </div>
+            )}
+            {(job.salary_min || job.salary_max) && (
+              <div>
+                <p className="text-xs font-medium text-text-secondary mb-1">Salary Range</p>
+                <p className="text-sm text-text-primary">
+                  ₱{job.salary_min?.toLocaleString()} — ₱{job.salary_max?.toLocaleString()} {job.currency}
+                </p>
+              </div>
+            )}
+            <div className="flex gap-4 text-sm">
+              <div>
+                <p className="text-xs font-medium text-text-secondary mb-1">Employment Type</p>
+                <p className="text-text-primary capitalize">{job.employment_type.replace("_", " ")}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-text-secondary mb-1">Slots Available</p>
+                <p className="text-text-primary">{job.slots}</p>
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Actions */}
