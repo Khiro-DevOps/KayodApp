@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { JobListing, Resume } from "@/lib/types";
+import type { JobPosting, Resume } from "@/lib/types";
 import Link from "next/link";
 import { submitApplication } from "@/app/(dashboard)/applications/actions";
 import ApplyFormClient from "./apply-form-client";
@@ -30,11 +30,11 @@ export default async function ApplyPage({
 
   // Fetch job
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("*, employers(company_name)")
+    .from("job_postings")
+    .select("*, departments(name)")
     .eq("id", id)
-    .eq("status", "active")
-    .single<JobListing>();
+    .eq("is_published", true)
+    .single<JobPosting>();
 
   if (!job) notFound();
 
@@ -42,8 +42,8 @@ export default async function ApplyPage({
   const { data: existing } = await supabase
     .from("applications")
     .select("id")
-    .eq("user_id", user.id)
-    .eq("job_listing_id", id)
+    .eq("candidate_id", user.id)
+    .eq("job_posting_id", id)
     .maybeSingle();
 
   if (existing) {
@@ -58,8 +58,8 @@ export default async function ApplyPage({
     .order("created_at", { ascending: false })
     .returns<Resume[]>();
 
-  const companyName = job.employers
-    ? (job.employers as unknown as { company_name: string }).company_name
+  const companyName = job.departments
+    ? (job.departments as unknown as { name: string }).name
     : null;
 
   return (

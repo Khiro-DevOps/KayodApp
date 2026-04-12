@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
+import ApplyActions from "./apply-actions-client";
 
 export default async function JobDetailsPage({
   params,
@@ -125,38 +126,11 @@ export default async function JobDetailsPage({
 
         {/* Actions for Candidates */}
         {isCandidate && (
-          <div className="space-y-2">
-            {hasApplied ? (
-              <div className="rounded-2xl bg-green-50 border border-green-200 py-3 text-center space-y-1">
-                <p className="text-sm font-medium text-green-700">✓ Already Applied</p>
-                {matchScore !== null && (
-                  <p className={`text-xs font-bold ${
-                    matchScore >= 70 ? 'text-green-700' :
-                    matchScore >= 40 ? 'text-yellow-600' :
-                    'text-text-secondary'
-                  }`}>
-                    Match Score: {matchScore}%
-                  </p>
-                )}
-              </div>
-            ) : (
-              <Link
-                href={`/jobs/${job.id}/apply`}
-                className="block rounded-2xl bg-primary py-3 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
-              >
-                Apply Now
-              </Link>
-            )}
-            <Link
-              href={`/jobs/${job.id}/tailor`}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-primary py-3 text-center text-sm font-medium text-primary transition-colors hover:bg-primary/5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684ZM13.949 13.684a1 1 0 0 0-1.898 0l-.184.551a1 1 0 0 1-.632.633l-.551.183a1 1 0 0 0 0 1.898l.551.183a1 1 0 0 1 .633.633l.183.551a1 1 0 0 0 1.898 0l.184-.551a1 1 0 0 1 .632-.633l.551-.183a1 1 0 0 0 0-1.898l-.551-.184a1 1 0 0 1-.633-.632l-.183-.551Z" />
-              </svg>
-              Tailor Resume with AI
-            </Link>
-          </div>
+          <ApplyActions
+            jobId={job.id}
+            hasApplied={hasApplied}
+            matchScore={matchScore}
+          />
         )}
       </div>
     </PageContainer>

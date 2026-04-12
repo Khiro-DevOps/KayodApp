@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Application, Interview } from "@/lib/types";
 import Link from "next/link";
-import { updateApplicationStatus } from "@/app/(dashboard)/applications/actions";
+import { updateApplicationStatus } from "@/app/(dashboard)/applications/hr-applications-actions";
 
 export default async function ApplicantsPage({
   params,
