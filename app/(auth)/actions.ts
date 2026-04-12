@@ -5,35 +5,51 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
-
   const email    = formData.get("email") as string;
   const password = formData.get("password") as string;
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
-
   redirect("/dashboard");
 }
 
 export async function register(formData: FormData) {
   const supabase = await createClient();
-
   const email     = formData.get("email") as string;
   const password  = formData.get("password") as string;
   const firstName = formData.get("first_name") as string;
   const lastName  = formData.get("last_name") as string;
+  const phone     = formData.get("phone") as string;
   const role      = (formData.get("role") as string) || "candidate";
+
+  // Server-side validation
+  if (!email || !password || !firstName || !lastName || !phone) {
+    redirect(`/register?error=${encodeURIComponent("All fields are required")}`);
+  }
+
+  if (password.length < 6) {
+    redirect(`/register?error=${encodeURIComponent("Password must be at least 6 characters")}`);
+  }
+
+  const validRoles = ["candidate", "hr_manager"];
+  if (!validRoles.includes(role)) {
+    redirect(`/register?error=${encodeURIComponent("Invalid role selected")}`);
+  }
 
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { first_name: firstName, last_name: lastName, role },
+      data: {
+        first_name: firstName,
+        last_name:  lastName,
+        phone:      phone,
+        role:       role,
+      },
     },
   });
 
   if (error) redirect(`/register?error=${encodeURIComponent(error.message)}`);
-
   redirect("/dashboard");
 }
 

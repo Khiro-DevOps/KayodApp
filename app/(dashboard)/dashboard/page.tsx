@@ -60,18 +60,16 @@ export default async function DashboardPage() {
     stats = { applications: appCount ?? 0, interviews: interviewCount ?? 0 };
   }
 
-  const fullName = profile?.first_name
-    ? profile.first_name
-    : profile?.last_name
-    ? profile.last_name
-    : profile?.email?.split("@")[0] || "there";
+  const greetingName = `${profile?.first_name?.trim() || ''} ${profile?.last_name?.trim() || ''}`.trim()
+    || profile?.email?.split("@")[0]
+    || "there";
 
   return (
     <PageContainer>
       <div className="space-y-6">
         <div>
           <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-            Hello, {fullName} 👋
+            Hello, {greetingName}.
           </h1>
           <p className="text-sm text-text-secondary mt-1">
             {role === "hr_manager" || role === "admin"

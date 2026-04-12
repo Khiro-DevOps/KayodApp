@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 
 export default async function ManageJobsPage() {
   const supabase = await createClient();
@@ -14,19 +15,35 @@ export default async function ManageJobsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  const authRole =
+    (user.user_metadata as any)?.role ??
+    ((user as any).raw_user_meta_data as any)?.role;
+
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .maybeSingle<Pick<Profile, "role">>();
 
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (!isHR) redirect("/dashboard");
+  if (profileError) {
+    console.error("Profile fetch error:", profileError);
+  }
 
-  const { data: jobs } = await supabase
+  const role = effectiveRole(profile?.role, authRole);
+  const isHR = isHRRole(role);
+  if (!isHR) {
+    console.log("User role is not HR:", role);
+    redirect("/dashboard");
+  }
+
+  const { data: jobs, error: jobsError } = await supabase
     .from("job_postings")
     .select("*, departments(name)")
     .order("created_at", { ascending: false });
+
+  if (jobsError) {
+    console.error("Jobs fetch error:", jobsError);
+  }
 
   // Get applicant counts per job
   const jobIds = jobs?.map((j) => j.id) ?? [];

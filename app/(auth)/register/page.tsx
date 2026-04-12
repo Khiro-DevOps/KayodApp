@@ -104,6 +104,21 @@ function RegisterForm() {
           />
         </div>
 
+        {/* Phone Number */}
+        <div className="space-y-1">
+          <label htmlFor="phone" className="text-sm font-medium text-text-primary">
+            Phone Number
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            required
+            placeholder="+63 912 345 6789"
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
         {/* Email */}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium text-text-primary">

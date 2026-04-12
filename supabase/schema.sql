@@ -88,7 +88,7 @@ create table profiles (
   first_name      text not null,
   last_name       text not null,
   email           text not null unique,
-  phone           text,
+  phone           text not null,
   avatar_url      text,
   date_of_birth   date,
   address         text,
@@ -102,13 +102,30 @@ create table profiles (
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer as $$
 begin
-  insert into profiles (id, email, first_name, last_name, role)
+  insert into profiles (id, email, first_name, last_name, phone, role)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'first_name', ''),
-    coalesce(new.raw_user_meta_data->>'last_name', ''),
-    coalesce(new.raw_user_meta_data->>'role', 'candidate')::user_role
+    coalesce(
+      new.user_metadata->>'first_name',
+      new.raw_user_meta_data->>'first_name',
+      ''
+    ),
+    coalesce(
+      new.user_metadata->>'last_name',
+      new.raw_user_meta_data->>'last_name',
+      ''
+    ),
+    coalesce(
+      new.user_metadata->>'phone',
+      new.raw_user_meta_data->>'phone',
+      ''
+    ),
+    coalesce(
+      new.user_metadata->>'role',
+      new.raw_user_meta_data->>'role',
+      'candidate'
+    )::user_role
   );
   return new;
 end;
@@ -734,13 +751,21 @@ alter table notifications         enable row level security;
 -- Helper: get current user's role
 create or replace function current_user_role()
 returns user_role language sql security definer stable as $$
-  select role from profiles where id = auth.uid();
+  select coalesce(
+    (select p.role from profiles p where p.id = auth.uid()),
+    (select (coalesce(u.raw_user_meta_data->>'role', u.user_metadata->>'role'))::user_role
+     from auth.users u where u.id = auth.uid())
+  );
 $$;
 
 -- Helper: is current user hr or admin?
 create or replace function is_hr()
 returns boolean language sql security definer stable as $$
-  select role in ('hr_manager', 'admin') from profiles where id = auth.uid();
+  select coalesce(
+    (select p.role in ('hr_manager', 'admin') from profiles p where p.id = auth.uid()),
+    (select coalesce(u.raw_user_meta_data->>'role', u.user_metadata->>'role') in ('hr_manager', 'admin')
+     from auth.users u where u.id = auth.uid())
+  );
 $$;
 
 -- profiles: users see own row; HR sees all
@@ -858,23 +883,47 @@ insert into departments (name, description) values
 
 
 -- ============================================================
--- DONE
+-- MIGRATION: Fix null values in existing profiles
+-- Run this after applying schema changes to populate missing data
 -- ============================================================
--- Tables:    profiles, resumes, departments, job_postings,
---            applications, interviews, interview_panelists,
---            employees, schedules, leave_requests,
---            leave_balances, payroll_periods, payslips,
---            notifications
---
--- Triggers:  auto-create profile on signup
---            auto-generate employee number
---            auto-notify on: application status change,
---              interview scheduled, leave status change,
---              payslip paid
---            auto-promote profile role to 'employee' on hire
---            updated_at on all mutable tables
+update profiles
+set
+  first_name = coalesce(
+    first_name,
+    u.user_metadata->>'first_name',
+    u.raw_user_meta_data->>'first_name',
+    split_part(u.email, '@', 1)
+  ),
+  last_name = coalesce(
+    last_name,
+    u.user_metadata->>'last_name',
+    u.raw_user_meta_data->>'last_name',
+    ''
+  ),
+  role = coalesce(
+    role,
+    (u.user_metadata->>'role')::user_role,
+    (u.raw_user_meta_data->>'role')::user_role,
+    'candidate'::user_role
+  ),
+  phone = coalesce(
+    phone,
+    u.user_metadata->>'phone',
+    u.raw_user_meta_data->>'phone',
+    ''
+  )
+from auth.users u
+where profiles.id = u.id
+  and (
+    profiles.first_name is null
+    or profiles.last_name is null
+    or profiles.role is null
+    or profiles.phone is null
+  );
 --
 -- RLS:       candidates own their data
 --            HR managers can read/write everything
 --            employees see only their own payslip/schedule/leaves
 -- ============================================================
+
+
