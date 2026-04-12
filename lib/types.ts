@@ -96,7 +96,7 @@ export interface Profile {
   first_name: string;
   last_name: string;
   email: string;
-  phone: string;
+  phone: string | null;
   avatar_url: string | null;
   date_of_birth: string | null;
   address: string | null;
