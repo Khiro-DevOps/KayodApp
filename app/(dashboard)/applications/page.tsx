@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import HRApplicationsPage from "./hr-applications-page";
+import ManageJobsPage from "../jobs/manage/page";
 import ApplicationsClient from "./applications-client";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile, Application, Interview } from "@/lib/types";
@@ -22,9 +22,9 @@ export default async function ApplicationsPage() {
   const role = effectiveRole(profile?.role, authRole);
   const isHR = isHRRole(role);
 
-  // HR Manager view - show all applications
+  // HR Manager view - use a single management page
   if (isHR) {
-    return <HRApplicationsPage />;
+    return <ManageJobsPage />;
   }
 
   // Job Seeker view - show their own applications

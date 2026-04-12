@@ -2,8 +2,29 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useState, Suspense, type ChangeEvent } from "react";
 import { register } from "../actions";
+
+function formatPhilippinesPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits === "0") return "0";
+  if (digits === "63") return "+63";
+
+  let local = digits;
+  if (digits.startsWith("0")) {
+    local = digits.slice(1);
+  } else if (digits.startsWith("63")) {
+    local = digits.slice(2);
+  }
+
+  local = local.slice(0, 10);
+
+  if (!local) return digits;
+  if (local.length <= 3) return `+63 ${local}`.trim();
+  if (local.length <= 6) return `+63 ${local.slice(0, 3)} ${local.slice(3)}`;
+  return `+63 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
+}
 
 export default function RegisterPage() {
   return (
@@ -17,6 +38,7 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const [role, setRole] = useState<"candidate" | "hr_manager">("candidate");
+  const [phone, setPhone] = useState("");
 
   return (
     <div className="space-y-6">
@@ -113,10 +135,19 @@ function RegisterForm() {
             id="phone"
             name="phone"
             type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setPhone(formatPhilippinesPhone(event.target.value));
+            }}
             required
             placeholder="+63 912 345 6789"
+            maxLength={20}
             className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
+          <p className="text-xs text-text-secondary">
+            Enter 11 digits (e.g. 09123456789) and it will format to +63 912 345 6789.
+          </p>
         </div>
 
         {/* Email */}

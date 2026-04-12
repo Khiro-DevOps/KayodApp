@@ -78,7 +78,7 @@ export async function createJob(formData: FormData) {
     currency: "PHP",
     industry: industry || null,
     job_category: job_category || null,
-    is_published: false,
+    is_published: true,
     slots: 1,
   }).select();
 

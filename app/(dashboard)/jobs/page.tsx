@@ -52,16 +52,12 @@ export default async function JobsPage({ searchParams }: Props) {
         </h1>
 
         {/* Filters */}
-        <div className="grid grid-cols-2 gap-3">
+        <form method="get" className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs font-medium text-text-secondary uppercase">Industry</label>
             <select
+              name="industry"
               defaultValue={industry ?? "all"}
-              onChange={(e) => {
-                const newIndustry = e.target.value === "all" ? "" : e.target.value;
-                const newLocation = location ? `&location=${location}` : "";
-                window.location.href = `/jobs${newIndustry ? `?industry=${newIndustry}` : ""}${newLocation}`;
-              }}
               className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
             >
               <option value="all">All Industries</option>
@@ -76,23 +72,26 @@ export default async function JobsPage({ searchParams }: Props) {
           <div className="space-y-1">
             <label className="text-xs font-medium text-text-secondary uppercase">Location</label>
             <select
+              name="location"
               defaultValue={location ?? "all"}
-              onChange={(e) => {
-                const newLocation = e.target.value === "all" ? "" : e.target.value;
-                const newIndustry = industry ? `&industry=${industry}` : "";
-                window.location.href = `/jobs${newLocation ? `?location=${newLocation}` : ""}${newIndustry}`;
-              }}
               className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
             >
               <option value="all">All Locations</option>
-              {PHILIPPINE_CITIES.map((city) => (
-                <option key={city} value={city}>
+              {PHILIPPINE_CITIES.map((city, index) => (
+                <option key={`${city}-${index}`} value={city}>
                   {city}
                 </option>
               ))}
             </select>
           </div>
-        </div>
+
+          <button
+            type="submit"
+            className="col-span-2 rounded-2xl bg-primary py-3 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+          >
+            Apply filters
+          </button>
+        </form>
 
         {!jobs || jobs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center">
