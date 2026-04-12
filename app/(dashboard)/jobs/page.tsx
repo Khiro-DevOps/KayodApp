@@ -10,20 +10,37 @@ import { computeMatchScore } from "@/lib/match-score";
 import Link from "next/link";
 import { PHILIPPINE_CITIES } from "@/lib/constants";
 
-const PAY_RANGES = [
-  { id: "all", label: "All pay ranges", min: null, max: null },
-  { id: "0-20000", label: "Under ₱20,000", min: 0, max: 20000 },
-  { id: "20000-40000", label: "₱20,000 - ₱40,000", min: 20000, max: 40000 },
-  { id: "40000-60000", label: "₱40,000 - ₱60,000", min: 40000, max: 60000 },
-  { id: "60000-80000", label: "₱60,000 - ₱80,000", min: 60000, max: 80000 },
-  { id: "80000+", label: "₱80,000+", min: 80000, max: null },
-];
-
 interface Props {
-  searchParams: Promise<{ resume_id?: string; pay?: string; location?: string }>;
+  searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string }>;
 }
 
-function buildResumeText(resume: Resume) {
+function filterByPayRange(job: JobPosting, payMin: number | null, payMax: number | null) {
+  if (payMin === null && payMax === null) return true;
+  if (!job.salary_min && !job.salary_max) return false;
+
+  const minValue = typeof job.salary_min === "number" ? job.salary_min : null;
+  const maxValue = typeof job.salary_max === "number" ? job.salary_max : null;
+
+  if (payMin !== null && payMax !== null) {
+    return (
+      (minValue !== null && minValue >= payMin && minValue <= payMax) ||
+      (maxValue !== null && maxValue >= payMin && maxValue <= payMax) ||
+      (minValue !== null && maxValue !== null && payMin >= minValue && payMin <= maxValue)
+    );
+  }
+
+  if (payMin !== null) {
+    return (minValue !== null && minValue >= payMin) || (maxValue !== null && maxValue >= payMin);
+  }
+
+  if (payMax !== null) {
+    return (minValue !== null && minValue <= payMax) || (maxValue !== null && maxValue <= payMax);
+  }
+
+  return true;
+}
+
+function buildResumeText(resume: Resume): string {
   if (resume.content_text && resume.content_text.trim()) {
     return resume.content_text;
   }
@@ -46,36 +63,12 @@ function buildResumeText(resume: Resume) {
   return pieces.join(" ");
 }
 
-function filterByPay(job: JobPosting, payId: string | undefined) {
-  if (!payId || payId === "all") return true;
-  const range = PAY_RANGES.find((item) => item.id === payId);
-  if (!range) return true;
-  if (!job.salary_min && !job.salary_max) return false;
-
-  const minValue = typeof job.salary_min === "number" ? job.salary_min : null;
-  const maxValue = typeof job.salary_max === "number" ? job.salary_max : null;
-
-  if (range.min !== null && range.max !== null) {
-    return (
-      (minValue !== null && minValue >= range.min && minValue <= range.max) ||
-      (maxValue !== null && maxValue >= range.min && maxValue <= range.max)
-    );
-  }
-
-  if (range.min !== null) {
-    return (minValue !== null && minValue >= range.min) || (maxValue !== null && maxValue >= range.min);
-  }
-
-  if (range.max !== null) {
-    return (minValue !== null && minValue <= range.max) || (maxValue !== null && maxValue <= range.max);
-  }
-
-  return true;
-}
-
 export default async function JobsPage({ searchParams }: Props) {
   const supabase = await createClient();
-  const { resume_id: resumeId, pay, location } = await searchParams;
+  const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location } = await searchParams;
+
+  const payMin = payMinStr ? parseInt(payMinStr) : null;
+  const payMax = payMaxStr ? parseInt(payMaxStr) : null;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -110,7 +103,7 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   const { data: jobs } = await query.order("created_at", { ascending: false });
-  const filteredJobs = (jobs ?? []).filter((job) => filterByPay(job as JobPosting, pay));
+  const filteredJobs = (jobs ?? []).filter((job) => filterByPayRange(job as JobPosting, payMin, payMax));
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
 
   const jobsWithScore = selectedResume
@@ -166,18 +159,28 @@ export default async function JobsPage({ searchParams }: Props) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium text-text-secondary uppercase">Pay range</label>
-            <select
-              name="pay"
-              defaultValue={pay ?? "all"}
-              className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-            >
-              {PAY_RANGES.map((range) => (
-                <option key={range.id} value={range.id}>
-                  {range.label}
-                </option>
-              ))}
-            </select>
+            <label className="text-xs font-medium text-text-secondary uppercase">Salary Range</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  name="payMin"
+                  placeholder="Min"
+                  defaultValue={payMin ?? ""}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div className="flex items-center text-text-secondary">-</div>
+              <div className="flex-1">
+                <input
+                  type="number"
+                  name="payMax"
+                  placeholder="Max"
+                  defaultValue={payMax ?? ""}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1">
