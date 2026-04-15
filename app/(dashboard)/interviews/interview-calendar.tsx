@@ -1,188 +1,241 @@
 "use client";
+// app/(dashboard)/interviews/interview-calendar.tsx
+// Click any day to schedule an interview — opens a quick modal pre-filled with that date.
 
-import { Interview } from "@/lib/types";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import type { Interview } from "@/lib/types";
 
-interface InterviewCalendarProps {
+interface Props {
   interviews: Interview[];
 }
 
-export function InterviewCalendar({ interviews }: InterviewCalendarProps) {
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+export function InterviewCalendar({ interviews }: Props) {
+  const router = useRouter();
   const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(today);
 
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
-  // Get the first day of the month and the number of days
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const daysInMonth = lastDay.getDate();
-  const startingDayOfWeek = firstDay.getDay();
+  // Build a map of date → interview count
+  const interviewDates = useMemo(() => {
+    const map: Record<string, number> = {};
+    interviews.forEach((i) => {
+      const d = new Date(i.scheduled_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      map[key] = (map[key] ?? 0) + 1;
+    });
+    return map;
+  }, [interviews]);
 
-  // Create array of days
-  const days: (number | null)[] = [];
-  for (let i = 0; i < startingDayOfWeek; i++) {
-    days.push(null);
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+  function prevMonth() {
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); }
+    else setCurrentMonth(m => m - 1);
   }
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push(i);
+
+  function nextMonth() {
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1); }
+    else setCurrentMonth(m => m + 1);
   }
 
-  // Group interviews by date
-  const interviewsByDate: Record<string, Interview[]> = {};
-  interviews.forEach((interview) => {
-    const date = new Date(interview.scheduled_at);
-    const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-    if (!interviewsByDate[dateKey]) {
-      interviewsByDate[dateKey] = [];
-    }
-    interviewsByDate[dateKey].push(interview);
-  });
+  function handleDayClick(day: number) {
+    const date = new Date(currentYear, currentMonth, day);
+    // Don't allow scheduling in the past
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    if (date < todayMidnight) return;
 
-  const handlePrevMonth = () => {
-    setCurrentMonth(new Date(year, month - 1, 1));
-  };
+    setSelectedDate(date);
+    setModalOpen(true);
+  }
 
-  const handleNextMonth = () => {
-    setCurrentMonth(new Date(year, month + 1, 1));
-  };
+  function handleScheduleFromModal() {
+    if (!selectedDate) return;
+    // Format as YYYY-MM-DD for the URL
+    const yyyy = selectedDate.getFullYear();
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(selectedDate.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    setModalOpen(false);
+    router.push(`/interviews/schedule?date=${dateStr}`);
+  }
 
-  const getInterviewsForDay = (day: number): Interview[] => {
-    const dateKey = `${year}-${month}-${day}`;
-    return interviewsByDate[dateKey] || [];
-  };
-
-  const isToday = (day: number) => {
-    return (
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    );
-  };
+  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
 
   return (
-    <div className="space-y-4">
-      {/* Month Navigation */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={handlePrevMonth}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-surface"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02Z" clipRule="evenodd" />
-          </svg>
-        </button>
-        <h2 className="text-lg font-semibold text-text-primary">
-          {currentMonth.toLocaleDateString("en-PH", {
-            month: "long",
-            year: "numeric",
-          })}
-        </h2>
-        <button
-          onClick={handleNextMonth}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-surface"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 001.05.02l4.5-4.25a.75.75 0 000-1.08l-4.5-4.25a.75.75 0 00-1.06.02a.75.75 0 01.02 1.06L11.168 10 7.23 13.71a.75.75 0 00.02 1.06z" clipRule="evenodd" />
-          </svg>
-        </button>
-      </div>
+    <>
+      <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-primary">
+            {MONTHS[currentMonth]} {currentYear}
+          </h3>
+          <div className="flex gap-1">
+            <button
+              onClick={prevMonth}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-gray-50 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <button
+              onClick={nextMonth}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-gray-50 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
 
-      {/* Calendar Grid */}
-      <div className="rounded-2xl border border-border overflow-hidden">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 bg-surface border-b border-border">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-            <div key={day} className="p-3 text-center text-xs font-semibold text-text-secondary uppercase">
-              {day}
+        {/* Day labels */}
+        <div className="grid grid-cols-7 gap-0.5">
+          {DAYS.map((d) => (
+            <div key={d} className="text-center text-xs font-medium text-text-secondary py-1">
+              {d}
             </div>
           ))}
         </div>
 
-        {/* Calendar days */}
-        <div className="grid grid-cols-7">
-          {days.map((day, index) => {
-            const dayInterviews = day ? getInterviewsForDay(day) : [];
-            const isTodayDate = day ? isToday(day) : false;
+        {/* Calendar grid */}
+        <div className="grid grid-cols-7 gap-0.5">
+          {/* Empty cells before first day */}
+          {Array.from({ length: firstDay }).map((_, i) => (
+            <div key={`empty-${i}`} />
+          ))}
+
+          {/* Day cells */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const key = `${currentYear}-${currentMonth}-${day}`;
+            const count = interviewDates[key] ?? 0;
+            const isToday = key === todayKey;
+            const isPast = new Date(currentYear, currentMonth, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const isSelected =
+              selectedDate &&
+              selectedDate.getFullYear() === currentYear &&
+              selectedDate.getMonth() === currentMonth &&
+              selectedDate.getDate() === day;
 
             return (
-              <div
-                key={index}
-                className={`min-h-24 p-2 border-r border-b border-border relative ${
-                  day === null ? "bg-gray-50" : ""
-                } ${
-                  isTodayDate
-                    ? "bg-primary/5 border-primary/30"
-                    : day
-                    ? "bg-white hover:bg-gray-50"
-                    : ""
-                }`}
+              <button
+                key={day}
+                onClick={() => handleDayClick(day)}
+                disabled={isPast}
+                title={isPast ? undefined : count > 0 ? `${count} interview(s) — click to schedule` : "Click to schedule"}
+                className={`
+                  relative flex flex-col items-center justify-center rounded-xl py-1.5 text-xs font-medium transition-all
+                  ${isPast
+                    ? "text-text-tertiary cursor-not-allowed"
+                    : isSelected
+                    ? "bg-primary text-white shadow-sm"
+                    : isToday
+                    ? "bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-white cursor-pointer"
+                    : "text-text-primary hover:bg-primary/10 hover:text-primary cursor-pointer"
+                  }
+                `}
               >
-                {day && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`text-sm font-medium ${
-                          isTodayDate
-                            ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white text-xs font-bold"
-                            : "text-text-primary"
-                        }`}
-                      >
-                        {day}
-                      </span>
-                      {isTodayDate && dayInterviews.length > 0 && (
-                        <span className="text-xl">📅</span>
-                      )}
-                    </div>
-
-                    {/* Interview indicators */}
-                    {dayInterviews.length > 0 && (
-                      <div className="mt-1 space-y-1">
-                        <div className="text-xs text-text-secondary font-medium">
-                          {dayInterviews.length} interview{dayInterviews.length > 1 ? "s" : ""}
-                        </div>
-                        <div className="space-y-0.5">
-                          {dayInterviews.slice(0, 2).map((interview) => {
-                            const app = interview.applications as unknown as {
-                              profiles?: {
-                                first_name: string;
-                                last_name: string;
-                              };
-                              job_postings?: { title: string };
-                            };
-                            const candidateName = app?.profiles
-                              ? `${app.profiles.first_name} ${app.profiles.last_name}`
-                              : "Candidate";
-
-                            return (
-                              <div
-                                key={interview.id}
-                                className={`text-xs px-1.5 py-0.5 rounded truncate ${
-                                  interview.interview_type === "online"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : "bg-amber-100 text-amber-700"
-                                }`}
-                              >
-                                {candidateName.split(" ")[0]}
-                              </div>
-                            );
-                          })}
-                          {dayInterviews.length > 2 && (
-                            <div className="text-xs text-text-secondary">
-                              +{dayInterviews.length - 2} more
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </>
+                <span>{day}</span>
+                {count > 0 && (
+                  <span className={`absolute bottom-0.5 h-1 w-1 rounded-full ${isSelected ? "bg-white" : "bg-primary"}`} />
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 pt-1 border-t border-border">
+          <div className="flex items-center gap-1.5">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-xs text-text-secondary">Has interview(s)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-2 w-2 rounded-full bg-primary/30 border border-primary/50" />
+            <span className="text-xs text-text-secondary">Today</span>
+          </div>
+          <p className="text-xs text-text-tertiary ml-auto">Click a future date to schedule</p>
+        </div>
       </div>
-    </div>
+
+      {/* Quick Schedule Modal */}
+      {modalOpen && selectedDate && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 backdrop-blur-sm p-4"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white border border-border p-5 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Schedule Interview</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {selectedDate.toLocaleDateString("en-PH", {
+                    weekday: "long", month: "long", day: "numeric", year: "numeric",
+                  })}
+                </p>
+              </div>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary hover:bg-gray-100"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Existing interviews on this day */}
+            {(() => {
+              const key = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`;
+              const count = interviewDates[key] ?? 0;
+              if (count === 0) return null;
+              return (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                  <p className="text-xs text-amber-800">
+                    ⚠️ There {count === 1 ? "is" : "are"} already <strong>{count}</strong> interview{count > 1 ? "s" : ""} on this day.
+                  </p>
+                </div>
+              );
+            })()}
+
+            <p className="text-xs text-text-secondary">
+              The date will be pre-filled. You'll choose the time and applicant on the next page.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setModalOpen(false)}
+                className="flex-1 rounded-xl border border-border py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleFromModal}
+                className="flex-1 rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+              >
+                Continue →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
