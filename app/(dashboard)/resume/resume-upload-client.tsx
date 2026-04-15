@@ -105,25 +105,33 @@ export default function ResumeUploadClient({ resumes }: { resumes: Resume[] }) {
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-text-primary truncate">
-                  {resume.file_name}
+                  {resume.title || "Untitled Resume"}
                 </p>
                 <p className="text-xs text-text-secondary">
                   {new Date(resume.created_at).toLocaleDateString()}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={resume.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                  title="View"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-                    <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-                    <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-                  </svg>
-                </a>
+                {resume.pdf_url ? (
+                  <a
+                    href={resume.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    title="View"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                      <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
+                      <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
+                    </svg>
+                  </a>
+                ) : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-text-secondary" title="No preview available">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                      <path d="M8 2a.75.75 0 0 1 .75.75V7.5h4.75a.75.75 0 0 1 0 1.5H8.75v4.75a.75.75 0 0 1-1.5 0V9H2.5a.75.75 0 0 1 0-1.5h4.75V2.75A.75.75 0 0 1 8 2Z" />
+                    </svg>
+                  </span>
+                )}
                 <form action={deleteResume}>
                   <input type="hidden" name="resume_id" value={resume.id} />
                   <button

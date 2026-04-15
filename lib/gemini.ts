@@ -2,6 +2,110 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
+interface ResumeGenerationInput {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  summary: string;
+  experience: string;
+  education: string;
+  skills: string;
+  certifications?: string;
+}
+
+interface ResumeGenerationOutput {
+  professional_summary: string;
+  experience_points: string[];
+  education_points: string[];
+  skills: string[];
+  certifications: string[];
+}
+
+export async function generateResumeSections(
+  data: ResumeGenerationInput
+): Promise<ResumeGenerationOutput> {
+  const prompt = `You are a professional HR resume writer. Rewrite and structure the candidate information below into concise, ATS-friendly sections.
+
+Candidate:
+- Name: ${data.fullName}
+- Email: ${data.email}
+- Phone: ${data.phone}
+- Location: ${data.location}
+
+Raw Summary:
+${data.summary}
+
+Raw Experience:
+${data.experience}
+
+Raw Education:
+${data.education}
+
+Raw Skills:
+${data.skills}
+
+Raw Certifications:
+${data.certifications ?? ""}
+
+Return only valid JSON in this format:
+{
+  "professional_summary": "2-4 sentence summary",
+  "experience_points": ["bullet 1", "bullet 2"],
+  "education_points": ["bullet 1", "bullet 2"],
+  "skills": ["skill1", "skill2"],
+  "certifications": ["cert1", "cert2"]
+}`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: prompt,
+  });
+
+  const raw = response.text?.trim() ?? "";
+  let clean = raw;
+
+  if (clean.startsWith("```")) {
+    clean = clean.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  const fallback: ResumeGenerationOutput = {
+    professional_summary: data.summary,
+    experience_points: data.experience
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+    education_points: data.education
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+    skills: data.skills
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    certifications: (data.certifications ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  };
+
+  try {
+    const parsed = JSON.parse(clean) as Partial<ResumeGenerationOutput>;
+    return {
+      professional_summary: parsed.professional_summary?.trim() || fallback.professional_summary,
+      experience_points:
+        parsed.experience_points?.map((value) => value.trim()).filter(Boolean) || fallback.experience_points,
+      education_points:
+        parsed.education_points?.map((value) => value.trim()).filter(Boolean) || fallback.education_points,
+      skills: parsed.skills?.map((value) => value.trim()).filter(Boolean) || fallback.skills,
+      certifications:
+        parsed.certifications?.map((value) => value.trim()).filter(Boolean) || fallback.certifications,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export async function tailorResume(
   resumeText: string,
   jobDescription: string

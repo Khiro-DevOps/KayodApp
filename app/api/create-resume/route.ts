@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { generateResumeSections } from "@/lib/gemini";
 
 interface ResumeInput {
   resumeName: string;
@@ -46,6 +47,35 @@ ${certificationsArray.length > 0 ? `\nCERTIFICATIONS\n${certificationsArray.join
 `.trim();
 
   return atsResume;
+}
+
+function generateATSFriendlyResumeFromAi(
+  data: ResumeInput,
+  generated: {
+    professional_summary: string;
+    experience_points: string[];
+    education_points: string[];
+    skills: string[];
+    certifications: string[];
+  }
+) {
+  return `
+${data.fullName.toUpperCase()}
+${data.location} | ${data.email} | ${data.phone}
+
+PROFESSIONAL SUMMARY
+${generated.professional_summary}
+
+PROFESSIONAL EXPERIENCE
+${generated.experience_points.join("\n")}
+
+EDUCATION
+${generated.education_points.join("\n")}
+
+SKILLS
+${generated.skills.join(" | ")}
+${generated.certifications.length > 0 ? `\nCERTIFICATIONS\n${generated.certifications.join(" | ")}` : ""}
+`.trim();
 }
 
 function generateResumeHTML(data: ResumeInput): string {
@@ -142,8 +172,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    let aiGeneratedSections;
+    let usedModel: string | null = null;
+
+    try {
+      if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "your-gemini-api-key-here") {
+        aiGeneratedSections = await generateResumeSections(body);
+        usedModel = "gemini-2.0-flash";
+      }
+    } catch (error) {
+      console.error("Gemini generation failed, falling back to local formatting:", error);
+    }
+
     // Generate ATS-friendly resume
-    const atsResumeText = generateATSFriendlyResume(body);
+    const atsResumeText = aiGeneratedSections
+      ? generateATSFriendlyResumeFromAi(body, aiGeneratedSections)
+      : generateATSFriendlyResume(body);
 
     // Generate HTML version for preview
     const resumeHTML = generateResumeHTML(body);
@@ -159,34 +203,36 @@ export async function POST(request: Request) {
         phone: body.phone,
         location: body.location,
       },
-      summary: body.summary,
-      experience: body.experience,
-      education: body.education,
-      skills: body.skills
+      summary: aiGeneratedSections?.professional_summary ?? body.summary,
+      experience: aiGeneratedSections?.experience_points ?? body.experience.split("\n").map((s) => s.trim()).filter(Boolean),
+      education: aiGeneratedSections?.education_points ?? body.education.split("\n").map((s) => s.trim()).filter(Boolean),
+      skills: aiGeneratedSections?.skills ?? body.skills
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
-      certifications: body.certifications
+      certifications: aiGeneratedSections?.certifications ?? (body.certifications
         ? body.certifications
             .split(",")
             .map((c) => c.trim())
             .filter(Boolean)
-        : [],
+        : []),
     };
 
     // Save to database
     const { error, data } = await supabase
       .from("resumes")
       .insert({
-        user_id: user.id,
+        candidate_id: user.id,
         title: body.resumeName,
         input_data: resumeData,
         generated_content: {
           ats_text: atsResumeText,
           html: resumeHTML,
+          ai_sections: aiGeneratedSections ?? null,
         },
         content_text: atsResumeText,
         pdf_url: null,
+        gemini_model: usedModel,
       })
       .select();
 

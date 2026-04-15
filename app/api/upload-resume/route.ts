@@ -78,10 +78,17 @@ export async function POST(request: Request) {
   const { data: resume, error: dbError } = await supabase
     .from("resumes")
     .insert({
-      user_id: user.id,
-      file_name: file.name,
-      file_url: publicUrl,
-      extracted_text: extractedText,
+      candidate_id: user.id,
+      title: file.name,
+      input_data: {
+        source: "upload",
+        file_name: file.name,
+      },
+      generated_content: {
+        upload: true,
+      },
+      content_text: extractedText,
+      pdf_url: publicUrl,
     })
     .select()
     .single();

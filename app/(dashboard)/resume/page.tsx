@@ -6,6 +6,19 @@ import Link from "next/link";
 import ResumeBuilderClient from "./resume-builder-client";
 import { effectiveRole, isCandidateRole } from "@/lib/roles";
 
+function getAuthPhone(user: { user_metadata?: unknown; raw_user_meta_data?: unknown }) {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const rawMetadata = (user.raw_user_meta_data ?? {}) as Record<string, unknown>;
+
+  const possiblePhone =
+    metadata.phone ??
+    metadata.phone_number ??
+    rawMetadata.phone ??
+    rawMetadata.phone_number;
+
+  return typeof possiblePhone === "string" ? possiblePhone : "";
+}
+
 export default async function ResumePage() {
   const supabase = await createClient();
 
@@ -15,20 +28,28 @@ export default async function ResumePage() {
   if (!user) redirect("/login");
 
   const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, address, city, country, created_at, updated_at")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  const role = effectiveRole(profile?.role, authRole);
+  const authPhone = getAuthPhone(user as any);
+  const normalizedProfile: Profile | null = profile
+    ? {
+        ...profile,
+        phone: profile.phone && profile.phone.trim().length > 0 ? profile.phone : authPhone || null,
+      }
+    : null;
+
+  const role = effectiveRole(normalizedProfile?.role, authRole);
   if (!isCandidateRole(role)) redirect("/dashboard");
 
   // Fetch user's resumes
   const { data: resumes } = await supabase
     .from("resumes")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("candidate_id", user.id)
     .order("created_at", { ascending: false })
     .returns<Resume[]>();
 
@@ -87,7 +108,7 @@ export default async function ResumePage() {
               </div>
             </div>
 
-            <ResumeBuilderClient resumes={resumes || []} profile={profile} />
+            <ResumeBuilderClient resumes={resumes || []} profile={normalizedProfile} />
           </div>
         </PageContainer>
       </div>
