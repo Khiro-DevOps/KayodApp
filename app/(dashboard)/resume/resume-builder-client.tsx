@@ -31,6 +31,16 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const resolvedPhone = (() => {
+    const profileRecord = (profile ?? {}) as Record<string, unknown>;
+    const phone = profileRecord.phone;
+    const phoneNumber = profileRecord.phone_number;
+
+    if (typeof phone === "string" && phone.trim().length > 0) return phone.trim();
+    if (typeof phoneNumber === "string" && phoneNumber.trim().length > 0) return phoneNumber.trim();
+    return "";
+  })();
+
   // Initialize form data with profile information
   const getInitialFormData = (): FormData => ({
     resumeName: "",
@@ -38,7 +48,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
       ? `${profile.first_name} ${profile.last_name}` 
       : "",
     email: profile?.email || "",
-    phone: (profile?.phone && profile.phone.trim().length > 0) ? profile.phone : "",
+    phone: resolvedPhone,
     location: profile?.city && profile?.country 
       ? `${profile.city}, ${profile.country}` 
       : profile?.address || "",
@@ -51,9 +61,21 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
   const [formData, setFormData] = useState<FormData>(getInitialFormData);
 
-  // Debug logging
-  console.log('Profile in component:', profile);
-  console.log('Initial phone value:', getInitialFormData().phone);
+  useEffect(() => {
+    setFormData((current) => {
+      const hasStartedTyping =
+        current.fullName.trim().length > 0 ||
+        current.email.trim().length > 0 ||
+        current.phone.trim().length > 0 ||
+        current.location.trim().length > 0;
+
+      if (hasStartedTyping) {
+        return current;
+      }
+
+      return getInitialFormData();
+    });
+  }, [profile?.id, profile?.first_name, profile?.last_name, profile?.email, resolvedPhone, profile?.city, profile?.country, profile?.address]);
 
   const handleChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));

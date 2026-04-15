@@ -18,22 +18,24 @@ export async function deleteResume(formData: FormData) {
   // Get the resume to find the storage path
   const { data: resume } = await supabase
     .from("resumes")
-    .select("file_url, user_id")
+    .select("pdf_url, candidate_id")
     .eq("id", resumeId)
-    .eq("user_id", user.id)
+    .eq("candidate_id", user.id)
     .single();
 
   if (!resume) redirect("/resume");
 
   // Extract the storage path from the public URL
-  const url = new URL(resume.file_url);
-  const pathParts = url.pathname.split("/storage/v1/object/public/resumes/");
-  if (pathParts.length > 1) {
-    await supabase.storage.from("resumes").remove([pathParts[1]]);
+  if (resume.pdf_url) {
+    const url = new URL(resume.pdf_url);
+    const pathParts = url.pathname.split("/storage/v1/object/public/resumes/");
+    if (pathParts.length > 1) {
+      await supabase.storage.from("resumes").remove([pathParts[1]]);
+    }
   }
 
   // Delete from database
-  await supabase.from("resumes").delete().eq("id", resumeId).eq("user_id", user.id);
+  await supabase.from("resumes").delete().eq("id", resumeId).eq("candidate_id", user.id);
 
   revalidatePath("/resume");
   revalidatePath("/jobs");
