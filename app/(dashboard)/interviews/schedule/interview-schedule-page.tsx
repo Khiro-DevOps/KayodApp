@@ -131,10 +131,11 @@ export default async function ScheduleInterviewPage({ searchParams }: Props) {
             <select
               id="duration_minutes"
               name="duration_minutes"
+              defaultValue="60"
               className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
             >
               <option value="30">30 minutes</option>
-              <option value="60" selected>1 hour</option>
+              <option value="60">1 hour</option>
               <option value="90">1.5 hours</option>
               <option value="120">2 hours</option>
             </select>

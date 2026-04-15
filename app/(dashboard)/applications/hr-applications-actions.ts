@@ -22,6 +22,34 @@ export async function updateApplicationStatus(formData: FormData) {
     .update({ status })
     .eq("id", applicationId);
 
+  // When shortlisted: notify candidate to choose interview format
+  if (status === "shortlisted") {
+    const { data: app } = await supabase
+      .from("applications")
+      .select("candidate_id, job_postings(title)")
+      .eq("id", applicationId)
+      .single();
+
+    if (app) {
+      const jobTitle = (app.job_postings as unknown as { title: string })?.title ?? "a position";
+
+      // Mark when HR qualified this applicant
+      await supabase
+        .from("applications")
+        .update({ interview_qualified_at: new Date().toISOString() })
+        .eq("id", applicationId);
+
+      // Send notification to candidate
+      await supabase.from("notifications").insert({
+        recipient_id: app.candidate_id,
+        type: "application_status_changed",
+        title: "You've been shortlisted! 🎉",
+        body: `Congratulations! You've been selected for an interview for ${jobTitle}. Please choose your preferred interview format.`,
+        action_url: `/interviews/respond/${applicationId}`,
+      });
+    }
+  }
+
   // Auto-create employee when hired
   if (status === "hired") {
     const { data: app } = await supabase
