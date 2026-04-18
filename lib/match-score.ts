@@ -11,7 +11,7 @@ interface JobData {
   title: string;
   description: string;
   requirements: string | null;
-  skills: string[] | null;
+  required_skills: string[] | null;
 }
 
 /**
@@ -87,8 +87,8 @@ export function computeMatchScore(
 
   // Skills match (50% weight)
   let skillScore = 0;
-  if (job.skills && job.skills.length > 0) {
-    skillScore = skillMatchRatio(resumeText, job.skills);
+  if (job.required_skills && job.required_skills.length > 0) {
+    skillScore = skillMatchRatio(resumeText, job.required_skills);
   } else {
     // If no skills listed, redistribute weight to other factors
     skillScore = -1; // sentinel for redistribution
