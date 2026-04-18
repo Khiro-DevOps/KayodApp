@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
-import Link from "next/link";
 import { assignShift } from "./actions";
 
 function getWeekDates(weekStart: Date): Date[] {
@@ -70,9 +69,8 @@ export default async function SchedulesPage() {
   const scheduleMap: Record<string, Record<number, string>> = {};
   (schedules ?? []).forEach((s) => {
     if (!scheduleMap[s.employee_id]) scheduleMap[s.employee_id] = {};
-    // Find which day this schedule falls on
-    const shiftDate = new Date(s.week_start);
-    scheduleMap[s.employee_id][0] = s.shift; // simplified: store shift for week
+    // Simplified: store shift for week
+    scheduleMap[s.employee_id][0] = s.shift;
   });
 
   // Build leave map: employeeId -> Set of date strings

@@ -216,7 +216,7 @@ export function InterviewCalendar({ interviews }: Props) {
             })()}
 
             <p className="text-xs text-text-secondary">
-              The date will be pre-filled. You'll choose the time and applicant on the next page.
+              The date will be pre-filled. You&apos;ll choose the time and applicant on the next page.
             </p>
 
             <div className="flex gap-2">

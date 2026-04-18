@@ -27,14 +27,14 @@ export default async function ResumePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
+  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, address, city, country, created_at, updated_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  const authPhone = getAuthPhone(user as any);
+  const authPhone = getAuthPhone(user as {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>});
   const normalizedProfile: Profile | null = profile
     ? {
         ...profile,

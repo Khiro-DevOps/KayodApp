@@ -286,7 +286,7 @@ export default async function JobsPage({ searchParams }: Props) {
   );
 }
 
-function RecommendedJobCard({ job, score }: { job: JobPosting; score: number }) {
+function RecommendedJobCard({ job }: { job: JobPosting }) {
   const dept = job.departments as unknown as { name: string } | null;
 
   return (

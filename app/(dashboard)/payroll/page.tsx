@@ -97,7 +97,7 @@ export default async function PayrollPage() {
           {!periods || periods.length === 0 ? (
             <div className="rounded-2xl bg-surface border border-border p-6 text-center space-y-2">
               <p className="text-sm text-text-secondary">No payroll periods yet</p>
-              <p className="text-xs text-text-secondary">Click "New period" to create your first payroll run</p>
+              <p className="text-xs text-text-secondary">Click &quot;New period&quot; to create your first payroll run</p>
             </div>
           ) : (
             (periods as PayrollPeriod[]).map((period) => (

@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Profile, Employee, PayrollPeriod } from "@/lib/types";
+import type { Profile, PayrollPeriod } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
-import Link from "next/link";
 import { createPayrollPeriod, generatePayslips, approvePayroll } from "./actions";
 
 export default async function PayrollPage() {

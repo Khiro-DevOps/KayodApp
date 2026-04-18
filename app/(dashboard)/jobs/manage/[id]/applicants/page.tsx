@@ -28,10 +28,10 @@ export default async function ApplicantsPage({
   if (!employer) redirect("/dashboard");
 
   const { data: job } = await supabase
-    .from("job_listings")
+    .from("job_postings")
     .select("id, title")
     .eq("id", id)
-    .eq("employer_id", employer.id)
+    .eq("company_id", employer.id)
     .single();
 
   if (!job) notFound();

@@ -18,7 +18,6 @@ export function InterviewCardClient({
   showTypeSelection = false,
 }: InterviewCardClientProps) {
   const [isSelecting, setIsSelecting] = useState(false);
-  const [selectedType, setSelectedType] = useState(interview.interview_type);
 
   const app = interview.applications as unknown as {
     profiles?: { first_name: string; last_name: string; email: string };

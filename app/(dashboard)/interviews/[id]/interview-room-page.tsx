@@ -110,7 +110,7 @@ export default function InterviewRoomPage({ interviewId }: Props) {
     );
   }
 
-  const app = interview.applications as any;
+  const app = interview.applications as Record<string, unknown>;
   const jobTitle = app?.job_postings?.title ?? "Interview";
   const candidate = app?.profiles;
   const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : "Candidate";

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { deleteJob } from "../../actions";
-import type { JobPosting, Profile } from "@/lib/types";
+import type { JobPosting } from "@/lib/types";
 import Link from "next/link";
 
 export default async function JobDetailManagePage({

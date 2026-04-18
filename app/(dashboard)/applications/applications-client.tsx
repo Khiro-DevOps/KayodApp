@@ -34,12 +34,11 @@ function ApplicationsList({
       )}
 
       {applications.map((app) => {
-        const job = app.job_listings as unknown as {
+        const job = app.job_postings as unknown as {
           id: string;
           title: string;
           location: string | null;
-          employers: { company_name: string } | null;
-        } | undefined;
+      } | undefined;
 
         const config = statusConfig[app.status] || statusConfig.applied;
 

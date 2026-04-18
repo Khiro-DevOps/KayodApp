@@ -27,7 +27,8 @@ export default function ApplyActions({
       } else {
         setShowResumePopup(true);
       }
-    } catch (error) {
+    } catch {
+      // Silently fail - user may have dismissed upload
       // Fallback to apply page if check fails
       window.location.href = `/jobs/${jobId}/apply`;
     }
