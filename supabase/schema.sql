@@ -760,7 +760,7 @@ $$;
 
 -- Helper: is current user hr or admin?
 create or replace function is_hr()
-returns boolean language sql security definer stable as $$
+returns boolean language sql security definer volatile as $$
   select coalesce(
     (select p.role in ('hr_manager', 'admin') from profiles p where p.id = auth.uid()),
     (select coalesce(u.raw_user_meta_data->>'role', u.user_metadata->>'role') in ('hr_manager', 'admin')
@@ -781,7 +781,9 @@ create policy "resumes_delete"  on resumes for delete using (candidate_id = auth
 
 -- job_postings: everyone can read published; HR manages all
 create policy "jobs_select_published"  on job_postings for select using (is_published = true or is_hr());
-create policy "jobs_hr_insert"         on job_postings for insert with check (is_hr());
+create policy "jobs_hr_insert"         on job_postings for insert with check (
+  exists (select 1 from profiles where id = auth.uid() and role in ('hr_manager', 'admin'))
+);
 create policy "jobs_hr_update"         on job_postings for update using (is_hr());
 create policy "jobs_hr_delete"         on job_postings for delete using (is_hr());
 
