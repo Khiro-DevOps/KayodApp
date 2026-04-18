@@ -59,7 +59,7 @@ export default async function InterviewRespondPage({
     redirect("/applications");
   }
 
-  const job = application.job_postings as any;
+  const job = application.job_postings as Record<string, unknown>;
 
   return (
     <PageContainer>

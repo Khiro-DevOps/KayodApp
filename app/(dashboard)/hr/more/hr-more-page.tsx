@@ -12,7 +12,7 @@ export default async function HRMorePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
+  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")

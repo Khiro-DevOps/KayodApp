@@ -44,7 +44,6 @@ export async function POST(request: Request) {
   }
 
   // Generate a unique file path
-  const fileExt = file.name.split(".").pop();
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const filePath = `${user.id}/${Date.now()}_${sanitizedName}`;
 

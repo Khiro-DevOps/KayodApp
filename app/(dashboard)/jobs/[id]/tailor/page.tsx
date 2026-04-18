@@ -29,8 +29,8 @@ export default async function TailorResumePage({
 
   // Fetch job
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("*, employers(company_name)")
+    .from("job_postings")
+    .select("*")
     .eq("id", id)
     .single<JobListing>();
 

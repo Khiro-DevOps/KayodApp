@@ -76,19 +76,19 @@ export default async function InterviewsPage() {
         <div className="sticky top-4 space-y-4">
           <div className="rounded-2xl bg-surface border border-border p-4">
             <h2 className="text-sm font-semibold text-text-primary mb-3">
-              Today's Interviews ({todaysInterviews.length})
+              Today&apos;s Interviews ({todaysInterviews.length})
             </h2>
             {todaysInterviews.length === 0 ? (
               <p className="text-xs text-text-secondary">No interviews scheduled for today</p>
             ) : (
               <div className="space-y-2">
                 {todaysInterviews.map((interview) => {
-                  const app = interview.applications as any;
-                  const jobTitle = app?.job_postings?.title ?? "Interview";
-                  const candidate = isHR ? app?.profiles : null;
+                  const app = interview.applications as Record<string, unknown>;
+                  const jobTitle = (app?.job_postings as Record<string, unknown>)?.title ?? "Interview";
+                  const candidate = isHR ? (app?.profiles as Record<string, unknown>) : null;
                   const candidateName = candidate
-                    ? `${candidate.first_name} ${candidate.last_name}`
-                    : "You";
+                    ? `${(candidate.first_name as string) ?? ""} ${(candidate.last_name as string) ?? ""}`
+                    : "You&apos;ve";
 
                   return (
                     <div key={interview.id} className="rounded-xl bg-gray-50 p-3">

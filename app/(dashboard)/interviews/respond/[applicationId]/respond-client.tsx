@@ -82,7 +82,7 @@ export function RespondClient({ applicationId, job, existingPreference, preferen
       <div className="rounded-2xl bg-green-50 border border-green-200 p-4 flex items-start gap-3">
         <span className="text-2xl">🎉</span>
         <div>
-          <p className="text-sm font-semibold text-green-800">Congratulations! You've been shortlisted.</p>
+          <p className="text-sm font-semibold text-green-800">Congratulations! You&apos;ve been shortlisted.</p>
           <p className="text-xs text-green-700 mt-0.5">
             The hiring team reviewed your application and would like to invite you for an interview.
           </p>
@@ -142,11 +142,11 @@ export function RespondClient({ applicationId, job, existingPreference, preferen
         <div className="rounded-2xl bg-surface border border-border p-5 space-y-3 text-center">
           <div className="text-3xl">{selected === "online" ? "💻" : "🏢"}</div>
           <p className="text-sm font-semibold text-text-primary">
-            You've chosen: <span className="text-primary">{preferenceLabel} Interview</span>
+            You&apos;ve chosen: <span className="text-primary">{preferenceLabel} Interview</span>
           </p>
           <p className="text-xs text-text-secondary">
             The HR team has been notified and will schedule your interview shortly.
-            You'll receive a notification once it's confirmed.
+            You&apos;ll receive a notification once it&apos;s confirmed.
           </p>
           {preferenceSetAt && (
             <p className="text-xs text-text-tertiary">

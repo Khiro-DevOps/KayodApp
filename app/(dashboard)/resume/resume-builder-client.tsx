@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { Resume, Profile } from "@/lib/types";
 import ResumeUploadClient from "./resume-upload-client";
 
@@ -26,7 +27,6 @@ interface FormData {
 export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderClientProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
     certifications: "",
   });
 
-  const [formData, setFormData] = useState<FormData>(getInitialFormData);
+  const [formData, setFormData] = useState<FormData>(getInitialFormData());
 
   useEffect(() => {
     setFormData((current) => {
@@ -132,14 +132,6 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleViewResume = (resume: Resume) => {
-    setSelectedResume(resume);
-    if (resume.pdf_url) {
-      setPreviewUrl(resume.pdf_url);
-      setShowPreview(true);
     }
   };
 
@@ -340,9 +332,11 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
             {previewUrl && (
               <div className="border border-border rounded-xl overflow-hidden bg-gray-50">
-                <img
+                <Image
                   src={previewUrl}
                   alt="Resume preview"
+                  width={800}
+                  height={1000}
                   className="w-full h-auto"
                 />
               </div>

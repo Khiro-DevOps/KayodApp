@@ -12,7 +12,7 @@ export default async function ApplicationsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata as any)?.role ?? ((user as any).raw_user_meta_data as any)?.role;
+  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -31,9 +31,8 @@ export default async function ApplicationsPage() {
   const { data: applications } = await supabase
     .from("applications")
     .select(`
-      id, status, match_score, created_at, submitted_at,
-      job_listing_id,
-      job_listings ( id, title, location, employers ( company_name ) )
+      job_posting_id: job_posting_id,
+      job_postings ( id, title, location )
     `)
     .eq("candidate_id", user.id)
     .order("submitted_at", { ascending: false });
@@ -58,7 +57,7 @@ export default async function ApplicationsPage() {
         {!applications || applications.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center">
             <p className="text-sm text-text-secondary">
-              You haven't applied to any jobs yet. Browse available positions to get started.
+              You haven&apos;t applied to any jobs yet. Browse available positions to get started.
             </p>
           </div>
         ) : (

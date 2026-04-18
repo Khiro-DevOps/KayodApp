@@ -6,10 +6,10 @@ import { revalidatePath } from "next/cache";
 
 import { effectiveRole, isHRRole } from "@/lib/roles";
 
-async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: any) {
+async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>, id: string}): Promise<boolean> {
   const authRole =
-    (user.user_metadata as any)?.role ??
-    ((user as any).raw_user_meta_data as any)?.role;
+    (user.user_metadata?.role as string | undefined) ??
+    (user.raw_user_meta_data?.role as string | undefined);
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")

@@ -67,8 +67,8 @@ export async function POST(request: Request) {
     .eq("id", applicationId)
     .single();
 
-  const hrId = (appWithJob?.job_postings as any)?.created_by;
-  const jobTitle = (appWithJob?.job_postings as any)?.title ?? "a position";
+  const hrId = (appWithJob?.job_postings as Record<string, unknown>)?.created_by;
+  const jobTitle = (appWithJob?.job_postings as Record<string, unknown>)?.title ?? "a position";
 
   if (hrId) {
     const { data: candidateProfile } = await supabase

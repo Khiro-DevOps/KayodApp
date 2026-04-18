@@ -8,7 +8,7 @@ create table if not exists resume_versions (
   -- Allowed values: manual | ai_generate | upload | tailor
   change_source text not null default 'manual',
   -- For tailor actions: links the version to the job it was tailored for
-  job_listing_id uuid references job_listings(id) on delete set null,
+  job_posting_id uuid references job_postings(id) on delete set null,
   generated_content jsonb not null default '{}'::jsonb,
   content_text text,
   created_by uuid references profiles(id) on delete set null,
