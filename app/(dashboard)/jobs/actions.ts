@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -35,6 +36,25 @@ export async function createJob(formData: FormData) {
 
   if (!(await verifyHR(supabase, user))) redirect("/dashboard");
 
+  // Ensure profile has correct role for RLS policy
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  console.log("Profile check:", { userId: user.id, profile, profileError });
+
+  if (profileError) {
+    console.error("Profile fetch error:", profileError);
+    redirect("/dashboard?error=ProfileNotFound");
+  }
+
+  if (!profile || !["hr_manager", "admin"].includes(profile.role)) {
+    console.error("Invalid role for job creation:", { userId: user.id, currentRole: profile?.role });
+    redirect(`/dashboard?error=InvalidRole:${profile?.role || "none"}`);
+  }
+
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
   const requirements = formData.get("requirements") as string;
@@ -66,7 +86,17 @@ export async function createJob(formData: FormData) {
     salary_max: salaryMax,
   });
 
-  const { error, data } = await supabase.from("job_postings").insert({
+  // Debug: Get the current session to verify auth context
+  const { data: sessionData } = await supabase.auth.getSession();
+  console.log("Session auth.uid() context:", { 
+    sessionUser: sessionData?.session?.user?.id,
+    actualUserId: user.id,
+    sessionExists: !!sessionData?.session 
+  });
+
+  // Use admin client to bypass RLS (we already verified HR role above)
+  const adminClient = getAdminClient();
+  const { error, data } = await adminClient.from("job_postings").insert({
     created_by: user.id,
     title,
     description,
@@ -123,7 +153,8 @@ export async function updateJob(formData: FormData) {
     ? parseInt(salary_range.split("-")[1])
     : null;
 
-  const { error } = await supabase
+  const adminClient = getAdminClient();
+  const { error } = await adminClient
     .from("job_postings")
     .update({
       title,
@@ -160,7 +191,8 @@ export async function deleteJob(formData: FormData) {
 
   const jobId = formData.get("job_id") as string;
 
-  await supabase.from("job_postings").delete().eq("id", jobId);
+  const adminClient = getAdminClient();
+  await adminClient.from("job_postings").delete().eq("id", jobId);
 
   revalidatePath("/jobs");
   redirect("/jobs/manage");
