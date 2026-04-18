@@ -85,7 +85,7 @@ export default async function JobsPage({ searchParams }: Props) {
   const { data: resumes } = await supabase
     .from("resumes")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("candidate_id", user.id)
     .order("created_at", { ascending: false })
     .returns<Resume[]>();
 

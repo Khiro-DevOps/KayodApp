@@ -175,6 +175,26 @@ export interface JobPosting {
   creator?: Profile;
 }
 
+// Legacy job listing shape used by older job management/tailor pages.
+export interface JobListing {
+  id: string;
+  title: string;
+  description: string;
+  requirements: string | null;
+  skills: string[] | null;
+  location: string | null;
+  salary_range: string | null;
+  status: string;
+  employers?: { company_name: string } | null;
+}
+
+export interface TailoredResume {
+  id: string;
+  tailored_text: string;
+  keywords: string[];
+  created_at: string;
+}
+
 // ============================================================
 // APPLICATIONS
 // ============================================================

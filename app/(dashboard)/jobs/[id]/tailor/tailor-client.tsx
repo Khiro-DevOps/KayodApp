@@ -90,7 +90,7 @@ export default function TailorClient({
                     onChange={(e) => setSelectedResumeId(e.target.value)}
                     className="accent-primary"
                   />
-                  <span className="truncate">{resume.file_name}</span>
+                  <span className="truncate">{resume.title || "Untitled Resume"}</span>
                 </label>
               </div>
             ))}

@@ -26,7 +26,7 @@ function ApplyForm({
       )}
 
       <form action={submitAction} className="space-y-4">
-        <input type="hidden" name="job_listing_id" value={jobId} />
+        <input type="hidden" name="job_id" value={jobId} />
 
         {/* Resume Selection */}
         <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
@@ -72,7 +72,7 @@ function ApplyForm({
                       value={resume.id}
                       className="accent-primary"
                     />
-                    <span className="truncate">{resume.file_name}</span>
+                    <span className="truncate">{resume.title || "Untitled Resume"}</span>
                     <span className="ml-auto text-xs text-text-secondary whitespace-nowrap">
                       {new Date(resume.created_at).toLocaleDateString()}
                     </span>
