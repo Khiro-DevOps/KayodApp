@@ -113,7 +113,7 @@ export default async function JobsPage({ searchParams }: Props) {
           title: (job as JobPosting).title,
           description: (job as JobPosting).description,
           requirements: (job as JobPosting).requirements,
-          skills: (job as JobPosting).required_skills ?? [],
+          required_skills: (job as JobPosting).required_skills ?? [],
         }),
       }))
     : [];
@@ -286,7 +286,7 @@ export default async function JobsPage({ searchParams }: Props) {
   );
 }
 
-function RecommendedJobCard({ job }: { job: JobPosting }) {
+function RecommendedJobCard({ job, score }: { job: JobPosting; score: number }) {
   const dept = job.departments as unknown as { name: string } | null;
 
   return (
@@ -304,8 +304,8 @@ function RecommendedJobCard({ job }: { job: JobPosting }) {
             {job.job_category && ` • ${job.job_category}`}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 capitalize">
-          {job.employment_type.replace("_", " ")}
+        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+          {score}% match
         </span>
       </div>
 

@@ -6,7 +6,7 @@ import PageContainer from "@/components/ui/page-container";
 import { updateJob } from "../../../actions";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
-import type { JobListing } from "@/lib/types";
+import type { JobPosting } from "@/lib/types";
 
 export default function EditJobPage({
   params,
@@ -24,17 +24,17 @@ export default function EditJobPage({
 function EditJobForm({ jobId }: { jobId: string }) {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  const [job, setJob] = useState<JobListing | null>(null);
+  const [job, setJob] = useState<JobPosting | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchJob() {
       const supabase = createClient();
       const { data } = await supabase
-        .from("job_listings")
+        .from("job_postings")
         .select("*")
         .eq("id", jobId)
-        .single<JobListing>();
+        .single<JobPosting>();
       setJob(data);
       setLoading(false);
     }
@@ -137,7 +137,7 @@ function EditJobForm({ jobId }: { jobId: string }) {
               id="skills"
               name="skills"
               type="text"
-              defaultValue={job.skills?.join(", ") || ""}
+              defaultValue={job.required_skills?.join(", ") || ""}
               placeholder="React, TypeScript, Node.js (comma-separated)"
               className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
@@ -158,31 +158,44 @@ function EditJobForm({ jobId }: { jobId: string }) {
             </div>
 
             <div className="space-y-1">
-              <label htmlFor="salary_range" className="text-sm font-medium text-text-primary">
-                Salary Range
+              <label htmlFor="salary_min" className="text-sm font-medium text-text-primary">
+                Salary Min
               </label>
               <input
-                id="salary_range"
-                name="salary_range"
-                type="text"
-                defaultValue={job.salary_range || ""}
+                id="salary_min"
+                name="salary_min"
+                type="number"
+                defaultValue={job.salary_min || ""}
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="salary_max" className="text-sm font-medium text-text-primary">
+                Salary Max
+              </label>
+              <input
+                id="salary_max"
+                name="salary_max"
+                type="number"
+                defaultValue={job.salary_max || ""}
                 className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="status" className="text-sm font-medium text-text-primary">
+            <label htmlFor="is_published" className="text-sm font-medium text-text-primary">
               Status
             </label>
             <select
-              id="status"
-              name="status"
-              defaultValue={job.status}
+              id="is_published"
+              name="is_published"
+              defaultValue={job.is_published ? "true" : "false"}
               className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
-              <option value="active">Active</option>
-              <option value="closed">Closed</option>
+              <option value="true">Published</option>
+              <option value="false">Draft</option>
             </select>
           </div>
 

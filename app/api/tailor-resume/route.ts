@@ -61,8 +61,8 @@ export async function POST(request: Request) {
 
   // Fetch job listing
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("title, description, requirements, skills")
+    .from("job_postings")
+    .select("title, description, requirements, required_skills")
     .eq("id", job_listing_id)
     .single();
 
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     `Title: ${job.title}`,
     `Description: ${job.description}`,
     job.requirements ? `Requirements: ${job.requirements}` : "",
-    job.skills?.length ? `Skills: ${job.skills.join(", ")}` : "",
+    job.required_skills?.length ? `Skills: ${job.required_skills.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
