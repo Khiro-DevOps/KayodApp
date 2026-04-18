@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { JobListing, Resume } from "@/lib/types";
+import type { JobListing, Resume, TailoredResume } from "@/lib/types";
 import Link from "next/link";
 import TailorClient from "./tailor-client";
 
@@ -40,18 +40,45 @@ export default async function TailorResumePage({
   const { data: resumes } = await supabase
     .from("resumes")
     .select("*")
-    .eq("user_id", user.id)
-    .not("extracted_text", "is", null)
+    .eq("candidate_id", user.id)
+    .not("content_text", "is", null)
     .order("created_at", { ascending: false })
     .returns<Resume[]>();
 
-  // Fetch existing tailored resumes for this job
+  // Fetch existing tailor versions for this job from resume_versions
+  // (replaces the old `tailored_resumes` query)
   const { data: tailoredResumes } = await supabase
-    .from("tailored_resumes")
-    .select("*")
-    .eq("user_id", user.id)
+    .from("resume_versions")
+    .select(
+      `
+      id,
+      resume_id,
+      version_number,
+      content_text,
+      generated_content,
+      created_at,
+      resumes ( id, title )
+    `
+    )
+    // Only versions whose parent resume belongs to the current user
+    .eq("resumes.candidate_id", user.id)
     .eq("job_listing_id", id)
+    .eq("change_source", "tailor")
     .order("created_at", { ascending: false });
+
+  const normalizedTailored: TailoredResume[] = (tailoredResumes ?? []).map((version) => {
+    const generated = (version.generated_content ?? {}) as Record<string, unknown>;
+    const keywords = Array.isArray(generated.keywords)
+      ? generated.keywords.filter((value): value is string => typeof value === "string")
+      : [];
+
+    return {
+      id: version.id,
+      tailored_text: typeof version.content_text === "string" ? version.content_text : "",
+      keywords,
+      created_at: version.created_at,
+    };
+  });
 
   const companyName = job.employers
     ? (job.employers as unknown as { company_name: string }).company_name
@@ -88,7 +115,7 @@ export default async function TailorResumePage({
         <TailorClient
           jobId={id}
           resumes={resumes || []}
-          existingTailored={tailoredResumes || []}
+          existingTailored={normalizedTailored}
         />
       </div>
     </PageContainer>

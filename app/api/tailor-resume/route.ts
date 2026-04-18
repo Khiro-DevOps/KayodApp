@@ -43,18 +43,18 @@ export async function POST(request: Request) {
   // Fetch resume
   const { data: resume } = await supabase
     .from("resumes")
-    .select("extracted_text, file_name")
+    .select("content_text, title")
     .eq("id", resume_id)
-    .eq("user_id", user.id)
+    .eq("candidate_id", user.id)
     .single();
 
   if (!resume) {
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  if (!resume.extracted_text) {
+  if (!resume.content_text) {
     return NextResponse.json(
-      { error: "This resume has no extracted text. Please upload a .txt resume for AI tailoring." },
+      { error: "This resume has no text content yet. Upload a text-based resume or generate one first." },
       { status: 400 }
     );
   }
@@ -90,19 +90,39 @@ export async function POST(request: Request) {
 
   try {
     const { tailoredResume, keywords } = await tailorResume(
-      resume.extracted_text,
+      resume.content_text,
       jobDescription
     );
 
-    // Save tailored resume to database
+    // Determine the next version number for this resume
+    const { data: lastVersion, error: versionError } = await supabase
+      .from("resume_versions")
+      .select("version_number")
+      .eq("resume_id", resume_id)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (versionError) {
+      return NextResponse.json(
+        { error: "Failed to determine version number" },
+        { status: 500 }
+      );
+    }
+
+    const nextVersionNumber = (lastVersion?.version_number ?? 0) + 1;
+
+    // Save tailored resume as a new version row
     const { data: saved, error: dbError } = await supabase
-      .from("tailored_resumes")
+      .from("resume_versions")
       .insert({
-        user_id: user.id,
         resume_id,
+        version_number: nextVersionNumber,
+        change_source: "tailor",
         job_listing_id,
-        tailored_text: tailoredResume,
-        keywords,
+        content_text: tailoredResume,
+        generated_content: { keywords },
+        created_by: user.id,
       })
       .select()
       .single();
@@ -114,7 +134,17 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ tailored_resume: saved }, { status: 201 });
+    return NextResponse.json(
+      {
+        tailored_resume: {
+          id: saved.id,
+          tailored_text: saved.content_text,
+          keywords,
+          created_at: saved.created_at,
+        },
+      },
+      { status: 201 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI processing failed";
     return NextResponse.json({ error: message }, { status: 500 });
