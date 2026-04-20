@@ -221,6 +221,23 @@ export default function EvaluationSidebar({
         </div>
       )}
 
+      {/* Move to Applied Button - For Rejected Status */}
+      {application?.status === "rejected" && (
+        <div className="rounded-2xl border border-border bg-amber-50 p-6">
+          <p className="text-sm font-semibold text-amber-900 mb-2">Reconsider Candidate</p>
+          <p className="text-xs text-amber-700 mb-4">
+            Move this candidate back to active consideration. They will receive a notification.
+          </p>
+          <button
+            onClick={() => handleStatusChange("submitted")}
+            disabled={isLoading}
+            className="w-full py-3 px-4 text-sm font-medium text-white rounded-lg bg-amber-500 hover:bg-amber-600 transition-colors disabled:opacity-50"
+          >
+            Move to Active Consideration
+          </button>
+        </div>
+      )}
+
       {/* Schedule Interview Button */}
       {application?.status === "shortlisted" && (
         <div className="rounded-2xl border border-border bg-surface p-6">

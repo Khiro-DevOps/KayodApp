@@ -4,7 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
-import { updateApplicationStatus } from "./hr-applications-actions";
+import { updateApplicationStatus, moveToApplied } from "./hr-applications-actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 
 export default async function HRApplicationsPage() {
@@ -111,7 +111,10 @@ export default async function HRApplicationsPage() {
                   : "Unknown";
 
                 return (
-                  <div key={app.id} className="rounded-2xl bg-surface border border-border p-4 space-y-3">
+                  <Link
+                    href={`/applications/${app.id}`}
+                    className="block rounded-2xl bg-surface border border-border p-4 space-y-3 hover:border-primary hover:shadow-md transition-all"
+                  >
                     {/* Candidate info */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
@@ -159,41 +162,60 @@ export default async function HRApplicationsPage() {
                     )}
 
                     {/* Action buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Schedule interview button */}
-                      {["submitted", "under_review", "shortlisted"].includes(app.status) && (
-                        <Link
-                          href={`/interviews/schedule?applicationId=${app.id}`}
-                          className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                            <path d="M3.75 2a.75.75 0 0 0-.75.75v10.5a.75.75 0 0 0 1.28.53l2.72-2.72 2.72 2.72a.75.75 0 0 0 1.28-.53V2.75a.75.75 0 0 0-.75-.75h-6.5Z" />
-                          </svg>
-                          Schedule interview
-                        </Link>
-                      )}
+                    <div className="space-y-2" onClick={(e) => e.preventDefault()}>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Schedule interview button */}
+                        {["submitted", "under_review", "shortlisted"].includes(app.status) && (
+                          <Link
+                            href={`/interviews/schedule?applicationId=${app.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                              <path d="M3.75 2a.75.75 0 0 0-.75.75v10.5a.75.75 0 0 0 1.28.53l2.72-2.72 2.72 2.72a.75.75 0 0 0 1.28-.53V2.75a.75.75 0 0 0-.75-.75h-6.5Z" />
+                            </svg>
+                            Schedule
+                          </Link>
+                        )}
 
-                      {/* Status update dropdown */}
-                      <form action={updateApplicationStatus}>
-                        <input type="hidden" name="application_id" value={app.id} />
-                        <select
-                          name="status"
-                          onChange={(e) => (e.target.form as HTMLFormElement)?.requestSubmit()}
-                          defaultValue={app.status}
-                          className="w-full rounded-xl border border-border px-2 py-2 text-xs text-text-secondary bg-white outline-none focus:border-primary"
-                        >
-                          <option value="submitted">Submitted</option>
-                          <option value="under_review">Under review</option>
-                          <option value="shortlisted">Shortlisted</option>
-                          <option value="interview_scheduled">Interview scheduled</option>
-                          <option value="interviewed">Interviewed</option>
-                          <option value="offer_sent">Offer sent</option>
-                          <option value="hired">Hired</option>
-                          <option value="rejected">Rejected</option>
-                        </select>
-                      </form>
+                        {/* Status update dropdown */}
+                        <form action={updateApplicationStatus} onClick={(e) => e.stopPropagation()}>
+                          <input type="hidden" name="application_id" value={app.id} />
+                          <select
+                            name="status"
+                            onChange={(e) => (e.target.form as HTMLFormElement)?.requestSubmit()}
+                            defaultValue={app.status}
+                            className="w-full rounded-xl border border-border px-2 py-2 text-xs text-text-secondary bg-white outline-none focus:border-primary"
+                          >
+                            <option value="submitted">Submitted</option>
+                            <option value="under_review">Under review</option>
+                            <option value="shortlisted">Shortlisted</option>
+                            <option value="interview_scheduled">Interview scheduled</option>
+                            <option value="interviewed">Interviewed</option>
+                            <option value="offer_sent">Offer sent</option>
+                            <option value="hired">Hired</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                        </form>
+
+                        {/* Move to Applied button for rejected */}
+                        {app.status === "rejected" && (
+                          <form action={moveToApplied} onClick={(e) => e.stopPropagation()}>
+                            <input type="hidden" name="application_id" value={app.id} />
+                            <button
+                              type="submit"
+                              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-xs font-medium text-white hover:bg-amber-600 transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                                <path fillRule="evenodd" d="M12.78 1.22a.75.75 0 0 1 0 1.06L2.28 12.78a.75.75 0 0 1-1.06-1.06L11.72 1.22a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+                              </svg>
+                              Reconsider
+                            </button>
+                          </form>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </section>
