@@ -50,7 +50,7 @@ function ApplicationsList({
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <Link
-                  href={`/jobs/${app.job_listing_id}`}
+                  href={`/jobs/${app.job_posting_id}`}
                   className="text-sm font-medium text-text-primary hover:text-primary truncate block"
                 >
                   {job?.title || "Unknown Job"}
@@ -99,7 +99,7 @@ function ApplicationsList({
 
             <div className="flex items-center justify-between">
               <p className="text-xs text-text-secondary">
-                Applied {new Date(app.created_at).toLocaleDateString()}
+                Applied {new Date(app.submitted_at).toLocaleDateString()}
               </p>
 
               {app.status === "applied" && (
