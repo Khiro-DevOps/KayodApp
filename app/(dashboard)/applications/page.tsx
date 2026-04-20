@@ -31,7 +31,11 @@ export default async function ApplicationsPage() {
   const { data: applications } = await supabase
     .from("applications")
     .select(`
-      job_posting_id: job_posting_id,
+      id,
+      job_posting_id,
+      status,
+      submitted_at,
+      match_score,
       job_postings ( id, title, location )
     `)
     .eq("candidate_id", user.id)
