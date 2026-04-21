@@ -13,7 +13,9 @@ import Link from "next/link";
 interface Application {
   id: string;
   status: string;
-  interview_preference: "online" | "in_person" | null;
+  selected_mode: "online" | "in_person" | null;
+  hr_office_address: string | null;
+  hr_offered_modes: ("online" | "in_person")[] | null;
   candidate_id: string;
   profiles: {
     first_name: string;
@@ -49,16 +51,21 @@ export default function InterviewSchedulePage() {
   const [locationNotes, setLocationNotes] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Derive candidate preference from selected application
+  // Candidate selected mode is final and authoritative.
   const selectedApp = applications.find((a) => a.id === selectedApplicationId);
-  const candidatePreference = selectedApp?.interview_preference ?? null;
+  const candidateSelectedMode = selectedApp?.selected_mode ?? null;
 
-  // Auto-set interview type to match candidate preference when application changes
+  // Update interview mode and office address defaults when application changes.
   useEffect(() => {
-    if (candidatePreference) {
-      setInterviewType(candidatePreference);
+    if (candidateSelectedMode) {
+      setInterviewType(candidateSelectedMode);
     }
-  }, [candidatePreference]);
+    if (selectedApp?.hr_office_address) {
+      setLocationAddress(selectedApp.hr_office_address);
+    } else {
+      setLocationAddress("");
+    }
+  }, [candidateSelectedMode, selectedApp?.hr_office_address]);
 
   // Load applications eligible for scheduling
   useEffect(() => {
@@ -69,7 +76,9 @@ export default function InterviewSchedulePage() {
         .select(`
           id,
           status,
-          interview_preference,
+          selected_mode,
+          hr_office_address,
+          hr_offered_modes,
           candidate_id,
           profiles ( first_name, last_name, email ),
           job_postings ( id, title )
@@ -86,6 +95,11 @@ export default function InterviewSchedulePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedApplicationId || !date || !time) return;
+
+    if (!candidateSelectedMode) {
+      setError("Candidate has not selected an interview format yet.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -227,23 +241,30 @@ export default function InterviewSchedulePage() {
               {applications.map((app) => (
                 <option key={app.id} value={app.id}>
                   {app.profiles.first_name} {app.profiles.last_name} — {app.job_postings.title}
-                  {app.interview_preference ? ` (prefers ${app.interview_preference === "online" ? "Online" : "In-Person"})` : ""}
+                  {app.selected_mode ? ` (selected ${app.selected_mode === "online" ? "Online" : "In-Person"})` : ""}
                 </option>
               ))}
             </select>
           )}
 
-          {/* Show candidate preference hint */}
-          {candidatePreference && (
+          {/* Show candidate selection hint */}
+          {candidateSelectedMode ? (
             <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${
-              candidatePreference === "online"
+              candidateSelectedMode === "online"
                 ? "bg-blue-50 border border-blue-200 text-blue-800"
                 : "bg-orange-50 border border-orange-200 text-orange-800"
             }`}>
-              <span>{candidatePreference === "online" ? "💻" : "🏢"}</span>
+              <span>{candidateSelectedMode === "online" ? "💻" : "🏢"}</span>
               <span>
-                This candidate prefers a <strong>{candidatePreference === "online" ? "Online" : "In-Person"}</strong> interview.
-                Interview type has been set accordingly.
+                Candidate finalized: <strong>{candidateSelectedMode === "online" ? "Online" : "In-Person"}</strong> interview.
+                Scheduling will follow this selection.
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <span>⏳</span>
+              <span>
+                Waiting for candidate to confirm interview format. You can set date/time now, but scheduling is disabled until they confirm.
               </span>
             </div>
           )}
@@ -292,40 +313,19 @@ export default function InterviewSchedulePage() {
           </div>
         </div>
 
-        {/* Interview Type */}
+        {/* Interview Type (read-only, based on candidate selection) */}
         <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
           <p className="text-sm font-semibold text-text-primary">Interview Format</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setInterviewType("online")}
-              className={`rounded-xl border-2 p-3 text-left transition-all ${
-                interviewType === "online"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/40"
-              }`}
-            >
-              <span className="text-xl block mb-1">💻</span>
-              <p className="text-xs font-semibold text-text-primary">Online</p>
-              <p className="text-xs text-text-secondary">Daily.co room auto-created</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setInterviewType("in_person")}
-              className={`rounded-xl border-2 p-3 text-left transition-all ${
-                interviewType === "in_person"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/40"
-              }`}
-            >
-              <span className="text-xl block mb-1">🏢</span>
-              <p className="text-xs font-semibold text-text-primary">In-Person</p>
-              <p className="text-xs text-text-secondary">Provide office address</p>
-            </button>
+          <div className="rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary">
+            {candidateSelectedMode
+              ? candidateSelectedMode === "online"
+                ? "💻 Online"
+                : "🏢 In-Person"
+              : "Pending candidate confirmation"}
           </div>
 
           {/* In-person fields */}
-          {interviewType === "in_person" && (
+          {candidateSelectedMode === "in_person" && (
             <div className="space-y-2">
               <div>
                 <label className="text-xs text-text-secondary mb-1 block">Office Address</label>
@@ -352,7 +352,7 @@ export default function InterviewSchedulePage() {
           )}
 
           {/* Online info */}
-          {interviewType === "online" && (
+          {candidateSelectedMode === "online" && (
             <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2">
               <p className="text-xs text-blue-800">
                 🎥 A private Daily.co meeting room will be automatically created and the link sent to the candidate.
@@ -381,7 +381,7 @@ export default function InterviewSchedulePage() {
 
         <button
           type="submit"
-          disabled={submitting || !selectedApplicationId || !date || !time}
+          disabled={submitting || !selectedApplicationId || !date || !time || !candidateSelectedMode}
           className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting

@@ -2,9 +2,30 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import type { Application, Interview } from "@/lib/types";
 import Link from "next/link";
 import { withdrawApplication } from "./actions";
+
+type ApplicationsListItem = {
+  id: string;
+  job_posting_id: string;
+  status: string;
+  submitted_at: string;
+  match_score: number | null;
+  job_postings?: {
+    id: string;
+    title: string;
+    location: string | null;
+  }[] | null;
+};
+
+type ApplicationsInterviewItem = {
+  id: string;
+  application_id: string;
+  interview_type: "online" | "in_person";
+  status: string;
+  scheduled_at: string;
+  interviewer_notes: string | null;
+};
 
 const statusConfig: Record<string, { label: string; classes: string }> = {
   applied: { label: "Applied", classes: "bg-blue-50 text-info" },
@@ -17,8 +38,8 @@ function ApplicationsList({
   applications,
   interviewMap,
 }: {
-  applications: Application[];
-  interviewMap: Record<string, Interview>;
+  applications: ApplicationsListItem[];
+  interviewMap: Record<string, ApplicationsInterviewItem>;
 }) {
   const searchParams = useSearchParams();
   const success = searchParams.get("success");
@@ -26,7 +47,8 @@ function ApplicationsList({
   if (applications.length === 0 && !success) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
+      <div className="space-y-3 pb-4">
       {success && (
         <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-sm text-success">
           {success}
@@ -55,11 +77,6 @@ function ApplicationsList({
                 >
                   {job?.title || "Unknown Job"}
                 </Link>
-                {job?.employers && (
-                  <p className="text-xs text-text-secondary mt-0.5">
-                    {job.employers.company_name}
-                  </p>
-                )}
                 {job?.location && (
                   <p className="text-xs text-text-secondary">{job.location}</p>
                 )}
@@ -83,15 +100,15 @@ function ApplicationsList({
             </div>
 
             {/* Interview Details */}
-            {(app.status === "interview" || app.status === "hired") &&
+            {(app.status === "interview_scheduled" || app.status === "interviewed" || app.status === "hired") &&
               interviewMap[app.id] && (
                 <div className="rounded-xl bg-purple-50 p-3 space-y-1">
                   <p className="text-xs font-medium text-purple-700">
                     Interview: {new Date(interviewMap[app.id].scheduled_at).toLocaleString()}
                   </p>
-                  {interviewMap[app.id].notes && (
+                  {interviewMap[app.id].interviewer_notes && (
                     <p className="text-xs text-purple-600">
-                      {interviewMap[app.id].notes}
+                      {interviewMap[app.id].interviewer_notes}
                     </p>
                   )}
                 </div>
@@ -102,7 +119,7 @@ function ApplicationsList({
                 Applied {new Date(app.submitted_at).toLocaleDateString()}
               </p>
 
-              {app.status === "applied" && (
+              {(app.status === "submitted" || app.status === "under_review") && (
                 <form action={withdrawApplication}>
                   <input type="hidden" name="application_id" value={app.id} />
                   <button
@@ -117,6 +134,7 @@ function ApplicationsList({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -125,8 +143,8 @@ export default function ApplicationsClient({
   applications,
   interviewMap,
 }: {
-  applications: Application[];
-  interviewMap: Record<string, Interview>;
+  applications: ApplicationsListItem[];
+  interviewMap: Record<string, ApplicationsInterviewItem>;
 }) {
   return (
     <Suspense fallback={<div className="text-sm text-text-secondary">Loading...</div>}>

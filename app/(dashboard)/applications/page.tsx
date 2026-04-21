@@ -1,10 +1,31 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import ManageJobsPage from "../jobs/manage/page";
 import ApplicationsClient from "./applications-client";
 import PageContainer from "@/components/ui/page-container";
-import type { Profile, Application, Interview } from "@/lib/types";
+import type { Profile, Interview } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+
+type CandidateApplicationListItem = {
+  id: string;
+  job_posting_id: string;
+  status: string;
+  submitted_at: string;
+  match_score: number | null;
+  job_postings: {
+    id: string;
+    title: string;
+    location: string | null;
+  }[] | null;
+};
+
+type CandidateInterviewListItem = {
+  id: string;
+  application_id: string;
+  interview_type: "online" | "in_person";
+  status: Interview["status"];
+  scheduled_at: string;
+  interviewer_notes: string | null;
+};
 
 export default async function ApplicationsPage() {
   const supabase = await createClient();
@@ -12,7 +33,7 @@ export default async function ApplicationsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -22,9 +43,9 @@ export default async function ApplicationsPage() {
   const role = effectiveRole(profile?.role, authRole);
   const isHR = isHRRole(role);
 
-  // HR Manager view - use a single management page
+  // HR manager routes to the dedicated management area.
   if (isHR) {
-    return <ManageJobsPage />;
+    redirect("/jobs/manage");
   }
 
   // Job Seeker view - show their own applications
@@ -39,14 +60,18 @@ export default async function ApplicationsPage() {
       job_postings ( id, title, location )
     `)
     .eq("candidate_id", user.id)
-    .order("submitted_at", { ascending: false });
+    .order("submitted_at", { ascending: false })
+    .returns<CandidateApplicationListItem[]>();
 
   // Fetch interviews map
+  const applicationIds = (applications ?? []).map((app) => app.id);
   const { data: interviews } = await supabase
     .from("interviews")
-    .select("id, application_id, scheduled_at, notes");
+    .select("id, application_id, interview_type, status, scheduled_at, interviewer_notes")
+    .in("application_id", applicationIds)
+    .returns<CandidateInterviewListItem[]>();
 
-  const interviewMap: Record<string, Interview> = {};
+  const interviewMap: Record<string, CandidateInterviewListItem> = {};
   (interviews ?? []).forEach((interview) => {
     interviewMap[interview.application_id] = interview;
   });
@@ -66,7 +91,7 @@ export default async function ApplicationsPage() {
           </div>
         ) : (
           <ApplicationsClient
-            applications={applications as Application[]}
+            applications={applications ?? []}
             interviewMap={interviewMap}
           />
         )}

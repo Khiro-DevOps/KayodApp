@@ -5,6 +5,7 @@ import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, roleLabel, isCandidateRole } from "@/lib/roles";
+import ProfileDetailsForm from "./profile-details-form";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -58,6 +59,8 @@ export default async function ProfilePage() {
             </div>
           </div>
         </div>
+
+        <ProfileDetailsForm profile={profile ?? null} />
 
         {/* Role-specific links */}
         {isCandidateRole(effective) && (

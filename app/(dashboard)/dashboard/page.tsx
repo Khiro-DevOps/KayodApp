@@ -1,9 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Profile } from "@/lib/types";
+import type { InterviewType, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole } from "@/lib/roles";
+
+interface CandidateUpcomingInterview {
+  id: string;
+  scheduled_at: string;
+  interview_type: InterviewType;
+  job_title: string;
+}
+
+interface CandidatePreferencePrompt {
+  application_id: string;
+  job_title: string;
+  offered_modes: InterviewType[];
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -20,6 +33,8 @@ export default async function DashboardPage() {
 
   const role = effectiveRole(profile?.role, authRole);
   let stats: Record<string, number> = {};
+  let upcomingInterview: CandidateUpcomingInterview | null = null;
+  let pendingPreference: CandidatePreferencePrompt | null = null;
 
   if (role === "hr_manager" || role === "admin") {
     const [
@@ -53,10 +68,69 @@ export default async function DashboardPage() {
       stats = { pendingLeaves: leaveCount ?? 0, payslips: payslipCount ?? 0 };
     }
   } else {
-    const [{ count: appCount }, { count: interviewCount }] = await Promise.all([
+    const [{ count: appCount }, { count: interviewCount }, { data: nextInterview }, { data: pendingPreferenceApps }] = await Promise.all([
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id),
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id).eq("status", "interview_scheduled"),
+      supabase
+        .from("interviews")
+        .select(`
+          id,
+          scheduled_at,
+          interview_type,
+          applications!inner (
+            candidate_id,
+            job_postings ( title )
+          )
+        `)
+        .eq("applications.candidate_id", user.id)
+        .in("status", ["scheduled", "confirmed", "rescheduled"])
+        .gte("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("applications")
+        .select(`
+          id,
+          status,
+          selected_mode,
+          hr_offered_modes,
+          job_postings ( title )
+        `)
+        .eq("candidate_id", user.id)
+        .in("status", ["shortlisted", "under_review", "interview_scheduled"])
+        .is("selected_mode", null)
+        .order("updated_at", { ascending: false }),
     ]);
+
+    if (nextInterview) {
+      const nextInterviewApp = nextInterview.applications as unknown as {
+        job_postings?: { title?: string }[];
+      };
+      upcomingInterview = {
+        id: nextInterview.id,
+        scheduled_at: nextInterview.scheduled_at,
+        interview_type: nextInterview.interview_type,
+        job_title: nextInterviewApp?.job_postings?.[0]?.title ?? "Interview",
+      };
+    }
+
+    const firstPendingPreference = (pendingPreferenceApps ?? []).find((app) => {
+      const modes = (app.hr_offered_modes as InterviewType[] | null) ?? [];
+      return modes.length > 0;
+    });
+
+    if (firstPendingPreference) {
+      const pendingAppJob = firstPendingPreference.job_postings as unknown as { title?: string }[];
+      pendingPreference = {
+        application_id: firstPendingPreference.id,
+        job_title: pendingAppJob?.[0]?.title ?? "this role",
+        offered_modes: ((firstPendingPreference.hr_offered_modes as InterviewType[] | null) ?? []).filter(
+          (mode): mode is InterviewType => mode === "online" || mode === "in_person"
+        ),
+      };
+    }
+
     stats = { applications: appCount ?? 0, interviews: interviewCount ?? 0 };
   }
 
@@ -82,7 +156,13 @@ export default async function DashboardPage() {
 
         {(role === "hr_manager" || role === "admin") && <HRDashboard stats={stats} />}
         {role === "employee" && <EmployeeDashboard stats={stats} />}
-        {role === "candidate" && <CandidateDashboard stats={stats} />}
+        {role === "candidate" && (
+          <CandidateDashboard
+            stats={stats}
+            upcomingInterview={upcomingInterview}
+            pendingPreference={pendingPreference}
+          />
+        )}
       </div>
     </PageContainer>
   );
@@ -138,13 +218,60 @@ function EmployeeDashboard({ stats }: { stats: Record<string, number> }) {
   );
 }
 
-function CandidateDashboard({ stats }: { stats: Record<string, number> }) {
+function CandidateDashboard({
+  stats,
+  upcomingInterview,
+  pendingPreference,
+}: {
+  stats: Record<string, number>;
+  upcomingInterview: CandidateUpcomingInterview | null;
+  pendingPreference: CandidatePreferencePrompt | null;
+}) {
+  const offeredModeLabels = (pendingPreference?.offered_modes ?? []).map((mode) =>
+    mode === "online" ? "Online" : "In-Person"
+  );
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard label="Applications" value={String(stats.applications ?? 0)} color="blue" />
         <SummaryCard label="Interviews" value={String(stats.interviews ?? 0)} color="purple" />
       </div>
+
+      {upcomingInterview && (
+        <Link
+          href="/interviews"
+          className="block rounded-2xl border border-blue-200 bg-blue-50 p-4 hover:bg-blue-100 transition-colors"
+        >
+          <p className="text-sm font-semibold text-blue-800">Upcoming Interview</p>
+          <p className="mt-1 text-sm text-blue-700">
+            {upcomingInterview.job_title} · {new Date(upcomingInterview.scheduled_at).toLocaleString("en-PH", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </p>
+          <p className="mt-1 text-xs text-blue-700">
+            {upcomingInterview.interview_type === "online" ? "Online" : "In-Person"} interview
+          </p>
+        </Link>
+      )}
+
+      {pendingPreference && (
+        <Link
+          href={`/interviews/respond/${pendingPreference.application_id}`}
+          className="block rounded-2xl border border-amber-200 bg-amber-50 p-4 hover:bg-amber-100 transition-colors"
+        >
+          <p className="text-sm font-semibold text-amber-800">Choose Your Preferred Interview Setting</p>
+          <p className="mt-1 text-sm text-amber-700">{pendingPreference.job_title}</p>
+          <p className="mt-1 text-xs text-amber-700">
+            Available: {offeredModeLabels.join(" / ") || "Online"}
+          </p>
+        </Link>
+      )}
+
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
         <QuickLink href="/jobs" label="Browse jobs" />

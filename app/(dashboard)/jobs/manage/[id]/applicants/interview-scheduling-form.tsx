@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { scheduleInterviewProposal } from "./actions";
+import type { InterviewType } from "@/lib/types";
 
 interface InterviewSchedulingFormProps {
   applicationId: string;
@@ -18,18 +19,39 @@ export default function InterviewSchedulingForm({
 }: InterviewSchedulingFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTypes, setSelectedTypes] = useState<string[]>(["online", "in_person"]);
+  const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online"]);
+  const [locationDetails, setLocationDetails] = useState("");
+
+  const allowsInPerson = offeredModes.includes("in_person");
+
+  const toggleMode = (mode: InterviewType) => {
+    setOfferedModes((prev) => {
+      if (prev.includes(mode)) {
+        // Keep at least one interview mode selected.
+        if (prev.length === 1) return prev;
+        return prev.filter((m) => m !== mode);
+      }
+      return [...prev, mode];
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    if (allowsInPerson && !locationDetails.trim()) {
+      setError("Interview address/location details are required when In-Person is enabled");
+      setLoading(false);
+      return;
+    }
+
     try {
       const formData = new FormData(e.currentTarget);
       formData.append("job_id", jobId);
       formData.append("application_id", applicationId);
-      formData.append("interview_types", JSON.stringify(selectedTypes));
+      offeredModes.forEach((mode) => formData.append("available_modes", mode));
+      formData.append("location_details", allowsInPerson ? locationDetails.trim() : "");
 
       const response = await scheduleInterviewProposal(formData);
 
@@ -67,7 +89,7 @@ export default function InterviewSchedulingForm({
       {/* Proposed Date & Time */}
       <div>
         <label htmlFor="scheduled_at" className="block text-sm font-medium text-text-primary mb-2">
-          Proposed Date & Time
+          Date & Time
         </label>
         <input
           type="datetime-local"
@@ -79,41 +101,98 @@ export default function InterviewSchedulingForm({
         />
       </div>
 
-      {/* Interview Type Selection */}
+      {/* Applicant ID */}
+      <div>
+        <label htmlFor="application_id_display" className="block text-sm font-medium text-text-primary mb-2">
+          Applicant ID
+        </label>
+        <input
+          id="application_id_display"
+          type="text"
+          value={applicationId}
+          readOnly
+          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-gray-50 text-text-secondary"
+        />
+      </div>
+
+      {/* Duration */}
+      <div>
+        <label htmlFor="duration_minutes" className="block text-sm font-medium text-text-primary mb-2">
+          Duration
+        </label>
+        <select
+          id="duration_minutes"
+          name="duration_minutes"
+          defaultValue="60"
+          className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="30">30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+          <option value="90">90 minutes</option>
+          <option value="120">120 minutes</option>
+        </select>
+      </div>
+
+      {/* Interview Availability */}
       <div>
         <label className="block text-sm font-medium text-text-primary mb-3">
-          Interview Type Options (candidate will choose)
+          Interview Availability
         </label>
-        <div className="space-y-2">
-          {[
-            { value: "online", label: "Online (Video Call)", icon: "📹" },
-            { value: "in_person", label: "In-Person (Office)", icon: "🏢" },
-          ].map((type) => (
-            <label
-              key={type.value}
-              className="flex items-center gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-            >
-              <input
-                type="checkbox"
-                checked={selectedTypes.includes(type.value)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedTypes([...selectedTypes, type.value]);
-                  } else {
-                    setSelectedTypes(selectedTypes.filter((t) => t !== type.value));
-                  }
-                }}
-                className="w-4 h-4 text-primary cursor-pointer"
-              />
-              <span className="text-lg">{type.icon}</span>
-              <span className="text-sm font-medium text-text-primary">{type.label}</span>
-            </label>
-          ))}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => toggleMode("online")}
+            className={`rounded-lg border p-3 text-left transition-colors ${
+              offeredModes.includes("online")
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-gray-50"
+            }`}
+          >
+            <p className="text-sm font-medium text-text-primary">Online</p>
+            <p className="text-xs text-text-secondary">Candidate can choose video interview</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleMode("in_person")}
+            className={`rounded-lg border p-3 text-left transition-colors ${
+              offeredModes.includes("in_person")
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-gray-50"
+            }`}
+          >
+            <p className="text-sm font-medium text-text-primary">In-Person</p>
+            <p className="text-xs text-text-secondary">Office/location details required</p>
+          </button>
         </div>
-        {selectedTypes.length === 0 && (
-          <p className="mt-2 text-xs text-red-600">Select at least one interview type</p>
-        )}
+        <p className="mt-2 text-xs text-text-secondary">
+          Select one or both options. Applicants will only see the settings enabled here.
+        </p>
       </div>
+
+      {allowsInPerson && (
+        <div>
+          <label htmlFor="location_details" className="block text-sm font-medium text-text-primary mb-2">
+            Interview Address / Location Details
+          </label>
+          <textarea
+            id="location_details"
+            name="location_details"
+            value={locationDetails}
+            onChange={(e) => setLocationDetails(e.target.value)}
+            required={allowsInPerson}
+            rows={3}
+            placeholder="e.g. 3rd Floor, Acme Building, Makati City. Please check in with reception."
+            className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      )}
+
+      {offeredModes.includes("online") && (
+        <div className="p-3 rounded-lg bg-blue-50 text-blue-700 text-sm">
+          Online interviews include an auto-generated Daily.co meeting room.
+        </div>
+      )}
 
       {/* Additional Notes */}
       <div>
@@ -162,10 +241,10 @@ export default function InterviewSchedulingForm({
       <div className="flex gap-2 pt-2">
         <button
           type="submit"
-          disabled={loading || selectedTypes.length === 0}
+          disabled={loading}
           className="flex-1 bg-primary text-white py-2 rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 transition-colors"
         >
-          {loading ? "Scheduling..." : "Send Proposal to Candidate"}
+          {loading ? "Scheduling..." : "Schedule Interview"}
         </button>
         {onCancel && (
           <button

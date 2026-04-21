@@ -12,16 +12,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { applicationId, preference } = await request.json();
+  const payload = await request.json();
+  const applicationId = payload.applicationId as string | undefined;
+  const preference = (payload.selectedMode ?? payload.preference) as string | undefined;
+  const isValidPreference = preference === "online" || preference === "in_person";
 
-  if (!applicationId || !["online", "in_person"].includes(preference)) {
+  if (!applicationId || !isValidPreference) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   // Verify the application belongs to this user
   const { data: app } = await supabase
     .from("applications")
-    .select("id, candidate_id, status, interview_preference")
+    .select("id, candidate_id, status, hr_offered_modes")
     .eq("id", applicationId)
     .single();
 
@@ -33,6 +36,11 @@ export async function POST(request: Request) {
   const allowedStatuses = ["shortlisted", "interview_scheduled", "under_review"];
   if (!allowedStatuses.includes(app.status)) {
     return NextResponse.json({ error: "Application not eligible" }, { status: 400 });
+  }
+
+  const allowedModes = (app.hr_offered_modes ?? []) as string[];
+  if (allowedModes.length > 0 && !allowedModes.includes(preference)) {
+    return NextResponse.json({ error: "Selected mode is not available" }, { status: 400 });
   }
 
   // Save the preference via security-definer RPC to avoid broad candidate UPDATE policy.
@@ -67,8 +75,9 @@ export async function POST(request: Request) {
     .eq("id", applicationId)
     .single();
 
-  const hrId = (appWithJob?.job_postings as Record<string, unknown>)?.created_by;
-  const jobTitle = (appWithJob?.job_postings as Record<string, unknown>)?.title ?? "a position";
+  const posting = (appWithJob?.job_postings as { created_by: string; title: string }[] | null)?.[0];
+  const hrId = posting?.created_by;
+  const jobTitle = posting?.title ?? "a position";
 
   if (hrId) {
     const { data: candidateProfile } = await supabase
@@ -88,7 +97,7 @@ export async function POST(request: Request) {
       type: "application_status_changed",
       title: `Interview Preference Set`,
       body: `${candidateName} has chosen ${preferenceLabel} for the ${jobTitle} interview. You can now schedule the interview.`,
-      action_url: `/interviews/schedule?applicationId=${applicationId}`,
+      action_url: `/applications/${applicationId}`,
     });
   }
 

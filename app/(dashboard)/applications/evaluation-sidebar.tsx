@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Application, JobPosting } from "@/lib/types";
-import { updateApplicationEvaluation, moveToInterview } from "./application-detail-actions";
+import { configureInterviewAvailability, updateApplicationEvaluation } from "./application-detail-actions";
 
 interface EvaluationSidebarProps {
   application: Application;
@@ -17,7 +17,15 @@ export default function EvaluationSidebar({
 }: EvaluationSidebarProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hrNotes, setHrNotes] = useState(application?.hr_notes || "");
-  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [isSavingAvailability, setIsSavingAvailability] = useState(false);
+  const [supportsOnline, setSupportsOnline] = useState(
+    application?.hr_offered_modes?.includes("online") ?? true
+  );
+  const [supportsInPerson, setSupportsInPerson] = useState(
+    application?.hr_offered_modes?.includes("in_person") ?? false
+  );
+  const [officeAddress, setOfficeAddress] = useState(application?.hr_office_address || "");
 
   const statusConfig: Record<
     string,
@@ -116,6 +124,42 @@ export default function EvaluationSidebar({
     }
   };
 
+  const handleAvailabilitySave = async () => {
+    setAvailabilityError(null);
+
+    if (!supportsOnline && !supportsInPerson) {
+      setAvailabilityError("Select at least one interview mode.");
+      return;
+    }
+
+    if (supportsInPerson && !officeAddress.trim()) {
+      setAvailabilityError("Office address is required when in-person interviews are enabled.");
+      return;
+    }
+
+    setIsSavingAvailability(true);
+    try {
+      const formData = new FormData();
+      formData.append("application_id", application.id);
+      if (supportsOnline) {
+        formData.append("hr_offered_modes", "online");
+      }
+      if (supportsInPerson) {
+        formData.append("hr_offered_modes", "in_person");
+      }
+      formData.append("hr_office_address", officeAddress.trim());
+
+      await configureInterviewAvailability(formData);
+      onStatusUpdate();
+    } catch (error) {
+      setAvailabilityError(
+        error instanceof Error ? error.message : "Failed to save interview availability"
+      );
+    } finally {
+      setIsSavingAvailability(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Current Status */}
@@ -204,6 +248,78 @@ export default function EvaluationSidebar({
         </button>
       </div>
 
+      {/* Interview Preferences */}
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <div>
+          <p className="text-xs font-medium uppercase text-text-secondary mb-1">
+            Interview Preferences
+          </p>
+          <p className="text-xs text-text-secondary">
+            Configure available interview formats for this candidate. They will make the final selection.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setSupportsOnline((prev) => !prev)}
+            className={`rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+              supportsOnline
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border bg-white text-text-secondary"
+            }`}
+          >
+            Online
+          </button>
+          <button
+            type="button"
+            onClick={() => setSupportsInPerson((prev) => !prev)}
+            className={`rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+              supportsInPerson
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border bg-white text-text-secondary"
+            }`}
+          >
+            In-Person
+          </button>
+        </div>
+
+        {supportsInPerson && (
+          <div>
+            <label className="text-xs text-text-secondary mb-1 block">Office Address</label>
+            <input
+              type="text"
+              value={officeAddress}
+              onChange={(e) => setOfficeAddress(e.target.value)}
+              placeholder="e.g. 5F Kayod HQ, Cebu IT Park"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <p className="mt-1 text-xs text-text-tertiary">
+              This will be used as the default interview location.
+            </p>
+          </div>
+        )}
+
+        {application.selected_mode && (
+          <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Candidate selected: {application.selected_mode === "online" ? "Online" : "In-Person"}
+          </p>
+        )}
+
+        {availabilityError && (
+          <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{availabilityError}</p>
+        )}
+
+        <button
+          type="button"
+          onClick={handleAvailabilitySave}
+          disabled={isSavingAvailability}
+          className="w-full rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isSavingAvailability ? "Saving..." : "Save Interview Preferences"}
+        </button>
+      </div>
+
       {/* Action Buttons */}
       {nextActions.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-6 space-y-3">
@@ -243,14 +359,14 @@ export default function EvaluationSidebar({
         <div className="rounded-2xl border border-border bg-surface p-6">
           <p className="text-sm font-semibold text-text-primary mb-3">Schedule Interview</p>
           <p className="text-xs text-text-secondary mb-3">
-            Move this candidate to the interview stage by scheduling a meeting.
+            Schedule after the candidate confirms their format selection.
           </p>
-          <button
-            className="w-full py-3 px-4 text-sm font-medium text-white rounded-lg bg-purple-500 hover:bg-purple-600 transition-colors"
-            onClick={() => setShowScheduleForm(true)}
+          <a
+            href={`/interviews/schedule?applicationId=${application.id}`}
+            className="block w-full rounded-lg bg-purple-500 px-4 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-purple-600"
           >
-            Schedule Interview
-          </button>
+            Open Scheduling
+          </a>
         </div>
       )}
 
