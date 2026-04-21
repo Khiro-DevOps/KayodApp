@@ -126,6 +126,84 @@ function RegisterForm() {
           />
         </div>
 
+        {/* Date of Birth */}
+        <div className="space-y-1">
+          <label htmlFor="date_of_birth" className="text-sm font-medium text-text-primary">
+            Birthdate
+          </label>
+          <input
+            id="date_of_birth"
+            name="date_of_birth"
+            type="date"
+            required
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* Age */}
+        <div className="space-y-1">
+          <label htmlFor="age" className="text-sm font-medium text-text-primary">
+            Age
+          </label>
+          <input
+            id="age"
+            name="age"
+            type="number"
+            min={0}
+            max={120}
+            required
+            placeholder="25"
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* Address */}
+        <div className="space-y-1">
+          <label htmlFor="address" className="text-sm font-medium text-text-primary">
+            Address
+          </label>
+          <input
+            id="address"
+            name="address"
+            type="text"
+            required
+            placeholder="House/Unit, Street, Barangay"
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* City */}
+        <div className="space-y-1">
+          <label htmlFor="city" className="text-sm font-medium text-text-primary">
+            City
+          </label>
+          <input
+            id="city"
+            name="city"
+            type="text"
+            required
+            placeholder="Quezon City"
+            className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        {/* Country */}
+        <div className="space-y-1">
+          <label htmlFor="country" className="text-sm font-medium text-text-primary">
+            Country
+          </label>
+          <select
+            id="country"
+            name="country"
+            defaultValue="Philippines"
+            required
+            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="Philippines">Philippines</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
         {/* Phone Number */}
         <div className="space-y-1">
           <label htmlFor="phone" className="text-sm font-medium text-text-primary">

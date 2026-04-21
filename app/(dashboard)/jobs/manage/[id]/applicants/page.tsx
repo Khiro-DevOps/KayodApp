@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ApplicantsListClient from "./applicants-list-client";
 import type { Application, Interview, Profile } from "@/lib/types";
@@ -19,7 +19,7 @@ export default async function ApplicantsPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -38,7 +38,7 @@ export default async function ApplicantsPage({
     .eq("id", id)
     .single();
 
-  if (!job) notFound();
+  if (!job) redirect("/jobs/manage");
 
   // Fetch applicants with full details
   const { data: applications } = await supabase
@@ -75,9 +75,9 @@ export default async function ApplicantsPage({
 
   return (
     <PageContainer>
-      <div className="space-y-4">
+      <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <Link
             href={`/jobs/manage/${id}`}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
@@ -95,16 +95,18 @@ export default async function ApplicantsPage({
         </div>
 
         {/* Applicants Count */}
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-text-secondary shrink-0 mt-4">
           {applications?.length || 0} applicant{applications?.length !== 1 ? "s" : ""}
         </p>
 
         {/* Applicants List - Client Component */}
-        <ApplicantsListClient 
-          jobId={id}
-          applications={applications || []} 
-          interviews={interviewMap}
-        />
+        <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+          <ApplicantsListClient 
+            jobId={id}
+            applications={applications || []} 
+            interviews={interviewMap}
+          />
+        </div>
       </div>
     </PageContainer>
   );

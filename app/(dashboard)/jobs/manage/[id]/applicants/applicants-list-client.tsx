@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Application, Interview } from "@/lib/types";
 import ApplicantDetailDrawer from "./applicant-detail-drawer";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
@@ -16,6 +17,7 @@ export default function ApplicantsListClient({
   applications,
   interviews,
 }: ApplicantsListClientProps) {
+  const router = useRouter();
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -40,7 +42,8 @@ export default function ApplicantsListClient({
   return (
     <>
       {/* Applicant Cards */}
-      <div className="space-y-3">
+      <div className="h-full min-h-0 overflow-y-auto pr-1">
+        <div className="space-y-3 pb-6">
         {applications.map((app) => {
           const candidate = app.profiles as unknown as {
             id: string;
@@ -63,7 +66,7 @@ export default function ApplicantsListClient({
             <button
               key={app.id}
               onClick={() => handleCardClick(app)}
-              className="w-full text-left rounded-2xl bg-surface border border-border p-4 space-y-3 hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer group"
+              className="w-full min-w-0 text-left rounded-2xl bg-surface border border-border p-4 space-y-3 hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer group"
             >
               {/* Applicant Info */}
               <div className="flex items-start justify-between gap-2">
@@ -154,6 +157,7 @@ export default function ApplicantsListClient({
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Detail Drawer */}
@@ -163,6 +167,7 @@ export default function ApplicantsListClient({
           jobId={jobId}
           isOpen={isDrawerOpen}
           onClose={handleCloseDrawer}
+          onScheduled={() => router.refresh()}
         />
       )}
     </>

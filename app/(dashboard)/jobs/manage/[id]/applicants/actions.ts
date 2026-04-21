@@ -2,6 +2,44 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { InterviewType } from "@/lib/types";
+
+async function createDailyRoom(applicationId: string) {
+  if (!process.env.DAILY_API_KEY) {
+    throw new Error("Daily.co API key is not configured");
+  }
+
+  const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
+  const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+    },
+    body: JSON.stringify({
+      name: roomName,
+      properties: {
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+        enable_chat: true,
+        enable_screenshare: true,
+      },
+    }),
+  });
+
+  if (!dailyRes.ok) {
+    throw new Error("Failed to create Daily.co meeting room");
+  }
+
+  const room = await dailyRes.json();
+  if (!room?.url || !room?.name) {
+    throw new Error("Daily.co room response is missing required fields");
+  }
+
+  return {
+    url: room.url as string,
+    name: room.name as string,
+  };
+}
 
 export async function scheduleInterviewProposal(formData: FormData) {
   const supabase = await createClient();
@@ -11,32 +49,155 @@ export async function scheduleInterviewProposal(formData: FormData) {
     return { success: false, error: "Not authenticated" };
   }
 
-  const applicationId = formData.get("application_id") as string;
-  const jobId = formData.get("job_id") as string;
+  const rawApplicationId = String(
+    formData.get("application_id") ??
+      formData.get("applicant_id") ??
+      formData.get("candidate_id") ??
+      ""
+  ).trim();
+  const jobId = String(formData.get("job_id") ?? "").trim();
   const scheduledAt = formData.get("scheduled_at") as string;
+  const durationMinutes = Number(formData.get("duration_minutes") as string) || 60;
   const notes = formData.get("notes") as string;
   const timezone = formData.get("timezone") as string;
-  const interviewTypes = JSON.parse(formData.get("interview_types") as string) as string[];
+  const rawModes = formData
+    .getAll("available_modes")
+    .map((value) => String(value))
+    .filter((value): value is InterviewType => value === "online" || value === "in_person");
+  const offeredModes = Array.from(new Set(rawModes));
+  const locationDetails = (formData.get("location_details") as string | null)?.trim() || null;
 
-  if (!applicationId || !jobId || !scheduledAt) {
+  if (!rawApplicationId || !jobId || !scheduledAt) {
     return { success: false, error: "Missing required fields" };
   }
 
-  if (interviewTypes.length === 0) {
-    return { success: false, error: "Select at least one interview type" };
+  if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+    return { success: false, error: "Duration must be a positive number of minutes" };
+  }
+
+  if (offeredModes.length === 0) {
+    return { success: false, error: "Please choose at least one interview availability option" };
+  }
+
+  if (offeredModes.includes("in_person") && !locationDetails) {
+    return { success: false, error: "Address/location details are required for in-person interviews" };
   }
 
   try {
-    // Fetch application details
-    const { data: application } = await supabase
+    // Resolve the target application in a schema-tolerant way.
+    // Some deployments still have legacy fields and some callers may pass candidate_id.
+    type ResolvedApplication = {
+      id: string;
+      candidate_id: string;
+      selected_mode?: InterviewType | null;
+      job_posting_id?: string | null;
+      job_listing_id?: string | null;
+    };
+
+    let application: ResolvedApplication | null = null;
+
+    const { data: byApplicationId, error: byApplicationIdError } = await supabase
       .from("applications")
-      .select("id, candidate_id, job_posting_id")
-      .eq("id", applicationId)
-      .single();
+      .select("*")
+      .eq("id", rawApplicationId)
+      .maybeSingle();
+
+    if (byApplicationIdError) {
+      throw byApplicationIdError;
+    }
+
+    application = (byApplicationId as ResolvedApplication | null) ?? null;
+
+    const matchesJob = (app: ResolvedApplication | null) => {
+      if (!app) return false;
+      const appJobId = app.job_posting_id ?? app.job_listing_id ?? null;
+      return appJobId === jobId;
+    };
+
+    if (application && !matchesJob(application)) {
+      application = null;
+    }
 
     if (!application) {
-      return { success: false, error: "Application not found" };
+      const { data: byCandidateId, error: byCandidateIdError } = await supabase
+        .from("applications")
+        .select("*")
+        .eq("candidate_id", rawApplicationId)
+        .order("submitted_at", { ascending: false })
+        .limit(25);
+
+      if (byCandidateIdError) {
+        throw byCandidateIdError;
+      }
+
+      application =
+        ((byCandidateId as ResolvedApplication[] | null) ?? []).find((app) => matchesJob(app)) ?? null;
     }
+
+    if (!application) {
+      return {
+        success: false,
+        error: "Application not found for this job. Refresh the page and try again.",
+      };
+    }
+
+    const applicationId = application.id;
+
+    const selectedMode = application.selected_mode ?? null;
+    const interviewType: InterviewType =
+      selectedMode && offeredModes.includes(selectedMode)
+        ? selectedMode
+        : offeredModes[0];
+
+    const hrOfficeAddress = offeredModes.includes("in_person") ? locationDetails : null;
+
+    // Persist HR interview availability on the application when schema supports it.
+    // Older deployments may not yet have hr_offered_modes / hr_office_address columns.
+    const { error: appUpdateError } = await supabase
+      .from("applications")
+      .update({
+        hr_offered_modes: offeredModes,
+        hr_office_address: hrOfficeAddress,
+      })
+      .eq("id", applicationId);
+
+    if (appUpdateError) {
+      const isMissingColumn =
+        appUpdateError.code === "PGRST204" ||
+        /column/i.test(appUpdateError.message || "");
+
+      if (isMissingColumn) {
+        // Retry with a minimal no-op safe update target used later in the flow.
+        const { error: fallbackAppUpdateError } = await supabase
+          .from("applications")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", applicationId);
+
+        if (fallbackAppUpdateError) {
+          throw fallbackAppUpdateError;
+        }
+      } else {
+        throw appUpdateError;
+      }
+    }
+
+    let meetingLink: string | null = null;
+    let meetingRoomName: string | null = null;
+
+    if (interviewType === "online") {
+      const room = await createDailyRoom(applicationId);
+      meetingLink = room.url;
+      meetingRoomName = room.name;
+    }
+
+    const payload = {
+      applicant_id: applicationId,
+      type: interviewType,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      duration_minutes: durationMinutes,
+      meeting_link: interviewType === "online" ? meetingLink : null,
+      location: interviewType === "in_person" ? hrOfficeAddress : null,
+    };
 
     // Check if interview already exists for this application
     const { data: existingInterview } = await supabase
@@ -52,14 +213,20 @@ export async function scheduleInterviewProposal(formData: FormData) {
       const { data, error } = await supabase
         .from("interviews")
         .update({
-          scheduled_at: new Date(scheduledAt).toISOString(),
+          scheduled_at: payload.scheduled_at,
+          duration_minutes: payload.duration_minutes,
           timezone,
-          interviewer_notes: notes,
-          preference_status: "pending",
+          interview_type: interviewType,
+          location_address: payload.location,
+          location_notes: null,
+          video_room_url: payload.meeting_link,
+          video_room_name: meetingRoomName,
+          video_provider: interviewType === "online" ? "daily.co" : null,
+          interviewer_notes: notes?.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingInterview.id)
-        .select("id")
+        .select("id, interview_type, scheduled_at")
         .single();
 
       if (error) {
@@ -73,39 +240,25 @@ export async function scheduleInterviewProposal(formData: FormData) {
         .insert({
           application_id: applicationId,
           scheduled_by: user.id,
-          scheduled_at: new Date(scheduledAt).toISOString(),
+          scheduled_at: payload.scheduled_at,
+          duration_minutes: payload.duration_minutes,
           timezone,
-          interview_type: interviewTypes[0], // Default to first option
+          interview_type: interviewType,
           status: "scheduled",
-          duration_minutes: 60,
-          interviewer_notes: notes,
-          preference_status: "pending",
+          location_address: payload.location,
+          location_notes: null,
+          video_room_url: payload.meeting_link,
+          video_room_name: meetingRoomName,
+          video_provider: interviewType === "online" ? "daily.co" : null,
+          interviewer_notes: notes?.trim() || null,
         })
-        .select("id")
+        .select("id, interview_type, scheduled_at")
         .single();
 
       if (error) {
         throw error;
       }
       interviewId = data.id;
-    }
-
-    // Store the proposed interview types in a custom field (you might want to create a junction table for this)
-    // For now, storing as JSON in interviewer_notes or creating a separate table would be better
-    // Let's create an interview_proposals table instead
-
-    // Create interview proposal options
-    for (const type of interviewTypes) {
-      await supabase
-        .from("interview_proposals")
-        .upsert(
-          {
-            interview_id: interviewId,
-            interview_type: type,
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: "interview_id,interview_type" }
-        );
     }
 
     // Send notification to candidate
@@ -117,12 +270,17 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     const jobTitle = (app?.job_postings as any)?.title || "the position";
 
+    const invitationTarget =
+      interviewType === "online"
+        ? `Meeting link: ${meetingLink}`
+        : `Location: ${hrOfficeAddress}`;
+
     await supabase.from("notifications").insert({
       recipient_id: application.candidate_id,
       type: "interview_scheduled",
       title: "Interview Invitation 🎉",
-      body: `You've been invited for an interview for ${jobTitle}. Please respond with your preferred interview format.`,
-      action_url: `/interviews/respond/${applicationId}`,
+      body: `Your interview for ${jobTitle} is scheduled. ${invitationTarget}`,
+      action_url: `/interviews`,
     });
 
     // Update application status
@@ -134,7 +292,11 @@ export async function scheduleInterviewProposal(formData: FormData) {
     revalidatePath(`/jobs/manage/${jobId}/applicants`);
     revalidatePath(`/applications/${applicationId}`);
 
-    return { success: true, interviewId };
+    return {
+      success: true,
+      interviewId,
+      payload,
+    };
   } catch (error) {
     console.error("Interview scheduling error:", error);
     return {

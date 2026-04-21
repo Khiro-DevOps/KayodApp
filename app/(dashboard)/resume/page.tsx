@@ -27,14 +27,25 @@ export default async function ResumePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const rawUser = user as { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> };
+  const authRole = (rawUser.user_metadata?.role ?? rawUser.raw_user_meta_data?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, address, city, country, created_at, updated_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  const authPhone = getAuthPhone(user as {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>});
+  const authPhone = getAuthPhone(rawUser);
+
+  if (profile && (!profile.phone || profile.phone.trim().length === 0) && authPhone.trim().length > 0) {
+    await supabase
+      .from("profiles")
+      .update({ phone: authPhone.trim() })
+      .eq("id", user.id);
+
+    profile.phone = authPhone.trim();
+  }
+
   const normalizedProfile: Profile | null = profile
     ? {
         ...profile,

@@ -13,7 +13,7 @@ export default async function HRApplicationsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles").select("role").eq("id", user.id).single<Pick<Profile, "role">>();
 
@@ -112,6 +112,7 @@ export default async function HRApplicationsPage() {
 
                 return (
                   <Link
+                    key={app.id}
                     href={`/applications/${app.id}`}
                     className="block rounded-2xl bg-surface border border-border p-4 space-y-3 hover:border-primary hover:shadow-md transition-all"
                   >

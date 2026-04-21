@@ -16,7 +16,7 @@ export default async function ApplicationDetailPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -38,6 +38,10 @@ export default async function ApplicationDetailPage({
       cover_letter,
       match_score,
       hr_notes,
+      hr_offered_modes,
+      hr_office_address,
+      selected_mode,
+      selected_mode_set_at,
       submitted_at,
       updated_at,
       profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),

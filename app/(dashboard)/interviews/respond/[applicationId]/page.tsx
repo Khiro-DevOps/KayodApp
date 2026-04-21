@@ -6,6 +6,22 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { RespondClient } from "./respond-client";
+import type { InterviewType } from "@/lib/types";
+
+type RespondJob = {
+  id: string;
+  title: string;
+  description: string;
+  requirements?: string | null;
+  location?: string | null;
+  is_remote: boolean;
+  employment_type: string;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  currency: string;
+  required_skills?: string[] | null;
+  departments?: { name: string }[] | null;
+};
 
 export default async function InterviewRespondPage({
   params,
@@ -27,6 +43,10 @@ export default async function InterviewRespondPage({
       interview_preference,
       interview_preference_set_at,
       interview_qualified_at,
+      hr_offered_modes,
+      hr_office_address,
+      selected_mode,
+      selected_mode_set_at,
       candidate_id,
       job_postings (
         id,
@@ -59,15 +79,23 @@ export default async function InterviewRespondPage({
     redirect("/applications");
   }
 
-  const job = application.job_postings as Record<string, unknown>;
+  const job = (application.job_postings as RespondJob[] | null)?.[0];
+  if (!job) notFound();
+
+  const offeredModes =
+    (application.hr_offered_modes as InterviewType[] | null)?.filter(
+      (mode): mode is InterviewType => mode === "online" || mode === "in_person"
+    ) ?? ["online", "in_person"];
 
   return (
     <PageContainer>
       <RespondClient
         applicationId={applicationId}
-        job={job}
-        existingPreference={application.interview_preference ?? null}
-        preferenceSetAt={application.interview_preference_set_at ?? null}
+        job={{ ...job, departments: job.departments?.[0] ?? null }}
+        offeredModes={offeredModes}
+        hrOfficeAddress={application.hr_office_address ?? null}
+        existingPreference={(application.selected_mode ?? application.interview_preference) ?? null}
+        preferenceSetAt={(application.selected_mode_set_at ?? application.interview_preference_set_at) ?? null}
       />
     </PageContainer>
   );

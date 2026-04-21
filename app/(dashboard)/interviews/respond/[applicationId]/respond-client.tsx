@@ -3,34 +3,49 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { InterviewType } from "@/lib/types";
 
 interface Job {
   id: string;
   title: string;
   description: string;
-  requirements?: string;
-  location?: string;
+  requirements?: string | null;
+  location?: string | null;
   is_remote: boolean;
   employment_type: string;
-  salary_min?: number;
-  salary_max?: number;
+  salary_min?: number | null;
+  salary_max?: number | null;
   currency: string;
-  required_skills?: string[];
+  required_skills?: string[] | null;
   departments?: { name: string } | null;
 }
 
 interface Props {
   applicationId: string;
   job: Job;
-  existingPreference: "online" | "in_person" | null;
+  offeredModes: InterviewType[];
+  hrOfficeAddress: string | null;
+  existingPreference: InterviewType | null;
   preferenceSetAt: string | null;
 }
 
-export function RespondClient({ applicationId, job, existingPreference, preferenceSetAt }: Props) {
-  const [selected, setSelected] = useState<"online" | "in_person" | null>(existingPreference);
+export function RespondClient({
+  applicationId,
+  job,
+  offeredModes,
+  hrOfficeAddress,
+  existingPreference,
+  preferenceSetAt,
+}: Props) {
+  const initialMode =
+    existingPreference && offeredModes.includes(existingPreference)
+      ? existingPreference
+      : offeredModes[0] ?? null;
+
+  const [selected, setSelected] = useState<InterviewType | null>(initialMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState(!!existingPreference);
+  const [confirmed, setConfirmed] = useState(Boolean(existingPreference));
 
   async function handleConfirm() {
     if (!selected) return;
@@ -41,7 +56,7 @@ export function RespondClient({ applicationId, job, existingPreference, preferen
       const res = await fetch("/api/interviews/set-preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId, preference: selected }),
+        body: JSON.stringify({ applicationId, selectedMode: selected }),
       });
 
       if (!res.ok) {
@@ -168,54 +183,69 @@ export function RespondClient({ applicationId, job, existingPreference, preferen
           <div>
             <p className="text-sm font-semibold text-text-primary">Choose your interview format</p>
             <p className="text-xs text-text-secondary mt-0.5">
-              Let us know which format works best for you. The HR team will schedule accordingly.
+              HR has enabled the options below. Select the format you prefer and we&apos;ll schedule based on your choice.
             </p>
           </div>
 
+          {offeredModes.length === 0 && (
+            <p className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+              Interview format options are not configured yet. Please check back later.
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             {/* Online option */}
-            <button
-              onClick={() => setSelected("online")}
-              className={`rounded-2xl border-2 p-4 text-left transition-all ${
-                selected === "online"
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-gray-50 hover:border-primary/40"
-              }`}
-            >
-              <div className="text-2xl mb-2">💻</div>
-              <p className="text-sm font-semibold text-text-primary">Online</p>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Video call via our built-in meeting room. Join from anywhere.
-              </p>
-              {selected === "online" && (
-                <div className="mt-2 flex items-center gap-1">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span className="text-xs font-medium text-primary">Selected</span>
-                </div>
-              )}
-            </button>
+            {offeredModes.includes("online") && (
+              <button
+                onClick={() => setSelected("online")}
+                className={`rounded-2xl border-2 p-4 text-left transition-all ${
+                  selected === "online"
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-gray-50 hover:border-primary/40"
+                }`}
+              >
+                <div className="text-2xl mb-2">💻</div>
+                <p className="text-sm font-semibold text-text-primary">Online</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Video call via our built-in meeting room. Join from anywhere.
+                </p>
+                {selected === "online" && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="text-xs font-medium text-primary">Selected</span>
+                  </div>
+                )}
+              </button>
+            )}
 
             {/* In-person option */}
-            <button
-              onClick={() => setSelected("in_person")}
-              className={`rounded-2xl border-2 p-4 text-left transition-all ${
-                selected === "in_person"
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-gray-50 hover:border-primary/40"
-              }`}
-            >
-              <div className="text-2xl mb-2">🏢</div>
-              <p className="text-sm font-semibold text-text-primary">In-Person</p>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Visit our office. Address details will be included in the invite.
-              </p>
-              {selected === "in_person" && (
-                <div className="mt-2 flex items-center gap-1">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span className="text-xs font-medium text-primary">Selected</span>
-                </div>
-              )}
-            </button>
+            {offeredModes.includes("in_person") && (
+              <button
+                onClick={() => setSelected("in_person")}
+                className={`rounded-2xl border-2 p-4 text-left transition-all ${
+                  selected === "in_person"
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-gray-50 hover:border-primary/40"
+                }`}
+              >
+                <div className="text-2xl mb-2">🏢</div>
+                <p className="text-sm font-semibold text-text-primary">In-Person</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Visit our office. Address details will be included in the invite.
+                </p>
+                {hrOfficeAddress && (
+                  <p className="mt-2 rounded-lg bg-gray-100 px-2 py-1 text-[11px] text-text-secondary">
+                    Default address: {hrOfficeAddress}
+                  </p>
+                )}
+                {selected === "in_person" && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="text-xs font-medium text-primary">Selected</span>
+                  </div>
+                )}
+              </button>
+            )}
           </div>
 
           {error && (
@@ -226,7 +256,7 @@ export function RespondClient({ applicationId, job, existingPreference, preferen
 
           <button
             onClick={handleConfirm}
-            disabled={!selected || loading}
+            disabled={!selected || loading || offeredModes.length === 0}
             className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Saving..." : "Confirm Preference"}

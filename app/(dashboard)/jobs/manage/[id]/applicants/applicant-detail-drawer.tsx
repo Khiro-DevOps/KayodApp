@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Application } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 
@@ -9,6 +9,7 @@ interface ApplicantDetailDrawerProps {
   jobId: string;
   isOpen: boolean;
   onClose: () => void;
+  onScheduled?: () => void;
 }
 
 export default function ApplicantDetailDrawer({
@@ -16,8 +17,32 @@ export default function ApplicantDetailDrawer({
   jobId,
   isOpen,
   onClose,
+  onScheduled,
 }: ApplicantDetailDrawerProps) {
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+
+  const closeScheduleForm = useCallback(() => {
+    setShowScheduleForm(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowScheduleForm(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!showScheduleForm) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeScheduleForm();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showScheduleForm, closeScheduleForm]);
 
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
@@ -28,12 +53,12 @@ export default function ApplicantDetailDrawer({
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/50 z-[70]"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-surface border-l border-border z-50 flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-surface border-l border-border z-[80] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border">
           <div>
@@ -158,34 +183,67 @@ export default function ApplicantDetailDrawer({
 
         {/* Footer - Action Buttons */}
         <div className="border-t border-border p-6 space-y-3">
-          {showScheduleForm ? (
-            <InterviewSchedulingForm
-              applicationId={application.id}
-              jobId={jobId}
-              onSuccess={() => {
-                setShowScheduleForm(false);
-                onClose();
-              }}
-              onCancel={() => setShowScheduleForm(false)}
-            />
-          ) : (
-            <>
-              <button
-                onClick={() => setShowScheduleForm(true)}
-                className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors"
-              >
-                Schedule Interview
-              </button>
-              <button
-                onClick={onClose}
-                className="w-full border border-border text-text-primary py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => setShowScheduleForm(true)}
+            className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors"
+          >
+            Schedule Interview
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full border border-border text-text-primary py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
+
+      {showScheduleForm && (
+        <>
+          <div
+            className="fixed inset-0 z-[90] bg-black/50"
+            onClick={closeScheduleForm}
+            aria-hidden="true"
+          />
+          <div
+            className="fixed inset-0 z-[91] grid place-items-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Schedule interview"
+          >
+            <div
+              className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <h3 className="text-base font-semibold text-text-primary">Schedule Interview</h3>
+                <button
+                  type="button"
+                  onClick={closeScheduleForm}
+                  className="text-text-secondary hover:text-text-primary"
+                  aria-label="Close scheduling dialog"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="max-h-[calc(100dvh-7rem)] overflow-y-auto p-5">
+                <InterviewSchedulingForm
+                  applicationId={application.id}
+                  jobId={jobId}
+                  onSuccess={() => {
+                    closeScheduleForm();
+                    onScheduled?.();
+                    onClose();
+                  }}
+                  onCancel={closeScheduleForm}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

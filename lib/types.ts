@@ -99,6 +99,7 @@ export interface Profile {
   phone: string | null;
   avatar_url: string | null;
   date_of_birth: string | null;
+  age: number | null;
   address: string | null;
   city: string | null;
   country: string;
@@ -208,6 +209,13 @@ export interface Application {
   cover_letter: string | null;
   match_score: number | null;
   hr_notes: string | null;
+  interview_preference?: InterviewType | null;
+  interview_preference_set_at?: string | null;
+  interview_qualified_at?: string | null;
+  hr_offered_modes?: InterviewType[] | null;
+  hr_office_address?: string | null;
+  selected_mode?: InterviewType | null;
+  selected_mode_set_at?: string | null;
   submitted_at: string;
   updated_at: string;
   // Joined
@@ -225,6 +233,9 @@ export interface Interview {
   application_id: string;
   scheduled_by: string;
   interview_type: InterviewType;
+  available_modes?: InterviewType[] | null;
+  location_details?: string | null;
+  applicant_selection?: InterviewType | null;
   status: InterviewStatus;
   scheduled_at: string;
   duration_minutes: number;
