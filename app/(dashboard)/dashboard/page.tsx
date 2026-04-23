@@ -24,7 +24,10 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+  const authFirstName = (user.user_metadata?.first_name ?? rawMetadata.first_name) as string | undefined;
+  const authLastName = (user.user_metadata?.last_name ?? rawMetadata.last_name) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
@@ -134,7 +137,9 @@ export default async function DashboardPage() {
     stats = { applications: appCount ?? 0, interviews: interviewCount ?? 0 };
   }
 
+  const metadataName = `${authFirstName?.trim() || ""} ${authLastName?.trim() || ""}`.trim();
   const greetingName = `${profile?.first_name?.trim() || ''} ${profile?.last_name?.trim() || ''}`.trim()
+    || metadataName
     || profile?.email?.split("@")[0]
     || "there";
 

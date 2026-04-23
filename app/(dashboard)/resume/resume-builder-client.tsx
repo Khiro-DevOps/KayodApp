@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import type { Resume, Profile } from "@/lib/types";
 import ResumeUploadClient from "./resume-upload-client";
+import { createClient } from "@/lib/supabase/client";
 
 interface ResumeBuilderClientProps {
   resumes: Resume[];
@@ -24,12 +24,73 @@ interface FormData {
   certifications: string;
 }
 
+type ProfileApiResponse = {
+  profile?: Partial<Profile> | null;
+};
+
+function normalizeName(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function formatHandleAsName(value: string): string {
+  return value
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveFullName(profileLike: Partial<Profile> | null, userLike?: { email?: string | null; user_metadata?: unknown; raw_user_meta_data?: unknown }): string {
+  const firstName = normalizeName(profileLike?.first_name);
+  const lastName = normalizeName(profileLike?.last_name);
+  const profileFullName = `${firstName} ${lastName}`.trim();
+  if (profileFullName) return profileFullName;
+
+  const metadata = (userLike?.user_metadata ?? {}) as Record<string, unknown>;
+  const rawMetadata = (userLike?.raw_user_meta_data ?? {}) as Record<string, unknown>;
+
+  const metadataFirstName = normalizeName(metadata.first_name ?? rawMetadata.first_name);
+  const metadataLastName = normalizeName(metadata.last_name ?? rawMetadata.last_name);
+  const metadataName = `${metadataFirstName} ${metadataLastName}`.trim();
+  if (metadataName) return metadataName;
+
+  const fullName = normalizeName(metadata.full_name ?? rawMetadata.full_name ?? metadata.name ?? rawMetadata.name);
+  if (fullName) return fullName;
+
+  const emailLocalPart = (userLike?.email ?? "").split("@")[0] ?? "";
+  return formatHandleAsName(emailLocalPart);
+}
+
+function derivePhone(profileLike: Partial<Profile> | null, userLike?: { user_metadata?: unknown; raw_user_meta_data?: unknown }): string {
+  const profileRecord = (profileLike ?? {}) as Record<string, unknown>;
+  const profilePhone = profileRecord.phone;
+  const profilePhoneNumber = profileRecord.phone_number;
+
+  if (typeof profilePhone === "string" && profilePhone.trim().length > 0) return profilePhone.trim();
+  if (typeof profilePhoneNumber === "string" && profilePhoneNumber.trim().length > 0) return profilePhoneNumber.trim();
+
+  const metadata = (userLike?.user_metadata ?? {}) as Record<string, unknown>;
+  const rawMetadata = (userLike?.raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authPhone = metadata.phone ?? metadata.phone_number ?? rawMetadata.phone ?? rawMetadata.phone_number;
+
+  return typeof authPhone === "string" ? authPhone.trim() : "";
+}
+
+function buildLocation(profileLike: Partial<Profile> | null): string {
+  const city = normalizeName(profileLike?.city);
+  const country = normalizeName(profileLike?.country);
+  if (city && country) return `${city}, ${country}`;
+  return normalizeName(profileLike?.address);
+}
+
 export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderClientProps) {
   const router = useRouter();
+  const supabase = createClient();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [personalInfoDirty, setPersonalInfoDirty] = useState(false);
 
   const resolvedPhone = (() => {
     const profileRecord = (profile ?? {}) as Record<string, unknown>;
@@ -41,17 +102,13 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
     return "";
   })();
 
-  // Initialize form data with profile information
+  // Initialize form data with server-provided profile as immediate fallback.
   const getInitialFormData = (): FormData => ({
     resumeName: "",
-    fullName: profile?.first_name && profile?.last_name 
-      ? `${profile.first_name} ${profile.last_name}` 
-      : "",
+    fullName: deriveFullName(profile),
     email: profile?.email || "",
-    phone: resolvedPhone,
-    location: profile?.city && profile?.country 
-      ? `${profile.city}, ${profile.country}` 
-      : profile?.address || "",
+    phone: derivePhone(profile),
+    location: buildLocation(profile),
     summary: "",
     experience: "",
     education: "",
@@ -62,22 +119,74 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
   const [formData, setFormData] = useState<FormData>(getInitialFormData());
 
   useEffect(() => {
-    setFormData((current) => {
-      const hasStartedTyping =
-        current.fullName.trim().length > 0 ||
-        current.email.trim().length > 0 ||
-        current.phone.trim().length > 0 ||
-        current.location.trim().length > 0;
+    let isMounted = true;
 
-      if (hasStartedTyping) {
-        return current;
+    const hydratePersonalInfo = async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData.user as {
+        email?: string | null;
+        user_metadata?: unknown;
+        raw_user_meta_data?: unknown;
+      } | null;
+
+      if (!isMounted || !user) return;
+
+      const sessionEmail = user.email?.trim() ?? "";
+
+      let fetchedProfile: Partial<Profile> | null = null;
+      try {
+        const response = await fetch("/api/profile", { cache: "no-store" });
+        if (response.ok) {
+          const payload = (await response.json()) as ProfileApiResponse;
+          fetchedProfile = (payload.profile ?? null) as Partial<Profile> | null;
+        }
+      } catch {
+        // Keep server-provided fallback values if profile fetch fails.
       }
 
-      return getInitialFormData();
-    });
+      if (!isMounted) return;
+
+      const mergedProfile = (fetchedProfile ?? profile) as Partial<Profile> | null;
+      const nextFullName = deriveFullName(mergedProfile, user);
+      const nextEmail = normalizeName(mergedProfile?.email) || sessionEmail;
+      const nextPhone = derivePhone(mergedProfile, user);
+      const nextLocation = buildLocation(mergedProfile);
+
+      setFormData((current) => {
+        if (personalInfoDirty) return current;
+
+        return {
+          ...current,
+          fullName: nextFullName || current.fullName,
+          email: nextEmail || current.email,
+          phone: nextPhone || current.phone,
+          location: nextLocation || current.location,
+        };
+      });
+    };
+
+    void hydratePersonalInfo();
+
+    return () => {
+      isMounted = false;
+    };
   }, [profile?.id, profile?.first_name, profile?.last_name, profile?.email, resolvedPhone, profile?.city, profile?.country, profile?.address]);
 
+  useEffect(() => {
+    const handleGenerateFromSidebar = () => {
+      formRef.current?.requestSubmit();
+    };
+
+    window.addEventListener("resume:generate-request", handleGenerateFromSidebar);
+    return () => {
+      window.removeEventListener("resume:generate-request", handleGenerateFromSidebar);
+    };
+  }, []);
+
   const handleChange = (field: keyof FormData, value: string) => {
+    if (field === "fullName" || field === "email" || field === "phone" || field === "location") {
+      setPersonalInfoDirty(true);
+    }
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -101,8 +210,12 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
       if (response.ok) {
         const data = await response.json();
-        
-        if (data.previewUrl) {
+
+        if (data.pdfUrl) {
+          setPreviewUrl(data.pdfUrl);
+          setShowPreview(true);
+          window.open(data.pdfUrl, "_blank", "noopener,noreferrer");
+        } else if (data.previewUrl) {
           setPreviewUrl(data.previewUrl);
           setShowPreview(true);
         }
@@ -138,7 +251,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
   return (
     <div className="space-y-3">
       {/* Form Section */}
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-surface border border-border p-6">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-surface border border-border p-6">
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-3">
                 <p className="text-sm text-red-700">{error}</p>
@@ -332,12 +445,10 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
             {previewUrl && (
               <div className="border border-border rounded-xl overflow-hidden bg-gray-50">
-                <Image
+                <iframe
                   src={previewUrl}
-                  alt="Resume preview"
-                  width={800}
-                  height={1000}
-                  className="w-full h-auto"
+                  className="w-full h-[70vh]"
+                  title="Generated resume preview"
                 />
               </div>
             )}

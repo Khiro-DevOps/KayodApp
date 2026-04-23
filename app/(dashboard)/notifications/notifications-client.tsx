@@ -77,16 +77,16 @@ export default function NotificationsClient({
                       : "text-text-primary font-medium"
                   }`}
                 >
-                  {notif.message}
+                  {notif.body}
                 </p>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-text-secondary">
                     {timeAgo(notif.created_at)}
                   </p>
                   <div className="flex items-center gap-3">
-                    {notif.related_application_id && (
+                    {notif.action_url && (
                       <Link
-                        href="/applications"
+                        href={notif.action_url}
                         className="text-xs font-medium text-primary hover:underline"
                       >
                         View

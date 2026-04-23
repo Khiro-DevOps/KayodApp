@@ -19,12 +19,11 @@ export async function submitApplication(formData: FormData) {
   }
 
   // Verify job exists and is published
-  const { data: job } = await supabase
-    .from("job_postings")
-    .select("id, title")
-    .eq("id", jobId)
-    .eq("is_published", true)
-    .single();
+  // Example: Fetching applicants for the current company
+  const { data, count } = await supabase
+    .from('applications')
+    .select('*, job_postings!inner(tenant_id)') // The !inner makes it filter by the join
+    .eq('job_postings.tenant_id', your_tenant_id);
 
   if (!job) {
     redirect(`/jobs/${jobId}/apply?error=Job+not+found`);
@@ -42,6 +41,17 @@ export async function submitApplication(formData: FormData) {
     redirect(`/jobs/${jobId}?already_applied=true`);
   }
 
+  const { data: selectedResume } = await supabase
+    .from("resumes")
+    .select("id, candidate_id, pdf_url")
+    .eq("id", resumeId)
+    .eq("candidate_id", user.id)
+    .maybeSingle();
+
+  if (!selectedResume) {
+    redirect(`/jobs/${jobId}/apply?error=Selected+resume+not+found`);
+  }
+
   // Create application
   const { error } = await supabase
     .from("applications")
@@ -49,6 +59,7 @@ export async function submitApplication(formData: FormData) {
       candidate_id: user.id,
       job_posting_id: jobId,
       resume_id: resumeId,
+      resume_url: selectedResume.pdf_url,
       cover_letter: coverLetter || null,
       status: "submitted",
     });

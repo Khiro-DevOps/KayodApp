@@ -7,14 +7,41 @@ type Props = {
   profile: Profile | null;
 };
 
+function calculateAgeFromBirthdate(value: string): string {
+  if (!value) return "";
+
+  const birthdate = new Date(value);
+  if (Number.isNaN(birthdate.getTime())) return "";
+
+  const today = new Date();
+  let age = today.getFullYear() - birthdate.getFullYear();
+  const monthDiff = today.getMonth() - birthdate.getMonth();
+  const dayDiff = today.getDate() - birthdate.getDate();
+
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+
+  if (age < 0 || age > 120) return "";
+  return String(age);
+}
+
 export default function ProfileDetailsForm({ profile }: Props) {
-  const [age, setAge] = useState(profile?.age?.toString() ?? "");
+  const [age, setAge] = useState(() => {
+    if (profile?.date_of_birth) return calculateAgeFromBirthdate(profile.date_of_birth);
+    return "";
+  });
   const [dateOfBirth, setDateOfBirth] = useState(profile?.date_of_birth ?? "");
   const [address, setAddress] = useState(profile?.address ?? "");
   const [city, setCity] = useState(profile?.city ?? "");
   const [country, setCountry] = useState(profile?.country ?? "Philippines");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [message, setMessage] = useState("");
+
+  function onBirthdateChange(value: string) {
+    setDateOfBirth(value);
+    setAge(calculateAgeFromBirthdate(value));
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,8 +55,8 @@ export default function ProfileDetailsForm({ profile }: Props) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          age,
-          date_of_birth: dateOfBirth,
+          // Removed `age` — not a DB column, derived from date_of_birth
+          date_of_birth: dateOfBirth || null,
           address,
           city,
           country,
@@ -58,6 +85,19 @@ export default function ProfileDetailsForm({ profile }: Props) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1">
+          <label htmlFor="profile-date-of-birth" className="text-xs text-text-secondary">
+            Birthdate
+          </label>
+          <input
+            id="profile-date-of-birth"
+            type="date"
+            value={dateOfBirth}
+            onChange={(event) => onBirthdateChange(event.target.value)}
+            className="w-full rounded-xl border border-border px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+
+        <div className="space-y-1">
           <label htmlFor="profile-age" className="text-xs text-text-secondary">
             Age
           </label>
@@ -67,20 +107,7 @@ export default function ProfileDetailsForm({ profile }: Props) {
             min={0}
             max={120}
             value={age}
-            onChange={(event) => setAge(event.target.value)}
-            className="w-full rounded-xl border border-border px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="profile-date-of-birth" className="text-xs text-text-secondary">
-            Birthdate
-          </label>
-          <input
-            id="profile-date-of-birth"
-            type="date"
-            value={dateOfBirth}
-            onChange={(event) => setDateOfBirth(event.target.value)}
+            readOnly
             className="w-full rounded-xl border border-border px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>

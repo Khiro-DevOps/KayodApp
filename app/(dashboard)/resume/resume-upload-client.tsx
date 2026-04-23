@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { Resume } from "@/lib/types";
-import { deleteResume } from "./actions";
+import { deleteResume } from "./delete-resume"; 
 
 export default function ResumeUploadClient({ resumes }: { resumes: Resume[] }) {
   const [uploading, setUploading] = useState(false);

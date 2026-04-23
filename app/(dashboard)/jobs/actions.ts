@@ -28,98 +28,40 @@ async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user
 
 export async function createJob(formData: FormData) {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  if (!(await verifyHR(supabase, user))) redirect("/dashboard");
-
-  // Ensure profile has correct role for RLS policy
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  console.log("Profile check:", { userId: user.id, profile, profileError });
-
-  if (profileError) {
-    console.error("Profile fetch error:", profileError);
-    redirect("/dashboard?error=ProfileNotFound");
-  }
-
-  if (!profile || !["hr_manager", "admin"].includes(profile.role)) {
-    console.error("Invalid role for job creation:", { userId: user.id, currentRole: profile?.role });
-    redirect(`/dashboard?error=InvalidRole:${profile?.role || "none"}`);
-  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !(await verifyHR(supabase, user))) redirect("/dashboard");
 
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
-  const requirements = formData.get("requirements") as string;
-  const skillsRaw = formData.get("skills") as string;
+  const work_setup = formData.get("work_setup") as string;
+  const employment_type = formData.get("employment_type") as string;
   const location = formData.get("location") as string;
   const salary_range = formData.get("salary_range") as string;
-  const industry = formData.get("industry") as string;
-  const job_category = formData.get("job_category") as string;
+  const skillsRaw = formData.get("skills") as string;
 
-  const skills = skillsRaw
-    ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean)
-    : null;
+  const skills = skillsRaw ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const salaryMin = salary_range?.includes("-") ? parseInt(salary_range.split("-")[0]) : null;
+  const salaryMax = salary_range?.includes("-") ? parseInt(salary_range.split("-")[1]) : null;
 
-  const salaryMin = salary_range && salary_range.includes("-") 
-    ? parseInt(salary_range.split("-")[0])
-    : null;
-  const salaryMax = salary_range && salary_range.includes("-")
-    ? parseInt(salary_range.split("-")[1])
-    : null;
-
-  console.log("Creating job with:", {
-    created_by: user.id,
-    title,
-    description,
-    requirements,
-    required_skills: skills,
-    location,
-    salary_min: salaryMin,
-    salary_max: salaryMax,
-  });
-
-  // Debug: Get the current session to verify auth context
-  const { data: sessionData } = await supabase.auth.getSession();
-  console.log("Session auth.uid() context:", { 
-    sessionUser: sessionData?.session?.user?.id,
-    actualUserId: user.id,
-    sessionExists: !!sessionData?.session 
-  });
-
-  // Use admin client to bypass RLS (we already verified HR role above)
   const adminClient = getAdminClient();
-  const { error, data } = await adminClient.from("job_postings").insert({
+  const { error } = await adminClient.from("job_postings").insert({
     created_by: user.id,
     title,
     description,
-    requirements: requirements || null,
-    required_skills: skills || [],
+    work_setup: work_setup || "onsite",
+    employment_type: employment_type || "full-time",
     location: location || null,
     salary_min: salaryMin,
     salary_max: salaryMax,
+    required_skills: skills,
     currency: "PHP",
-    industry: industry || null,
-    job_category: job_category || null,
     is_published: true,
     slots: 1,
-  }).select();
+  });
 
-  if (error) {
-    console.error("Job creation error:", error);
-    redirect(`/jobs/manage/new?error=${encodeURIComponent(error.message)}`);
-  }
+  if (error) redirect(`/jobs/manage/new?error=${encodeURIComponent(error.message)}`);
 
-  console.log("Job created successfully:", data);
   revalidatePath("/jobs");
-  revalidatePath("/jobs/manage");
   redirect("/jobs/manage");
 }
 

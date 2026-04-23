@@ -83,12 +83,12 @@ export default async function InterviewsPage() {
             ) : (
               <div className="space-y-2">
                 {todaysInterviews.map((interview) => {
-                  const app = interview.applications as Record<string, unknown>;
-                  const jobTitle = (app?.job_postings as Record<string, unknown>)?.title ?? "Interview";
-                  const candidate = isHR ? (app?.profiles as Record<string, unknown>) : null;
+                  const app = interview.applications;
+                  const jobTitle = app?.job_postings?.title ?? "Interview";
+                  const candidate = isHR ? app?.profiles : null;
                   const candidateName = candidate
-                    ? `${(candidate.first_name as string) ?? ""} ${(candidate.last_name as string) ?? ""}`
-                    : "You&apos;ve";
+                    ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim()
+                    : "You've";
 
                   return (
                     <div key={interview.id} className="rounded-xl bg-gray-50 p-3">

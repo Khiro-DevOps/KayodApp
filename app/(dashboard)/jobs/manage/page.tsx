@@ -15,8 +15,9 @@ export default async function ManageJobsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
   const authRole =
-    (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+    (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")

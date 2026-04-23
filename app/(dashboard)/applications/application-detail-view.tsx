@@ -14,6 +14,24 @@ interface ApplicationDetailViewProps {
   isCurrentUser: boolean;
 }
 
+function normalizeName(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function deriveDisplayName(candidate: {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+} | null | undefined): string {
+  const firstName = normalizeName(candidate?.first_name);
+  const lastName = normalizeName(candidate?.last_name);
+  const fullName = `${firstName} ${lastName}`.trim();
+  if (fullName) return fullName;
+
+  const emailHandle = normalizeName((candidate?.email ?? "").split("@")[0]).replace(/[._-]+/g, " ").trim();
+  return emailHandle || "Unknown Applicant";
+}
+
 export default function ApplicationDetailView({
   application,
   interviews,
@@ -27,6 +45,7 @@ export default function ApplicationDetailView({
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
   const job = application?.job_postings as any;
+  const candidateName = deriveDisplayName(candidate);
 
   const handleStatusUpdate = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -41,13 +60,13 @@ export default function ApplicationDetailView({
             {candidate?.avatar_url && (
               <img
                 src={candidate.avatar_url}
-                alt={candidate.first_name}
+                alt={candidateName}
                 className="w-12 h-12 rounded-full object-cover"
               />
             )}
             <div>
               <h1 className="text-2xl font-bold text-text-primary">
-                {candidate?.first_name} {candidate?.last_name}
+                {candidateName}
               </h1>
               <p className="text-sm text-text-secondary">{job?.title}</p>
             </div>
@@ -104,7 +123,7 @@ export default function ApplicationDetailView({
 
           {/* Resume Viewer */}
           {resume && (
-            <ResumeViewer resume={resume} candidateName={`${candidate?.first_name} ${candidate?.last_name}`} />
+            <ResumeViewer resume={resume} candidateName={candidateName} />
           )}
 
           {/* Interview Timeline */}

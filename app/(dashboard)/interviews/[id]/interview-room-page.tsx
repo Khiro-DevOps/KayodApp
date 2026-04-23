@@ -18,15 +18,15 @@ interface Interview {
   location_address: string | null;
   location_notes: string | null;
   applications: {
-    candidate_id: string;
-    job_postings: {
-      title: string;
-    };
-    profiles: {
-      first_name: string;
-      last_name: string;
-    };
-  };
+    candidate_id?: string;
+    job_postings?: {
+      title?: string;
+    } | null;
+    profiles?: {
+      first_name?: string;
+      last_name?: string;
+    } | null;
+  } | null;
 }
 
 interface Props {
@@ -110,10 +110,12 @@ export default function InterviewRoomPage({ interviewId }: Props) {
     );
   }
 
-  const app = interview.applications as Record<string, unknown>;
+  const app = interview.applications;
   const jobTitle = app?.job_postings?.title ?? "Interview";
   const candidate = app?.profiles;
-  const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : "Candidate";
+  const candidateName = candidate
+    ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() || "Candidate"
+    : "Candidate";
   const scheduledDate = new Date(interview.scheduled_at);
   const now = new Date();
   const minutesUntil = Math.floor((scheduledDate.getTime() - now.getTime()) / 60000);

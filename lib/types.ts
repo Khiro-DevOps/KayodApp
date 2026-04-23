@@ -68,11 +68,13 @@ export type NotificationType =
   | "schedule_published"
   | "general";
 
+export type WorkSetup = "onsite" | "remote" | "hybrid";
+
 export type EmploymentType =
-  | "full_time"
-  | "part_time"
+  | "full-time"
+  | "part-time"
   | "contract"
-  | "intern";
+  | "internship";
 
 export type EmploymentStatus =
   | "active"
@@ -152,11 +154,13 @@ export interface JobPosting {
   id: string;
   department_id: string | null;
   created_by: string;
+  tenant_id: string;
   title: string;
   description: string;
   requirements: string | null;
   responsibilities: string | null;
   location: string | null;
+  work_setup: WorkSetup;
   is_remote: boolean;
   industry: string | null;
   job_category: string | null;
@@ -179,11 +183,14 @@ export interface JobPosting {
 // Legacy job listing shape used by older job management/tailor pages.
 export interface JobListing {
   id: string;
+  tenant_id: string;
   title: string;
   description: string;
   requirements: string | null;
   skills: string[] | null;
   location: string | null;
+  work_setup: WorkSetup;
+  employment_type: EmploymentType;
   salary_range: string | null;
   status: string;
   employers?: { company_name: string } | null;

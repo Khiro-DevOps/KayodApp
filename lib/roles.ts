@@ -15,7 +15,8 @@ export function normalizeRole(value?: string | null): UserRole | null {
 }
 
 export function effectiveRole(profileRole?: string | null, authRole?: string | null): UserRole {
-  return normalizeRole(authRole) ?? normalizeRole(profileRole) ?? "candidate";
+  // Profile role takes priority — it's the source of truth after sign-up
+  return normalizeRole(profileRole) ?? normalizeRole(authRole) ?? "candidate";
 }
 
 export function isHRRole(value?: string | null): boolean {
