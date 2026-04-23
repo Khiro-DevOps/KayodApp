@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
-import { assignShift } from "./actions";
+import { assignShift } from "./hr-schedules-actions";
 
 function getWeekDates(weekStart: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => {

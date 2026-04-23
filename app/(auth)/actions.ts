@@ -36,129 +36,65 @@ function formatPhilippinesPhone(value: string) {
 }
 
 export async function register(formData: FormData) {
-  const supabase = await createClient();
-  const admin = getAdminClient();
-  const email     = formData.get("email") as string;
-  const password  = formData.get("password") as string;
+  const supabase = await createServerActionClient({ cookies });
+
+  // 1. Extract form data
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const role = formData.get("role") as string; // 'candidate' or 'hr_manager'
   const firstName = formData.get("first_name") as string;
-  const lastName  = formData.get("last_name") as string;
-  const dateOfBirthInput = (formData.get("date_of_birth") as string) || "";
-  const ageInput = (formData.get("age") as string) || "";
-  const address = (formData.get("address") as string) || "";
-  const city = (formData.get("city") as string) || "";
-  const country = ((formData.get("country") as string) || "Philippines").trim();
-  const rawPhone  = formData.get("phone") as string;
-  const role      = (formData.get("role") as string) || "candidate";
-  const phone     = formatPhilippinesPhone(rawPhone);
-  const dateOfBirth = dateOfBirthInput.trim();
-  const ageText = ageInput.trim();
-  const age = Number(ageText);
-  const normalizedAddress = address.trim();
-  const normalizedCity = city.trim();
+  const lastName = formData.get("last_name") as string;
+  const phone = formData.get("phone") as string;
+  const dob = formData.get("date_of_birth") as string;
+  const age = formData.get("age") as string;
+  const address = formData.get("address") as string;
+  const city = formData.get("city") as string;
+  const country = formData.get("country") as string;
+  const companyName = formData.get("company_name") as string;
 
-  // Server-side validation
-  if (
-    !email ||
-    !password ||
-    !firstName ||
-    !lastName ||
-    !rawPhone ||
-    !dateOfBirth ||
-    !ageText ||
-    !normalizedAddress ||
-    !normalizedCity ||
-    !country
-  ) {
-    redirect(`/register?error=${encodeURIComponent("All fields are required")}`);
+  let tenantId = null;
+
+  // 2. If HR, create the Tenant (Company) first
+  if (role === "hr_manager" && companyName) {
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
+      .insert({ name: companyName })
+      .select('id')
+      .single();
+
+    if (tenantError) {
+      return redirect(`/register?error=${encodeURIComponent("Failed to create company record.")}`);
+    }
+    tenantId = tenant.id;
   }
 
-  if (password.length < 6) {
-    redirect(`/register?error=${encodeURIComponent("Password must be at least 6 characters")}`);
-  }
-
-  const validRoles = ["candidate", "hr_manager"];
-  if (!validRoles.includes(role)) {
-    redirect(`/register?error=${encodeURIComponent("Invalid role selected")}`);
-  }
-
-  const digitsOnly = rawPhone.replace(/\D/g, "");
-  const validPhoneLength =
-    digitsOnly.length === 10 ||
-    digitsOnly.length === 11 ||
-    (digitsOnly.length === 12 && digitsOnly.startsWith("63"));
-
-  if (!validPhoneLength || phone.length === 0) {
-    redirect(`/register?error=${encodeURIComponent("Enter a valid Philippine phone number")}`);
-  }
-
-  if (!Number.isInteger(age) || age < 0 || age > 120) {
-    redirect(`/register?error=${encodeURIComponent("Age must be a whole number between 0 and 120")}`);
-  }
-
-  const birthdate = new Date(dateOfBirth);
-  if (Number.isNaN(birthdate.getTime())) {
-    redirect(`/register?error=${encodeURIComponent("Enter a valid birthdate")}`);
-  }
-
-  const today = new Date();
-  let computedAge = today.getUTCFullYear() - birthdate.getUTCFullYear();
-  const monthDiff = today.getUTCMonth() - birthdate.getUTCMonth();
-  const dayDiff = today.getUTCDate() - birthdate.getUTCDate();
-  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-    computedAge -= 1;
-  }
-
-  if (Math.abs(computedAge - age) > 1) {
-    redirect(`/register?error=${encodeURIComponent("Age does not match birthdate")}`);
-  }
-
-  const { data, error } = await supabase.auth.signUp({
+  // 3. Sign up the Auth user
+  // This triggers your 'handle_new_user' function in Postgres
+  const { error: signUpError } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
         first_name: firstName,
-        last_name:  lastName,
-        phone:      phone,
-        role:       role,
-        age,
-        date_of_birth: dateOfBirth,
-        address: normalizedAddress,
-        city: normalizedCity,
-        country,
+        last_name: lastName,
+        phone: phone,
+        role: role,
+        date_of_birth: dob,
+        age: age,
+        address: address,
+        city: city,
+        country: country,
+        tenant_id: tenantId, // Passed to metadata for the SQL trigger
       },
     },
   });
 
-  if (error) redirect(`/register?error=${encodeURIComponent(error.message)}`);
-
-  // Ensure profiles row has phone/name/role even if DB trigger is outdated or missing.
-  if (data.user?.id) {
-    const { error: profileSyncError } = await admin
-      .from("profiles")
-      .upsert(
-        {
-          id: data.user.id,
-          email,
-          first_name: firstName,
-          last_name: lastName,
-          phone,
-          role,
-          age,
-          date_of_birth: dateOfBirth,
-          address: normalizedAddress,
-          city: normalizedCity,
-          country,
-        },
-        { onConflict: "id" }
-      );
-
-    if (profileSyncError) {
-      redirect(`/register?error=${encodeURIComponent(profileSyncError.message)}`);
-    }
+  if (signUpError) {
+    return redirect(`/register?error=${encodeURIComponent(signUpError.message)}`);
   }
 
-  redirect("/dashboard");
+  // 4. Success! Redirect to dashboard or verification page
+  return redirect("/dashboard");
 }
 
 export async function logout() {

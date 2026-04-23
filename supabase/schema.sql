@@ -1163,14 +1163,61 @@ create policy "notifs_update" on notifications for update using (recipient_id = 
 
 
 -- ============================================================
--- STORAGE BUCKETS
--- Run in Supabase Dashboard > Storage after applying SQL
--- (These are API calls, not SQL — listed here as reference)
+-- STORAGE RLS POLICIES
 -- ============================================================
--- Bucket: resumes      (private) — PDF exports of AI resumes
--- Bucket: payslips     (private) — PDF payslips per employee
--- Bucket: avatars      (public)  — profile photos
--- Bucket: attachments  (private) — onboarding docs, offer letters
+-- NOTE: Avoid ALTER TABLE on storage.objects in migrations.
+-- Supabase-managed ownership can cause "must be owner of table objects".
+
+-- resumes bucket: users can only manage files inside their own folder
+-- expected object path format: <auth.uid()>/<filename>
+drop policy if exists "resumes_bucket_select_own" on storage.objects;
+create policy "resumes_bucket_select_own"
+  on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'resumes'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "resumes_bucket_insert_own" on storage.objects;
+create policy "resumes_bucket_insert_own"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'resumes'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "resumes_bucket_update_own" on storage.objects;
+create policy "resumes_bucket_update_own"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'resumes'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'resumes'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "resumes_bucket_delete_own" on storage.objects;
+create policy "resumes_bucket_delete_own"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'resumes'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Other buckets in this project:
+-- payslips     (private) — PDF payslips per employee
+-- avatars      (public)  — profile photos
+-- attachments  (private) — onboarding docs, offer letters
 
 
 -- ============================================================

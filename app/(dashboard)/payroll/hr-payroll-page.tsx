@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile, PayrollPeriod } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
-import { createPayrollPeriod, generatePayslips, approvePayroll } from "./actions";
+import { createPayrollPeriod, generatePayslips, approvePayroll } from "./hr-payroll-actions";
 
 export default async function PayrollPage() {
   const supabase = await createClient();
@@ -56,7 +56,7 @@ export default async function PayrollPage() {
                           Net pay: <span className="font-semibold text-green-700">₱{Number(slip.net_pay).toLocaleString()}</span>
                         </p>
                       </div>
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[slip.status]}`}>
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[slip.status as keyof typeof PAYROLL_STATUS_COLORS]}`}>
                         {slip.status}
                       </span>
                     </div>

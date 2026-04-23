@@ -74,7 +74,7 @@ export async function updateApplicationStatus(formData: FormData) {
           start_date:        new Date().toISOString().split("T")[0],
           base_salary:       0,
           employment_status: "active",
-          employment_type:   "full_time",
+          employment_type:   "full-time",
           pay_frequency:     "monthly",
         });
         // Update profile role to employee

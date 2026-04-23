@@ -227,7 +227,22 @@ function RegisterForm() {
             Enter 11 digits (e.g. 09123456789) and it will format to +63 912 345 6789.
           </p>
         </div>
-
+        {/* Company Name - Only for HR */}
+          {role === "hr_manager" && (
+            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+              <label htmlFor="company_name" className="text-sm font-medium text-text-primary">
+                Company Name
+              </label>
+              <input
+                id="company_name"
+                name="company_name"
+                type="text"
+                required={role === "hr_manager"}
+                placeholder="e.g. Acme Corp"
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          )}
         {/* Email */}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium text-text-primary">

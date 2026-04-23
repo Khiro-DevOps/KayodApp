@@ -138,9 +138,9 @@ export default function ApplicantsListClient({
                         minute: "2-digit",
                       })}
                     </p>
-                    {interview.candidate_interview_type_preference && (
+                    {interview.applicant_selection && (
                       <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                        {interview.candidate_interview_type_preference === "online" ? "📹 Online" : "🏢 In-Person"}
+                        {interview.applicant_selection === "online" ? "📹 Online" : "🏢 In-Person"}
                       </span>
                     )}
                   </div>

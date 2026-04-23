@@ -4,6 +4,8 @@ import PageContainer from "@/components/ui/page-container";
 import type { Resume, Profile } from "@/lib/types";
 import Link from "next/link";
 import ResumeBuilderClient from "./resume-builder-client";
+import GenerateResumeTrigger from "./generate-resume-trigger";
+import ResumeListClient from "./resume-list-client";
 import { effectiveRole, isCandidateRole } from "@/lib/roles";
 
 function getAuthPhone(user: { user_metadata?: unknown; raw_user_meta_data?: unknown }) {
@@ -31,7 +33,7 @@ export default async function ResumePage() {
   const authRole = (rawUser.user_metadata?.role ?? rawUser.raw_user_meta_data?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, address, city, country, created_at, updated_at")
+    .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, age, address, city, country, created_at, updated_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -49,6 +51,7 @@ export default async function ResumePage() {
   const normalizedProfile: Profile | null = profile
     ? {
         ...profile,
+        age: profile.age ?? null,
         phone: profile.phone && profile.phone.trim().length > 0 ? profile.phone : authPhone || null,
       }
     : null;
@@ -70,28 +73,13 @@ export default async function ResumePage() {
       <div className="w-80 shrink-0">
         <div className="sticky top-4 space-y-4">
           <div className="rounded-2xl bg-surface border border-border p-4">
+            <div className="mb-4">
+              <GenerateResumeTrigger />
+            </div>
             <h2 className="text-sm font-semibold text-text-primary mb-3">
               Your Resumes ({resumes?.length ?? 0})
             </h2>
-            {!resumes || resumes.length === 0 ? (
-              <p className="text-xs text-text-secondary">No resumes yet</p>
-            ) : (
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {resumes.map((resume) => (
-                  <div
-                    key={resume.id}
-                    className="rounded-xl border-2 border-border bg-surface p-3 hover:border-primary/30"
-                  >
-                    <p className="truncate text-sm font-medium text-text-primary">
-                      {resume.title || "Untitled Resume"}
-                    </p>
-                    <p className="text-xs text-text-secondary">
-                      {new Date(resume.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <ResumeListClient resumes={resumes || []} />
           </div>
         </div>
       </div>

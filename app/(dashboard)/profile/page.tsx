@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { logout } from "@/app/(auth)/actions";
 import PageContainer from "@/components/ui/page-container";
@@ -6,6 +7,22 @@ import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, roleLabel, isCandidateRole } from "@/lib/roles";
 import ProfileDetailsForm from "./profile-details-form";
+
+function normalizeName(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function deriveMetadataName(metadata: Record<string, unknown>, rawMetadata: Record<string, unknown>, email?: string | null): string {
+  const firstName = normalizeName(metadata.first_name ?? rawMetadata.first_name);
+  const lastName = normalizeName(metadata.last_name ?? rawMetadata.last_name);
+  const combined = `${firstName} ${lastName}`.trim();
+  if (combined) return combined;
+
+  const fullName = normalizeName(metadata.full_name ?? rawMetadata.full_name ?? metadata.name ?? rawMetadata.name);
+  if (fullName) return fullName;
+
+  return normalizeName((email ?? "").split("@")[0]).replace(/[._-]+/g, " ") || "";
+}
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -18,14 +35,69 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .single<Profile>();
+    .maybeSingle<Profile>();
 
-  const effective = effectiveRole(profile?.role, authRole);
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const authPhone = ((user.user_metadata?.phone ?? rawMetadata.phone) as string | undefined) ?? "";
+  const { firstName: derivedFirstName, lastName: derivedLastName } = (() => {
+    const first = normalizeName(metadata.first_name ?? rawMetadata.first_name);
+    const last = normalizeName(metadata.last_name ?? rawMetadata.last_name);
+    if (first || last) return { firstName: first, lastName: last };
+
+    const fullName = normalizeName(metadata.full_name ?? rawMetadata.full_name ?? metadata.name ?? rawMetadata.name);
+    if (fullName) {
+      const [firstFromFull, ...rest] = fullName.split(/\s+/);
+      return {
+        firstName: firstFromFull ?? "",
+        lastName: rest.join(" "),
+      };
+    }
+
+    const fallback = normalizeName((user.email ?? "").split("@")[0]).replace(/[._-]+/g, " ").trim();
+    return {
+      firstName: fallback || "User",
+      lastName: "",
+    };
+  })();
+
+  let resolvedProfile = profile;
+  try {
+    const currentFirst = normalizeName(profile?.first_name);
+    const currentLast = normalizeName(profile?.last_name);
+    const shouldSync = (derivedFirstName || derivedLastName) && (currentFirst !== derivedFirstName || currentLast !== derivedLastName);
+
+    if (profile?.id && shouldSync) {
+      const admin = getAdminClient();
+      const { error: updateError } = await admin
+        .from("profiles")
+        .update({ first_name: derivedFirstName, last_name: derivedLastName })
+        .eq("id", profile.id);
+
+      if (!updateError) {
+        resolvedProfile = {
+          ...profile,
+          first_name: derivedFirstName,
+          last_name: derivedLastName,
+        };
+      }
+    }
+  } catch {
+    // Non-blocking: page still renders with fallback name.
+  }
+
+  const displayEmail = profile?.email || user.email || "No email";
+  const profileName = `${resolvedProfile?.first_name?.trim() || ""} ${resolvedProfile?.last_name?.trim() || ""}`.trim();
+  const metadataName = deriveMetadataName(metadata, rawMetadata, user.email);
+  const displayName = profileName || metadataName || displayEmail.split("@")[0] || "Unknown User";
+  const displayPhone = resolvedProfile?.phone || authPhone || "No phone number";
+
+  const effective = effectiveRole(resolvedProfile?.role, authRole);
 
   return (
     <PageContainer>
@@ -38,19 +110,29 @@ export default async function ProfilePage() {
         <div className="rounded-2xl bg-surface border border-border p-4 space-y-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-lg">
-              {profile?.first_name?.charAt(0)?.toUpperCase() || "?"}
+              {displayName.charAt(0).toUpperCase() || "?"}
             </div>
             <div className="flex-1">
               <p className="font-medium text-text-primary">
-                {profile?.first_name && profile?.last_name
-                  ? `${profile.first_name} ${profile.last_name}`
-                  : profile?.email}
+                {displayName}
               </p>
-              <p className="text-sm text-text-secondary">{profile?.email}</p>
+              <p className="text-sm text-text-secondary">{displayEmail}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-2">
+            <div className="rounded-xl bg-background p-3">
+              <p className="text-xs text-text-secondary">Name</p>
+              <p className="text-sm font-medium text-text-primary">{displayName}</p>
+            </div>
+            <div className="rounded-xl bg-background p-3">
+              <p className="text-xs text-text-secondary">Email</p>
+              <p className="text-sm font-medium text-text-primary">{displayEmail}</p>
+            </div>
+            <div className="rounded-xl bg-background p-3">
+              <p className="text-xs text-text-secondary">Phone Number</p>
+              <p className="text-sm font-medium text-text-primary">{displayPhone}</p>
+            </div>
             <div className="rounded-xl bg-background p-3">
               <p className="text-xs text-text-secondary">Account Type</p>
               <p className="text-sm font-medium text-text-primary capitalize">
@@ -60,7 +142,7 @@ export default async function ProfilePage() {
           </div>
         </div>
 
-        <ProfileDetailsForm profile={profile ?? null} />
+        <ProfileDetailsForm profile={resolvedProfile ?? null} />
 
         {/* Role-specific links */}
         {isCandidateRole(effective) && (
