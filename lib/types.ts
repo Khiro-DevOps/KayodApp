@@ -425,6 +425,23 @@ export interface Notification {
 }
 
 // ============================================================
+// TIME LOGS (Punch In/Out)
+// ============================================================
+
+export type PunchType = "in" | "out";
+
+export interface TimeLog {
+  id: string;
+  employee_id: string;
+  punch_type: PunchType;
+  punched_at: string;
+  location_data: { lat: number; lng: number; accuracy: number } | null;
+  total_hours: number | null;
+  paired_log_id: string | null;
+  created_at: string;
+}
+
+// ============================================================
 // HELPER TYPES
 // ============================================================
 
