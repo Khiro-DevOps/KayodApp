@@ -1,7 +1,3 @@
-// ============================================================
-// SAVE THIS FILE AS: app/(dashboard)/payroll/page.tsx
-// ============================================================
-
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";

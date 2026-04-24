@@ -4,6 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import type { InterviewType, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole } from "@/lib/roles";
+import EmployeeDashboardPage from "./employee-dashboard-page";
 
 interface CandidateUpcomingInterview {
   id: string;
@@ -25,9 +26,10 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+  const authRole      = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
   const authFirstName = (user.user_metadata?.first_name ?? rawMetadata.first_name) as string | undefined;
-  const authLastName = (user.user_metadata?.last_name ?? rawMetadata.last_name) as string | undefined;
+  const authLastName  = (user.user_metadata?.last_name ?? rawMetadata.last_name) as string | undefined;
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
@@ -35,6 +37,13 @@ export default async function DashboardPage() {
     .single<Profile>();
 
   const role = effectiveRole(profile?.role, authRole);
+
+  // ── Employee → dedicated calendar dashboard ──────────────
+  if (role === "employee") {
+    return <EmployeeDashboardPage />;
+  }
+
+  // ── HR / Admin ────────────────────────────────────────────
   let stats: Record<string, number> = {};
   let upcomingInterview: CandidateUpcomingInterview | null = null;
   let pendingPreference: CandidatePreferencePrompt | null = null;
@@ -54,37 +63,25 @@ export default async function DashboardPage() {
       supabase.from("leave_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
     ]);
     stats = {
-      jobs: jobCount ?? 0,
-      applicants: applicantCount ?? 0,
-      interviews: interviewCount ?? 0,
-      employees: employeeCount ?? 0,
+      jobs:         jobCount ?? 0,
+      applicants:   applicantCount ?? 0,
+      interviews:   interviewCount ?? 0,
+      employees:    employeeCount ?? 0,
       pendingLeaves: leaveCount ?? 0,
     };
-  } else if (role === "employee") {
-    const { data: employee } = await supabase
-      .from("employees").select("id").eq("profile_id", user.id).single();
-    if (employee) {
-      const [{ count: leaveCount }, { count: payslipCount }] = await Promise.all([
-        supabase.from("leave_requests").select("*", { count: "exact", head: true }).eq("employee_id", employee.id).eq("status", "pending"),
-        supabase.from("payslips").select("*", { count: "exact", head: true }).eq("employee_id", employee.id).eq("status", "paid"),
-      ]);
-      stats = { pendingLeaves: leaveCount ?? 0, payslips: payslipCount ?? 0 };
-    }
   } else {
-    const [{ count: appCount }, { count: interviewCount }, { data: nextInterview }, { data: pendingPreferenceApps }] = await Promise.all([
+    // ── Candidate ─────────────────────────────────────────
+    const [
+      { count: appCount },
+      { count: interviewCount },
+      { data: nextInterview },
+      { data: pendingPreferenceApps },
+    ] = await Promise.all([
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id),
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id).eq("status", "interview_scheduled"),
       supabase
         .from("interviews")
-        .select(`
-          id,
-          scheduled_at,
-          interview_type,
-          applications!inner (
-            candidate_id,
-            job_postings ( title )
-          )
-        `)
+        .select(`id, scheduled_at, interview_type, applications!inner(candidate_id, job_postings(title))`)
         .eq("applications.candidate_id", user.id)
         .in("status", ["scheduled", "confirmed", "rescheduled"])
         .gte("scheduled_at", new Date().toISOString())
@@ -93,13 +90,7 @@ export default async function DashboardPage() {
         .maybeSingle(),
       supabase
         .from("applications")
-        .select(`
-          id,
-          status,
-          selected_mode,
-          hr_offered_modes,
-          job_postings ( title )
-        `)
+        .select(`id, status, selected_mode, hr_offered_modes, job_postings(title)`)
         .eq("candidate_id", user.id)
         .in("status", ["shortlisted", "under_review", "interview_scheduled"])
         .is("selected_mode", null)
@@ -107,29 +98,27 @@ export default async function DashboardPage() {
     ]);
 
     if (nextInterview) {
-      const nextInterviewApp = nextInterview.applications as unknown as {
-        job_postings?: { title?: string }[];
-      };
+      const app = nextInterview.applications as unknown as { job_postings?: { title?: string }[] };
       upcomingInterview = {
-        id: nextInterview.id,
-        scheduled_at: nextInterview.scheduled_at,
+        id:             nextInterview.id,
+        scheduled_at:   nextInterview.scheduled_at,
         interview_type: nextInterview.interview_type,
-        job_title: nextInterviewApp?.job_postings?.[0]?.title ?? "Interview",
+        job_title:      app?.job_postings?.[0]?.title ?? "Interview",
       };
     }
 
-    const firstPendingPreference = (pendingPreferenceApps ?? []).find((app) => {
+    const firstPending = (pendingPreferenceApps ?? []).find((app) => {
       const modes = (app.hr_offered_modes as InterviewType[] | null) ?? [];
       return modes.length > 0;
     });
 
-    if (firstPendingPreference) {
-      const pendingAppJob = firstPendingPreference.job_postings as unknown as { title?: string }[];
+    if (firstPending) {
+      const job = firstPending.job_postings as unknown as { title?: string }[];
       pendingPreference = {
-        application_id: firstPendingPreference.id,
-        job_title: pendingAppJob?.[0]?.title ?? "this role",
-        offered_modes: ((firstPendingPreference.hr_offered_modes as InterviewType[] | null) ?? []).filter(
-          (mode): mode is InterviewType => mode === "online" || mode === "in_person"
+        application_id: firstPending.id,
+        job_title:      job?.[0]?.title ?? "this role",
+        offered_modes:  ((firstPending.hr_offered_modes as InterviewType[] | null) ?? []).filter(
+          (m): m is InterviewType => m === "online" || m === "in_person"
         ),
       };
     }
@@ -138,10 +127,11 @@ export default async function DashboardPage() {
   }
 
   const metadataName = `${authFirstName?.trim() || ""} ${authLastName?.trim() || ""}`.trim();
-  const greetingName = `${profile?.first_name?.trim() || ''} ${profile?.last_name?.trim() || ''}`.trim()
-    || metadataName
-    || profile?.email?.split("@")[0]
-    || "there";
+  const greetingName =
+    `${profile?.first_name?.trim() || ""} ${profile?.last_name?.trim() || ""}`.trim() ||
+    metadataName ||
+    profile?.email?.split("@")[0] ||
+    "there";
 
   return (
     <PageContainer>
@@ -153,14 +143,11 @@ export default async function DashboardPage() {
           <p className="text-sm text-text-secondary mt-1">
             {role === "hr_manager" || role === "admin"
               ? "Manage your team, jobs, and payroll"
-              : role === "employee"
-              ? "View your schedule, leaves, and payslips"
               : "Find your next opportunity"}
           </p>
         </div>
 
         {(role === "hr_manager" || role === "admin") && <HRDashboard stats={stats} />}
-        {role === "employee" && <EmployeeDashboard stats={stats} />}
         {role === "candidate" && (
           <CandidateDashboard
             stats={stats}
@@ -173,18 +160,22 @@ export default async function DashboardPage() {
   );
 }
 
+// ── HR Dashboard ─────────────────────────────────────────────
+
 function HRDashboard({ stats }: { stats: Record<string, number> }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Active Jobs" value={String(stats.jobs ?? 0)} color="blue" />
-        <SummaryCard label="Total Applicants" value={String(stats.applicants ?? 0)} color="purple" />
-        <SummaryCard label="Interviews Scheduled" value={String(stats.interviews ?? 0)} color="amber" />
-        <SummaryCard label="Active Employees" value={String(stats.employees ?? 0)} color="green" />
+        <SummaryCard label="Active Jobs"           value={String(stats.jobs ?? 0)}       color="blue"   />
+        <SummaryCard label="Total Applicants"      value={String(stats.applicants ?? 0)}  color="purple" />
+        <SummaryCard label="Interviews Scheduled"  value={String(stats.interviews ?? 0)}  color="amber"  />
+        <SummaryCard label="Active Employees"      value={String(stats.employees ?? 0)}   color="green"  />
       </div>
-
       {(stats.pendingLeaves ?? 0) > 0 && (
-        <Link href="/leaves" className="flex items-center justify-between rounded-2xl bg-yellow-50 border border-yellow-200 p-4">
+        <Link
+          href="/leaves"
+          className="flex items-center justify-between rounded-2xl bg-yellow-50 border border-yellow-200 p-4"
+        >
           <div>
             <p className="text-sm font-medium text-yellow-800">Pending leave requests</p>
             <p className="text-xs text-yellow-600 mt-0.5">Tap to review and approve</p>
@@ -194,53 +185,35 @@ function HRDashboard({ stats }: { stats: Record<string, number> }) {
           </span>
         </Link>
       )}
-
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
-        <QuickLink href="/applications" label="Review applicants" />
+        <QuickLink href="/applications"      label="Review applicants" />
         <QuickLink href="/interviews/schedule" label="Schedule an interview" />
-        <QuickLink href="/interviews" label="View all interviews" />
-        <QuickLink href="/jobs/manage/new" label="Post a new job" />
+        <QuickLink href="/interviews"         label="View all interviews" />
+        <QuickLink href="/jobs/manage/new"    label="Post a new job" />
       </div>
     </div>
   );
 }
 
-function EmployeeDashboard({ stats }: { stats: Record<string, number> }) {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Pending Leaves" value={String(stats.pendingLeaves ?? 0)} color="amber" />
-        <SummaryCard label="Payslips" value={String(stats.payslips ?? 0)} color="green" />
-      </div>
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
-        <QuickLink href="/schedules" label="View my schedule" />
-        <QuickLink href="/leaves" label="File a leave request" />
-        <QuickLink href="/payroll" label="View my payslips" />
-      </div>
-    </div>
-  );
-}
+// ── Candidate Dashboard ───────────────────────────────────────
 
 function CandidateDashboard({
-  stats,
-  upcomingInterview,
-  pendingPreference,
+  stats, upcomingInterview, pendingPreference,
 }: {
   stats: Record<string, number>;
   upcomingInterview: CandidateUpcomingInterview | null;
   pendingPreference: CandidatePreferencePrompt | null;
 }) {
-  const offeredModeLabels = (pendingPreference?.offered_modes ?? []).map((mode) =>
-    mode === "online" ? "Online" : "In-Person"
+  const offeredModeLabels = (pendingPreference?.offered_modes ?? []).map((m) =>
+    m === "online" ? "Online" : "In-Person"
   );
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Applications" value={String(stats.applications ?? 0)} color="blue" />
-        <SummaryCard label="Interviews" value={String(stats.interviews ?? 0)} color="purple" />
+        <SummaryCard label="Applications" value={String(stats.applications ?? 0)} color="blue"   />
+        <SummaryCard label="Interviews"   value={String(stats.interviews ?? 0)}   color="purple" />
       </div>
 
       {upcomingInterview && (
@@ -250,12 +223,10 @@ function CandidateDashboard({
         >
           <p className="text-sm font-semibold text-blue-800">Upcoming Interview</p>
           <p className="mt-1 text-sm text-blue-700">
-            {upcomingInterview.job_title} · {new Date(upcomingInterview.scheduled_at).toLocaleString("en-PH", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
+            {upcomingInterview.job_title} ·{" "}
+            {new Date(upcomingInterview.scheduled_at).toLocaleString("en-PH", {
+              month: "short", day: "numeric", year: "numeric",
+              hour: "numeric", minute: "2-digit",
             })}
           </p>
           <p className="mt-1 text-xs text-blue-700">
@@ -279,17 +250,20 @@ function CandidateDashboard({
 
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
-        <QuickLink href="/jobs" label="Browse jobs" />
-        <QuickLink href="/resume" label="Manage my resume" />
+        <QuickLink href="/jobs"         label="Browse jobs" />
+        <QuickLink href="/resume"       label="Manage my resume" />
         <QuickLink href="/applications" label="Track my applications" />
-        <QuickLink href="/interviews" label="My interviews" />
+        <QuickLink href="/interviews"   label="My interviews" />
       </div>
     </div>
   );
 }
 
+// ── Shared components ─────────────────────────────────────────
+
 function SummaryCard({ label, value, color = "blue" }: {
-  label: string; value: string;
+  label: string;
+  value: string;
   color?: "blue" | "green" | "purple" | "amber" | "red";
 }) {
   const colors = {
