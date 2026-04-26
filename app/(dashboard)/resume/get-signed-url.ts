@@ -1,4 +1,3 @@
-// app/(dashboard)/resume/get-signed-url.ts
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
@@ -32,10 +31,6 @@ export async function getResumeSignedUrl(
   } else {
     filePath = `${user.id}/${resumeId}.pdf`;
   }
-
-  console.log('[DEBUG] pdf_url from DB:', resume.pdf_url);
-  console.log('[DEBUG] filePath passed to createSignedUrl:', filePath);
-  console.log('[DEBUG] bucket:', resumeBucketName);
 
   const { data, error } = await supabase.storage
     .from(resumeBucketName)
