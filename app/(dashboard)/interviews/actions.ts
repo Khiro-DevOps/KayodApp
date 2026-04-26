@@ -28,33 +28,10 @@ export async function scheduleInterview(formData: FormData) {
   let videoRoomUrl  = null;
   let videoRoomName = null;
 
-  // Create Daily.co room for online interviews
-  if (interviewType === "online" && process.env.DAILY_API_KEY) {
-    try {
-      const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
-      const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          name: roomName,
-          properties: {
-            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // expires in 24h
-            enable_chat: true,
-            enable_screenshare: true,
-          },
-        }),
-      });
-      if (dailyRes.ok) {
-        const room = await dailyRes.json();
-        videoRoomUrl  = room.url;
-        videoRoomName = room.name;
-      }
-    } catch {
-      // If Daily.co fails, continue without video room
-    }
+  // Jitsi Room Generation (No API call needed)
+  if (interviewType === "online") {
+    videoRoomName = `kayod-${applicationId.slice(0, 8)}-${Date.now()}`;
+    videoRoomUrl  = `https://meet.jit.si/${videoRoomName}`;
   }
 
   const { error } = await supabase.from("interviews").insert({
@@ -68,18 +45,15 @@ export async function scheduleInterview(formData: FormData) {
     location_notes:   locationNotes || null,
     video_room_url:   videoRoomUrl,
     video_room_name:  videoRoomName,
-    video_provider:   interviewType === "online" ? "daily.co" : null,
+    video_provider:   interviewType === "online" ? "jitsi" : null,
   });
 
   if (error) redirect(`/interviews?error=${encodeURIComponent(error.message)}`);
 
-  // Update application status
   await supabase
     .from("applications")
     .update({ status: "interview_scheduled" })
     .eq("id", applicationId);
-
-  // Notification is auto-fired by DB trigger
 
   revalidatePath("/interviews");
   revalidatePath("/applications");
@@ -96,20 +70,7 @@ export async function cancelInterview(formData: FormData) {
   const interviewId = formData.get("interview_id") as string;
   if (!interviewId) redirect("/interviews");
 
-  // Delete Daily.co room if exists
-  const { data: interview } = await supabase
-    .from("interviews")
-    .select("video_room_name")
-    .eq("id", interviewId)
-    .single();
-
-  if (interview?.video_room_name && process.env.DAILY_API_KEY) {
-    await fetch(`https://api.daily.co/v1/rooms/${interview.video_room_name}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${process.env.DAILY_API_KEY}` },
-    }).catch(() => {});
-  }
-
+  // Jitsi rooms don't need to be deleted via API call.
   await supabase
     .from("interviews")
     .update({ status: "cancelled" })
@@ -129,15 +90,9 @@ export async function updateInterviewPreference(formData: FormData) {
 
   if (!interviewId || !interviewType) redirect("/interviews");
 
-  // Verify the user is the candidate for this interview
   const { data: interview } = await supabase
     .from("interviews")
-    .select(`
-      id,
-      applications (
-        candidate_id
-      )
-    `)
+    .select(`id, applications ( candidate_id )`)
     .eq("id", interviewId)
     .single();
 
@@ -149,33 +104,9 @@ export async function updateInterviewPreference(formData: FormData) {
   let videoRoomUrl = null;
   let videoRoomName = null;
 
-  // Create Daily.co room for online interviews
-  if (interviewType === "online" && process.env.DAILY_API_KEY) {
-    try {
-      const roomName = `kayod-interview-${interviewId.slice(0, 8)}-${Date.now()}`;
-      const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          name: roomName,
-          properties: {
-            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
-            enable_chat: true,
-            enable_screenshare: true,
-          },
-        }),
-      });
-      if (dailyRes.ok) {
-        const room = await dailyRes.json();
-        videoRoomUrl = room.url;
-        videoRoomName = room.name;
-      }
-    } catch {
-      // If Daily.co fails, continue without video room
-    }
+  if (interviewType === "online") {
+    videoRoomName = `kayod-${interviewId.slice(0, 8)}-${Date.now()}`;
+    videoRoomUrl = `https://meet.jit.si/${videoRoomName}`;
   }
 
   const { error } = await supabase
@@ -184,7 +115,7 @@ export async function updateInterviewPreference(formData: FormData) {
       interview_type: interviewType,
       video_room_url: videoRoomUrl,
       video_room_name: videoRoomName,
-      video_provider: interviewType === "online" ? "daily.co" : null,
+      video_provider: interviewType === "online" ? "jitsi" : null,
     })
     .eq("id", interviewId);
 

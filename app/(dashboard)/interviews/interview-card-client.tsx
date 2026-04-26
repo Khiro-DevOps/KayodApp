@@ -2,7 +2,11 @@
 
 import { Interview } from "@/lib/types";
 import { updateInterviewPreference } from "./actions";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
+import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
+import { createClient } from "@/lib/supabase/client";
 
 interface InterviewCardClientProps {
   interview: Interview;
@@ -11,15 +15,30 @@ interface InterviewCardClientProps {
   showTypeSelection?: boolean;
 }
 
+type NotesStep = "idle" | "notepad" | "done";
+
 export function InterviewCardClient({
   interview,
   isHR,
   past = false,
   showTypeSelection = false,
 }: InterviewCardClientProps) {
+  const router = useRouter();
   const [isSelecting, setIsSelecting] = useState(false);
+  const [showRoom, setShowRoom] = useState(false);
+  const [notesStep, setNotesStep] = useState<NotesStep>("idle");
+  const [saving, setSaving] = useState(false);
+
+  // Notepad fields
+  const [score, setScore] = useState<number | "">("");
+  const [strengths, setStrengths] = useState("");
+  const [concerns, setConcerns] = useState("");
+  const [cultureFit, setCultureFit] = useState("");
+  const [recommendation, setRecommendation] = useState("");
+  const [generalNotes, setGeneralNotes] = useState("");
 
   const app = interview.applications as unknown as {
+    id?: string;
     profiles?: { first_name: string; last_name: string; email: string };
     job_postings?: { title: string };
   };
@@ -29,6 +48,27 @@ export function InterviewCardClient({
     : "Candidate";
   const jobTitle = app?.job_postings?.title ?? "Position";
   const scheduledDate = new Date(interview.scheduled_at);
+  const now = new Date();
+
+  // ── Ongoing window logic ─────────────────────────────────────────────────
+  const endTime = new Date(
+    scheduledDate.getTime() + (interview.duration_minutes ?? 60) * 60000
+  );
+  const openTime = new Date(scheduledDate.getTime() - 15 * 60000);
+  const isOngoing = now >= openTime && now < endTime;
+  const isExpired = now >= endTime;
+
+  const canJoinRoom =
+    interview.interview_type === "online" &&
+    interview.video_room_url &&
+    isOngoing &&
+    interview.status !== "cancelled" &&
+    interview.status !== "completed";
+
+  const roomName =
+    interview.video_room_name ??
+    interview.video_room_url?.split("/").pop() ??
+    `kayod-interview-${interview.id}`;
 
   const statusColors: Record<string, string> = {
     scheduled: "bg-blue-50 text-blue-700",
@@ -37,7 +77,15 @@ export function InterviewCardClient({
     cancelled: "bg-red-50 text-red-700",
     rescheduled: "bg-yellow-50 text-yellow-700",
     no_show: "bg-red-50 text-red-600",
+    ongoing: "bg-green-100 text-green-700",
   };
+
+  const displayStatus =
+    interview.status === "scheduled" && isOngoing
+      ? "ongoing"
+      : interview.status === "scheduled" && isExpired
+      ? "completed"
+      : interview.status;
 
   const handleTypeSelection = async (type: "online" | "in_person") => {
     const formData = new FormData();
@@ -46,6 +94,233 @@ export function InterviewCardClient({
     await updateInterviewPreference(formData);
   };
 
+  // ── Save notepad + put applicant on hold ─────────────────────────────────
+  async function handleSaveNotepad() {
+    setSaving(true);
+    const supabase = createClient();
+
+    try {
+      // 1. Mark interview as completed
+      await supabase
+        .from("interviews")
+        .update({ status: "completed" })
+        .eq("id", interview.id);
+
+      // 2. Save interview notes
+      const { data: userData } = await supabase.auth.getUser();
+      await supabase.from("interview_notes").upsert({
+        interview_id: interview.id,
+        application_id: app.id,
+        created_by: userData.user?.id,
+        interview_score: score === "" ? null : Number(score),
+        strengths: strengths || null,
+        concerns: concerns || null,
+        culture_fit: cultureFit || null,
+        recommendation: recommendation || null,
+        general_notes: generalNotes || null,
+      }, { onConflict: "interview_id" });
+
+      // 3. Put applicant under_review (on hold)
+      if (app.id) {
+        await supabase
+          .from("applications")
+          .update({ status: "under_review" })
+          .eq("id", app.id);
+
+        // 4. Send Notification logic moved inside handleSaveNotepad
+        const { data: appData } = await supabase
+          .from("applications")
+          .select("candidate_id, job_postings(title)")
+          .eq("id", app.id)
+          .single();
+
+        if (appData?.candidate_id) {
+          await supabase.from("notifications").insert({
+            recipient_id: appData.candidate_id,
+            type: "under_review",
+            title: "📋 Your interview has been reviewed",
+            body: `Your interview for ${(appData.job_postings as any)?.title ?? "the position"} is under review. We'll be in touch soon.`,
+            action_url: `/applications`,
+            is_read: false,
+          });
+        }
+      }
+
+      setNotesStep("done");
+      router.refresh();
+    } catch (error) {
+      console.error("Error finalizing interview:", error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Applicant leave ──────────────────────────────────────────────────────
+  const handleApplicantLeave = useCallback(() => {
+    router.push("/interviews/thank-you");
+  }, [router]);
+
+  // ── Fullscreen Jitsi — HR ────────────────────────────────────────────────
+  if (showRoom && isHR) {
+    return (
+      <div className="space-y-3">
+        <HRJitsiRoom
+          roomName={roomName}
+          displayName="HR Interviewer"
+          onClose={() => setShowRoom(false)}
+        />
+        <button
+          onClick={() => {
+            setShowRoom(false);
+            setNotesStep("notepad");
+          }}
+          className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors"
+        >
+          End Interview & Write Notes
+        </button>
+      </div>
+    );
+  }
+
+  // ── Fullscreen Jitsi — Applicant ─────────────────────────────────────────
+  if (showRoom && !isHR) {
+    return (
+      <ApplicantJitsiRoom
+        roomName={roomName}
+        userName="Applicant"
+        onLeave={handleApplicantLeave}
+      />
+    );
+  }
+
+  // ── Notepad screen ───────────────────────────────────────────────────────
+  if (notesStep === "notepad" && isHR) {
+    return (
+      <div className="rounded-2xl bg-surface border border-border p-5 space-y-4">
+        {/* Header */}
+        <div>
+          <h3 className="text-sm font-bold text-text-primary">
+            📝 Interview Notepad
+          </h3>
+          <p className="text-xs text-text-secondary mt-0.5">
+            {candidateName} · {jobTitle}
+          </p>
+          <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-2">
+            The applicant will be placed <strong>on hold</strong> for comparison with other candidates. You can send a Job Offer from the Review Board later.
+          </p>
+        </div>
+
+        {/* Score */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            Interview Score (0–100)
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={score}
+            onChange={(e) => setScore(e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder="e.g. 82"
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+
+        {/* Strengths */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            Strengths
+          </label>
+          <textarea
+            rows={2}
+            value={strengths}
+            onChange={(e) => setStrengths(e.target.value)}
+            placeholder="What stood out positively about this candidate?"
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </div>
+
+        {/* Concerns */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            Concerns
+          </label>
+          <textarea
+            rows={2}
+            value={concerns}
+            onChange={(e) => setConcerns(e.target.value)}
+            placeholder="Any red flags or areas of concern?"
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </div>
+
+        {/* Culture Fit */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            Culture Fit
+          </label>
+          <textarea
+            rows={2}
+            value={cultureFit}
+            onChange={(e) => setCultureFit(e.target.value)}
+            placeholder="How well do they align with the team and company culture?"
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </div>
+
+        {/* Recommendation */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            Recommendation
+          </label>
+          <select
+            value={recommendation}
+            onChange={(e) => setRecommendation(e.target.value)}
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Select a recommendation...</option>
+            <option value="strongly_recommend">⭐⭐⭐ Strongly Recommend</option>
+            <option value="recommend">⭐⭐ Recommend</option>
+            <option value="neutral">⭐ Neutral</option>
+            <option value="do_not_recommend">❌ Do Not Recommend</option>
+          </select>
+        </div>
+
+        {/* General Notes */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-text-secondary">
+            General Notes
+          </label>
+          <textarea
+            rows={3}
+            value={generalNotes}
+            onChange={(e) => setGeneralNotes(e.target.value)}
+            placeholder="Anything else worth noting about this interview..."
+            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => setNotesStep("idle")}
+            className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSaveNotepad}
+            disabled={saving}
+            className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save & Put on Hold"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Type selection ───────────────────────────────────────────────────────
   if (isSelecting && showTypeSelection && !past) {
     return (
       <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
@@ -54,19 +329,12 @@ export function InterviewCardClient({
             <p className="text-sm font-medium text-text-primary truncate">
               {isHR ? candidateName : jobTitle}
             </p>
-            <p className="text-xs text-text-secondary truncate">
-              Choose interview type
-            </p>
+            <p className="text-xs text-text-secondary">Choose interview type</p>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              statusColors[interview.status] ?? "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {interview.status.replace("_", " ")}
+          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[displayStatus] ?? "bg-gray-100 text-gray-600"}`}>
+            {displayStatus.replace("_", " ")}
           </span>
         </div>
-
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => handleTypeSelection("online")}
@@ -76,7 +344,6 @@ export function InterviewCardClient({
             <p className="text-sm font-medium text-text-primary">Online</p>
             <p className="text-xs text-text-secondary">Video Call</p>
           </button>
-
           <button
             onClick={() => handleTypeSelection("in_person")}
             className="rounded-xl border-2 border-border bg-surface p-4 text-center transition-colors hover:border-primary hover:bg-primary/5"
@@ -86,7 +353,6 @@ export function InterviewCardClient({
             <p className="text-xs text-text-secondary">Office Visit</p>
           </button>
         </div>
-
         <button
           onClick={() => setIsSelecting(false)}
           className="w-full rounded-lg text-sm text-text-secondary hover:text-text-primary transition-colors"
@@ -97,12 +363,10 @@ export function InterviewCardClient({
     );
   }
 
+  // ── Main card ────────────────────────────────────────────────────────────
   return (
-    <div
-      className={`rounded-2xl bg-surface border border-border p-4 space-y-3 ${
-        past ? "opacity-60" : ""
-      }`}
-    >
+    <div className={`rounded-2xl bg-surface border border-border p-4 space-y-3 ${past ? "opacity-60" : ""}`}>
+      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-text-primary truncate">
@@ -112,84 +376,65 @@ export function InterviewCardClient({
             {isHR ? jobTitle : "Interview"}
           </p>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[interview.status] ?? "bg-gray-100 text-gray-600"
-          }`}
-        >
-          {interview.status.replace("_", " ")}
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[displayStatus] ?? "bg-gray-100 text-gray-600"}`}>
+          {displayStatus === "ongoing" ? "🟢 Ongoing" : displayStatus.replace(/_/g, " ")}
         </span>
       </div>
 
+      {/* Meta */}
       <div className="flex flex-wrap gap-3 text-xs text-text-secondary">
         <span className="flex items-center gap-1">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            className="w-3.5 h-3.5"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
             <path d="M5.75 7.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM5 10.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0ZM10.25 7.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM9.5 10.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0ZM7.25 8.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Z" />
-            <path
-              fillRule="evenodd"
-              d="M4.75 1a.75.75 0 0 0-.75.75V3a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2V1.75a.75.75 0 0 0-1.5 0V3h-5V1.75A.75.75 0 0 0 4.75 1ZM3.5 7a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5Z"
-              clipRule="evenodd"
-            />
+            <path fillRule="evenodd" d="M4.75 1a.75.75 0 0 0-.75.75V3a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2V1.75a.75.75 0 0 0-1.5 0V3h-5V1.75A.75.75 0 0 0 4.75 1ZM3.5 7a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5Z" clipRule="evenodd" />
           </svg>
-          {scheduledDate.toLocaleDateString("en-PH", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
+          {scheduledDate.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
         </span>
         <span className="flex items-center gap-1">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            className="w-3.5 h-3.5"
-          >
-            <path
-              fillRule="evenodd"
-              d="M1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8Zm7.75-4.25a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h3.25a.75.75 0 0 0 0-1.5h-2.5v-3.5Z"
-              clipRule="evenodd"
-            />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+            <path fillRule="evenodd" d="M1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8Zm7.75-4.25a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h3.25a.75.75 0 0 0 0-1.5h-2.5v-3.5Z" clipRule="evenodd" />
           </svg>
-          {scheduledDate.toLocaleTimeString("en-PH", {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-          {" · "}
-          {interview.duration_minutes} min
+          {scheduledDate.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}
+          {" · "}{interview.duration_minutes} min
         </span>
-        <span
-          className={`rounded-full px-2 py-0.5 font-medium ${
-            interview.interview_type === "online"
-              ? "bg-purple-50 text-purple-700"
-              : "bg-amber-50 text-amber-700"
-          }`}
-        >
+        <span className={`rounded-full px-2 py-0.5 font-medium ${interview.interview_type === "online" ? "bg-purple-50 text-purple-700" : "bg-amber-50 text-amber-700"}`}>
           {interview.interview_type === "online" ? "Online" : "In-person"}
         </span>
       </div>
 
-      {interview.interview_type === "online" && interview.video_room_url && !past && (
-        <a
-          href={`/interviews/${interview.id}`}
-          className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="w-4 h-4"
-          >
-            <path d="M3.25 4A2.25 2.25 0 0 0 1 6.25v7.5A2.25 2.25 0 0 0 3.25 16h7.5A2.25 2.25 0 0 0 13 13.75v-7.5A2.25 2.25 0 0 0 10.75 4h-7.5ZM19 4.75a.75.75 0 0 0-1.28-.53l-3 3a.75.75 0 0 0-.22.53v4.5c0 .199.079.39.22.53l3 3a.75.75 0 0 0 1.28-.53V4.75Z" />
-          </svg>
-          Join video call
-        </a>
+      {/* Notepad saved confirmation */}
+      {notesStep === "done" && (
+        <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
+          📋 Notes saved. Applicant is on hold — visit the <strong>Review Board</strong> to compare and finalize decisions.
+        </div>
       )}
 
+      {/* Join button */}
+      {canJoinRoom && (
+        <button
+          onClick={() => setShowRoom(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path d="M3.25 4A2.25 2.25 0 0 0 1 6.25v7.5A2.25 2.25 0 0 0 3.25 16h7.5A2.25 2.25 0 0 0 13 13.75v-7.5A2.25 2.25 0 0 0 10.75 4h-7.5ZM19 4.75a.75.75 0 0 0-1.28-.53l-3 3a.75.75 0 0 0-.22.53v4.5c0 .199.079.39.22.53l3 3a.75.75 0 0 0 1.28-.53V4.75Z" />
+          </svg>
+          Join Meeting
+        </button>
+      )}
+
+      {/* Room not yet open */}
+      {interview.interview_type === "online" &&
+        interview.video_room_url &&
+        !isOngoing &&
+        !isExpired &&
+        interview.status !== "completed" &&
+        interview.status !== "cancelled" && (
+          <div className="rounded-xl bg-yellow-50 border border-yellow-200 px-3 py-2 text-xs text-yellow-800">
+            Room opens 15 minutes before the scheduled time.
+          </div>
+        )}
+
+      {/* In-person location */}
       {interview.interview_type === "in_person" && interview.location_address && (
         <p className="text-xs text-text-secondary bg-amber-50 rounded-xl px-3 py-2">
           📍 {interview.location_address}
@@ -197,6 +442,7 @@ export function InterviewCardClient({
         </p>
       )}
 
+      {/* Change type (applicant only) */}
       {showTypeSelection && !past && !isSelecting && (
         <button
           onClick={() => setIsSelecting(true)}

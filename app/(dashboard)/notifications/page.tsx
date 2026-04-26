@@ -39,6 +39,15 @@ export default async function NotificationsPage() {
     payroll_processed:          "💰",
     schedule_published:         "🗓️",
     general:                    "🔔",
+    interview_completed:        "✅",
+    under_review:               "🔍",
+    negotiating:                "📞",
+    offer_sent:                 "📨",
+    offer_accepted:             "🎉",
+    offer_declined:             "❌",
+    offer_expiring:             "⏰",
+    offer_expired:              "⏰",
+    rejected:                   "❌",
   };
 
   return (

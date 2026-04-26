@@ -1,11 +1,12 @@
 "use client";
 // app/(dashboard)/interviews/[id]/interview-room-page.tsx
-// Embedded Daily.co video room for online interviews.
-// Accessible by both the candidate and HR via the interview detail page.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
+import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
 
 interface Interview {
   id: string;
@@ -19,13 +20,8 @@ interface Interview {
   location_notes: string | null;
   applications: {
     candidate_id?: string;
-    job_postings?: {
-      title?: string;
-    } | null;
-    profiles?: {
-      first_name?: string;
-      last_name?: string;
-    } | null;
+    job_postings?: { title?: string } | null;
+    profiles?: { first_name?: string; last_name?: string } | null;
   } | null;
 }
 
@@ -34,29 +30,33 @@ interface Props {
 }
 
 export default function InterviewRoomPage({ interviewId }: Props) {
+  const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [isHR, setIsHR] = useState(false);
+  const [userName, setUserName] = useState("User");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inRoom, setInRoom] = useState(false);
+  const [activeRoom, setActiveRoom] = useState<{ name: string; user: string } | null>(null);
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get user role
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, first_name, last_name")
         .eq("id", user.id)
         .single();
 
-      setIsHR(profile?.role === "hr_manager" || profile?.role === "admin");
+      const hrRole = profile?.role === "hr_manager" || profile?.role === "admin";
+      setIsHR(hrRole);
 
-      // Fetch interview
+      // Set display name for Jitsi
+      const fullName = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+      setUserName(fullName || (hrRole ? "HR Interviewer" : "Applicant"));
+
       const { data, error: fetchError } = await supabase
         .from("interviews")
         .select(`
@@ -91,6 +91,33 @@ export default function InterviewRoomPage({ interviewId }: Props) {
     setInterview((prev) => prev ? { ...prev, status: "completed" } : prev);
   }
 
+  // useCallback prevents the Jitsi useEffect from re-firing on every render
+  const handleHRLeave = useCallback(() => {
+    setActiveRoom(null);
+  }, []);
+
+  const handleApplicantLeave = useCallback(() => {
+    router.push("/interviews/thank-you");
+  }, [router]);
+
+  // ── Jitsi fullscreen takeover ────────────────────────────────────────────
+  if (activeRoom) {
+    return isHR ? (
+      <HRJitsiRoom
+        roomName={activeRoom.name}
+        displayName={activeRoom.user}
+        onClose={handleHRLeave}
+      />
+    ) : (
+      <ApplicantJitsiRoom
+        roomName={activeRoom.name}
+        userName={activeRoom.user}
+        onLeave={handleApplicantLeave}
+      />
+    );
+  }
+
+  // ── Loading / error states ───────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -116,11 +143,17 @@ export default function InterviewRoomPage({ interviewId }: Props) {
   const candidateName = candidate
     ? `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() || "Candidate"
     : "Candidate";
+
   const scheduledDate = new Date(interview.scheduled_at);
   const now = new Date();
   const minutesUntil = Math.floor((scheduledDate.getTime() - now.getTime()) / 60000);
-  const canJoin = minutesUntil <= 15; // Allow joining 15 min early
+  const endTime = new Date(scheduledDate.getTime() + (interview.duration_minutes ?? 60) * 60000);
+  const canJoin = minutesUntil <= 15 && now < endTime && interview.status !== "cancelled";
 
+
+  const roomName = interview.video_room_url?.split("/").pop() || interview.video_room_name || "interview-room";
+
+  // ── In-person interview ──────────────────────────────────────────────────
   if (interview.interview_type === "in_person") {
     return (
       <div className="max-w-md mx-auto space-y-5">
@@ -143,7 +176,7 @@ export default function InterviewRoomPage({ interviewId }: Props) {
             <p className="text-xs text-text-secondary">Position</p>
             <p className="text-sm font-semibold text-text-primary">{jobTitle}</p>
           </div>
-          {!isHR && (
+          {isHR && (
             <div>
               <p className="text-xs text-text-secondary">Candidate</p>
               <p className="text-sm text-text-primary">{candidateName}</p>
@@ -186,10 +219,9 @@ export default function InterviewRoomPage({ interviewId }: Props) {
     );
   }
 
-  // Online interview — show video room
+  // ── Online interview — pre-join lobby ────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Back + title */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
@@ -210,7 +242,7 @@ export default function InterviewRoomPage({ interviewId }: Props) {
                 month: "short", day: "numeric",
                 hour: "numeric", minute: "2-digit",
               })}
-              {!isHR && ` • ${interview.duration_minutes} min`}
+              {" "}• {interview.duration_minutes} min
             </p>
           </div>
         </div>
@@ -226,7 +258,6 @@ export default function InterviewRoomPage({ interviewId }: Props) {
         </span>
       </div>
 
-      {/* Room not yet available */}
       {!interview.video_room_url ? (
         <div className="rounded-2xl bg-surface border border-border p-8 text-center space-y-2">
           <p className="text-sm font-semibold text-text-primary">Meeting room unavailable</p>
@@ -234,8 +265,7 @@ export default function InterviewRoomPage({ interviewId }: Props) {
             The online meeting room has not been set up yet. Please contact HR.
           </p>
         </div>
-      ) : !inRoom ? (
-        // Pre-join screen
+      ) : (
         <div className="rounded-2xl bg-surface border border-border p-6 space-y-5">
           <div className="text-center space-y-2">
             <div className="text-4xl">🎥</div>
@@ -259,58 +289,31 @@ export default function InterviewRoomPage({ interviewId }: Props) {
               </div>
             )}
             <div className="flex items-center gap-2">
+              <span>👤</span>
+              <span><strong>Joining as:</strong> {userName}</span>
+            </div>
+            <div className="flex items-center gap-2">
               <span>⏱️</span>
               <span><strong>Duration:</strong> {interview.duration_minutes} minutes</span>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            {/* External link as fallback */}
-            <a
-              href={interview.video_room_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 rounded-xl border border-border py-2 text-center text-xs font-medium text-text-secondary hover:bg-gray-50 transition-colors"
-            >
-              Open in new tab ↗
-            </a>
-            <button
-              onClick={() => setInRoom(true)}
-              disabled={!canJoin}
-              className="flex-1 rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {canJoin ? "Join Meeting" : `Opens in ${minutesUntil}m`}
-            </button>
-          </div>
-        </div>
-      ) : (
-        // In-room: embedded Daily.co iframe
-        <div className="space-y-3">
-          <div className="rounded-2xl overflow-hidden border border-border bg-black" style={{ height: "calc(100vh - 200px)", minHeight: 480 }}>
-            <iframe
-              src={interview.video_room_url}
-              allow="camera; microphone; fullscreen; speaker; display-capture"
-              className="w-full h-full border-0"
-              title="Interview Room"
-            />
-          </div>
+          <button
+            onClick={() => setActiveRoom({ name: roomName, user: userName })}
+            disabled={!canJoin}
+            className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {canJoin ? "Join Meeting" : `Opens in ${minutesUntil}m`}
+          </button>
 
-          <div className="flex gap-2">
+          {isHR && interview.status !== "completed" && (
             <button
-              onClick={() => setInRoom(false)}
-              className="flex-1 rounded-xl border border-border py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+              onClick={markCompleted}
+              className="w-full rounded-xl border border-border py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
             >
-              Leave Room
+              Mark as Completed
             </button>
-            {isHR && interview.status !== "completed" && (
-              <button
-                onClick={markCompleted}
-                className="flex-1 rounded-xl bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
-              >
-                End & Mark Complete
-              </button>
-            )}
-          </div>
+          )}
         </div>
       )}
     </div>
