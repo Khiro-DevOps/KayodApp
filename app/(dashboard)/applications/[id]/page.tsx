@@ -126,6 +126,40 @@ export default async function ApplicationDetailPage({
     redirect("/applications");
   }
 
+  // ── Generate signed resume URL server-side (private bucket requires server auth) ──
+  let signedResumeUrl: string | null = null;
+
+  const resume = application.resumes as any;
+  if (resume?.pdf_url) {
+    try {
+      const fullUrl = resume.pdf_url;
+      const match = fullUrl.match(/\/resumes\/(.+)$/);
+      let filePath = match ? match[1] : null;
+
+      if (filePath) {
+        const cleanPath = decodeURIComponent(filePath.split('?')[0]).replace(/^\/+/, '');
+        const bucketName = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME!;
+
+        console.log("SERVER: Using bucket:", bucketName);
+        console.log("SERVER: Generating signed URL for path:", cleanPath);
+
+        const resumeAdmin = getAdminClient(); // ← declare fresh here, not reusing outer 'admin'
+        const { data, error } = await resumeAdmin.storage
+          .from('resumes')
+          .createSignedUrl(cleanPath, 3600);
+
+        if (error) {
+          console.error("SERVER: Signed URL error:", error.message);
+        } else if (data?.signedUrl) {
+          console.log("SERVER: Generated URL:", data.signedUrl);
+          signedResumeUrl = data.signedUrl;
+        }
+      }
+    } catch (err) {
+      console.error("SERVER: Resume URL generation failed:", err);
+    }
+  }
+
   // Fetch interviews for this application
   const { data: interviews } = await supabase
     .from("interviews")
@@ -148,12 +182,21 @@ export default async function ApplicationDetailPage({
       video_provider,
       interviewer_notes,
       interview_score,
+      room_not_before,   
+      room_expires_at,
       created_at,
       updated_at,
       profiles ( first_name, last_name, email )
     `)
     .eq("application_id", id)
     .order("scheduled_at", { ascending: false });
+  
+    // Add after the interviews fetch:
+  const { data: jobOffer } = await supabase
+    .from("job_offers")
+    .select("*")
+    .eq("application_id", id)
+    .maybeSingle();
 
   return (
     <PageContainer>
@@ -162,7 +205,10 @@ export default async function ApplicationDetailPage({
         interviews={interviews ?? []}
         userRole={role}
         isCurrentUser={!isHR}
+        signedResumeUrl={signedResumeUrl}
+        jobOffer={jobOffer ?? null} 
       />
     </PageContainer>
   );
+  
 }

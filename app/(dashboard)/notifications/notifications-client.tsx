@@ -4,21 +4,31 @@ import type { Notification } from "@/lib/types";
 import Link from "next/link";
 import { markNotificationRead, markAllNotificationsRead } from "./actions";
 
-const typeConfig: Record<
-  string,
-  { icon: string; accent: string; bg: string }
-> = {
-  apply: { icon: "📄", accent: "text-info", bg: "bg-blue-50" },
-  shortlist: { icon: "⭐", accent: "text-warning", bg: "bg-yellow-50" },
-  interview: { icon: "📅", accent: "text-purple-600", bg: "bg-purple-50" },
-  hire: { icon: "🎉", accent: "text-success", bg: "bg-green-50" },
+const typeConfig: Record<string, { icon: string; bg: string }> = {
+  // Existing
+  apply:                      { icon: "📄", bg: "bg-blue-50"   },
+  shortlist:                  { icon: "⭐", bg: "bg-yellow-50" },
+  interview:                  { icon: "📅", bg: "bg-purple-50" },
+  hire:                       { icon: "🎉", bg: "bg-green-50"  },
+
+  // New — post-interview flow
+  interview_scheduled:        { icon: "📅", bg: "bg-purple-50" },
+  interview_completed:        { icon: "✅", bg: "bg-gray-50"   },
+  application_status_changed: { icon: "🔔", bg: "bg-blue-50"   },
+  under_review:               { icon: "🔍", bg: "bg-amber-50"  },
+  negotiating:                { icon: "📞", bg: "bg-purple-50" },
+  offer_sent:                 { icon: "📨", bg: "bg-green-50"  },
+  offer_accepted:             { icon: "🎉", bg: "bg-green-50"  },
+  offer_declined:             { icon: "❌", bg: "bg-red-50"    },
+  offer_expiring:             { icon: "⏰", bg: "bg-amber-50"  },
+  offer_expired:              { icon: "⏰", bg: "bg-gray-50"   },
+  rejected:                   { icon: "❌", bg: "bg-red-50"    },
 };
 
 function timeAgo(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -34,7 +44,13 @@ export default function NotificationsClient({
 }: {
   notifications: Notification[];
 }) {
-  if (notifications.length === 0) return null;
+  if (notifications.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border bg-surface p-8 text-center">
+        <p className="text-sm text-text-secondary">No notifications yet.</p>
+      </div>
+    );
+  }
 
   const hasUnread = notifications.some((n) => !n.is_read);
 
@@ -52,7 +68,7 @@ export default function NotificationsClient({
       )}
 
       {notifications.map((notif) => {
-        const config = typeConfig[notif.type] || typeConfig.apply;
+        const config = typeConfig[notif.type] ?? { icon: "🔔", bg: "bg-blue-50" };
 
         return (
           <div
@@ -64,19 +80,16 @@ export default function NotificationsClient({
             }`}
           >
             <div className="flex items-start gap-3">
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${config.bg}`}
-              >
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${config.bg}`}>
                 {config.icon}
               </div>
               <div className="min-w-0 flex-1 space-y-1">
-                <p
-                  className={`text-sm ${
-                    notif.is_read
-                      ? "text-text-secondary"
-                      : "text-text-primary font-medium"
-                  }`}
-                >
+                {notif.title && (
+                  <p className="text-xs font-semibold text-text-primary">
+                    {notif.title}
+                  </p>
+                )}
+                <p className={`text-sm ${notif.is_read ? "text-text-secondary" : "text-text-primary"}`}>
                   {notif.body}
                 </p>
                 <div className="flex items-center justify-between gap-2">
@@ -89,16 +102,12 @@ export default function NotificationsClient({
                         href={notif.action_url}
                         className="text-xs font-medium text-primary hover:underline"
                       >
-                        View
+                        View →
                       </Link>
                     )}
                     {!notif.is_read && (
                       <form action={markNotificationRead}>
-                        <input
-                          type="hidden"
-                          name="notification_id"
-                          value={notif.id}
-                        />
+                        <input type="hidden" name="notification_id" value={notif.id} />
                         <button
                           type="submit"
                           className="text-xs text-text-secondary hover:text-text-primary"

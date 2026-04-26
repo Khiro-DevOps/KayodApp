@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getResumeBucketName } from "@/lib/supabase/storage";
 import { NextResponse } from "next/server";
-import { generateResumeSections } from "@/lib/gemini";
+import { generateResumeSections, ResumeOutput } from "@/lib/gemini";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 interface ResumeInput {
@@ -122,8 +122,7 @@ function generateATSFriendlyResume(data: ResumeInput) {
         .filter(Boolean)
     : [];
 
-  // Create ATS-friendly plain text resume
-  const atsResume = `
+  return `
 ${data.fullName.toUpperCase()}
 ${data.location} | ${data.email} | ${data.phone}
 
@@ -140,32 +139,30 @@ SKILLS
 ${skillsArray.join(" | ")}
 ${certificationsArray.length > 0 ? `\nCERTIFICATIONS\n${certificationsArray.join(" | ")}` : ""}
 `.trim();
-
-  return atsResume;
 }
 
-function generateATSFriendlyResumeFromAi(
-  data: ResumeInput,
-  generated: {
-    professional_summary: string;
-    experience_points: string[];
-    education_points: string[];
-    skills: string[];
-    certifications: string[];
-  }
-) {
+// FIXED: Maps correctly to the array of objects returned by gemini.ts
+function generateATSFriendlyResumeFromAi(data: ResumeInput, generated: ResumeOutput) {
+  const expText = generated.experience
+    .map((e) => `${e.title.toUpperCase()} | ${e.company} | ${e.dateRange}\n${e.bullets.map((b) => `• ${b}`).join("\n")}`)
+    .join("\n\n");
+
+  const eduText = generated.education
+    .map((e) => `${e.degree} — ${e.institution} (${e.graduationYear})${e.honors ? ` | ${e.honors}` : ""}`)
+    .join("\n\n");
+
   return `
 ${data.fullName.toUpperCase()}
 ${data.location} | ${data.email} | ${data.phone}
 
 PROFESSIONAL SUMMARY
-${generated.professional_summary}
+${generated.professionalSummary}
 
 PROFESSIONAL EXPERIENCE
-${generated.experience_points.join("\n")}
+${expText}
 
 EDUCATION
-${generated.education_points.join("\n")}
+${eduText}
 
 SKILLS
 ${generated.skills.join(" | ")}
@@ -173,16 +170,18 @@ ${generated.certifications.length > 0 ? `\nCERTIFICATIONS\n${generated.certifica
 `.trim();
 }
 
-function generateResumeHTML(data: ResumeInput, ai?: {
-  professional_summary: string;
-  experience_points: string[];
-  education_points: string[];
-  skills: string[];
-  certifications: string[];
-}): string {
-  const summary = ai?.professional_summary ?? data.summary;
-  const experience = ai?.experience_points.join("\n") ?? data.experience;
-  const education = ai?.education_points.join("\n") ?? data.education;
+// FIXED: Adjusted to correctly parse object fields into HTML
+function generateResumeHTML(data: ResumeInput, ai?: ResumeOutput): string {
+  const summary = ai?.professionalSummary ?? data.summary;
+  
+  const experience = ai
+    ? ai.experience.map((e) => `<strong>${e.title}</strong> | ${e.company} | ${e.dateRange}<br/>` + e.bullets.map((b) => `• ${b}`).join("<br/>")).join("<br/><br/>")
+    : data.experience.replace(/\n/g, "<br>");
+    
+  const education = ai
+    ? ai.education.map((e) => `<strong>${e.degree}</strong> — ${e.institution} (${e.graduationYear})` + (e.honors ? `<br/><em>${e.honors}</em>` : "")).join("<br/><br/>")
+    : data.education.replace(/\n/g, "<br>");
+    
   const skillsArray = ai?.skills ?? data.skills.split(",").map(s => s.trim()).filter(Boolean);
   const certificationsArray = ai?.certifications ?? (data.certifications
     ? data.certifications.split(",").map(c => c.trim()).filter(Boolean)
@@ -219,11 +218,11 @@ function generateResumeHTML(data: ResumeInput, ai?: {
         </div>
         <div class="section">
           <div class="section-title">PROFESSIONAL EXPERIENCE</div>
-          <div class="section-content">${experience.replace(/\n/g, "<br>")}</div>
+          <div class="section-content">${experience}</div>
         </div>
         <div class="section">
           <div class="section-title">EDUCATION</div>
-          <div class="section-content">${education.replace(/\n/g, "<br>")}</div>
+          <div class="section-content">${education}</div>
         </div>
         <div class="section">
           <div class="section-title">SKILLS</div>
@@ -254,8 +253,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // FK safety: resumes.candidate_id references profiles.id.
-    // Ensure a profile row exists before inserting resume data.
     const { data: profileRow, error: profileLookupError } = await supabase
       .from("profiles")
       .select("id")
@@ -296,35 +293,53 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as ResumeInput;
 
-    // Validate required fields
     if (!body.resumeName || !body.fullName || !body.email || !body.phone || !body.location || !body.summary || !body.experience || !body.education || !body.skills) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let aiGeneratedSections;
+    let aiGeneratedSections: ResumeOutput | undefined;
     let usedModel: string | null = null;
 
     try {
-      if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "your-gemini-api-key-here") {
+      // FIXED: Checking for the correct environment variable
+      if (process.env.OPENROUTER_API_KEY) {
+        console.log("Triggering AI synthesis via OpenRouter...");
         aiGeneratedSections = await generateResumeSections(body);
-        usedModel = "gemini-1.5-flash";
+        usedModel = "claude-3.7-sonnet";
+      } else {
+        console.warn("No OPENROUTER_API_KEY found, skipping AI enhancement.");
       }
     } catch (error) {
-      console.error("Gemini generation failed, falling back to local formatting:", error);
+      console.error("AI generation failed, falling back to local formatting:", error);
     }
 
-    // Generate ATS-friendly resume
     const atsResumeText = aiGeneratedSections
       ? generateATSFriendlyResumeFromAi(body, aiGeneratedSections)
       : generateATSFriendlyResume(body);
 
-    // Generate HTML version for preview
     const resumeHTML = generateResumeHTML(body, aiGeneratedSections);
-
-    // For preview, encode HTML as data URL
     const previewUrl = `data:text/html;charset=utf-8,${encodeURIComponent(resumeHTML)}`;
 
-    // Prepare structured data
+    // Prepare arrays for PDF Payload line wrapping
+    const formatPdfExperience = () => {
+      if (!aiGeneratedSections) return body.experience.split("\n").map(s => s.trim()).filter(Boolean);
+      return aiGeneratedSections.experience.flatMap((e) => [
+        `${e.title} | ${e.company} | ${e.dateRange}`,
+        ...e.bullets.map((b) => `• ${b}`),
+        "" // Add empty line for spacing between entries
+      ]);
+    };
+
+    const formatPdfEducation = () => {
+      if (!aiGeneratedSections) return body.education.split("\n").map(s => s.trim()).filter(Boolean);
+      return aiGeneratedSections.education.flatMap((e) => [
+        `${e.degree} — ${e.institution} (${e.graduationYear})`,
+        ...(e.honors ? [e.honors] : []),
+        ""
+      ]);
+    };
+
+    // Prepare structured data matching the DB expectations
     const resumeData = {
       personal_info: {
         full_name: body.fullName,
@@ -332,19 +347,11 @@ export async function POST(request: Request) {
         phone: body.phone,
         location: body.location,
       },
-      summary: aiGeneratedSections?.professional_summary ?? body.summary,
-      experience: aiGeneratedSections?.experience_points ?? body.experience.split("\n").map((s) => s.trim()).filter(Boolean),
-      education: aiGeneratedSections?.education_points ?? body.education.split("\n").map((s) => s.trim()).filter(Boolean),
-      skills: aiGeneratedSections?.skills ?? body.skills
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      certifications: aiGeneratedSections?.certifications ?? (body.certifications
-        ? body.certifications
-            .split(",")
-            .map((c) => c.trim())
-            .filter(Boolean)
-        : []),
+      summary: aiGeneratedSections?.professionalSummary ?? body.summary,
+      experience: aiGeneratedSections?.experience ?? body.experience.split("\n").map((s) => s.trim()).filter(Boolean),
+      education: aiGeneratedSections?.education ?? body.education.split("\n").map((s) => s.trim()).filter(Boolean),
+      skills: aiGeneratedSections?.skills ?? body.skills.split(",").map((s) => s.trim()).filter(Boolean),
+      certifications: aiGeneratedSections?.certifications ?? (body.certifications ? body.certifications.split(",").map((c) => c.trim()).filter(Boolean) : []),
     };
 
     const pdfPayload: ResumePdfPayload = {
@@ -352,13 +359,11 @@ export async function POST(request: Request) {
       location: body.location,
       email: body.email,
       phone: body.phone,
-      summary: aiGeneratedSections?.professional_summary ?? body.summary,
-      experience: aiGeneratedSections?.experience_points ?? body.experience.split("\n").map((s) => s.trim()).filter(Boolean),
-      education: aiGeneratedSections?.education_points ?? body.education.split("\n").map((s) => s.trim()).filter(Boolean),
+      summary: aiGeneratedSections?.professionalSummary ?? body.summary,
+      experience: formatPdfExperience(),
+      education: formatPdfEducation(),
       skills: aiGeneratedSections?.skills ?? body.skills.split(",").map((s) => s.trim()).filter(Boolean),
-      certifications: aiGeneratedSections?.certifications ?? (body.certifications
-        ? body.certifications.split(",").map((c) => c.trim()).filter(Boolean)
-        : []),
+      certifications: aiGeneratedSections?.certifications ?? (body.certifications ? body.certifications.split(",").map((c) => c.trim()).filter(Boolean) : []),
     };
 
     const pdfBytes = await generateResumePdf(pdfPayload);
@@ -383,7 +388,6 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = supabase.storage.from(resumeBucketName).getPublicUrl(storagePath);
 
-    // Save to database
     const { error, data } = await supabase
       .from("resumes")
       .insert({

@@ -50,12 +50,23 @@ export default async function InterviewsPage() {
     interviews = (data as Interview[]) ?? [];
   }
 
-  const upcoming = interviews.filter(
-    (i) => new Date(i.scheduled_at) >= new Date() && i.status !== "cancelled"
-  );
-  const past = interviews.filter(
-    (i) => new Date(i.scheduled_at) < new Date() || i.status === "completed"
-  );
+    // With this:
+  const now = new Date();
+
+  const getEndTime = (interview: Interview) => {
+    const start = new Date(interview.scheduled_at);
+    return new Date(start.getTime() + (interview.duration_minutes ?? 60) * 60000);
+  };
+
+  const upcoming = interviews.filter((i) => {
+    if (i.status === "cancelled" || i.status === "completed") return false;
+    return getEndTime(i) > now; // still within the meeting window
+  });
+
+  const past = interviews.filter((i) => {
+    if (i.status === "cancelled" || i.status === "completed") return true;
+    return getEndTime(i) <= now; // window has fully elapsed
+  });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

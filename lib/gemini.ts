@@ -1,7 +1,8 @@
 // ─── OPENROUTER CLIENT ───────────────────────────────────────────────────────
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "anthropic/claude-sonnet-4-5"; // swap to "anthropic/claude-3.7-sonnet" for extended thinking
+// Fixed the model string to the correct OpenRouter model ID
+const MODEL = "anthropic/claude-3.7-sonnet"; 
 
 async function callOpenRouter(
   systemPrompt: string,
@@ -19,6 +20,7 @@ async function callOpenRouter(
     body: JSON.stringify({
       model: MODEL,
       temperature,
+      max_tokens: 800,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -202,12 +204,19 @@ Return ONLY valid JSON. No markdown. No commentary.
 
 function parseJSONResponse<T>(raw: string): T | null {
   try {
-    const clean = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
-    return JSON.parse(clean) as T;
-  } catch {
+    // Robust parsing: extracts JSON block even if Claude wraps it in conversational text
+    const startIndex = raw.indexOf('{');
+    const endIndex = raw.lastIndexOf('}');
+    
+    if (startIndex === -1 || endIndex === -1) {
+      console.warn("Could not find JSON object bounds in the AI response.");
+      return null;
+    }
+    
+    const cleanJson = raw.slice(startIndex, endIndex + 1);
+    return JSON.parse(cleanJson) as T;
+  } catch (error) {
+    console.error("JSON parsing failed. Raw text:", raw);
     return null;
   }
 }
@@ -328,7 +337,7 @@ ${jdSection}
 
 // ─── FILE UPLOAD ──────────────────────────────────────────────────────────────
 
-interface ExtractedDocumentData {
+export interface ExtractedDocumentData {
   name: string;
   contact: {
     email: string | null;
@@ -343,11 +352,16 @@ interface ExtractedDocumentData {
   rawCertifications: string;
 }
 
+export interface DocumentResumeResult {
+  extracted: ExtractedDocumentData;
+  resume: ResumeOutput;
+}
+
 export async function generateResumeFromDocument(
   rawText: string,
   filename?: string,
   jobDescription?: string
-): Promise<ResumeOutput> {
+): Promise<DocumentResumeResult> {
   // Stage 1 — Extract content (rejects metadata)
   const extractionMessage = `
 Document filename: ${filename ?? "unknown"}
@@ -411,7 +425,7 @@ ${jdSection}
     );
   }
 
-  return validateResumeOutput(parsed);
+  return { extracted, resume: validateResumeOutput(parsed) };
 }
 
 // ─── TAILORING PASS ───────────────────────────────────────────────────────────

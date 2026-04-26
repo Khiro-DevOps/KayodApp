@@ -6,12 +6,35 @@ import ResumeViewer from "./resume-viewer";
 import StatusTracker from "./status-tracker";
 import EvaluationSidebar from "./evaluation-sidebar";
 import InterviewTimeline from "./interview-timeline";
+import OfferCard from "./offer-card";
+
+interface JobOffer {
+  id: string;
+  status: string;
+  position_title: string;
+  department: string | null;
+  employment_type: string;
+  salary_amount: number | null;
+  salary_currency: string;
+  pay_frequency: string;
+  benefits: string[];
+  work_setup: string;
+  work_location: string | null;
+  work_schedule: string | null;
+  employment_terms: string | null;
+  start_date: string | null;
+  offer_expires_at: string | null;
+  signed_at: string | null;
+  signature_data: string | null;
+}
 
 interface ApplicationDetailViewProps {
   application: Application;
   interviews: Interview[];
   userRole: UserRole;
   isCurrentUser: boolean;
+  signedResumeUrl: string | null;
+  jobOffer: JobOffer | null;
 }
 
 function normalizeName(value: unknown): string {
@@ -27,7 +50,6 @@ function deriveDisplayName(candidate: {
   const lastName = normalizeName(candidate?.last_name);
   const fullName = `${firstName} ${lastName}`.trim();
   if (fullName) return fullName;
-
   const emailHandle = normalizeName((candidate?.email ?? "").split("@")[0]).replace(/[._-]+/g, " ").trim();
   return emailHandle || "Unknown Applicant";
 }
@@ -37,6 +59,8 @@ export default function ApplicationDetailView({
   interviews,
   userRole,
   isCurrentUser,
+  signedResumeUrl,
+  jobOffer,
 }: ApplicationDetailViewProps) {
   const [applicationStatus, setApplicationStatus] = useState(application?.status);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -87,7 +111,6 @@ export default function ApplicationDetailView({
           </div>
         </div>
 
-        {/* Quick Stats */}
         <div className="flex gap-4">
           {application?.match_score !== null && (
             <div className="text-center">
@@ -111,8 +134,8 @@ export default function ApplicationDetailView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content Area */}
         <div className="lg:col-span-2 space-y-6">
+
           {/* Applicant View: Status Tracker */}
           {!isRecruiter && (
             <StatusTracker
@@ -121,9 +144,21 @@ export default function ApplicationDetailView({
             />
           )}
 
+          {/* ── Job Offer Card — visible to applicant only ── */}
+          {!isRecruiter && jobOffer && (
+            <OfferCard
+              offer={jobOffer}
+              applicationId={application.id}
+            />
+          )}
+
           {/* Resume Viewer */}
           {resume && (
-            <ResumeViewer resume={resume} candidateName={candidateName} />
+            <ResumeViewer
+              resume={resume}
+              candidateName={candidateName}
+              signedResumeUrl={signedResumeUrl}
+            />
           )}
 
           {/* Interview Timeline */}
@@ -142,7 +177,6 @@ export default function ApplicationDetailView({
           )}
         </div>
 
-        {/* Recruiter View: Evaluation Sidebar */}
         {isRecruiter && (
           <EvaluationSidebar
             application={application}

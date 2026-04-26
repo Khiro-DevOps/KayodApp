@@ -18,16 +18,21 @@ export async function submitApplication(formData: FormData) {
     redirect(`/jobs/${jobId}/apply?error=Missing+required+fields`);
   }
 
-  // Verify job exists and is published
-  // Example: Fetching applicants for the current company
-  const { data, count } = await supabase
-    .from('applications')
-    .select('*, job_postings!inner(tenant_id)') // The !inner makes it filter by the join
-    .eq('job_postings.tenant_id', your_tenant_id);
+// Verify job exists, is published, and not yet closed
+const { data: job } = await supabase
+  .from("job_postings")
+  .select("id, tenant_id, is_published, closes_at")
+  .eq("id", jobId)
+  .eq("is_published", true)
+  .maybeSingle();
 
-  if (!job) {
-    redirect(`/jobs/${jobId}/apply?error=Job+not+found`);
-  }
+if (!job) {
+  redirect(`/jobs/${jobId}/apply?error=Job+not+found`);
+}
+
+if (job.closes_at && new Date(job.closes_at) < new Date()) {
+  redirect(`/jobs/${jobId}/apply?error=Job+posting+has+closed`);
+}
 
   // Check if already applied
   const { data: existing } = await supabase
@@ -54,15 +59,15 @@ export async function submitApplication(formData: FormData) {
 
   // Create application
   const { error } = await supabase
-    .from("applications")
-    .insert({
-      candidate_id: user.id,
-      job_posting_id: jobId,
-      resume_id: resumeId,
-      resume_url: selectedResume.pdf_url,
-      cover_letter: coverLetter || null,
-      status: "submitted",
-    });
+  .from("applications")
+  .insert({
+    candidate_id: user.id,
+    job_posting_id: jobId,
+    resume_id: resumeId,
+    cover_letter: coverLetter || null,
+    status: "applied",
+    submitted_at: new Date().toISOString(),
+  });
 
   if (error) {
     console.error("Application submission error:", error);

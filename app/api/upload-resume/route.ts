@@ -3,10 +3,9 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { getResumeBucketName } from "@/lib/supabase/storage";
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { GoogleGenAI } from "@google/genai";
 import { extractText } from "unpdf";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+// Import the new OpenRouter-powered extraction logic
+import { generateResumeFromDocument } from "@/lib/gemini";
 
 function deriveFallbackFirstName(email: string | null | undefined): string {
   const localPart = (email ?? "").split("@")[0]?.trim() ?? "";
@@ -50,19 +49,8 @@ async function generateResumePdf(payload: {
   let cursorY = 750;
   const lineHeight = 14;
 
-  const drawLine = (
-    text: string,
-    size = 11,
-    isBold = false,
-    color = rgb(0.12, 0.12, 0.12)
-  ) => {
-    page.drawText(text, {
-      x: marginX,
-      y: cursorY,
-      size,
-      font: isBold ? boldFont : font,
-      color,
-    });
+  const drawLine = (text: string, size = 11, isBold = false, color = rgb(0.12, 0.12, 0.12)) => {
+    page.drawText(text, { x: marginX, y: cursorY, size, font: isBold ? boldFont : font, color });
     cursorY -= lineHeight;
   };
 
@@ -76,12 +64,7 @@ async function generateResumePdf(payload: {
   };
 
   drawLine(payload.fullName.toUpperCase(), 20, true);
-  drawLine(
-    `${payload.location} | ${payload.email} | ${payload.phone}`,
-    10,
-    false,
-    rgb(0.32, 0.32, 0.32)
-  );
+  drawLine(`${payload.location} | ${payload.email} | ${payload.phone}`, 10, false, rgb(0.32, 0.32, 0.32));
   drawSection("PROFESSIONAL SUMMARY", wrapText(payload.summary, 95));
   drawSection("PROFESSIONAL EXPERIENCE", payload.experience);
   drawSection("EDUCATION", payload.education);
@@ -89,254 +72,87 @@ async function generateResumePdf(payload: {
   if (payload.certifications.length > 0) {
     drawSection("CERTIFICATIONS", [payload.certifications.join(" | ")]);
   }
-
   return pdfDoc.save();
 }
 
-interface AiResumeOutput {
-  full_name: string;
-  email: string;
-  phone: string;
-  location: string;
-  professional_summary: string;
-  experience_points: string[];
-  education_points: string[];
-  skills: string[];
-  certifications: string[];
-}
-
-async function extractAndEnhanceWithGemini(
-  file: File
-): Promise<AiResumeOutput | null> {
-  try {
-    // Step 1 — Extract text from the file
-    let extractedText = "";
-
-    console.log("[DEBUG] file.type:", file.type);
-    console.log("[DEBUG] file.name:", file.name);
-
-    if (file.type === "text/plain") {
-      extractedText = await file.text();
-    } else if (file.type === "application/pdf") {
-      const arrayBuffer = await file.arrayBuffer();
-      const { text } = await extractText(new Uint8Array(arrayBuffer), {
-        mergePages: true,
-      });
-      extractedText = text;
-    } else {
-      // DOC/DOCX — best effort
-      extractedText = await file.text();
-    }
-
-    console.log("[DEBUG] extracted text length:", extractedText.length);
-    console.log("[DEBUG] extracted text preview:", extractedText.slice(0, 300));
-
-    if (!extractedText.trim()) {
-      console.error("[DEBUG] No text extracted from file");
-      return null;
-    }
-
-    // Step 2 — Send extracted text to Gemini for enhancement
-    const prompt =
-      "You are a senior HR professional and expert resume writer.\n\n" +
-      "Below is raw text extracted from a resume. Parse it and return an improved, ATS-optimized version.\n\n" +
-      "INSTRUCTIONS:\n" +
-      "- Extract the candidate's real name, email, phone, and location from the text\n" +
-      "- Rewrite the summary as a compelling 2-4 sentence professional pitch\n" +
-      "- Transform experience into strong action-verb bullet points with measurable impact where inferable\n" +
-      "- Rewrite education in clean standard format\n" +
-      "- Expand skills list - infer related skills if clearly implied\n" +
-      "- Do NOT fabricate companies, dates, degrees, or certifications not in the text\n" +
-      "- Write in third-person implied style (no 'I' or 'my')\n" +
-      "- Each experience bullet must start with a past-tense action verb\n\n" +
-      "RESUME TEXT:\n" +
-      "---\n" +
-      extractedText +
-      "\n---\n\n" +
-      "Return ONLY valid JSON, no markdown, no explanation:\n" +
-      "{\n" +
-      '  "full_name": "Candidate Name",\n' +
-      '  "email": "email@example.com",\n' +
-      '  "phone": "+1234567890",\n' +
-      '  "location": "City, Country",\n' +
-      '  "professional_summary": "2-4 sentence summary",\n' +
-      '  "experience_points": ["Action verb + task + result"],\n' +
-      '  "education_points": ["Degree, Institution, Year"],\n' +
-      '  "skills": ["skill1", "skill2"],\n' +
-      '  "certifications": ["cert1"]\n' +
-      "}";
-
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-
-    const raw = response.text?.trim() ?? "";
-    console.log("[DEBUG] Gemini raw response:", raw.slice(0, 500));
-
-    const clean = raw.startsWith("```")
-      ? raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "")
-      : raw;
-
-    const parsed = JSON.parse(clean) as AiResumeOutput;
-
-    if (!parsed.full_name || !parsed.professional_summary) {
-      console.error("[DEBUG] Gemini returned incomplete data:", parsed);
-      return null;
-    }
-
-    return parsed;
-  } catch (err) {
-  console.error("[DEBUG] Gemini file extraction failed:", err);
-  // Log the full error stack
-  if (err instanceof Error) {
-    console.error("[DEBUG] Error message:", err.message);
-    console.error("[DEBUG] Error stack:", err.stack);
-  }
-  return null;
-}
-}
-
 export async function POST(request: Request) {
-  console.log("[DEBUG] upload-resume POST started");
-
   const supabase = await createClient();
   const resumeBucketName = getResumeBucketName();
-
   const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Profile FK safety
-  const { data: profileRow, error: profileLookupError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileLookupError) {
-    return NextResponse.json(
-      { error: `Profile lookup failed: ${profileLookupError.message}` },
-      { status: 500 }
-    );
-  }
-
-  if (!profileRow) {
-    const adminClient = getAdminClient();
-    const { error: ensureProfileError } = await adminClient.from("profiles").upsert(
-      {
-        id: user.id,
-        email: user.email ?? "",
-        first_name: deriveFallbackFirstName(user.email),
-        last_name: "",
-        phone: "",
-        role: "candidate",
-      },
-      { onConflict: "id" }
-    );
-    if (ensureProfileError) {
-      return NextResponse.json(
-        { error: `Profile auto-create failed: ${ensureProfileError.message}` },
-        { status: 500 }
-      );
-    }
-  }
-
+  // 1. Validate File
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
-  console.log("[DEBUG] file received:", file.name, file.type, file.size);
-
-  const allowedTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
-  ];
-  if (!allowedTypes.includes(file.type)) {
-    return NextResponse.json({ error: "Invalid file type." }, { status: 400 });
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    return NextResponse.json({ error: "File too large. Maximum size is 5MB." }, { status: 400 });
+  // 2. Extract raw text from document
+  let extractedRawText = "";
+  if (file.type === "application/pdf") {
+    const arrayBuffer = await file.arrayBuffer();
+    const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
+    extractedRawText = text;
+  } else {
+    extractedRawText = await file.text();
   }
 
-  // Extract and enhance via Gemini
-  const aiOutput = await extractAndEnhanceWithGemini(file);
-  console.log("[DEBUG] aiOutput:", JSON.stringify(aiOutput, null, 2));
+  if (!extractedRawText.trim()) {
+    return NextResponse.json({ error: "Could not extract text from document" }, { status: 400 });
+  }
 
-  // Generate improved PDF from AI output
+  // 3. Process via Claude 3.7 (OpenRouter)
+  let aiResult;
+  try {
+    aiResult = await generateResumeFromDocument(extractedRawText, file.name);
+  } catch (err) {
+    console.error("AI Extraction failed:", err);
+    return NextResponse.json({ error: "AI failed to parse the resume" }, { status: 500 });
+  }
+
+  const { extracted, resume: enhancedData } = aiResult;
+
+  // 4. Generate the polished PDF
   const pdfPayload = {
-    fullName: aiOutput?.full_name ?? deriveFallbackFirstName(user.email),
-    location: aiOutput?.location ?? "",
-    email: aiOutput?.email ?? user.email ?? "",
-    phone: aiOutput?.phone ?? "",
-    summary: aiOutput?.professional_summary ?? "",
-    experience: aiOutput?.experience_points ?? [],
-    education: aiOutput?.education_points ?? [],
-    skills: aiOutput?.skills ?? [],
-    certifications: aiOutput?.certifications ?? [],
+    fullName: extracted.name || deriveFallbackFirstName(user.email),
+    location: extracted.contact.location || "",
+    email: extracted.contact.email || user.email || "",
+    phone: extracted.contact.phone || "",
+    summary: enhancedData.professionalSummary,
+    experience: enhancedData.experience.map(e => `${e.title} at ${e.company} (${e.dateRange})\n${e.bullets.map(b => `• ${b}`).join("\n")}`),
+    education: enhancedData.education.map(e => `${e.degree}, ${e.institution} (${e.graduationYear})${e.honors ? ` - ${e.honors}` : ""}`),
+    skills: enhancedData.skills,
+    certifications: enhancedData.certifications,
   };
 
   const pdfBytes = await generateResumePdf(pdfPayload);
+  const storagePath = `${user.id}/${Date.now()}_${file.name.replace(/\.[^/.]+$/, "")}.pdf`;
 
-  // Fix double extension issue
-  const sanitizedName = file.name
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/\.pdf$/i, "");
-  const storagePath = `${user.id}/${Date.now()}_${sanitizedName}.pdf`;
-
+  // 5. Upload to Storage
   const { error: uploadError } = await supabase.storage
     .from(resumeBucketName)
-    .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });
+    .upload(storagePath, pdfBytes, { contentType: "application/pdf" });
 
-  if (uploadError) {
-    return NextResponse.json(
-      { error: `Upload failed: ${uploadError.message}` },
-      { status: 500 }
-    );
-  }
+  if (uploadError) return NextResponse.json({ error: "Storage upload failed" }, { status: 500 });
 
-  const { data: { publicUrl } } = supabase.storage
-    .from(resumeBucketName)
-    .getPublicUrl(storagePath);
+  const { data: { publicUrl } } = supabase.storage.from(resumeBucketName).getPublicUrl(storagePath);
 
+  // 6. Save to DB
   const { data: resume, error: dbError } = await supabase
     .from("resumes")
     .insert({
       candidate_id: user.id,
-      title: aiOutput?.full_name
-        ? `${aiOutput.full_name} - Resume`
-        : file.name.replace(/\.[^/.]+$/, ""),
-      input_data: {
-        source: "upload",
-        file_name: file.name,
-        ai_extracted: aiOutput ?? null,
-      },
-      generated_content: {
-        upload: true,
-        ai_sections: aiOutput ?? null,
-      },
-      content_text: aiOutput
-        ? [
-            aiOutput.professional_summary,
-            ...aiOutput.experience_points,
-            ...aiOutput.education_points,
-            ...aiOutput.skills,
-          ].join("\n")
-        : null,
+      title: `${extracted.name || file.name} - Enhanced Resume`,
+      input_data: { source: "upload", file_name: file.name, extracted_raw: extracted },
+      generated_content: { ai_sections: enhancedData },
+      content_text: enhancedData.professionalSummary,
       pdf_url: publicUrl,
-      gemini_model: aiOutput ? "gemini-1.5-flash" : null,
+      gemini_model: "claude-3.7-sonnet", 
     })
     .select()
     .single();
 
-  if (dbError) {
-    await supabase.storage.from(resumeBucketName).remove([storagePath]);
-    return NextResponse.json(
-      { error: `Failed to save resume: ${dbError.message}` },
-      { status: 500 }
-    );
-  }
+  if (dbError) return NextResponse.json({ error: "Database save failed" }, { status: 500 });
 
   return NextResponse.json({ resume }, { status: 201 });
 }

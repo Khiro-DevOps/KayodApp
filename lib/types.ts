@@ -3,10 +3,6 @@
 // Matches the full Supabase schema
 // ============================================================
 
-// ============================================================
-// ENUMS
-// ============================================================
-
 export type UserRole = "candidate" | "employee" | "hr_manager" | "admin";
 
 export type ApplicationStatus =
@@ -88,10 +84,6 @@ export type PayFrequency =
   | "semi_monthly"
   | "monthly";
 
-// ============================================================
-// PROFILES
-// ============================================================
-
 export interface Profile {
   id: string;
   role: UserRole;
@@ -107,34 +99,23 @@ export interface Profile {
   country: string;
   created_at: string;
   updated_at: string;
-  // Helper getter (not in DB)
   full_name?: string;
 }
-
-// ============================================================
-// RESUMES
-// Stores AI-generated resumes from Gemini
-// ============================================================
 
 export interface Resume {
   id: string;
   candidate_id: string;
-  input_data: Record<string, unknown>;       // what user typed before generating
-  generated_content: Record<string, unknown>; // Gemini's full JSON output
-  content_text: string | null;               // plain text for search/matching
-  pdf_url: string | null;                    // Supabase Storage URL
+  input_data: Record<string, unknown>;
+  generated_content: Record<string, unknown>;
+  content_text: string | null;
+  pdf_url: string | null;
   title: string;
   is_primary: boolean;
   gemini_model: string | null;
   created_at: string;
   updated_at: string;
-  // Joined
   profiles?: Profile;
 }
-
-// ============================================================
-// DEPARTMENTS
-// ============================================================
 
 export interface Department {
   id: string;
@@ -142,13 +123,8 @@ export interface Department {
   description: string | null;
   manager_id: string | null;
   created_at: string;
-  // Joined
   manager?: Profile;
 }
-
-// ============================================================
-// JOB POSTINGS
-// ============================================================
 
 export interface JobPosting {
   id: string;
@@ -175,12 +151,10 @@ export interface JobPosting {
   required_skills: string[];
   created_at: string;
   updated_at: string;
-  // Joined
   departments?: Department;
   creator?: Profile;
 }
 
-// Legacy job listing shape used by older job management/tailor pages.
 export interface JobListing {
   id: string;
   tenant_id: string;
@@ -203,10 +177,6 @@ export interface TailoredResume {
   created_at: string;
 }
 
-// ============================================================
-// APPLICATIONS
-// ============================================================
-
 export interface Application {
   id: string;
   job_posting_id: string;
@@ -225,15 +195,10 @@ export interface Application {
   selected_mode_set_at?: string | null;
   submitted_at: string;
   updated_at: string;
-  // Joined
   job_postings?: JobPosting;
   profiles?: Profile;
   resumes?: Resume;
 }
-
-// ============================================================
-// INTERVIEWS
-// ============================================================
 
 export interface Interview {
   id: string;
@@ -250,10 +215,12 @@ export interface Interview {
   // In-person
   location_address: string | null;
   location_notes: string | null;
-  // Online (Daily.co)
+  // Online — Jitsi Meet
   video_room_url: string | null;
   video_room_name: string | null;
   video_provider: string | null;
+  room_not_before: string | null;  // ← NEW: ISO timestamp, 15 min before scheduled_at
+  room_expires_at: string | null;  // ← NEW: ISO timestamp, 2 hrs after scheduled_at
   // After interview
   interviewer_notes: string | null;
   interview_score: number | null;
@@ -268,13 +235,8 @@ export interface InterviewPanelist {
   id: string;
   interview_id: string;
   panelist_id: string;
-  // Joined
   profiles?: Profile;
 }
-
-// ============================================================
-// EMPLOYEES
-// ============================================================
 
 export interface Employee {
   id: string;
@@ -291,22 +253,16 @@ export interface Employee {
   base_salary: number;
   pay_frequency: PayFrequency;
   currency: string;
-  // Philippines government IDs
   sss_number: string | null;
   philhealth_number: string | null;
   pagibig_number: string | null;
   tin_number: string | null;
   created_at: string;
   updated_at: string;
-  // Joined
   profiles?: Profile;
   departments?: Department;
   manager?: Employee;
 }
-
-// ============================================================
-// SCHEDULES
-// ============================================================
 
 export interface Schedule {
   id: string;
@@ -323,13 +279,8 @@ export interface Schedule {
   is_published: boolean;
   created_at: string;
   updated_at: string;
-  // Joined
   employees?: Employee;
 }
-
-// ============================================================
-// LEAVE REQUESTS
-// ============================================================
 
 export interface LeaveRequest {
   id: string;
@@ -345,7 +296,6 @@ export interface LeaveRequest {
   filed_at: string;
   reviewed_at: string | null;
   updated_at: string;
-  // Joined
   employees?: Employee;
   reviewer?: Profile;
 }
@@ -357,13 +307,9 @@ export interface LeaveBalance {
   year: number;
   total_credits: number;
   used_credits: number;
-  remaining: number; // generated column
+  remaining: number;
   updated_at: string;
 }
-
-// ============================================================
-// PAYROLL
-// ============================================================
 
 export interface PayrollPeriod {
   id: string;
@@ -374,7 +320,6 @@ export interface PayrollPeriod {
   created_by: string;
   approved_by: string | null;
   created_at: string;
-  // Joined
   creator?: Profile;
   approver?: Profile;
 }
@@ -383,33 +328,26 @@ export interface Payslip {
   id: string;
   payroll_period_id: string;
   employee_id: string;
-  // Earnings
   basic_pay: number;
   overtime_pay: number;
   allowances: number;
   bonuses: number;
-  gross_pay: number;     // generated column
-  // Deductions
+  gross_pay: number;
   sss_contribution: number;
   philhealth_contrib: number;
   pagibig_contrib: number;
   withholding_tax: number;
   other_deductions: number;
-  total_deductions: number; // generated column
-  net_pay: number;          // generated column
+  total_deductions: number;
+  net_pay: number;
   status: PayrollStatus;
   remarks: string | null;
   pdf_url: string | null;
   created_at: string;
   updated_at: string;
-  // Joined
   employees?: Employee;
   payroll_periods?: PayrollPeriod;
 }
-
-// ============================================================
-// NOTIFICATIONS
-// ============================================================
 
 export interface Notification {
   id: string;
@@ -424,10 +362,6 @@ export interface Notification {
   created_at: string;
 }
 
-// ============================================================
-// TIME LOGS (Punch In/Out)
-// ============================================================
-
 export type PunchType = "in" | "out";
 
 export interface TimeLog {
@@ -441,11 +375,6 @@ export interface TimeLog {
   created_at: string;
 }
 
-// ============================================================
-// HELPER TYPES
-// ============================================================
-
-// Use when inserting a new record (omits auto-generated fields)
 export type NewApplication = Omit<Application,
   "id" | "submitted_at" | "updated_at" | "match_score" |
   "job_postings" | "profiles" | "resumes"
@@ -465,7 +394,6 @@ export type NewPayslip = Omit<Payslip,
   "created_at" | "updated_at" | "employees" | "payroll_periods"
 >;
 
-// Status badge colors for UI
 export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
   draft:                "bg-gray-100 text-gray-700",
   submitted:            "bg-blue-100 text-blue-700",

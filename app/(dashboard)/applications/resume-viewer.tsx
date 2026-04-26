@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 interface ResumeViewerProps {
   resume: {
@@ -10,10 +10,11 @@ interface ResumeViewerProps {
     content_text?: string | null;
   };
   candidateName: string;
+  signedResumeUrl: string | null;
 }
 
-export default function ResumeViewer({ resume, candidateName }: ResumeViewerProps) {
-  const [viewMode, setViewMode] = useState<"pdf" | "text">(resume.pdf_url ? "pdf" : "text");
+export default function ResumeViewer({ resume, candidateName, signedResumeUrl }: ResumeViewerProps) {
+  const [viewMode, setViewMode] = useState<"pdf" | "text">(signedResumeUrl ? "pdf" : "text");
 
   return (
     <div className="rounded-2xl border border-border bg-surface">
@@ -23,8 +24,8 @@ export default function ResumeViewer({ resume, candidateName }: ResumeViewerProp
           <h3 className="text-sm font-semibold text-text-primary">{resume.title}</h3>
           <p className="text-xs text-text-secondary mt-1">Resume for {candidateName}</p>
         </div>
-        
-        {resume.pdf_url && resume.content_text && (
+
+        {signedResumeUrl && resume.content_text && (
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode("pdf")}
@@ -52,10 +53,10 @@ export default function ResumeViewer({ resume, candidateName }: ResumeViewerProp
 
       {/* Content */}
       <div className="p-6">
-        {viewMode === "pdf" && resume.pdf_url ? (
+        {viewMode === "pdf" && signedResumeUrl ? (
           <div className="rounded-lg overflow-hidden bg-gray-50">
             <iframe
-              src={resume.pdf_url}
+              src={signedResumeUrl}
               className="w-full h-96 rounded-lg border border-border"
               title={resume.title}
             />
@@ -74,11 +75,12 @@ export default function ResumeViewer({ resume, candidateName }: ResumeViewerProp
       </div>
 
       {/* Download Link */}
-      {resume.pdf_url && (
+      {signedResumeUrl && (
         <div className="border-t border-border px-6 py-4 flex justify-end">
           <a
-            href={resume.pdf_url}
-            download
+            href={signedResumeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-sm font-medium text-primary hover:underline"
           >
             Download PDF
