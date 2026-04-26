@@ -109,7 +109,7 @@ export interface Resume {
   generated_content: Record<string, unknown>;
   content_text: string | null;
   pdf_url: string | null;
-  title: string;
+  title: string | null;
   is_primary: boolean;
   gemini_model: string | null;
   created_at: string;
