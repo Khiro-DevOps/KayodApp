@@ -18,6 +18,7 @@ export function getObjectPathFromPublicUrl(publicUrl: string, bucketName: string
       return null;
     }
 
+    // Decodes the URL to get the actual file path (handles spaces/special chars)
     return decodeURIComponent(url.pathname.slice(prefix.length));
   } catch {
     return null;
