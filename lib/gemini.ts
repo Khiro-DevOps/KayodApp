@@ -2,7 +2,7 @@
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Fixed the model string to the correct OpenRouter model ID
-const MODEL = "anthropic/claude-3.7-sonnet"; 
+const MODEL = "google/gemini-2.0-flash-001"; 
 
 async function callOpenRouter(
   systemPrompt: string,

@@ -13,6 +13,7 @@ export default async function DashboardLayout({
 
   let role: UserRole = "candidate";
   let employeeId: string | null = null;
+  let unreadNotificationCount = 0;
 
   if (user) {
     const { data: profile } = await supabase
@@ -32,6 +33,16 @@ export default async function DashboardLayout({
         .single();
       employeeId = employee?.id ?? null;
     }
+
+    if (role === "candidate") {
+      const { count } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("is_read", false);
+
+      unreadNotificationCount = count ?? 0;
+    }
   }
 
   return (
@@ -40,7 +51,11 @@ export default async function DashboardLayout({
         <PunchBar employeeId={employeeId} /> // ← new
       )}
       <main className="flex-1 pb-20">{children}</main>
-      <BottomNav role={role} />
+      <BottomNav
+        role={role}
+        userId={user?.id ?? null}
+        initialUnreadCount={unreadNotificationCount}
+      />
     </div>
   );
 }
