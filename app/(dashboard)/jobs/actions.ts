@@ -32,6 +32,8 @@ export async function createJob(formData: FormData) {
   if (!user || !(await verifyHR(supabase, user))) redirect("/dashboard");
 
   const title = formData.get("title") as string;
+  const industry = formData.get("industry") as string;
+  const job_category = formData.get("job_category") as string;
   const description = formData.get("description") as string;
   const work_setup = formData.get("work_setup") as string;
   const employment_type = formData.get("employment_type") as string;
@@ -47,6 +49,8 @@ export async function createJob(formData: FormData) {
   const { error } = await adminClient.from("job_postings").insert({
     created_by: user.id,
     title,
+    industry: industry || null,
+    job_category: job_category || null,
     description,
     work_setup: work_setup || "onsite",
     employment_type: employment_type || "full-time",

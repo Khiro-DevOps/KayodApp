@@ -6,6 +6,18 @@ import PageContainer from "@/components/ui/page-container";
 import { createJob } from "../../actions";
 import { PHILIPPINE_CITIES, JOB_INDUSTRIES } from "@/lib/constants";
 
+const WORK_SETUP_OPTIONS = [
+  { value: "onsite", label: "Onsite" },
+  { value: "remote", label: "Remote / WFH" },
+  { value: "hybrid", label: "Hybrid" },
+];
+
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: "full-time", label: "Full Time" },
+  { value: "part-time", label: "Part Time" },
+  { value: "internship", label: "Internship" },
+];
+
 export default function NewJobForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
@@ -79,6 +91,52 @@ export default function NewJobForm() {
                 placeholder="e.g. Senior Developer"
                 className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor="work_setup" className="text-sm font-medium text-text-primary">
+                Work Setup *
+              </label>
+              <select
+                id="work_setup"
+                name="work_setup"
+                required
+                defaultValue=""
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+              >
+                <option value="" disabled>
+                  Select work setup
+                </option>
+                {WORK_SETUP_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="employment_type" className="text-sm font-medium text-text-primary">
+                Employment Type *
+              </label>
+              <select
+                id="employment_type"
+                name="employment_type"
+                required
+                defaultValue=""
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+              >
+                <option value="" disabled>
+                  Select employment type
+                </option>
+                {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
