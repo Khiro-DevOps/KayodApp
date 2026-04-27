@@ -1,7 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { Notification } from "@/lib/types";
-import Link from "next/link";
 import { markNotificationRead, markAllNotificationsRead } from "./actions";
 
 const typeConfig: Record<string, { icon: string; bg: string }> = {
@@ -44,6 +44,8 @@ export default function NotificationsClient({
 }: {
   notifications: Notification[];
 }) {
+  const router = useRouter();
+
   if (notifications.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-surface p-8 text-center">
@@ -69,14 +71,38 @@ export default function NotificationsClient({
 
       {notifications.map((notif) => {
         const config = typeConfig[notif.type] ?? { icon: "🔔", bg: "bg-blue-50" };
+        const isUnread = !notif.is_read;
+
+        const handleClick = async () => {
+          if (isUnread) {
+            const formData = new FormData();
+            formData.append("notification_id", notif.id);
+
+            if (notif.action_url) {
+              void markNotificationRead(formData);
+              router.push(notif.action_url);
+              return;
+            }
+
+            await markNotificationRead(formData);
+            router.refresh();
+            return;
+          }
+
+          if (notif.action_url) {
+            router.push(notif.action_url);
+          }
+        };
 
         return (
-          <div
+          <button
             key={notif.id}
-            className={`rounded-2xl border p-4 transition-colors ${
-              notif.is_read
-                ? "bg-surface border-border"
-                : "bg-white border-primary/20 shadow-sm"
+            type="button"
+            onClick={() => void handleClick()}
+            className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+              isUnread
+                ? "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                : "bg-white border-gray-200 hover:bg-gray-50"
             }`}
           >
             <div className="flex items-start gap-3">
@@ -85,45 +111,29 @@ export default function NotificationsClient({
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 {notif.title && (
-                  <p className="text-xs font-semibold text-text-primary">
+                  <p className={`text-xs font-semibold ${isUnread ? "text-text-primary" : "text-text-secondary"}`}>
                     {notif.title}
                   </p>
                 )}
-                <p className={`text-sm ${notif.is_read ? "text-text-secondary" : "text-text-primary"}`}>
+                <p className={`text-sm ${isUnread ? "text-text-primary" : "text-text-secondary"}`}>
                   {notif.body}
                 </p>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-text-secondary">
                     {timeAgo(notif.created_at)}
                   </p>
-                  <div className="flex items-center gap-3">
-                    {notif.action_url && (
-                      <Link
-                        href={notif.action_url}
-                        className="text-xs font-medium text-primary hover:underline"
-                      >
-                        View →
-                      </Link>
-                    )}
-                    {!notif.is_read && (
-                      <form action={markNotificationRead}>
-                        <input type="hidden" name="notification_id" value={notif.id} />
-                        <button
-                          type="submit"
-                          className="text-xs text-text-secondary hover:text-text-primary"
-                        >
-                          Mark read
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                  {notif.action_url && (
+                    <span className="text-xs font-medium text-primary">
+                      View →
+                    </span>
+                  )}
                 </div>
               </div>
-              {!notif.is_read && (
-                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+              {isUnread && (
+                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-gray-400" />
               )}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

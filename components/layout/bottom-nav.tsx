@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/types";
 
 const candidateNav = [
@@ -46,6 +48,7 @@ const candidateNav = [
   {
     label: "Alerts",
     href: "/notifications",
+    showBadge: true,
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
         <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.297 1.206c-1.544.57-3.16.99-4.831 1.243a3.75 3.75 0 1 1-7.48 0 24.585 24.585 0 0 1-4.831-1.244.75.75 0 0 1-.298-1.205A8.217 8.217 0 0 0 5.25 9.75V9Zm4.502 8.9a2.25 2.25 0 0 0 4.496 0 25.057 25.057 0 0 1-4.496 0Z" clipRule="evenodd" />
@@ -164,10 +167,17 @@ const employeeNav = [
 
 interface BottomNavProps {
   role?: UserRole;
+  userId?: string | null;
+  initialUnreadCount?: number;
 }
 
-export default function BottomNav({ role = "candidate" }: BottomNavProps) {
+export default function BottomNav({
+  role = "candidate",
+  userId = null,
+  initialUnreadCount = 0,
+}: BottomNavProps) {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
 
   const navItems =
     role === "hr_manager" || role === "admin"
@@ -175,6 +185,53 @@ export default function BottomNav({ role = "candidate" }: BottomNavProps) {
       : role === "employee"
       ? employeeNav
       : candidateNav;
+
+  useEffect(() => {
+    if (role !== "candidate" || !userId) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const supabase = createClient();
+    let isMounted = true;
+
+    const refreshUnreadCount = async () => {
+      const { count, error } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", userId)
+        .eq("is_read", false);
+
+      if (!isMounted || error) {
+        return;
+      }
+
+      setUnreadCount(count ?? 0);
+    };
+
+    void refreshUnreadCount();
+
+    const channel = supabase
+      .channel(`notifications-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `recipient_id=eq.${userId}`,
+        },
+        () => {
+          void refreshUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [role, userId]);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200">
@@ -193,7 +250,14 @@ export default function BottomNav({ role = "candidate" }: BottomNavProps) {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              {item.icon}
+              <span className="relative flex items-center justify-center">
+                {item.icon}
+                {item.showBadge && unreadCount > 0 && (
+                  <span className="absolute -right-2 -top-1 min-w-5 rounded-full border border-gray-300 bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-gray-900">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </span>
               <span>{item.label}</span>
             </Link>
           );

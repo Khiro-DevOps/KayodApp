@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Notification } from "@/lib/types";
-import Link from "next/link";
+import NotificationsClient from "./notifications-client";
 
 export default async function NotificationsPage() {
   const supabase = await createClient();
@@ -18,37 +18,6 @@ export default async function NotificationsPage() {
     .returns<Notification[]>();
 
   const unreadCount = notifications?.filter((n) => !n.is_read).length ?? 0;
-
-  // Mark all as read
-  if (unreadCount > 0) {
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("recipient_id", user.id)
-      .eq("is_read", false);
-  }
-
-  const typeIcons: Record<string, string> = {
-    application_submitted:      "📄",
-    application_status_changed: "📋",
-    interview_scheduled:        "📅",
-    interview_reminder:         "⏰",
-    interview_cancelled:        "❌",
-    offer_letter:               "📨",
-    leave_status_changed:       "🏖️",
-    payroll_processed:          "💰",
-    schedule_published:         "🗓️",
-    general:                    "🔔",
-    interview_completed:        "✅",
-    under_review:               "🔍",
-    negotiating:                "📞",
-    offer_sent:                 "📨",
-    offer_accepted:             "🎉",
-    offer_declined:             "❌",
-    offer_expiring:             "⏰",
-    offer_expired:              "⏰",
-    rejected:                   "❌",
-  };
 
   return (
     <PageContainer>
@@ -72,40 +41,7 @@ export default async function NotificationsPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {notifications.map((notif) => (
-              <Link
-                key={notif.id}
-                href={notif.action_url ?? "#"}
-                className={`flex items-start gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 ${
-                  !notif.is_read
-                    ? "border-primary/30 bg-primary/5"
-                    : "border-border bg-surface"
-                }`}
-              >
-                <span className="text-xl shrink-0" style={{ fontSize: 18 }}>
-                  {typeIcons[notif.type] ?? "🔔"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-text-primary">
-                    {notif.title}
-                  </p>
-                  <p className="text-xs text-text-secondary mt-0.5">
-                    {notif.body}
-                  </p>
-                  <p className="text-xs text-text-tertiary mt-1">
-                    {new Date(notif.created_at).toLocaleDateString("en-PH", {
-                      month: "short", day: "numeric", year: "numeric",
-                      hour: "numeric", minute: "2-digit"
-                    })}
-                  </p>
-                </div>
-                {!notif.is_read && (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-primary mt-1" />
-                )}
-              </Link>
-            ))}
-          </div>
+          <NotificationsClient notifications={notifications ?? []} />
         )}
       </div>
     </PageContainer>
