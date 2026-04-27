@@ -7,8 +7,9 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Profile, Resume } from "@/lib/types";
 import { computeMatchScore } from "@/lib/match-score";
+import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
-import { PHILIPPINE_CITIES } from "@/lib/constants";
+import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
 
 interface Props {
   searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string }>;
@@ -63,6 +64,55 @@ function buildResumeText(resume: Resume): string {
   return pieces.join(" ");
 }
 
+function formatSalaryRange(job: JobPosting): string | null {
+  const minValue = typeof job.salary_min === "number" ? job.salary_min : null;
+  const maxValue = typeof job.salary_max === "number" ? job.salary_max : null;
+
+  if (minValue === null && maxValue === null) return null;
+  if (minValue !== null && maxValue !== null) {
+    return `₱${minValue.toLocaleString()} - ₱${maxValue.toLocaleString()}`;
+  }
+
+  if (minValue !== null) {
+    return `From ₱${minValue.toLocaleString()}`;
+  }
+
+  return `Up to ₱${maxValue?.toLocaleString()}`;
+}
+
+function formatWorkSetup(workSetup: JobPosting["work_setup"]): string {
+  if (workSetup === "remote") return "Remote / WFH";
+  if (workSetup === "hybrid") return "Hybrid";
+  return "Onsite";
+}
+
+function formatEmploymentType(employmentType: JobPosting["employment_type"]): string {
+  return employmentType
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatIndustry(industry: string | null): string | null {
+  if (!industry) return null;
+
+  return JOB_INDUSTRIES.find((item) => item.id === industry)?.label ?? industry;
+}
+
+function JobTag({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${className}`}>
+      {children}
+    </span>
+  );
+}
+
 export default async function JobsPage({ searchParams }: Props) {
   const supabase = await createClient();
   const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location } = await searchParams;
@@ -106,7 +156,7 @@ export default async function JobsPage({ searchParams }: Props) {
   const filteredJobs = (jobs ?? []).filter((job) => filterByPayRange(job as JobPosting, payMin, payMax));
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
 
-  const jobsWithScore = selectedResume
+  const shortlistedJobs = selectedResume
     ? filteredJobs.map((job) => ({
         job: job as JobPosting,
         score: computeMatchScore(resumeText, {
@@ -119,9 +169,28 @@ export default async function JobsPage({ searchParams }: Props) {
     : [];
 
   const recommendedJobs = selectedResume
-    ? jobsWithScore
+    ? await Promise.all(
+        shortlistedJobs
         .filter((item) => item.score >= 25)
         .sort((a, b) => b.score - a.score)
+        .slice(0, 8)
+        .map(async ({ job, score }) => ({
+          job,
+          fit: await analyzeJobFit({
+            resumeData: resumeText,
+            jobRequirements: {
+              title: job.title,
+              description: job.description,
+              requirements: job.requirements,
+              required_skills: job.required_skills ?? [],
+              industry: job.industry,
+              job_category: job.job_category,
+              employment_type: job.employment_type,
+            },
+            fallbackScore: score,
+          }),
+        }))
+      )
     : [];
 
   const allJobs = filteredJobs as JobPosting[];
@@ -225,8 +294,8 @@ export default async function JobsPage({ searchParams }: Props) {
 
             {selectedResume && recommendedJobs.length > 0 ? (
               <div className="grid gap-3 md:grid-cols-2">
-                {recommendedJobs.map(({ job, score }) => (
-                  <RecommendedJobCard key={job.id} job={job} score={score} />
+                {recommendedJobs.map(({ job, fit }) => (
+                  <RecommendedJobCard key={job.id} job={job} fit={fit} />
                 ))}
               </div>
             ) : selectedResume ? (
@@ -284,13 +353,16 @@ export default async function JobsPage({ searchParams }: Props) {
   );
 }
 
-function RecommendedJobCard({ job, score }: { job: JobPosting; score: number }) {
+function RecommendedJobCard({ job, fit }: { job: JobPosting; fit: JobFitAnalysisOutput }) {
   const dept = job.departments as unknown as { name: string } | null;
+  const salaryRange = formatSalaryRange(job);
+  const industry = formatIndustry(job.industry);
 
-return (
+  return (
     <Link
       href={`/jobs/${job.id}`}
       className="block rounded-2xl bg-surface border border-border p-4 space-y-2 transition-colors hover:border-primary/30"
+      style={{ borderColor: `${fit.card_color_hex}33` }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -299,27 +371,45 @@ return (
             {dept?.name ?? "General"}{job.job_category && ` • ${job.job_category}`}
           </p>
         </div>
-        
-        {/* Updated Badges */}
+
         <div className="flex flex-col items-end gap-1">
-          <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase tracking-tight">
-            {job.employment_type}
-          </span>
-          <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 uppercase tracking-tight">
-            {job.work_setup}
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight"
+            style={{ backgroundColor: `${fit.card_color_hex}18`, color: fit.card_color_hex }}
+          >
+            {fit.match_level} {fit.fit_score}%
           </span>
         </div>
       </div>
 
       <p className="text-xs text-text-secondary line-clamp-2">{job.description}</p>
 
-      <div className="flex flex-wrap gap-1.5 mt-2">
+      <p className="text-[11px] font-medium" style={{ color: fit.card_color_hex }}>
+        {fit.top_reasons[0]}
+      </p>
+
+      <div className="flex flex-wrap gap-1.5 pt-1">
         {job.location && (
-          <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-text-secondary">
+          <JobTag className="bg-gray-100 text-text-secondary">
             📍 {job.location}
-          </span>
+          </JobTag>
         )}
-        {/* ... [Salary and Skills sections remain the same] ... */}
+        {salaryRange && (
+          <JobTag className="bg-gray-100 text-text-secondary">
+            💰 {salaryRange}
+          </JobTag>
+        )}
+        {industry && (
+          <JobTag className="bg-gray-100 text-text-secondary">
+            🏢 {industry}
+          </JobTag>
+        )}
+        <JobTag className="bg-gray-100 text-text-secondary">
+          {formatWorkSetup(job.work_setup)}
+        </JobTag>
+        <JobTag className="bg-gray-100 text-text-secondary">
+          {formatEmploymentType(job.employment_type)}
+        </JobTag>
       </div>
     </Link>
   );
@@ -327,6 +417,8 @@ return (
 
 function JobCard({ job }: { job: JobPosting }) {
   const dept = job.departments as unknown as { name: string } | null;
+  const salaryRange = formatSalaryRange(job);
+  const industry = formatIndustry(job.industry);
 
   return (
     <Link
@@ -340,27 +432,32 @@ function JobCard({ job }: { job: JobPosting }) {
             {dept?.name ?? "General"}{job.job_category && ` • ${job.job_category}`}
           </p>
         </div>
-        
-        {/* Updated Badges */}
-        <div className="flex flex-col items-end gap-1">
-          <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase tracking-tight">
-            {job.employment_type}
-          </span>
-          <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 uppercase tracking-tight">
-            {job.work_setup}
-          </span>
-        </div>
       </div>
 
       <p className="text-xs text-text-secondary line-clamp-2">{job.description}</p>
 
-      <div className="flex flex-wrap gap-1.5 mt-2">
+      <div className="flex flex-wrap gap-1.5 pt-1">
         {job.location && (
-          <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-text-secondary">
+          <JobTag className="bg-gray-100 text-text-secondary">
             📍 {job.location}
-          </span>
+          </JobTag>
         )}
-        {/* ... [Salary and Skills sections remain the same] ... */}
+        {salaryRange && (
+          <JobTag className="bg-gray-100 text-text-secondary">
+            💰 {salaryRange}
+          </JobTag>
+        )}
+        {industry && (
+          <JobTag className="bg-gray-100 text-text-secondary">
+            🏢 {industry}
+          </JobTag>
+        )}
+        <JobTag className="bg-gray-100 text-text-secondary">
+          {formatWorkSetup(job.work_setup)}
+        </JobTag>
+        <JobTag className="bg-gray-100 text-text-secondary">
+          {formatEmploymentType(job.employment_type)}
+        </JobTag>
       </div>
     </Link>
   );

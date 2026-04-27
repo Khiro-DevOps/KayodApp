@@ -1,3 +1,5 @@
+import { computeMatchScore } from "@/lib/match-score";
+
 // ─── OPENROUTER CLIENT ───────────────────────────────────────────────────────
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -74,6 +76,20 @@ export interface ResumeGenerationInput {
   skills: string;
   certifications?: string;
   jobDescription?: string;
+}
+
+export interface JobFitAnalysisInput {
+  resumeData: string | Record<string, unknown>;
+  jobRequirements: string | Record<string, unknown>;
+  fallbackScore?: number;
+}
+
+export interface JobFitAnalysisOutput {
+  fit_score: number;
+  match_level: "High" | "Medium" | "Low";
+  top_reasons: string[];
+  gap_analysis: string;
+  card_color_hex: string;
 }
 
 // ─── SYSTEM PROMPTS ───────────────────────────────────────────────────────────
@@ -200,6 +216,42 @@ Return ONLY valid JSON. No markdown. No commentary.
 }
 `.trim();
 
+const JOB_FIT_SYSTEM_PROMPT = `
+You are a recruitment logic engine for a B2B SaaS hiring platform.
+
+Convert the provided resume data and job requirements into a precise job fit score for a
+"Jobs for you" card.
+
+Scoring hierarchy:
+- Tech Stack Alignment: 50%
+- Experience Parity: 30%
+- Domain Relevance: 20%
+
+Rules:
+- Be highly critical and conservative.
+- Penalize missing must-have technologies heavily.
+- If a must-have skill is absent, cap the score aggressively even if the resume is otherwise strong.
+- Use only the information explicitly present in the inputs.
+- Keep reasons concise enough for a small UI card.
+- Return exactly 2 items in top_reasons when possible.
+- Do not output markdown, code fences, or commentary.
+- card_color_hex must be a valid hex color string that matches the match level.
+
+Match level guidance:
+- High: 75-100, strong alignment across tech, experience, and domain
+- Medium: 45-74, partial alignment with some gaps
+- Low: 0-44, major gaps or missing core requirements
+
+Output ONLY this JSON object:
+{
+  "fit_score": integer,
+  "match_level": "High" | "Medium" | "Low",
+  "top_reasons": [string, string],
+  "gap_analysis": string,
+  "card_color_hex": string
+}
+`.trim();
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 function parseJSONResponse<T>(raw: string): T | null {
@@ -218,6 +270,175 @@ function parseJSONResponse<T>(raw: string): T | null {
   } catch (error) {
     console.error("JSON parsing failed. Raw text:", raw);
     return null;
+  }
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function resolveMatchLevel(score: number): JobFitAnalysisOutput["match_level"] {
+  if (score >= 75) return "High";
+  if (score >= 45) return "Medium";
+  return "Low";
+}
+
+function resolveCardColorHex(level: JobFitAnalysisOutput["match_level"]): string {
+  if (level === "High") return "#16A34A";
+  if (level === "Medium") return "#F59E0B";
+  return "#9CA3AF";
+}
+
+function toPromptText(value: string | Record<string, unknown>): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function toJobData(jobRequirements: string | Record<string, unknown>) {
+  if (typeof jobRequirements === "string") {
+    return {
+      title: "",
+      description: jobRequirements,
+      requirements: null,
+      required_skills: [] as string[],
+    };
+  }
+
+  const data = jobRequirements as Record<string, unknown>;
+  return {
+    title: typeof data.title === "string" ? data.title : "",
+    description: typeof data.description === "string" ? data.description : JSON.stringify(data),
+    requirements: typeof data.requirements === "string" ? data.requirements : null,
+    required_skills: Array.isArray(data.required_skills)
+      ? (data.required_skills as unknown[]).filter(
+          (skill): skill is string => typeof skill === "string" && skill.trim() !== ""
+        )
+      : [],
+  };
+}
+
+function normalizeJobFitOutput(raw: unknown, fallbackScore?: number): JobFitAnalysisOutput {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Output is not an object");
+  }
+
+  const r = raw as Record<string, unknown>;
+  const fitScore =
+    typeof r.fit_score === "number" && Number.isFinite(r.fit_score)
+      ? clampScore(r.fit_score)
+      : fallbackScore !== undefined
+        ? clampScore(fallbackScore)
+        : 0;
+
+  const matchLevel =
+    r.match_level === "High" || r.match_level === "Medium" || r.match_level === "Low"
+      ? r.match_level
+      : resolveMatchLevel(fitScore);
+
+  const topReasons = Array.isArray(r.top_reasons)
+    ? (r.top_reasons as unknown[])
+        .filter((reason): reason is string => typeof reason === "string" && reason.trim() !== "")
+        .slice(0, 2)
+    : [];
+
+  while (topReasons.length < 2) {
+    topReasons.push(matchLevel === "Low" ? "Missing core requirements" : "Partial alignment with the role");
+  }
+
+  const gapAnalysis =
+    typeof r.gap_analysis === "string" && r.gap_analysis.trim()
+      ? r.gap_analysis.trim()
+      : matchLevel === "High"
+        ? "Minor gaps only; this profile aligns closely with the role."
+        : matchLevel === "Medium"
+          ? "Some requirements are covered, but there are notable gaps in stack or seniority."
+          : "The resume is missing core technologies, seniority signals, or domain experience.";
+
+  const colorHex =
+    typeof r.card_color_hex === "string" && /^#([0-9a-fA-F]{6})$/.test(r.card_color_hex.trim())
+      ? r.card_color_hex.trim()
+      : resolveCardColorHex(matchLevel);
+
+  return {
+    fit_score: fitScore,
+    match_level: matchLevel,
+    top_reasons: topReasons,
+    gap_analysis: gapAnalysis,
+    card_color_hex: colorHex,
+  };
+}
+
+function fallbackJobFit(
+  resumeData: string | Record<string, unknown>,
+  jobRequirements: string | Record<string, unknown>,
+  fallbackScore?: number
+): JobFitAnalysisOutput {
+  const jobData = toJobData(jobRequirements);
+  const score =
+    typeof fallbackScore === "number"
+      ? clampScore(fallbackScore)
+      : computeMatchScore(toPromptText(resumeData), jobData);
+
+  const level = resolveMatchLevel(score);
+  const resumeText = toPromptText(resumeData).toLowerCase();
+  const jobText = toPromptText(jobRequirements).toLowerCase();
+
+  const reasons = [
+    score >= 70
+      ? "Strong overlap across required technologies and role scope"
+      : score >= 45
+        ? "Some relevant skills match the job, but not the full stack"
+        : "Core job requirements are only partially represented in the resume",
+    jobText.includes("next.js") && resumeText.includes("next.js")
+      ? "Next.js is explicitly present in both the resume and the job"
+      : jobText.includes("next.js")
+        ? "The role emphasizes Next.js, but the resume does not show it clearly"
+        : "Technology stack alignment is driven more by general similarity than explicit match",
+  ];
+
+  return {
+    fit_score: score,
+    match_level: level,
+    top_reasons: reasons.slice(0, 2),
+    gap_analysis:
+      level === "High"
+        ? "Only small gaps remain; the candidate is close to the target profile."
+        : level === "Medium"
+          ? "The profile matches part of the stack, but it needs stronger seniority or domain evidence."
+          : "The profile is missing one or more must-have capabilities and should be treated cautiously.",
+    card_color_hex: resolveCardColorHex(level),
+  };
+}
+
+export async function analyzeJobFit(
+  input: JobFitAnalysisInput
+): Promise<JobFitAnalysisOutput> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
+  }
+
+  const userMessage = `
+[RESUME_DATA]
+${toPromptText(input.resumeData)}
+
+[JOB_REQUIREMENTS]
+${toPromptText(input.jobRequirements)}
+  `.trim();
+
+  try {
+    const raw = await callOpenRouter(JOB_FIT_SYSTEM_PROMPT, userMessage, 0.1);
+    const parsed = parseJSONResponse<unknown>(raw);
+
+    if (!parsed) {
+      return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
+    }
+
+    return normalizeJobFitOutput(parsed, input.fallbackScore);
+  } catch {
+    return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 }
 
