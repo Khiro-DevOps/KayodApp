@@ -13,9 +13,28 @@ export type ApplicationStatus =
   | "interview_scheduled"
   | "interviewed"
   | "offer_sent"
+  | "offer_interview_scheduled"
+  | "offer_under_negotiation"
+  | "contract_sent"
+  | "contract_signed"
+  | "offer_rejected"
   | "hired"
+  | "onboarded"
   | "rejected"
   | "withdrawn";
+
+export type JobOfferProposalStatus =
+  | "draft"
+  | "sent_to_candidate"
+  | "accepted"
+  | "rejected"
+  | "renegotiate";
+
+export type ContractStatus =
+  | "draft"
+  | "sent_to_candidate"
+  | "signed"
+  | "rejected";
 
 export type InterviewType = "online" | "in_person";
 
@@ -83,6 +102,8 @@ export type PayFrequency =
   | "bi_weekly"
   | "semi_monthly"
   | "monthly";
+
+export type DeviceType = "web" | "ios" | "android";
 
 export interface Profile {
   id: string;
@@ -362,6 +383,85 @@ export interface Notification {
   created_at: string;
 }
 
+export interface JobOfferProposal {
+  id: string;
+  application_id: string;
+  created_by: string;
+  previous_proposal_id: string | null;
+  proposal_status: JobOfferProposalStatus;
+  base_salary: number;
+  start_date: string;
+  position_title: string;
+  benefits_summary: string | null;
+  other_terms: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  accepted_at: string | null;
+  rejected_at: string | null;
+}
+
+export interface JobOfferInterview {
+  id: string;
+  job_offer_proposal_id: string;
+  scheduled_by: string;
+  interview_type: InterviewType;
+  status: InterviewStatus;
+  scheduled_at: string;
+  duration_minutes: number;
+  timezone: string;
+  location_address: string | null;
+  location_notes: string | null;
+  video_room_url: string | null;
+  video_room_name: string | null;
+  video_provider: string | null;
+  interviewer_notes: string | null;
+  interview_score: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  html_template: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+}
+
+export interface Contract {
+  id: string;
+  job_offer_proposal_id: string;
+  contract_template_id: string;
+  version_number: number;
+  supersedes_contract_id: string | null;
+  contract_status: ContractStatus;
+  contract_html: string;
+  pdf_url: string | null;
+  candidate_signature: string | null;
+  signature_timestamp: string | null;
+  candidate_signed_name: string | null;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  signed_at: string | null;
+}
+
+export interface FCMDeviceToken {
+  id: string;
+  user_id: string;
+  device_token: string;
+  device_type: DeviceType;
+  device_name: string | null;
+  is_active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type PunchType = "in" | "out";
 
 export interface TimeLog {
@@ -394,17 +494,46 @@ export type NewPayslip = Omit<Payslip,
   "created_at" | "updated_at" | "employees" | "payroll_periods"
 >;
 
+export type NewJobOfferProposal = Omit<JobOfferProposal,
+  "id" | "created_at" | "updated_at" | "sent_at" | "accepted_at" | "rejected_at"
+>;
+
+export type NewContract = Omit<Contract,
+  "id" | "created_at" | "updated_at" | "sent_at" | "signed_at"
+>;
+
 export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
-  draft:                "bg-gray-100 text-gray-700",
-  submitted:            "bg-blue-100 text-blue-700",
-  under_review:         "bg-yellow-100 text-yellow-700",
-  shortlisted:          "bg-purple-100 text-purple-700",
-  interview_scheduled:  "bg-indigo-100 text-indigo-700",
-  interviewed:          "bg-cyan-100 text-cyan-700",
-  offer_sent:           "bg-orange-100 text-orange-700",
-  hired:                "bg-green-100 text-green-700",
-  rejected:             "bg-red-100 text-red-700",
-  withdrawn:            "bg-gray-100 text-gray-500",
+  draft:                        "bg-gray-100 text-gray-700",
+  submitted:                    "bg-blue-100 text-blue-700",
+  under_review:                 "bg-yellow-100 text-yellow-700",
+  shortlisted:                  "bg-purple-100 text-purple-700",
+  interview_scheduled:          "bg-indigo-100 text-indigo-700",
+  interviewed:                  "bg-cyan-100 text-cyan-700",
+  offer_sent:                   "bg-orange-100 text-orange-700",
+  offer_interview_scheduled:    "bg-orange-200 text-orange-800",
+  offer_under_negotiation:      "bg-amber-100 text-amber-700",
+  contract_sent:                "bg-pink-100 text-pink-700",
+  contract_signed:              "bg-lime-100 text-lime-700",
+  offer_rejected:               "bg-red-200 text-red-800",
+  hired:                        "bg-green-100 text-green-700",
+  onboarded:                    "bg-emerald-100 text-emerald-700",
+  rejected:                     "bg-red-100 text-red-700",
+  withdrawn:                    "bg-gray-100 text-gray-500",
+};
+
+export const JOB_OFFER_STATUS_COLORS: Record<JobOfferProposalStatus, string> = {
+  draft:           "bg-gray-100 text-gray-700",
+  sent_to_candidate: "bg-blue-100 text-blue-700",
+  accepted:        "bg-green-100 text-green-700",
+  rejected:        "bg-red-100 text-red-700",
+  renegotiate:     "bg-yellow-100 text-yellow-700",
+};
+
+export const CONTRACT_STATUS_COLORS: Record<ContractStatus, string> = {
+  draft:            "bg-gray-100 text-gray-700",
+  sent_to_candidate: "bg-blue-100 text-blue-700",
+  signed:           "bg-green-100 text-green-700",
+  rejected:         "bg-red-100 text-red-700",
 };
 
 export const LEAVE_STATUS_COLORS: Record<LeaveStatus, string> = {

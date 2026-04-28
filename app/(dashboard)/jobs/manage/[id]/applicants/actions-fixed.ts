@@ -5,13 +5,12 @@ import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
 
 function createJitsiRoom(applicationId: string) {
-  // Jitsi Meet rooms don't require API calls - rooms are created on-demand
-  // Room names are generated locally and accessed via https://meet.jit.si/{roomName}
-  const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
-  const meetingUrl = `https://meet.jit.si/${roomName}`;
-
+  // Jitsi Meet rooms are created on-the-fly without API calls
+  const roomName = `kayod-${applicationId.slice(0, 8)}-${Date.now()}`;
+  const roomUrl = `https://meet.jit.si/${roomName}`;
+  
   return {
-    url: meetingUrl,
+    url: roomUrl,
     name: roomName,
   };
 }

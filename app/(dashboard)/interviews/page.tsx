@@ -23,17 +23,21 @@ export default async function InterviewsPage() {
   let interviews: Interview[] = [];
 
   if (isHR) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("interviews")
       .select(`
         *,
         applications (
           *,
-          profiles ( first_name, last_name, email ),
-          job_postings ( title )
+          profiles!applications_candidate_id_fkey (first_name, last_name, email),
+          job_postings (title)
         )
       `)
       .order("scheduled_at", { ascending: true });
+    
+    if (error) {
+      console.error("Error fetching HR interviews:", error);
+    }
     interviews = (data as Interview[]) ?? [];
   } else {
     const { data } = await supabase

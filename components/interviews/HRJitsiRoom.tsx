@@ -1,10 +1,10 @@
 // components/interviews/HRJitsiRoom.tsx
-// HR Meeting Room with custom layout: PIP self-view, full-screen remote video, control bar, and note-taking panel.
+// HR Meeting Room with custom layout: PIP self-view, full-screen remote video, and control bar.
+// Notes are taken AFTER the interview using the post-interview notes page.
 
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import NoteTakingPanel from "./NoteTakingPanel";
 import MeetingControlBar from "./MeetingControlBar";
 import type { JitsiMeetOptions, JitsiMeetAPI } from "./jitsi.types";
 import "./jitsi.types"; // Import global type augmentations
@@ -28,8 +28,6 @@ export default function HRJitsiRoom({
 }: HRJitsiRoomProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<JitsiMeetAPI | null>(null);
-  const [isNotePanelOpen, setIsNotePanelOpen] = useState(false);
-  const [notes, setNotes] = useState<string>("");
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
 
@@ -91,6 +89,7 @@ export default function HRJitsiRoom({
       });
 
       apiRef.current.addEventListener("readyToClose", () => {
+        apiRef.current?.dispose();
         onClose?.();
       });
     };
@@ -109,15 +108,28 @@ export default function HRJitsiRoom({
       document.head.appendChild(script);
     }
 
+    // Prevent Jitsi from navigating away
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const jitsiClose = document.querySelector('[data-testid="app.menu.aboutTitle"]') || 
+                         document.querySelector('div[style*="https://meet.jit.si"]');
+      if (jitsiClose) {
+        e.preventDefault();
+        e.returnValue = false;
+        apiRef.current?.dispose();
+        onClose?.();
+        return false;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       apiRef.current?.dispose();
     };
   }, [roomName, displayName, email, onClose]);
 
-  // Save notes to localStorage for persistence
-  useEffect(() => {
-    localStorage.setItem(`interview-notes-${roomName}`, notes);
-  }, [notes, roomName]);
+
 
   const handleToggleMute = () => {
     if (apiRef.current) {
@@ -162,25 +174,6 @@ export default function HRJitsiRoom({
           onEndCall={handleEndCall}
           applicantName={applicantName}
         />
-
-        {/* HR Note-Taking FAB (bottom-right) */}
-        <button
-          onClick={() => setIsNotePanelOpen(!isNotePanelOpen)}
-          className="absolute bottom-24 right-6 z-20 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center text-white font-bold text-xl hover:scale-110 active:scale-95"
-          title="Toggle Notes"
-        >
-          📝
-        </button>
-
-        {/* Note-Taking Panel (overlay) */}
-        {isNotePanelOpen && (
-          <NoteTakingPanel
-            notes={notes}
-            onNotesChange={setNotes}
-            onClose={() => setIsNotePanelOpen(false)}
-            applicantName={applicantName}
-          />
-        )}
       </div>
     </div>
   );

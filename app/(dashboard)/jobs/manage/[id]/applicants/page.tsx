@@ -41,7 +41,7 @@ export default async function ApplicantsPage({
   if (!job) redirect("/jobs/manage");
 
   // Fetch applicants with full details
-  const { data: applications } = await supabase
+  const { data: applications, error: appsError } = await supabase
     .from("applications")
     .select(`
       id,
@@ -51,13 +51,38 @@ export default async function ApplicantsPage({
       match_score,
       submitted_at,
       cover_letter,
-      profiles (id, first_name, last_name, email, phone, city, country),
+      profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
       resumes (id, title, pdf_url, content_text)
     `)
     .eq("job_posting_id", id)
     .order("match_score", { ascending: false, nullsFirst: false })
     .order("submitted_at", { ascending: false })
     .returns<Application[]>();
+
+  if (appsError) {
+    console.error("Error fetching applications - Full Details:", {
+      fullError: appsError,
+      errorString: String(appsError),
+      errorJSON: JSON.stringify(appsError, null, 2),
+      userRole: role,
+      jobId: id,
+      userId: user.id,
+      isHR: isHRRole(role),
+    });
+    
+    // Try fallback: fetch without nested relations to test RLS
+    console.log("Attempting fallback query without nested relations...");
+    const { data: appsSimple, error: simpleError } = await supabase
+      .from("applications")
+      .select("id, job_posting_id, candidate_id, status")
+      .eq("job_posting_id", id);
+    
+    if (simpleError) {
+      console.error("Fallback query also failed:", simpleError);
+    } else {
+      console.log("Fallback query succeeded, found", appsSimple?.length, "applications");
+    }
+  }
 
   // Fetch interviews for all applications on this job
   const applicationIds = applications?.map((a) => a.id) || [];

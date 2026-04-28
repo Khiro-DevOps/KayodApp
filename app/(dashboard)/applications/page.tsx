@@ -25,6 +25,7 @@ type CandidateInterviewListItem = {
   status: Interview["status"];
   scheduled_at: string;
   interviewer_notes: string | null;
+  video_room_url?: string | null;
 };
 
 export default async function ApplicationsPage() {
@@ -67,7 +68,7 @@ export default async function ApplicationsPage() {
   const applicationIds = (applications ?? []).map((app) => app.id);
   const { data: interviews } = await supabase
     .from("interviews")
-    .select("id, application_id, interview_type, status, scheduled_at, interviewer_notes")
+    .select("id, application_id, interview_type, status, scheduled_at, interviewer_notes, video_room_url")
     .in("application_id", applicationIds)
     .returns<CandidateInterviewListItem[]>();
 

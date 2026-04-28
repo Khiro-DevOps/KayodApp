@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
 import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
+import InterviewNotesForm from "@/components/interviews/interview-notes-form";
 
 interface Interview {
   id: string;
@@ -18,6 +19,7 @@ interface Interview {
   video_room_name: string | null;
   location_address: string | null;
   location_notes: string | null;
+  interviewer_notes: string | null;
   applications: {
     candidate_id?: string;
     job_postings?: { title?: string } | null;
@@ -61,7 +63,7 @@ export default function InterviewRoomPage({ interviewId }: Props) {
         .from("interviews")
         .select(`
           id, interview_type, status, scheduled_at, duration_minutes,
-          video_room_url, video_room_name, location_address, location_notes,
+          video_room_url, video_room_name, location_address, location_notes, interviewer_notes,
           applications (
             candidate_id,
             job_postings ( title ),
@@ -94,7 +96,10 @@ export default function InterviewRoomPage({ interviewId }: Props) {
   // useCallback prevents the Jitsi useEffect from re-firing on every render
   const handleHRLeave = useCallback(() => {
     setActiveRoom(null);
-  }, []);
+    // Redirect back to interviews list after leaving the meeting
+    // The HR will be prompted to add notes when they return
+    router.push("/interviews");
+  }, [router]);
 
   const handleApplicantLeave = useCallback(() => {
     router.push("/interviews/thank-you");
@@ -148,12 +153,67 @@ export default function InterviewRoomPage({ interviewId }: Props) {
   const now = new Date();
   const minutesUntil = Math.floor((scheduledDate.getTime() - now.getTime()) / 60000);
   const endTime = new Date(scheduledDate.getTime() + (interview.duration_minutes ?? 60) * 60000);
-  const canJoin = minutesUntil <= 15 && now < endTime && interview.status !== "cancelled";
+  const canJoin = minutesUntil <= 15 && now < endTime && interview.status !== "cancelled" && interview.status !== "completed";
 
 
   const roomName = interview.video_room_url?.split("/").pop() || interview.video_room_name || "interview-room";
 
-  // ── In-person interview ──────────────────────────────────────────────────
+  // ── Show notes form if interview is completed and user is HR ────────────────
+  if (interview.status === "completed" && isHR) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 py-8">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/interviews"
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+              Interview Complete
+            </h1>
+            <p className="text-sm text-text-secondary">Add or review interview notes for {candidateName}</p>
+          </div>
+        </div>
+
+        {/* Interview Summary Card */}
+        <div className="rounded-2xl bg-surface border border-border p-5 space-y-3">
+          <div>
+            <p className="text-xs text-text-secondary">Position</p>
+            <p className="text-sm font-semibold text-text-primary">{jobTitle}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary">Candidate</p>
+            <p className="text-sm text-text-primary">{candidateName}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary">When</p>
+            <p className="text-sm text-text-primary">
+              {scheduledDate.toLocaleDateString("en-PH", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+        </div>
+
+        {/* Notes Form */}
+        <InterviewNotesForm
+          interviewId={interviewId}
+          initialNotes={interview.interviewer_notes || ""}
+          candidateName={candidateName}
+        />
+      </div>
+    );
+  }
   if (interview.interview_type === "in_person") {
     return (
       <div className="max-w-md mx-auto space-y-5">
@@ -215,6 +275,13 @@ export default function InterviewRoomPage({ interviewId }: Props) {
             Mark as Completed
           </button>
         )}
+
+        {isHR && interview.status === "completed" && (
+          <div className="rounded-2xl bg-green-50 border border-green-200 p-4 text-center space-y-2">
+            <p className="text-sm font-semibold text-green-700">✓ Interview Completed</p>
+            <p className="text-xs text-green-600">You can now add notes to this interview.</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -263,6 +330,14 @@ export default function InterviewRoomPage({ interviewId }: Props) {
           <p className="text-sm font-semibold text-text-primary">Meeting room unavailable</p>
           <p className="text-xs text-text-secondary">
             The online meeting room has not been set up yet. Please contact HR.
+          </p>
+        </div>
+      ) : interview.status === "completed" ? (
+        <div className="rounded-2xl bg-green-50 border border-green-200 p-8 text-center space-y-3">
+          <div className="text-4xl">✓</div>
+          <p className="text-sm font-semibold text-green-700">Interview Completed</p>
+          <p className="text-xs text-green-600">
+            This interview has been completed. The meeting room is now closed for both participants.
           </p>
         </div>
       ) : (

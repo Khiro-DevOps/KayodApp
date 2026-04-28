@@ -196,8 +196,12 @@ export async function moveToInterview(formData: FormData) {
     interviewData.location_address = locationAddress;
     interviewData.location_notes = locationNotes;
   } else if (interviewType === "online") {
-    interviewData.video_room_name = videoRoomName;
-    // In a real app, you'd generate a Daily.co room URL here
+    // Generate Jitsi Meet room URL
+    const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
+    const videoUrl = `https://meet.jit.si/${roomName}`;
+    interviewData.video_room_url = videoUrl;
+    interviewData.video_room_name = roomName;
+    interviewData.video_provider = "jitsi";
   }
 
   const { error: createError } = await supabase

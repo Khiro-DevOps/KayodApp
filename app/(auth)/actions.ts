@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { cookies } from "next/headers";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
@@ -36,7 +37,7 @@ function formatPhilippinesPhone(value: string) {
 }
 
 export async function register(formData: FormData) {
-  const supabase = await createServerActionClient({ cookies });
+  const supabase = await createClient();
 
   // 1. Extract form data
   const email = formData.get("email") as string;

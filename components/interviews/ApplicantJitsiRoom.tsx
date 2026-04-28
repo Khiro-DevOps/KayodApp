@@ -63,7 +63,10 @@ export default function ApplicantJitsiRoom({
       });
 
       // If applicant hangs up from inside the Jitsi UI
-      apiRef.current.addEventListener("readyToClose", onLeave);
+      apiRef.current.addEventListener("readyToClose", () => {
+        apiRef.current?.dispose();
+        onLeave();
+      });
     };
 
     const existing = document.getElementById(scriptId);
@@ -80,7 +83,23 @@ export default function ApplicantJitsiRoom({
       document.head.appendChild(script);
     }
 
+    // Prevent Jitsi from navigating away
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const jitsiClose = document.querySelector('[data-testid="app.menu.aboutTitle"]') || 
+                         document.querySelector('div[style*="https://meet.jit.si"]');
+      if (jitsiClose) {
+        e.preventDefault();
+        e.returnValue = false;
+        apiRef.current?.dispose();
+        onLeave();
+        return false;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       apiRef.current?.dispose();
     };
   }, [roomName, userName, onLeave]);

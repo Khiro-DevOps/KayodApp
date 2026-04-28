@@ -47,15 +47,31 @@ export default function InterviewSchedulePage() {
 
   useEffect(() => {
     async function load() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("applications")
-        .select(`id, status, selected_mode, hr_office_address, hr_offered_modes, candidate_id, profiles ( first_name, last_name, email ), job_postings ( id, title )`)
-        .in("status", ["shortlisted", "under_review", "interview_scheduled"])
-        .order("created_at", { ascending: false });
-      setApplications((data as unknown as Application[]) ?? []);
-      setLoading(false);
-    }
+    const supabase = createClient();
+    
+    const { data: rawApps, error: rawError } = await supabase
+      .from("applications")
+      .select("id, status")
+      .limit(5);
+    
+    console.log("Basic query result:", rawApps, "Error:", JSON.stringify(rawError));
+
+    const { data, error: fetchError } = await supabase
+    .from("applications")
+    .select(`
+      id, status, selected_mode, hr_office_address, hr_offered_modes, candidate_id,
+      profiles!candidate_id ( first_name, last_name, email ),
+      job_postings ( id, title )
+    `)
+    .order("created_at", { ascending: false })
+    .in("status", ["shortlisted", "under_review", "pending"]);
+
+    console.log("Full query error:", JSON.stringify(fetchError));
+    console.log("Full query data:", data);
+
+    setApplications((data as unknown as Application[]) ?? []);
+    setLoading(false);
+  }
     load();
   }, []);
 
@@ -148,7 +164,9 @@ export default function InterviewSchedulePage() {
           <select value={selectedApplicationId} onChange={(e) => setSelectedApplicationId(e.target.value)} required className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm">
             <option value="">Select an applicant...</option>
             {applications.map((app) => (
-              <option key={app.id} value={app.id}>{app.profiles.first_name} {app.profiles.last_name} — {app.job_postings.title}</option>
+              <option key={app.id} value={app.id}>
+                {app.profiles.first_name} {app.profiles.last_name} — {app.job_postings.title} ({app.status})
+              </option>
             ))}
           </select>
           {candidateSelectedMode && (

@@ -80,6 +80,31 @@ export async function cancelInterview(formData: FormData) {
   redirect("/interviews");
 }
 
+export async function completeInterview(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+
+  const interviewId = formData.get("interview_id") as string;
+  if (!interviewId) redirect("/interviews");
+
+  // Mark interview as completed
+  const { error } = await supabase
+    .from("interviews")
+    .update({ status: "completed" })
+    .eq("id", interviewId);
+
+  if (error) {
+    console.error("Error completing interview:", error);
+    redirect(`/interviews?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/interviews");
+  revalidatePath("/dashboard");
+  redirect("/interviews");
+}
+
 export async function updateInterviewPreference(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

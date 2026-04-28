@@ -411,11 +411,11 @@ create table if not exists interviews (
   location_notes      text,
 
   -- For online interviews
-  -- We use Daily.co rooms (free tier, no SDK install needed — just an iframe URL)
-  -- Room is created via Daily.co REST API: POST https://api.daily.co/v1/rooms
-  video_room_url      text,       -- e.g. https://yourapp.daily.co/room-name
-  video_room_name     text,       -- Daily.co room name (for deletion after)
-  video_provider      text default 'daily.co',
+  -- We use Jitsi Meet rooms (free tier, open-source, no API key needed)
+  -- Room is created locally and accessed via https://meet.jit.si/{roomName}
+  video_room_url      text,       -- e.g. https://meet.jit.si/kayod-interview-xxxxx
+  video_room_name     text,       -- Jitsi room name
+  video_provider      text default 'jitsi',
 
   -- Optional: interviewer notes after the call
   interviewer_notes   text,
@@ -995,7 +995,8 @@ returns user_role language sql security definer stable as $$
   select coalesce(
     (select p.role from profiles p where p.id = auth.uid()),
     (select (u.raw_user_meta_data->>'role')::user_role
-     from auth.users u where u.id = auth.uid())
+     from auth.users u where u.id = auth.uid()),
+    'candidate'::user_role
   );
 $$;
 
@@ -1005,7 +1006,8 @@ returns boolean language sql security definer volatile as $$
   select coalesce(
     (select p.role in ('hr_manager', 'admin') from profiles p where p.id = auth.uid()),
     (select (u.raw_user_meta_data->>'role') in ('hr_manager', 'admin')
-     from auth.users u where u.id = auth.uid())
+     from auth.users u where u.id = auth.uid()),
+    false
   );
 $$;
 
