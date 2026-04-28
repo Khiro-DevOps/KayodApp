@@ -51,7 +51,6 @@ export default function ApplicantDetailDrawer({
   const [signedResumeUrl, setSignedResumeUrl] = useState<string | null>(null);
   const [loadingResume, setLoadingResume] = useState(false);
 
-  const isNegotiating = application?.status === "negotiating";
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
 
@@ -70,7 +69,7 @@ export default function ApplicantDetailDrawer({
 
   // Fetch negotiation logs
   useEffect(() => {
-    if (!isOpen || !isNegotiating) return;
+    if (!isOpen) return;
 
     async function fetchLogs() {
       setLoadingLogs(true);
@@ -84,7 +83,7 @@ export default function ApplicantDetailDrawer({
       setLoadingLogs(false);
     }
     fetchLogs();
-  }, [isOpen, isNegotiating, application.id]);
+  }, [isOpen, application.id]);
 
   // Trigger the signed URL generation when the drawer opens and resume exists
   useEffect(() => {
@@ -278,11 +277,14 @@ export default function ApplicantDetailDrawer({
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-text-primary">Application Status</h3>
             <div className={`px-3 py-2 rounded-lg text-sm font-medium ${
-              application?.status === "hired"                  ? "bg-green-50 text-green-700"
-              : application?.status === "rejected"             ? "bg-red-50 text-red-700"
-              : application?.status === "negotiating"          ? "bg-purple-50 text-purple-700"
+              application?.status === "submitted"              ? "bg-blue-50 text-blue-700"
+              : application?.status === "draft"                ? "bg-gray-50 text-gray-700"
               : application?.status === "under_review"         ? "bg-amber-50 text-amber-700"
+              : application?.status === "shortlisted"          ? "bg-green-50 text-green-700"
               : application?.status === "interview_scheduled"  ? "bg-purple-50 text-purple-700"
+              : application?.status === "interviewed"          ? "bg-indigo-50 text-indigo-700"
+              : application?.status === "offer_sent"           ? "bg-green-50 text-green-700"
+              : application?.status === "withdrawn"            ? "bg-red-50 text-red-700"
               : "bg-blue-50 text-blue-700"
             }`}>
               {application?.status.replace(/_/g, " ")}
@@ -290,7 +292,7 @@ export default function ApplicantDetailDrawer({
           </div>
 
           {/* Negotiation Log Section */}
-          {isNegotiating && (
+          {false && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-text-primary">📞 Negotiation Log</h3>

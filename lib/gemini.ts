@@ -1,5 +1,100 @@
 import { computeMatchScore } from "@/lib/match-score";
 
+// ─── ERROR TYPES ──────────────────────────────────────────────────────────────
+
+export class OpenRouterError extends Error {
+  constructor(
+    public status: number,
+    public isRateLimited: boolean,
+    public isTransient: boolean,
+    public retryAfterSeconds?: number,
+    message?: string
+  ) {
+    super(message || `OpenRouter error ${status}`);
+    this.name = "OpenRouterError";
+  }
+}
+
+/**
+ * Checks if a status code indicates a transient error that should be retried.
+ * Transient errors include rate limiting (429) and server errors (502, 503, 504).
+ */
+function isTransientError(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
+// ─── REQUEST QUEUE ────────────────────────────────────────────────────────────
+
+interface QueuedRequest {
+  id: string;
+  execute: () => Promise<string>;
+  retries: number;
+  maxRetries: number;
+}
+
+class RequestQueue {
+  private queue: QueuedRequest[] = [];
+  private processing = false;
+  private maxConcurrent = 1; // Process one request at a time to avoid rate limits
+
+  async enqueue(
+    execute: () => Promise<string>,
+    maxRetries = 3
+  ): Promise<string> {
+    const id = `${Date.now()}_${Math.random()}`;
+    const request: QueuedRequest = { id, execute, retries: 0, maxRetries };
+
+    return new Promise<string>((resolve, reject) => {
+      this.queue.push(request);
+      this.processQueue().then(() => {}).catch(err => console.error("Queue start error:", err));
+      
+      // Execute this request with retry logic
+      this.executeWithBackoff(request)
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  private async executeWithBackoff(request: QueuedRequest): Promise<string> {
+    while (request.retries <= request.maxRetries) {
+      try {
+        return await request.execute();
+      } catch (error) {
+        if (error instanceof OpenRouterError && error.isTransient) {
+          request.retries++;
+          if (request.retries <= request.maxRetries) {
+            // Exponential backoff: 2s, 4s, 8s
+            const delayMs = Math.pow(2, request.retries) * 1000;
+            const errorType = error.isRateLimited ? "rate limited" : `server error (${error.status})`;
+            console.warn(
+              `API ${errorType}. Retry ${request.retries}/${request.maxRetries} after ${delayMs}ms`
+            );
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+    throw new OpenRouterError(429, true, true, undefined, "Max retries exceeded");
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing) return;
+    this.processing = true;
+
+    while (this.queue.length > 0) {
+      const request = this.queue.shift();
+      // Just remove from queue; the actual execution happens in enqueue's promise
+      if (!request) break;
+    }
+
+    this.processing = false;
+  }
+}
+
+const requestQueue = new RequestQueue();
+
 // ─── OPENROUTER CLIENT ───────────────────────────────────────────────────────
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -11,32 +106,68 @@ async function callOpenRouter(
   userMessage: string,
   temperature = 0.7
 ): Promise<string> {
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
-      "X-Title": "Resume Generator",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature,
-      max_tokens: 800,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  return requestQueue.enqueue(async () => {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+        "X-Title": "Resume Generator",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature,
+        max_tokens: 800,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      const isRateLimited = response.status === 429;
+      const isTransient = isTransientError(response.status);
+      
+      if (isRateLimited) {
+        // Extract retry-after if available
+        const retryAfter = response.headers.get("retry-after");
+        const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+        throw new OpenRouterError(
+          response.status,
+          true,
+          true,
+          retryAfterSeconds,
+          `API rate limited. Please try again in ${retryAfterSeconds || 60} seconds.`
+        );
+      }
+      
+      if (isTransient) {
+        // Server-side transient error (502, 503, 504, etc.)
+        throw new OpenRouterError(
+          response.status,
+          false,
+          true,
+          undefined,
+          `OpenRouter server temporarily unavailable (${response.status}). Retrying...`
+        );
+      }
+      
+      // Permanent error (4xx client errors, etc.)
+      throw new OpenRouterError(
+        response.status,
+        false,
+        false,
+        undefined,
+        `OpenRouter error ${response.status}: ${err}`
+      );
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() ?? "";
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
 // ─── INTERFACES ───────────────────────────────────────────────────────────────
@@ -201,7 +332,7 @@ CONTENT (EXTRACT ONLY THIS):
 Return ONLY valid JSON. No markdown. No commentary.
 
 {
-  "name": string,
+  "name": sI tring,
   "contact": {
     "email": string | null,
     "phone": string | null,
@@ -433,11 +564,17 @@ ${toPromptText(input.jobRequirements)}
     const parsed = parseJSONResponse<unknown>(raw);
 
     if (!parsed) {
+      console.warn("Job fit analysis returned invalid JSON, using fallback");
       return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
     }
 
     return normalizeJobFitOutput(parsed, input.fallbackScore);
-  } catch {
+  } catch (error) {
+    if (error instanceof OpenRouterError) {
+      console.error(`Job fit analysis failed - ${error.message}`);
+    } else {
+      console.error("Job fit analysis error:", error);
+    }
     return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 }
@@ -594,11 +731,34 @@ ${rawText}
 Extract the resume content as instructed. Remember: ignore all file metadata.
   `.trim();
 
-  const extractionRaw = await callOpenRouter(
-    DOCUMENT_EXTRACTION_SYSTEM_PROMPT,
-    extractionMessage,
-    0.1 // low temperature for deterministic extraction
-  );
+  let extractionRaw: string;
+  try {
+    extractionRaw = await callOpenRouter(
+      DOCUMENT_EXTRACTION_SYSTEM_PROMPT,
+      extractionMessage,
+      0.1 // low temperature for deterministic extraction
+    );
+  } catch (error) {
+    if (error instanceof OpenRouterError) {
+      if (error.isRateLimited) {
+        throw new OpenRouterError(
+          429,
+          true,
+          true,
+          error.retryAfterSeconds,
+          `The resume parsing service is temporarily overloaded. Please try again in ${error.retryAfterSeconds || 60} seconds.`
+        );
+      }
+      throw new OpenRouterError(
+        error.status,
+        false,
+        error.isTransient,
+        undefined,
+        `Failed to parse resume: ${error.message}`
+      );
+    }
+    throw error;
+  }
 
   const extracted = parseJSONResponse<ExtractedDocumentData>(extractionRaw);
 
@@ -637,7 +797,31 @@ ${extracted.rawCertifications || "None"}
 ${jdSection}
   `.trim();
 
-  const synthesisRaw = await callOpenRouter(RESUME_SYSTEM_PROMPT, synthesisMessage);
+  let synthesisRaw: string;
+  try {
+    synthesisRaw = await callOpenRouter(RESUME_SYSTEM_PROMPT, synthesisMessage);
+  } catch (error) {
+    if (error instanceof OpenRouterError) {
+      if (error.isRateLimited) {
+        throw new OpenRouterError(
+          429,
+          true,
+          true,
+          error.retryAfterSeconds,
+          `The resume processing service is temporarily overloaded. Please try again in ${error.retryAfterSeconds || 60} seconds.`
+        );
+      }
+      throw new OpenRouterError(
+        error.status,
+        false,
+        error.isTransient,
+        undefined,
+        `Failed to enhance resume: ${error.message}`
+      );
+    }
+    throw error;
+  }
+
   const parsed = parseJSONResponse<unknown>(synthesisRaw);
 
   if (!parsed) {

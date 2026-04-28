@@ -26,21 +26,25 @@ export async function deleteResume(formData: FormData) {
 
   if (!resume) redirect("/resume");
 
-  // Delete in order: applications → resume_versions → resume record → storage
-  // Use admin client to bypass RLS policies
-  
-  // 1. Delete applications that reference this resume
-  const { error: applicationsError } = await admin
+  // Check if resume has any active applications
+  const { data: applications, error: appsCheckError } = await supabase
     .from("applications")
-    .delete()
+    .select("id", { count: "exact", head: true })
     .eq("resume_id", resumeId);
 
-  if (applicationsError) {
-    console.error("Failed to delete applications:", applicationsError);
-    throw new Error(`Failed to delete applications: ${applicationsError.message}`);
+  if (appsCheckError) {
+    console.error("Failed to check applications:", appsCheckError);
+    throw new Error(`Failed to verify applications: ${appsCheckError.message}`);
   }
 
-  // 2. Delete resume versions (foreign key constraint)
+  if (applications && applications.length > 0) {
+    throw new Error(
+      "Cannot delete this resume because it has active applications. Please withdraw from all applications first."
+    );
+  }
+
+  // Safe to delete: no applications reference this resume
+  // Delete resume versions (foreign key constraint)
   const { error: versionsError } = await admin
     .from("resume_versions")
     .delete()
@@ -51,7 +55,7 @@ export async function deleteResume(formData: FormData) {
     throw new Error(`Failed to delete resume versions: ${versionsError.message}`);
   }
 
-  // 3. Delete PDF file from storage
+  // Delete PDF file from storage
   if (resume.pdf_url) {
     const objectPath = getObjectPathFromPublicUrl(resume.pdf_url, resumeBucketName);
     if (objectPath) {
@@ -59,7 +63,7 @@ export async function deleteResume(formData: FormData) {
     }
   }
 
-  // 4. Delete resume record (using admin to bypass RLS)
+  // Delete resume record
   const { error: deleteError } = await admin
     .from("resumes")
     .delete()
