@@ -2,7 +2,7 @@
  * Compute a match score (0–100) between a resume and a job listing.
  *
  * Scoring is based on:
- * - Skills match (50%): How many of the job's listed skills appear in the resume
+ * - Skills match (50%): Fuzzy match of job's listed skills against resume
  * - Requirements match (30%): Keyword overlap between resume and job requirements
  * - Description match (20%): Keyword overlap between resume and job description
  */
@@ -59,14 +59,93 @@ function overlapRatio(source: Set<string>, target: Set<string>): number {
 }
 
 /**
- * Check if a multi-word skill appears in the resume text.
+ * Synonym map: each key is a canonical skill name, and its value is a list
+ * of alternate forms, abbreviations, or related terms that should count as a match.
+ *
+ * Extend this map to improve matching for your specific domain.
+ */
+const SKILL_SYNONYMS: Record<string, string[]> = {
+  "sql":                ["postgresql", "mysql", "bigquery", "mssql", "tsql", "nosql", "sqlite", "redshift"],
+  "python":             ["pandas", "numpy", "scipy", "scikit-learn", "sklearn"],
+  "machine learning":   ["ml", "scikit-learn", "sklearn", "predictive modeling", "predictive modelling", "scikit"],
+  "deep learning":      ["neural network", "neural networks", "tensorflow", "pytorch", "keras"],
+  "power bi":           ["powerbi", "power-bi", "microsoft bi"],
+  "tableau":            ["tableau desktop", "tableau server"],
+  "looker":             ["looker studio", "google looker"],
+  "etl":                ["etl pipelines", "etl pipeline", "data pipeline", "data pipelines", "data ingestion"],
+  "a/b testing":        ["ab testing", "a/b test", "split testing", "experimentation"],
+  "statistics":         ["statistical", "regression", "regression analysis", "statistical modeling", "statistical modelling"],
+  "cloud":              ["aws", "gcp", "azure", "bigquery", "redshift", "snowflake"],
+  "data visualization": ["dataviz", "data viz", "visualization", "visualisation", "dashboard", "dashboards"],
+  "excel":              ["microsoft excel", "spreadsheet", "spreadsheets", "google sheets"],
+  "r":                  ["rstudio", "tidyverse", "ggplot", "dplyr"],
+  "spark":              ["apache spark", "pyspark"],
+  "airflow":            ["apache airflow", "workflow orchestration"],
+  "git":                ["github", "gitlab", "version control", "bitbucket"],
+  "java":               ["jvm", "spring boot", "spring"],
+  "javascript":         ["js", "typescript", "node.js", "nodejs", "react", "vue"],
+};
+
+/**
+ * Normalizes a skill string for consistent comparison.
+ * Lowercases, trims, and collapses whitespace.
+ */
+function normalizeSkill(skill: string): string {
+  return skill.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Checks whether a single skill appears in the resume text using fuzzy logic:
+ *
+ * 1. Exact substring match (fastest path).
+ * 2. Synonym/alias lookup — if the skill or any of its synonyms appear in the resume.
+ * 3. Partial word match — for multi-word skills, considers it a match if at least
+ *    60% of the meaningful words in the skill appear somewhere in the resume.
+ *    This catches cases like "machine learning engineer" matching "machine learning".
+ */
+function fuzzySkillMatch(resumeLower: string, skill: string): boolean {
+  const normalizedSkill = normalizeSkill(skill);
+
+  // 1. Exact substring match
+  if (resumeLower.includes(normalizedSkill)) return true;
+
+  // 2. Synonym lookup
+  for (const [canonical, variants] of Object.entries(SKILL_SYNONYMS)) {
+    const allForms = [canonical, ...variants];
+
+    // Check if the job skill matches this synonym group
+    if (allForms.includes(normalizedSkill)) {
+      // Check if any form of the synonym group appears in the resume
+      if (allForms.some((form) => resumeLower.includes(form))) return true;
+    }
+  }
+
+  // 3. Partial word match for multi-word skills (≥2 words)
+  const stopWords = new Set(["and", "or", "the", "a", "an", "in", "of", "for", "with"]);
+  const parts = normalizedSkill
+    .split(/\s+/)
+    .filter((p) => p.length > 3 && !stopWords.has(p));
+
+  if (parts.length >= 2) {
+    const matchedParts = parts.filter((p) => resumeLower.includes(p));
+    if (matchedParts.length / parts.length >= 0.6) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Computes the skill match ratio using fuzzy matching.
+ * Returns a value between 0 and 1.
+ *
+ * Replaces the original `skillMatchRatio` which used exact substring matching only.
  */
 function skillMatchRatio(resumeText: string, skills: string[]): number {
   if (skills.length === 0) return 0;
-  const lowerResume = resumeText.toLowerCase();
+  const resumeLower = resumeText.toLowerCase();
   let matches = 0;
   for (const skill of skills) {
-    if (lowerResume.includes(skill.toLowerCase())) {
+    if (fuzzySkillMatch(resumeLower, skill)) {
       matches++;
     }
   }

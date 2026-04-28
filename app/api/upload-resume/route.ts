@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { extractText } from "unpdf";
 // Import the new OpenRouter-powered extraction logic
-import { generateResumeFromDocument } from "@/lib/gemini";
+import { generateResumeFromDocument, OpenRouterError } from "@/lib/gemini";
 
 function deriveFallbackFirstName(email: string | null | undefined): string {
   const localPart = (email ?? "").split("@")[0]?.trim() ?? "";
@@ -107,7 +107,40 @@ export async function POST(request: Request) {
     aiResult = await generateResumeFromDocument(extractedRawText, file.name);
   } catch (err) {
     console.error("AI Extraction failed:", err);
-    return NextResponse.json({ error: "AI failed to parse the resume" }, { status: 500 });
+    
+    // Handle rate limiting specifically
+    if (err instanceof OpenRouterError) {
+      if (err.isRateLimited) {
+        return NextResponse.json(
+          {
+            error: err.message,
+            code: "RATE_LIMITED",
+            retryAfterSeconds: err.retryAfterSeconds || 60,
+            details: "The AI service is temporarily overloaded. Please try again shortly.",
+          },
+          { status: 429 }
+        );
+      }
+      // Other OpenRouter errors (network, API issues, etc.)
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: "AI_ERROR",
+          details: "The resume parsing service encountered an error. Please try again.",
+        },
+        { status: 500 }
+      );
+    }
+    
+    // Generic parsing errors
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : "AI failed to parse the resume",
+        code: "PARSE_ERROR",
+        details: "Could not extract structured data from your resume. Please ensure the file is readable.",
+      },
+      { status: 500 }
+    );
   }
 
   const { extracted, resume: enhancedData } = aiResult;

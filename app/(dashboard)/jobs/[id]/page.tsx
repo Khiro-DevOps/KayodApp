@@ -20,7 +20,7 @@ export default async function JobDetailsPage({
 
   const { data: job } = await supabase
     .from("job_postings")
-    .select("*, departments(name)")
+    .select("*")
     .eq("id", id)
     .single<JobPosting>();
 
