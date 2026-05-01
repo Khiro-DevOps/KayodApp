@@ -1,8 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import 'server-only'; // npm install server-only
-import type { AuthUser, Employee, Profile } from './types';
-
+import 'server-only';
+import type { Employee, Profile } from '@/lib/types';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -21,8 +20,7 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing sessions.
+            // Ignore in Server Components
           }
         },
       },
@@ -30,9 +28,13 @@ export async function createClient() {
   );
 }
 
-// Fetch the full auth user (profile + employee record if applicable)
-export async function getAuthUser(): Promise<AuthUser | null> {
-  const supabase = createClient();
+export async function getAuthUser(): Promise<{
+  id: string;
+  email: string;
+  profile: Profile;
+  employee: Employee | null;
+} | null> {
+  const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -47,12 +49,11 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
   let employee: Employee | null = null;
 
-  if (['employee', 'hr', 'admin'].includes(profile.role)) {
+  if (['employee', 'hr_manager', 'admin'].includes(profile.role)) {
     const { data } = await supabase
       .from('employees')
-      .select('*, company:companies(*)')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
+      .select('*')
+      .eq('profile_id', user.id)
       .single<Employee>();
 
     employee = data ?? null;

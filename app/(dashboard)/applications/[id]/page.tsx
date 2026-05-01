@@ -79,7 +79,7 @@ export default async function ApplicationDetailPage({
       selected_mode_set_at,
       submitted_at,
       updated_at,
-      profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),
+      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
       resumes ( id, title, pdf_url, content_text ),
       job_postings ( id, title, location, description, salary_min, salary_max, currency, employment_type )
     `)

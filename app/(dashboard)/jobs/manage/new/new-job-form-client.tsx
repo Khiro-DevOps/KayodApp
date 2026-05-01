@@ -7,8 +7,9 @@ import { createJob } from "../../actions";
 import { PHILIPPINE_CITIES, JOB_INDUSTRIES } from "@/lib/constants";
 
 const WORK_SETUP_OPTIONS = [
-  { value: "onsite", label: "Onsite" },
-  { value: "remote", label: "Remote / WFH" },
+  { value: "onsite", label: "On-Site" },
+  { value: "remote", label: "Remote" },
+  { value: "wfh", label: "WFH" },
   { value: "hybrid", label: "Hybrid" },
 ];
 
@@ -96,9 +97,25 @@ export default function NewJobForm() {
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-1">
-              <label htmlFor="work_setup" className="text-sm font-medium text-text-primary">
-                Work Setup *
-              </label>
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="work_setup" className="text-sm font-medium text-text-primary">
+                  Work Setup *
+                </label>
+                <div className="group relative flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-text-tertiary hover:text-text-secondary cursor-help">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clipRule="evenodd" />
+                  </svg>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden w-72 rounded-lg bg-gray-900 p-3 text-xs text-white shadow-lg group-hover:block z-10">
+                    <ul className="space-y-2">
+                      <li><strong>Remote:</strong> Work from anywhere</li>
+                      <li><strong>WFH:</strong> Home-based, but local to office (candidate must be within a commutable distance)</li>
+                      <li><strong>On-Site:</strong> Full-time office</li>
+                      <li><strong>Hybrid:</strong> Mixed</li>
+                    </ul>
+                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
+              </div>
               <select
                 id="work_setup"
                 name="work_setup"
