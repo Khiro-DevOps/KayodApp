@@ -211,3 +211,62 @@ export function computeMatchScore(
   // Ensure integer in range
   return Math.max(0, Math.min(100, Math.round(score)));
 }
+
+/**
+ * Calculates the compatibility score based on work setup and location.
+ */
+export function calculateCompatibilityScore(
+  workSetup: string | null | undefined,
+  jobCityId?: number | string | null,
+  jobProvinceId?: number | string | null,
+  candidateCityId?: number | string | null,
+  candidateProvinceId?: number | string | null,
+  candidatePrefWorkSetup?: string | null | undefined
+): number {
+  // 1. If there is a direct match with the candidate's preferred work setup, perfect compatibility
+  if (candidatePrefWorkSetup && workSetup?.toLowerCase() === candidatePrefWorkSetup.toLowerCase()) {
+    return 1.0;
+  }
+
+  // 2. Remote jobs are generally highly compatible (unless preference explicitly mismatched, which we still want to show but maybe at 1.0 or less? The rules say remote is 1.0 by default)
+  if (workSetup?.toLowerCase() === 'remote') {
+    return 1.0;
+  }
+  
+  // 3. Location matches
+  if (jobCityId && candidateCityId && jobCityId === candidateCityId) {
+    return 1.0;
+  }
+  
+  if (jobProvinceId && candidateProvinceId && jobProvinceId === candidateProvinceId) {
+    return 0.7;
+  }
+  
+  // Mismatch (e.g., On-site far away)
+  return 0.3; 
+}
+
+/**
+ * Calculates the final weighted match score.
+ * 
+ * Goal: Ensure that even if location is a mismatch (0.3), a high skill match 
+ * (e.g., 95%) still results in a passing score (~75%) so the job remains visible.
+ *
+ * @param semantic_score - A score from 0-100 (e.g., from Gemini)
+ * @param compatibility_score - A score from 0-1 based on location/work setup compatibility
+ * @returns The final weighted score
+ */
+export function calculateWeightedMatchScore(
+  semantic_score: number,
+  compatibility_score: number
+): number {
+  // Ensure inputs are within expected ranges
+  const clampedSemantic = Math.max(0, Math.min(100, semantic_score));
+  const clampedCompatibility = Math.max(0, Math.min(1.0, compatibility_score));
+
+  // Final Score = (semantic_score * 0.7) + (compatibility_score * 30)
+  const finalScore = (clampedSemantic * 0.7) + (clampedCompatibility * 30);
+  
+  // Return rounded to avoid floating point issues
+  return Math.round(finalScore);
+}

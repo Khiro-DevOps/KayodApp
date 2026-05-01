@@ -26,6 +26,14 @@ $$;
 
 do $$
 begin
+  if not exists (select 1 from pg_type where typname = 'work_setup') then
+    create type work_setup as enum ('remote', 'wfh', 'onsite', 'hybrid');
+  end if;
+end
+$$;
+
+do $$
+begin
   if not exists (select 1 from pg_type where typname = 'application_status') then
     create type application_status as enum (
       'draft',
@@ -167,6 +175,9 @@ create table if not exists profiles (
   address         text,
   city            text,
   country         text default 'Philippines',
+  work_setup      work_setup,
+  city_id         uuid,
+  province_id     uuid,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
@@ -282,6 +293,23 @@ create table if not exists departments (
 
 
 -- ============================================================
+-- TABLE: locations
+-- Standardized locations table for regional proximity matching
+-- ============================================================
+create table if not exists locations (
+  id              uuid primary key default uuid_generate_v4(),
+  name            text not null,
+  location_type   text not null check (location_type in ('city', 'province')),
+  parent_id       uuid references locations(id),
+  created_at      timestamptz not null default now()
+);
+
+alter table profiles
+  add constraint fk_profiles_city_id foreign key (city_id) references locations(id) on delete set null,
+  add constraint fk_profiles_province_id foreign key (province_id) references locations(id) on delete set null;
+
+
+-- ============================================================
 -- TABLE: job_postings
 -- HR creates job listings that candidates can browse and apply to.
 -- ============================================================
@@ -296,6 +324,9 @@ create table if not exists job_postings (
   responsibilities    text,
   location            text,
   is_remote           boolean not null default false,
+  work_setup          work_setup,
+  city_id             uuid references locations(id) on delete set null,
+  province_id         uuid references locations(id) on delete set null,
 
   employment_type     employment_type not null default 'full_time',
   salary_min          numeric(12,2),

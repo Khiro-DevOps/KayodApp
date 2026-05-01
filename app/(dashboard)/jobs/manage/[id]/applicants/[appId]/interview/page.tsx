@@ -27,20 +27,19 @@ export default async function InterviewPage({
   if (!employer) redirect("/dashboard");
 
   const { data: job } = await supabase
-    .from("job_listings")
-    .select("id, title")
+    .from("job_postings")
+    .select("id, title, created_by")
     .eq("id", id)
-    .eq("employer_id", employer.id)
     .single();
 
-  if (!job) notFound();
+  if (!job || job.created_by !== employer.id) notFound();
 
   // Fetch the application with applicant info
   const { data: application } = await supabase
     .from("applications")
-    .select("id, status, user_id, profiles(full_name, email)")
+    .select("id, status, candidate_id, job_posting_id, profiles(first_name, last_name, email)")
     .eq("id", appId)
-    .eq("job_listing_id", id)
+    .eq("job_posting_id", id)
     .single();
 
   if (!application) notFound();
@@ -116,6 +115,7 @@ export default async function InterviewPage({
         <form action={scheduleInterview} className="space-y-4">
           <input type="hidden" name="application_id" value={appId} />
           <input type="hidden" name="job_id" value={id} />
+          <input type="hidden" name="interview_type" value="online" />
 
           <div>
             <label
@@ -136,14 +136,14 @@ export default async function InterviewPage({
 
           <div>
             <label
-              htmlFor="notes"
+              htmlFor="location_notes"
               className="mb-1.5 block text-sm font-medium text-text-primary"
             >
               Notes (optional)
             </label>
             <textarea
-              id="notes"
-              name="notes"
+              id="location_notes"
+              name="location_notes"
               rows={4}
               defaultValue={interview?.notes || ""}
               placeholder="Interview location, video call link, topics to discuss..."

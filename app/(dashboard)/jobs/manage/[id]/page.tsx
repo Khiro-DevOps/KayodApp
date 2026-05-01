@@ -28,10 +28,10 @@ export default async function JobDetailManagePage({
 
   // Count applicants
   const { count: applicantCount } = await supabase
-    .from("applications")
-    .select("*", { count: "exact", head: true })
-    .eq("job_posting_id", id);
-
+  .from("applications")
+  .select("*", { count: "exact", head: true })
+  .eq("job_posting_id", id);
+  
   return (
     <PageContainer>
       <div className="space-y-4">

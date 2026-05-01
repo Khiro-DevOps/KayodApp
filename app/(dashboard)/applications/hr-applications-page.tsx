@@ -81,7 +81,7 @@ export default async function HRApplicationsPage() {
     .select(`
       id, status, match_score, submitted_at, cover_letter, candidate_id,
       job_posting_id,
-      profiles ( id, first_name, last_name, email, phone ),
+      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone ),
       resumes ( title, content_text ),
       job_postings ( title )
     `)

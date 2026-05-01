@@ -6,13 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Profile, Resume } from "@/lib/types";
-import { computeMatchScore } from "@/lib/match-score";
+import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore } from "@/lib/match-score";
 import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
 import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
 
 interface Props {
-  searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string }>;
+  searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string; work_setup?: string }>;
 }
 
 function filterByPayRange(job: JobPosting, payMin: number | null, payMax: number | null) {
@@ -115,7 +115,7 @@ function JobTag({
 
 export default async function JobsPage({ searchParams }: Props) {
   const supabase = await createClient();
-  const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location } = await searchParams;
+  const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location, work_setup } = await searchParams;
 
   const payMin = payMinStr ? parseInt(payMinStr) : null;
   const payMax = payMaxStr ? parseInt(payMaxStr) : null;
@@ -125,9 +125,9 @@ export default async function JobsPage({ searchParams }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, city_id, province_id")
     .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .single<Pick<Profile, "role" | "city_id" | "province_id">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (isHR) redirect("/jobs/manage");
@@ -157,20 +157,34 @@ export default async function JobsPage({ searchParams }: Props) {
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
 
   const shortlistedJobs = selectedResume
-    ? filteredJobs.map((job) => ({
-        job: job as JobPosting,
-        score: computeMatchScore(resumeText, {
-          title: (job as JobPosting).title,
-          description: (job as JobPosting).description,
-          requirements: (job as JobPosting).requirements,
-          required_skills: (job as JobPosting).required_skills ?? [],
-        }),
-      }))
+    ? filteredJobs.map((job) => {
+      const j = job as JobPosting;
+      const semanticScore = computeMatchScore(resumeText, {
+        title: j.title,
+        description: j.description,
+        requirements: j.requirements,
+        required_skills: j.required_skills ?? [],
+      });
+      const compatibilityScore = calculateCompatibilityScore(
+        j.work_setup,
+        j.city_id,
+        j.province_id,
+        profile?.city_id,
+        profile?.province_id,
+        work_setup
+      );
+      const score = calculateWeightedMatchScore(semanticScore, compatibilityScore);
+
+      return {
+        job: j,
+        score,
+      };
+    })
     : [];
 
   const recommendedJobs = selectedResume
     ? await Promise.all(
-        shortlistedJobs
+      shortlistedJobs
         .filter((item) => item.score >= 25)
         .sort((a, b) => b.score - a.score)
         .slice(0, 8)
@@ -190,10 +204,12 @@ export default async function JobsPage({ searchParams }: Props) {
             fallbackScore: score,
           }),
         }))
-      )
+    )
     : [];
 
-  const allJobs = filteredJobs as JobPosting[];
+  const allJobs = selectedResume
+    ? [...shortlistedJobs].sort((a, b) => b.score - a.score).map(s => s.job)
+    : filteredJobs as JobPosting[];
 
   return (
     <PageContainer>
@@ -207,7 +223,7 @@ export default async function JobsPage({ searchParams }: Props) {
           </p>
         </div>
 
-        <form method="get" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <form method="get" className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="space-y-1">
             <label className="text-xs font-medium text-text-secondary uppercase">Resume</label>
             <select
@@ -268,9 +284,24 @@ export default async function JobsPage({ searchParams }: Props) {
             </select>
           </div>
 
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-text-secondary uppercase">Work Setup</label>
+            <select
+              name="work_setup"
+              defaultValue={work_setup ?? ""}
+              className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+            >
+              <option value="">Any Setup</option>
+              <option value="onsite">On Site</option>
+              <option value="wfh">WFH</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+
           <button
             type="submit"
-            className="md:col-span-3 rounded-2xl bg-primary py-3 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+            className="md:col-span-4 rounded-2xl bg-primary py-3 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
           >
             Show matches
           </button>

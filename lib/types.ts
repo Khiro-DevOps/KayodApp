@@ -64,7 +64,7 @@ export type NotificationType =
   | "schedule_published"
   | "general";
 
-export type WorkSetup = "onsite" | "remote" | "hybrid";
+export type WorkSetup = "onsite" | "remote" | "hybrid" | "wfh";
 
 export type EmploymentType =
   | "full-time"
@@ -97,6 +97,9 @@ export interface Profile {
   address: string | null;
   city: string | null;
   country: string;
+  work_setup?: WorkSetup | null;
+  city_id?: string | null;
+  province_id?: string | null;
   created_at: string;
   updated_at: string;
   full_name?: string;
@@ -138,6 +141,8 @@ export interface JobPosting {
   location: string | null;
   work_setup: WorkSetup;
   is_remote: boolean;
+  city_id?: string | null;
+  province_id?: string | null;
   industry: string | null;
   job_category: string | null;
   employment_type: EmploymentType;

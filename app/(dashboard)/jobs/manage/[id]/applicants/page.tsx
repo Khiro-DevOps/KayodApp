@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ApplicantsListClient from "./applicants-list-client";
-import type { Application, Interview, Profile } from "@/lib/types";
+import type { Interview, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 
@@ -27,11 +27,8 @@ export default async function ApplicantsPage({
     .single<Pick<Profile, "role">>();
 
   const role = effectiveRole(profile?.role, authRole);
-  const isHR = isHRRole(role);
+  if (!isHRRole(role)) redirect("/dashboard");
 
-  if (!isHR) redirect("/dashboard");
-
-  // Verify job exists
   const { data: job } = await supabase
     .from("job_postings")
     .select("id, title")
@@ -40,8 +37,7 @@ export default async function ApplicantsPage({
 
   if (!job) redirect("/jobs/manage");
 
-  // Fetch applicants with full details
-  const { data: applications } = await supabase
+  const { data: rawApplications } = await supabase
     .from("applications")
     .select(`
       id,
@@ -51,16 +47,16 @@ export default async function ApplicantsPage({
       match_score,
       submitted_at,
       cover_letter,
-      profiles (id, first_name, last_name, email, phone, city, country),
-      resumes (id, title, pdf_url, content_text)
+      resume_id,
+      profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country)
     `)
     .eq("job_posting_id", id)
     .order("match_score", { ascending: false, nullsFirst: false })
-    .order("submitted_at", { ascending: false })
-    .returns<Application[]>();
+    .order("submitted_at", { ascending: false });
 
-  // Fetch interviews for all applications on this job
-  const applicationIds = applications?.map((a) => a.id) || [];
+  const applications = (rawApplications ?? []) as any[];
+
+  const applicationIds = applications.map((a) => a.id);
   const { data: interviews } = applicationIds.length
     ? await supabase
         .from("interviews")
@@ -76,7 +72,6 @@ export default async function ApplicantsPage({
   return (
     <PageContainer>
       <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
-        {/* Header */}
         <div className="flex items-center gap-3 shrink-0">
           <Link
             href={`/jobs/manage/${id}`}
@@ -94,16 +89,16 @@ export default async function ApplicantsPage({
           </div>
         </div>
 
-        {/* Applicants Count */}
         <p className="text-sm text-text-secondary shrink-0 mt-4">
-          {applications?.length || 0} applicant{applications?.length !== 1 ? "s" : ""}
+          {applications.length} applicant{applications.length !== 1 ? "s" : ""}
         </p>
 
-        {/* Applicants List - Client Component */}
+        {/* Debug output removed — applicants count displayed above */}
+
         <div className="mt-4 min-h-0 flex-1 overflow-hidden">
-          <ApplicantsListClient 
+          <ApplicantsListClient
             jobId={id}
-            applications={applications || []} 
+            applications={applications}
             interviews={interviewMap}
           />
         </div>

@@ -45,21 +45,40 @@ export default async function ManageJobsPage() {
     console.error("Jobs fetch error:", jobsError);
   }
 
-  // Get applicant counts per job
+  // Get applicant counts per job (using only job_posting_id)
   const jobIds = jobs?.map((j) => j.id) ?? [];
-  const { data: appCounts } = jobIds.length
-    ? await supabase
-        .from("applications")
-        .select("job_posting_id")
-        .in("job_posting_id", jobIds)
-    : { data: [] };
+  let appCounts: any[] = [];
+  let countError: string | null = null;
+
+  if (jobIds.length) {
+    const { data, error: countErr } = await supabase
+      .from("applications")
+      .select("job_posting_id")
+      .in("job_posting_id", jobIds as string[]);
+
+    if (countErr) {
+      countError = `Failed to fetch applicant counts: ${countErr.message}`;
+      console.error(countError);
+    } else {
+      appCounts = data ?? [];
+    }
+  }
 
   const countMap: Record<string, number> = {};
-  (appCounts ?? []).forEach((a) => {
-    const id = a.job_posting_id;
-    countMap[id] = (countMap[id] ?? 0) + 1;
-  });
 
+if (jobIds.length) {
+  const { data: counts, error: countError } = await supabase
+    .from("applications")
+    .select("job_posting_id")
+    .in("job_posting_id", jobIds as string[]);
+
+  if (countError) console.error("Count error:", countError);
+
+  counts?.forEach((a) => {
+    if (!a.job_posting_id) return;
+    countMap[a.job_posting_id] = (countMap[a.job_posting_id] ?? 0) + 1;
+  });
+}
   return (
     <PageContainer>
       <div className="space-y-4">
@@ -74,6 +93,13 @@ export default async function ManageJobsPage() {
             + New Job
           </Link>
         </div>
+
+        {countError && (
+          <div className="rounded-2xl bg-red-50 border border-red-200 p-4">
+            <p className="text-sm text-red-900 font-medium">Error loading applicant counts:</p>
+            <p className="text-sm text-red-700 mt-1 font-mono">{countError}</p>
+          </div>
+        )}
 
         {!jobs || jobs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center space-y-3">

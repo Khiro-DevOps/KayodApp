@@ -43,14 +43,14 @@ export default async function ReviewBoardPage({
       status,
       match_score,
       submitted_at,
-      profiles ( id, first_name, last_name, email ),
+      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email ),
       resumes ( id, title )
     `)
     .eq("job_posting_id", id)
     .eq("status", "under_review")
     .order("match_score", { ascending: false, nullsFirst: false });
 
-  const applicationIds = applications?.map((a) => a.id) ?? [];
+  const applicationIds = (applications as any[])?.map((a) => a.id) ?? [];
 
   // Fetch interviews for these applications
   const { data: interviews } = applicationIds.length
@@ -78,7 +78,7 @@ export default async function ReviewBoardPage({
   );
 
   // Merge everything into one list
-  const candidates = (applications ?? []).map((app) => {
+  const candidates = ((applications as any[]) ?? []).map((app) => {
     const interview = interviewByApp.get(app.id);
     const note = interview ? notesByInterview.get(interview.id) : null;
     return { app, interview, note };
