@@ -1,13 +1,13 @@
 // components/interviews/HRJitsiRoom.tsx
-// HR Meeting Room with custom layout: PIP self-view, full-screen remote video, control bar, and note-taking panel.
+// HR Meeting Room — powered by 8x8 Jitsi as a Service (JaaS)
 
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import NoteTakingPanel from "./NoteTakingPanel";
 import MeetingControlBar from "./MeetingControlBar";
-import type { JitsiMeetOptions, JitsiMeetAPI } from "./jitsi.types";
-import "./jitsi.types"; // Import global type augmentations
+import type { JitsiMeetAPI } from "./jitsi.types";
+import "./jitsi.types";
 
 interface HRJitsiRoomProps {
   roomName: string;
@@ -17,7 +17,8 @@ interface HRJitsiRoomProps {
   applicantName?: string;
 }
 
-const JITSI_SERVER = process.env.NEXT_PUBLIC_JITSI_SERVER ?? "meet.jit.si";
+const JAAS_APP_ID = process.env.NEXT_PUBLIC_JAAS_APP_ID ?? "";
+const JAAS_DOMAIN = "8x8.vc";
 
 export default function HRJitsiRoom({
   roomName,
@@ -32,21 +33,52 @@ export default function HRJitsiRoom({
   const [notes, setNotes] = useState<string>("");
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // Initialize Jitsi with custom layout injection
+  // Step 1: Fetch a signed JWT from your API route
   useEffect(() => {
+    async function fetchToken() {
+      try {
+        const res = await fetch("/api/jaas-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName,
+            displayName,
+            email,
+            moderator: true, // HR is moderator
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to fetch JaaS token");
+        const data = await res.json();
+        setJwtToken(data.token);
+      } catch (err) {
+        setTokenError("Could not initialize meeting. Please refresh.");
+        console.error(err);
+      }
+    }
+    fetchToken();
+  }, [roomName, displayName, email]);
+
+  // Step 2: Init Jitsi once JWT is ready
+  useEffect(() => {
+    if (!jwtToken) return;
+
     const scriptId = "jitsi-external-api";
+    const scriptSrc = `https://${JAAS_DOMAIN}/${JAAS_APP_ID}/external_api.js`;
 
     const initJitsi = () => {
       if (!containerRef.current || !window.JitsiMeetExternalAPI) return;
 
       apiRef.current?.dispose();
 
-      apiRef.current = new window.JitsiMeetExternalAPI(JITSI_SERVER, {
-        roomName,
+      apiRef.current = new window.JitsiMeetExternalAPI(JAAS_DOMAIN, {
+        roomName: `${JAAS_APP_ID}/${roomName}`,
         parentNode: containerRef.current,
         width: "100%",
         height: "100%",
+        jwt: jwtToken,
         userInfo: {
           displayName,
           ...(email && { email }),
@@ -103,7 +135,7 @@ export default function HRJitsiRoom({
     } else {
       const script = document.createElement("script");
       script.id = scriptId;
-      script.src = `https://${JITSI_SERVER}/external_api.js`;
+      script.src = scriptSrc;
       script.async = true;
       script.onload = initJitsi;
       document.head.appendChild(script);
@@ -112,48 +144,61 @@ export default function HRJitsiRoom({
     return () => {
       apiRef.current?.dispose();
     };
-  }, [roomName, displayName, email, onClose]);
+  }, [jwtToken, roomName, displayName, email, onClose]);
 
-  // Save notes to localStorage for persistence
+  // Persist notes
   useEffect(() => {
     localStorage.setItem(`interview-notes-${roomName}`, notes);
   }, [notes, roomName]);
 
   const handleToggleMute = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("toggleAudio");
-      setIsMuted(!isMuted);
-    }
+    apiRef.current?.executeCommand("toggleAudio");
+    setIsMuted((v) => !v);
   };
 
   const handleToggleCamera = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("toggleVideo");
-      setIsVideoOff(!isVideoOff);
-    }
+    apiRef.current?.executeCommand("toggleVideo");
+    setIsVideoOff((v) => !v);
   };
 
   const handleEndCall = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("hangup");
-    }
+    apiRef.current?.executeCommand("hangup");
     onClose?.();
   };
 
+  if (tokenError) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <div className="text-center space-y-3">
+          <p className="text-white text-sm">{tokenError}</p>
+          <button
+            onClick={onClose}
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!jwtToken) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <p className="text-white text-sm animate-pulse">Starting meeting…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50">
-      {/* Video Container */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Remote Video (full-screen background) */}
         <div
           ref={containerRef}
           className="absolute inset-0 w-full h-full"
-          style={{
-            backgroundColor: "#000000",
-          }}
+          style={{ backgroundColor: "#000000" }}
         />
 
-        {/* Control Bar (centered bottom) */}
         <MeetingControlBar
           isMuted={isMuted}
           isVideoOff={isVideoOff}
@@ -163,7 +208,6 @@ export default function HRJitsiRoom({
           applicantName={applicantName}
         />
 
-        {/* HR Note-Taking FAB (bottom-right) */}
         <button
           onClick={() => setIsNotePanelOpen(!isNotePanelOpen)}
           className="absolute bottom-24 right-6 z-20 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center text-white font-bold text-xl hover:scale-110 active:scale-95"
@@ -172,7 +216,6 @@ export default function HRJitsiRoom({
           📝
         </button>
 
-        {/* Note-Taking Panel (overlay) */}
         {isNotePanelOpen && (
           <NoteTakingPanel
             notes={notes}

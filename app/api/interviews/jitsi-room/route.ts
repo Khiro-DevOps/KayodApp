@@ -1,11 +1,10 @@
 // app/api/interviews/jitsi-room/route.ts
-// Generates a Jitsi Meet room URL for an online interview.
-// No external API key required — Jitsi Meet is free and open-source.
+// Generates a JaaS (8x8 Jitsi as a Service) room for an online interview.
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const JITSI_SERVER = process.env.JITSI_SERVER ?? "meet.jit.si";
+const JAAS_APP_ID = process.env.JAAS_APP_ID!;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -31,8 +30,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "interviewId is required" }, { status: 400 });
   }
 
+  // Just the room name — NO App ID prefix here.
+  // The App ID is added automatically by the frontend components.
   const roomName = `kayod-interview-${interviewId}`;
-  const roomUrl = `https://${JITSI_SERVER}/${roomName}`;
+  const roomUrl = `https://8x8.vc/${JAAS_APP_ID}/${roomName}`;
 
   const scheduled = scheduledAt ? new Date(scheduledAt) : new Date();
   const notBeforeAt = new Date(scheduled.getTime() - 15 * 60 * 1000);
@@ -43,8 +44,8 @@ export async function POST(request: Request) {
       .from("interviews")
       .update({
         video_room_url: roomUrl,
-        video_room_name: roomName,
-        video_provider: "jitsi",
+        video_room_name: roomName,        // plain room name, no App ID prefix
+        video_provider: "jaas",           // updated from "jitsi" to "jaas"
         room_not_before: notBeforeAt.toISOString(),
         room_expires_at: expiresAt.toISOString(),
       })
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
       expiresAt: expiresAt.toISOString(),
     });
   } catch (err) {
-    console.error("Jitsi room creation error:", err);
+    console.error("JaaS room creation error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
