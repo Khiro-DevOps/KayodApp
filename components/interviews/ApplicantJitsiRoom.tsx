@@ -1,9 +1,12 @@
+// components/interviews/ApplicantJitsiRoom.tsx
+// Applicant Meeting Room — powered by 8x8 Jitsi as a Service (JaaS)
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import MeetingControlBar from "./MeetingControlBar";
-import type { JitsiMeetOptions, JitsiMeetAPI } from "./jitsi.types";
-import "./jitsi.types"; // Import global type augmentations
+import type { JitsiMeetAPI } from "./jitsi.types";
+import "./jitsi.types";
 
 interface ApplicantJitsiRoomProps {
   roomName: string;
@@ -12,7 +15,8 @@ interface ApplicantJitsiRoomProps {
   interviewerName?: string;
 }
 
-const JITSI_SERVER = process.env.NEXT_PUBLIC_JITSI_SERVER ?? "meet.jit.si";
+const JAAS_APP_ID = process.env.NEXT_PUBLIC_JAAS_APP_ID ?? "";
+const JAAS_DOMAIN = "8x8.vc";
 
 export default function ApplicantJitsiRoom({
   roomName,
@@ -24,21 +28,51 @@ export default function ApplicantJitsiRoom({
   const apiRef = useRef<JitsiMeetAPI | null>(null);
   const [isMuted, setIsMuted] = useState(true);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // Initialize Jitsi with custom layout
+  // Step 1: Fetch a signed JWT from your API route
   useEffect(() => {
+    async function fetchToken() {
+      try {
+        const res = await fetch("/api/jaas-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName,
+            displayName: userName,
+            moderator: false, // Applicant is NOT a moderator
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to fetch JaaS token");
+        const data = await res.json();
+        setJwtToken(data.token);
+      } catch (err) {
+        setTokenError("Could not join the meeting. Please try again.");
+        console.error(err);
+      }
+    }
+    fetchToken();
+  }, [roomName, userName]);
+
+  // Step 2: Init Jitsi once JWT is ready
+  useEffect(() => {
+    if (!jwtToken) return;
+
     const scriptId = "jitsi-external-api";
+    const scriptSrc = `https://${JAAS_DOMAIN}/${JAAS_APP_ID}/external_api.js`;
 
     const initJitsi = () => {
       if (!containerRef.current || !window.JitsiMeetExternalAPI) return;
 
       apiRef.current?.dispose();
 
-      apiRef.current = new window.JitsiMeetExternalAPI(JITSI_SERVER, {
-        roomName,
+      apiRef.current = new window.JitsiMeetExternalAPI(JAAS_DOMAIN, {
+        roomName: `${JAAS_APP_ID}/${roomName}`,
         parentNode: containerRef.current,
         width: "100%",
         height: "100%",
+        jwt: jwtToken,
         userInfo: { displayName: userName },
         configOverwrite: {
           startWithAudioMuted: true,
@@ -62,7 +96,6 @@ export default function ApplicantJitsiRoom({
         },
       });
 
-      // If applicant hangs up from inside the Jitsi UI
       apiRef.current.addEventListener("readyToClose", onLeave);
     };
 
@@ -74,7 +107,7 @@ export default function ApplicantJitsiRoom({
     } else {
       const script = document.createElement("script");
       script.id = scriptId;
-      script.src = `https://${JITSI_SERVER}/external_api.js`;
+      script.src = scriptSrc;
       script.async = true;
       script.onload = initJitsi;
       document.head.appendChild(script);
@@ -83,43 +116,56 @@ export default function ApplicantJitsiRoom({
     return () => {
       apiRef.current?.dispose();
     };
-  }, [roomName, userName, onLeave]);
+  }, [jwtToken, roomName, userName, onLeave]);
 
   const handleToggleMute = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("toggleAudio");
-      setIsMuted(!isMuted);
-    }
+    apiRef.current?.executeCommand("toggleAudio");
+    setIsMuted((v) => !v);
   };
 
   const handleToggleCamera = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("toggleVideo");
-      setIsVideoOff(!isVideoOff);
-    }
+    apiRef.current?.executeCommand("toggleVideo");
+    setIsVideoOff((v) => !v);
   };
 
   const handleEndCall = () => {
-    if (apiRef.current) {
-      apiRef.current.executeCommand("hangup");
-    }
+    apiRef.current?.executeCommand("hangup");
     onLeave();
   };
 
+  if (tokenError) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <div className="text-center space-y-3">
+          <p className="text-white text-sm">{tokenError}</p>
+          <button
+            onClick={onLeave}
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!jwtToken) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <p className="text-white text-sm animate-pulse">Joining meeting…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50">
-      {/* Video Container */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Remote Video (full-screen background) */}
         <div
           ref={containerRef}
           className="absolute inset-0 w-full h-full"
-          style={{
-            backgroundColor: "#000000",
-          }}
+          style={{ backgroundColor: "#000000" }}
         />
 
-        {/* Control Bar (centered bottom) */}
         <MeetingControlBar
           isMuted={isMuted}
           isVideoOff={isVideoOff}

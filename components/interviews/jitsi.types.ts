@@ -5,6 +5,7 @@ export interface JitsiMeetOptions {
   parentNode: HTMLElement;
   width?: string | number;
   height?: string | number;
+  jwt?: string; // Required for 8x8 JaaS authentication
   userInfo?: { displayName?: string; email?: string };
   configOverwrite?: Record<string, unknown>;
   interfaceConfigOverwrite?: Record<string, unknown>;
