@@ -29,6 +29,9 @@ export function InterviewCardClient({
   const [showRoom, setShowRoom] = useState(false);
   const [notesStep, setNotesStep] = useState<NotesStep>("idle");
   const [saving, setSaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isCompletedLocally, setIsCompletedLocally] = useState(interview.status === "completed");
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   // Notepad fields
   const [score, setScore] = useState<number | "">("");
@@ -109,19 +112,36 @@ useEffect(() => {
     await updateInterviewPreference(formData);
   };
 
+  async function completeInterviewOnce() {
+    if (isCompletedLocally) {
+      return true;
+    }
+
+    const response = await fetch(`/api/interviews/${interview.id}/complete`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: "Failed to complete interview" }));
+      console.log("Status:", response.status, "Payload:", payload); // debug
+      throw new Error(payload?.error || "Failed to complete interview");
+    }
+
+    setIsCompletedLocally(true);
+    return true;
+  }
+
   // ── Save notepad + put applicant on hold ─────────────────────────────────
   async function handleSaveNotepad() {
     setSaving(true);
+    setCompleteError(null);
     const supabase = createClient();
 
     try {
-      // 1. Mark interview as completed
-      await supabase
-        .from("interviews")
-        .update({ status: "completed" })
-        .eq("id", interview.id);
+      // Ensure completion is applied before notes are finalized.
+      await completeInterviewOnce();
 
-      // 2. Save interview notes
       const { data: userData } = await supabase.auth.getUser();
       await supabase.from("interview_notes").upsert({
         interview_id: interview.id,
@@ -135,14 +155,7 @@ useEffect(() => {
         general_notes: generalNotes || null,
       }, { onConflict: "interview_id" });
 
-      // 3. Put applicant under_review (on hold)
       if (app.id) {
-        await supabase
-          .from("applications")
-          .update({ status: "under_review" })
-          .eq("id", app.id);
-
-        // 4. Send Notification logic moved inside handleSaveNotepad
         const { data: appData } = await supabase
           .from("applications")
           .select("candidate_id, job_postings(title)")
@@ -164,6 +177,8 @@ useEffect(() => {
       setNotesStep("done");
       router.refresh();
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Error finalizing interview";
+      setCompleteError(message);
       console.error("Error finalizing interview:", error);
     } finally {
       setSaving(false);
@@ -175,6 +190,24 @@ useEffect(() => {
     router.push("/interviews/thank-you");
   }, [router]);
 
+  // ── Complete interview from card ─────────────────────────────────────────
+  const handleCompleteFromCard = async () => {
+    setIsCompleting(true);
+    setCompleteError(null);
+    try {
+      await completeInterviewOnce();
+      setShowRoom(false);
+      setNotesStep("notepad");
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to complete interview";
+      setCompleteError(message);
+      console.error("Failed to complete interview:", error);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   // ── Fullscreen Jitsi — HR ────────────────────────────────────────────────
   if (showRoom && isHR) {
     return (
@@ -182,16 +215,15 @@ useEffect(() => {
         <HRJitsiRoom
           roomName={roomName}
           displayName="HR Interviewer"
+          interviewId={interview.id}
           onClose={() => setShowRoom(false)}
         />
         <button
-          onClick={() => {
-            setShowRoom(false);
-            setNotesStep("notepad");
-          }}
-          className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors"
+          onClick={() => void handleCompleteFromCard()}
+          disabled={isCompleting}
+          className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
         >
-          End Interview & Write Notes
+          {isCompleting ? "Completing..." : "End Interview & Write Notes"}
         </button>
       </div>
     );
@@ -315,6 +347,12 @@ useEffect(() => {
           />
         </div>
 
+        {completeError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {completeError}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2 pt-1">
           <button
@@ -326,7 +364,7 @@ useEffect(() => {
           <button
             onClick={handleSaveNotepad}
             disabled={saving}
-            className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save & Put on Hold"}
           </button>
@@ -428,7 +466,7 @@ useEffect(() => {
       {canJoinRoom && (
         <button
           onClick={() => {
-            if (isExpired) return; // extra guard
+            if (isExpired) return;
             setShowRoom(true);
           }}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
@@ -440,6 +478,25 @@ useEffect(() => {
         </button>
       )}
 
+      {/* End Interview — HR only, directly under Join Meeting */}
+      {isHR && canJoinRoom && (
+        <button
+          onClick={() => void handleCompleteFromCard()}
+          disabled={isCompleting}
+          className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isCompleting ? "Completing..." : "End Interview & Write Notes"}
+        </button>
+      )}
+
+      {completeError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {completeError}
+        </div>
+      )}
+
+      {/* Complete Interview button (HR only, when ongoing) */}
+      
       {/* Expired room message */}
       {interview.interview_type === "online" && interview.video_room_url && isExpired && (
         <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">

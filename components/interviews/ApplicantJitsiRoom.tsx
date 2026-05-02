@@ -80,8 +80,15 @@ export default function ApplicantJitsiRoom({
           startWithVideoMuted: false,
           enableWelcomePage: false,
           prejoinPageEnabled: false,
-            disableDeepLinking: true,
+          disableDeepLinking: true,
           disableSimulcast: false,
+          toolbarButtons: [
+            "microphone",
+            "camera",
+            "desktop",
+            "fullscreen",
+            "hangup",
+          ],
         },
         interfaceConfigOverwrite: {
           SHOW_JITSI_WATERMARK: false,

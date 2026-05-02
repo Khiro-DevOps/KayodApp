@@ -40,8 +40,6 @@ export default async function InterviewsPage() {
       `)
       .order("scheduled_at", { ascending: true });
 
-    console.log("HR Supabase error:", error);
-    console.log("HR data length:", data?.length);
     interviews = (data as Interview[]) ?? [];
   } else {
     const { data, error } = await supabase
@@ -56,25 +54,8 @@ export default async function InterviewsPage() {
       .filter("applications.candidate_id", "eq", user.id)
       .order("scheduled_at", { ascending: true });
 
-    console.log("Applicant Supabase error:", error);
-    console.log("Applicant data length:", data?.length);
     interviews = (data as Interview[]) ?? [];
   }
-
-  console.log("=== INTERVIEW DEBUG ===");
-  interviews.forEach((i) => {
-    const scheduledAt = new Date(i.scheduled_at).getTime();
-    const durationMs = (i.duration_minutes ?? 60) * 60000;
-    console.log({
-      id: i.id,
-      status: i.status,
-      scheduled_at: i.scheduled_at,
-      duration_minutes: i.duration_minutes,
-      now: now.toISOString(),
-      endTime: new Date(scheduledAt + durationMs).toISOString(),
-      isExpired: scheduledAt + durationMs <= now.getTime(),
-    });
-  });
 
   const upcoming = interviews.filter((i) => {
     if (i.status === "cancelled" || i.status === "completed") return false;

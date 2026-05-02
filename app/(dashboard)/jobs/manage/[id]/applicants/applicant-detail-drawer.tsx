@@ -16,6 +16,7 @@ interface NegotiationLog {
 interface ApplicantDetailDrawerProps {
   application: Application;
   jobId: string;
+  isCompletedLocked?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onScheduled?: () => void;
@@ -32,6 +33,7 @@ const outcomeConfig: Record<string, { label: string; color: string }> = {
 export default function ApplicantDetailDrawer({
   application,
   jobId,
+  isCompletedLocked = false,
   isOpen,
   onClose,
   onScheduled,
@@ -53,6 +55,9 @@ export default function ApplicantDetailDrawer({
 
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
+  const canReschedule =
+    String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
+  const displayStatus = application?.status.replace(/_/g, " ");
 
   const closeScheduleForm = useCallback(() => {
     setShowScheduleForm(false);
@@ -277,7 +282,7 @@ export default function ApplicantDetailDrawer({
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-text-primary">Application Status</h3>
             <div className={`px-3 py-2 rounded-lg text-sm font-medium ${
-              application?.status === "submitted"              ? "bg-blue-50 text-blue-700"
+              application?.status === "submitted"            ? "bg-blue-50 text-blue-700"
               : application?.status === "draft"                ? "bg-gray-50 text-gray-700"
               : application?.status === "under_review"         ? "bg-amber-50 text-amber-700"
               : application?.status === "shortlisted"          ? "bg-green-50 text-green-700"
@@ -287,7 +292,7 @@ export default function ApplicantDetailDrawer({
               : application?.status === "withdrawn"            ? "bg-red-50 text-red-700"
               : "bg-blue-50 text-blue-700"
             }`}>
-              {application?.status.replace(/_/g, " ")}
+              {displayStatus}
             </div>
           </div>
 
@@ -380,10 +385,15 @@ export default function ApplicantDetailDrawer({
         {/* Footer */}
         <div className="border-t border-border p-6 space-y-3">
           <button
-            onClick={() => setShowScheduleForm(true)}
-            className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors"
+            onClick={() => {
+              if (canReschedule) {
+                setShowScheduleForm(true);
+              }
+            }}
+            disabled={!canReschedule}
+            className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Schedule Interview
+            {canReschedule ? "Schedule Interview" : "Interview Completed"}
           </button>
           <button
             onClick={onClose}
@@ -395,7 +405,7 @@ export default function ApplicantDetailDrawer({
       </div>
 
       {/* Schedule Interview Modal */}
-      {showScheduleForm && (
+      {showScheduleForm && canReschedule && (
         <>
           <div className="fixed inset-0 z-[90] bg-black/50" onClick={closeScheduleForm} />
           <div className="fixed inset-0 z-[91] grid place-items-center p-4">

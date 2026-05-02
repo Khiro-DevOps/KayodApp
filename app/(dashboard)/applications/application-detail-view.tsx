@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Application, Interview, UserRole } from "@/lib/types";
 import ResumeViewer from "./resume-viewer";
 import StatusTracker from "./status-tracker";
 import EvaluationSidebar from "./evaluation-sidebar";
 import InterviewTimeline from "./interview-timeline";
 import OfferCard from "./offer-card";
+import { createClient } from "@/lib/supabase/client";
 
 interface JobOffer {
   id: string;
@@ -63,6 +64,7 @@ export default function ApplicationDetailView({
   jobOffer,
 }: ApplicationDetailViewProps) {
   const [applicationStatus, setApplicationStatus] = useState(application?.status);
+  const [liveInterviews, setLiveInterviews] = useState<Interview[]>(interviews);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const isRecruiter = userRole === "hr_manager" || userRole === "admin";
@@ -74,6 +76,75 @@ export default function ApplicationDetailView({
   const handleStatusUpdate = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
+
+  useEffect(() => {
+    setApplicationStatus(application?.status);
+  }, [application?.status]);
+
+  useEffect(() => {
+    setLiveInterviews(interviews);
+  }, [interviews]);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`application-detail-${application.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "applications",
+          filter: `id=eq.${application.id}`,
+        },
+        (payload) => {
+          const nextStatus = (payload.new as { status?: Application["status"] } | null)?.status;
+          if (nextStatus) {
+            setApplicationStatus(nextStatus);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "interviews",
+          filter: `application_id=eq.${application.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
+            if (!deletedId) return;
+            setLiveInterviews((prev) => prev.filter((interview) => interview.id !== deletedId));
+            return;
+          }
+
+          const changed = payload.new as Interview | null;
+          if (!changed?.id) return;
+
+          setLiveInterviews((prev) => {
+            const index = prev.findIndex((interview) => interview.id === changed.id);
+
+            if (index === -1) {
+              return [changed, ...prev].sort(
+                (a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()
+              );
+            }
+
+            const next = [...prev];
+            next[index] = { ...next[index], ...changed };
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [application.id]);
 
   return (
     <div className="space-y-6">
@@ -140,7 +211,7 @@ export default function ApplicationDetailView({
           {!isRecruiter && (
             <StatusTracker
               status={applicationStatus || application?.status}
-              interviews={interviews}
+              interviews={liveInterviews}
               applicationId={application.id}
             />
           )}
@@ -163,8 +234,8 @@ export default function ApplicationDetailView({
           )}
 
           {/* Interview Timeline */}
-          {interviews.length > 0 && (
-            <InterviewTimeline interviews={interviews} isRecruiter={isRecruiter} />
+          {liveInterviews.length > 0 && (
+            <InterviewTimeline interviews={liveInterviews} isRecruiter={isRecruiter} />
           )}
 
           {/* Cover Letter */}

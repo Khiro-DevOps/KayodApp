@@ -1,5 +1,5 @@
 // app/(dashboard)/interviews/[id]/page.tsx
-import InterviewRoomPage from "./interview-room-page";
+import InterviewRoomPage from "@/components/interviews/InterviewRoomPage";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
