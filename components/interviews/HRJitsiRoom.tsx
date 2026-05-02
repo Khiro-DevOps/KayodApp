@@ -16,6 +16,7 @@ interface HRJitsiRoomProps {
   displayName?: string;
   email?: string;
   onClose?: () => void;
+  interviewId: string;
   applicantName?: string;
 }
 
@@ -27,6 +28,7 @@ export default function HRJitsiRoom({
   displayName = "HR Interviewer",
   email,
   onClose,
+  interviewId,
   applicantName = "Applicant",
 }: HRJitsiRoomProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -37,6 +39,7 @@ export default function HRJitsiRoom({
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [jwtToken, setJwtToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [isCallActive, setIsCallActive] = useState(false);
 
   // Step 1: Fetch a signed JWT from your API route
   useEffect(() => {
@@ -85,48 +88,52 @@ export default function HRJitsiRoom({
           displayName,
           ...(email && { email }),
         },
-        configOverwrite: {
-          startWithAudioMuted: false,
-          startWithVideoMuted: false,
-          enableWelcomePage: false,
-          prejoinPageEnabled: false,
-          disableDeepLinking: true,
-          disableSimulcast: false,
-          disableTileView: true,
-          filmstrip: {
-            enabled: true,
-            position: "top",
-          },
-          verticalFilmstrip: false,
-          remoteVideoMenu: {
-            disableKick: true,
-          },
-          toolbarButtons: [
-            "microphone",
-            "camera",
-            "desktop",
-            "fullscreen",
-            "hangup",
-            "chat",
-          ],
-        },
-        interfaceConfigOverwrite: {
-          SHOW_JITSI_WATERMARK: false,
-          SHOW_WATERMARK_FOR_GUESTS: false,
-          TOOLBAR_BUTTONS: [
-            "microphone",
-            "camera",
-            "desktop",
-            "fullscreen",
-            "hangup",
-          ],
-          DEFAULT_BACKGROUND: "#000000",
-          HIDE_INVITE_MORE_HEADER: true,
-        },
+              configOverwrite: {
+                startWithAudioMuted: false,
+                startWithVideoMuted: false,
+                enableWelcomePage: false,
+                prejoinPageEnabled: false,
+                disableDeepLinking: true,
+                disableSimulcast: false,
+                disableTileView: true,
+                filmstrip: {
+                  enabled: true,
+                  position: "top",
+                },
+                verticalFilmstrip: false,
+                remoteVideoMenu: {
+                  disableKick: true,
+                },
+                toolbarButtons: [
+                  "microphone",
+                  "camera",
+                  "desktop",
+                  "fullscreen",
+                  "hangup",
+                  "chat",
+                ],
+              },
+              interfaceConfigOverwrite: {
+                SHOW_JITSI_WATERMARK: false,
+                SHOW_WATERMARK_FOR_GUESTS: false,
+                TOOLBAR_BUTTONS: [
+                  "microphone",
+                  "camera",
+                  "desktop",
+                  "fullscreen",
+                  "hangup",
+                ],
+                DEFAULT_BACKGROUND: "#000000",
+                HIDE_INVITE_MORE_HEADER: true,
+              },
       });
 
       apiRef.current.addEventListener("readyToClose", () => {
+        setIsCallActive(false);
         onClose?.();
+      });
+      apiRef.current.addEventListener("videoConferenceJoined", () => {
+        setIsCallActive(true);
       });
       setDisplayName(apiRef.current, displayName);
     };
@@ -153,17 +160,27 @@ export default function HRJitsiRoom({
   // Persist notes
   const saveTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!roomName) return;
+    if (!roomName || !notes) return;
     if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(async () => {
       try {
         const supabase = createClient();
+        const { data: interview, error: fetchError } = await supabase
+          .from("interviews")
+          .select("id")
+          .eq("video_room_name", roomName)
+          .single();
+        
+        if (fetchError || !interview) {
+          console.warn("Interview not found for room:", roomName);
+          return;
+        }
+
         const { error } = await supabase
           .from("interviews")
-          .upsert(
-            { video_room_name: roomName, notes },
-            { onConflict: "video_room_name" }
-          );
+          .update({ interviewer_notes: notes })
+          .eq("id", interview.id);
+        
         if (error) console.error("Failed to persist interview notes:", error);
       } catch (err) {
         console.error("Failed to persist notes:", err);

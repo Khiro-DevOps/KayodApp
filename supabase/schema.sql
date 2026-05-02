@@ -305,9 +305,31 @@ create table if not exists locations (
   created_at      timestamptz not null default now()
 );
 
-alter table profiles
-  add constraint fk_profiles_city_id foreign key (city_id) references locations(id) on delete set null,
-  add constraint fk_profiles_province_id foreign key (province_id) references locations(id) on delete set null;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'fk_profiles_city_id'
+      and conrelid = 'profiles'::regclass
+  ) then
+    alter table profiles
+      add constraint fk_profiles_city_id
+      foreign key (city_id) references locations(id) on delete set null;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'fk_profiles_province_id'
+      and conrelid = 'profiles'::regclass
+  ) then
+    alter table profiles
+      add constraint fk_profiles_province_id
+      foreign key (province_id) references locations(id) on delete set null;
+  end if;
+end
+$$;
 
 
 -- ============================================================
@@ -789,7 +811,7 @@ begin
     'interview_scheduled',
     'Interview scheduled for ' || v_job_title,
     'Your ' || v_type || ' interview has been scheduled. Click to view details.',
-    '/interviews/' || new.id
+    '/interviews'
   );
 
   return new;
@@ -800,6 +822,63 @@ drop trigger if exists trg_notify_interview_scheduled on interviews;
 create trigger trg_notify_interview_scheduled
   after insert on interviews
   for each row execute procedure notify_interview_scheduled();
+
+
+-- ============================================================
+-- TRIGGER: auto-notify applicant when interview is rescheduled
+-- ============================================================
+create or replace function notify_interview_rescheduled()
+returns trigger language plpgsql security definer as $$
+declare
+  v_candidate_id  uuid;
+  v_job_title     text;
+  v_type          text;
+  v_scheduled_at  text;
+begin
+  -- Only send notification if scheduled_at or interview_type has changed
+  -- and this is not the first insert (old values exist)
+  if old.scheduled_at = new.scheduled_at and old.interview_type = new.interview_type then
+    return new;
+  end if;
+
+  select a.candidate_id, jp.title
+  into v_candidate_id, v_job_title
+  from applications a
+  join job_postings jp on jp.id = a.job_posting_id
+  where a.id = new.application_id;
+
+  v_type := case new.interview_type when 'online' then 'online' else 'in-person' end;
+  v_scheduled_at := to_char(new.scheduled_at at time zone new.timezone, 'Mon, DD Mon YYYY at HH12:MI AM');
+
+  begin
+    insert into notifications (recipient_id, type, title, body, action_url)
+    values (
+      v_candidate_id,
+      'interview_rescheduled',
+      'Interview Rescheduled for ' || v_job_title,
+      'Your interview has been rescheduled to ' || v_scheduled_at || ' (' || v_type || '). Click to view details.',
+      '/interviews'
+    );
+  exception
+    when invalid_text_representation then
+      insert into notifications (recipient_id, type, title, body, action_url)
+      values (
+        v_candidate_id,
+        'interview_scheduled',
+        'Interview Rescheduled for ' || v_job_title,
+        'Your interview has been rescheduled to ' || v_scheduled_at || ' (' || v_type || '). Click to view details.',
+        '/interviews'
+      );
+  end;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_interview_rescheduled on interviews;
+create trigger trg_notify_interview_rescheduled
+  after update on interviews
+  for each row execute procedure notify_interview_rescheduled();
 
 
 -- ============================================================

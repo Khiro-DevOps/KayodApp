@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ApplicationStatus, Interview } from "@/lib/types";
+import { isActiveInterview } from "@/lib/interviews";
 
 interface StatusTrackerProps {
   status: ApplicationStatus;
@@ -83,7 +84,7 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
                 {stage.key === "interview_scheduled" && interviews.length > 0 && (
                   <div className="mt-2 space-y-2">
                     {interviews
-                      .filter((i) => i.status === "scheduled" || i.status === "confirmed")
+                      .filter((i) => isActiveInterview(i))
                       .map((interview) => (
                         <div
                           key={interview.id}
@@ -168,7 +169,7 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
         {(() => {
           const upcomingInterview = interviews.find(
             (i) =>
-              (i.status === "scheduled" || i.status === "confirmed") &&
+              isActiveInterview(i) &&
               i.interview_type === "online" &&
               i.video_room_url
           );

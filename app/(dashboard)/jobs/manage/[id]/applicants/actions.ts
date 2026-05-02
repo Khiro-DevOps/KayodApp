@@ -66,6 +66,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
     type ResolvedApplication = {
       id: string;
       candidate_id: string;
+      status?: string | null;
       selected_mode?: InterviewType | null;
       job_posting_id?: string | null;
       job_listing_id?: string | null;
@@ -119,6 +120,13 @@ export async function scheduleInterviewProposal(formData: FormData) {
     }
 
     const applicationId = application.id;
+
+    if (String(application.status ?? "").toUpperCase() === "COMPLETED") {
+      return {
+        success: false,
+        error: "This application is marked as completed. Rescheduling is locked.",
+      };
+    }
 
     const { data: app } = await supabase
       .from("applications")
@@ -183,9 +191,16 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     const { data: existingInterview } = await supabase
       .from("interviews")
-      .select("id")
+      .select("id, status")
       .eq("application_id", applicationId)
       .maybeSingle();
+
+    if (existingInterview?.status === "completed") {
+      return {
+        success: false,
+        error: "This interview is already completed. Rescheduling is locked.",
+      };
+    }
 
     let interviewId: string;
 
@@ -216,16 +231,19 @@ export async function scheduleInterviewProposal(formData: FormData) {
       }
       interviewId = data.id;
 
+      const rescheduleTarget =
+        interviewType === "online"
+          ? `Meeting link: ${meetingLink}`
+          : `Location: ${hrOfficeAddress}`;
+
       backgroundTasks.push(
         Promise.resolve(
           supabase.from("notifications").insert({
             recipient_id: application.candidate_id,
             type: "interview_rescheduled",
             title: "Interview Rescheduled 🔄",
-            body: `Your interview for ${jobTitle} has been rescheduled. ${
-              interviewType === "online" ? `Meeting link: ${meetingLink}` : `Location: ${hrOfficeAddress}`
-            }`,
-            action_url: `/applications/${applicationId}`,
+            body: `Your interview for ${jobTitle} has been rescheduled. ${rescheduleTarget}`,
+            action_url: `/interviews`,
           })
         ).then(() => null).catch((err: unknown) => {
           console.error("Failed to insert rescheduled notification:", err);

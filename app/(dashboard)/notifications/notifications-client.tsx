@@ -13,6 +13,7 @@ const typeConfig: Record<string, { icon: string; bg: string }> = {
 
   // New — post-interview flow
   interview_scheduled:        { icon: "📅", bg: "bg-purple-50" },
+  interview_rescheduled:      { icon: "🔄", bg: "bg-orange-50" },
   interview_completed:        { icon: "✅", bg: "bg-gray-50"   },
   application_status_changed: { icon: "🔔", bg: "bg-blue-50"   },
   under_review:               { icon: "🔍", bg: "bg-amber-50"  },
@@ -46,6 +47,20 @@ export default function NotificationsClient({
 }) {
   const router = useRouter();
 
+  const resolveActionUrl = (notif: Notification): string | null => {
+    if (!notif.action_url) return null;
+
+    // Backward compatibility: older rows may still point to /interviews/<id>.
+    if (
+      (notif.type === "interview_scheduled" || notif.type === "interview_rescheduled") &&
+      /^\/interviews\/.+/.test(notif.action_url)
+    ) {
+      return "/interviews";
+    }
+
+    return notif.action_url;
+  };
+
   if (notifications.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-surface p-8 text-center">
@@ -72,15 +87,16 @@ export default function NotificationsClient({
       {notifications.map((notif) => {
         const config = typeConfig[notif.type] ?? { icon: "🔔", bg: "bg-blue-50" };
         const isUnread = !notif.is_read;
+        const actionUrl = resolveActionUrl(notif);
 
         const handleClick = async () => {
           if (isUnread) {
             const formData = new FormData();
             formData.append("notification_id", notif.id);
 
-            if (notif.action_url) {
+            if (actionUrl) {
               void markNotificationRead(formData);
-              router.push(notif.action_url);
+              router.push(actionUrl);
               return;
             }
 
@@ -89,8 +105,8 @@ export default function NotificationsClient({
             return;
           }
 
-          if (notif.action_url) {
-            router.push(notif.action_url);
+          if (actionUrl) {
+            router.push(actionUrl);
           }
         };
 
@@ -122,7 +138,7 @@ export default function NotificationsClient({
                   <p className="text-xs text-text-secondary">
                     {timeAgo(notif.created_at)}
                   </p>
-                  {notif.action_url && (
+                  {actionUrl && (
                     <span className="text-xs font-medium text-primary">
                       View →
                     </span>

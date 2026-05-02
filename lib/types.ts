@@ -230,6 +230,7 @@ export interface Interview {
   // After interview
   interviewer_notes: string | null;
   interview_score: number | null;
+  ended_at: string | null;
   created_at: string;
   updated_at: string;
   // Joined

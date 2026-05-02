@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Interview } from "@/lib/types";
 import ApplicantDetailDrawer from "./applicant-detail-drawer";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import type { ApplicationStatus } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
 
 interface CandidateProfile {
   id: string;
@@ -42,8 +43,108 @@ export default function ApplicantsListClient({
   interviews,
 }: ApplicantsListClientProps) {
   const router = useRouter();
+  const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>(applications);
+  const [interviewMap, setInterviewMap] = useState<Map<string, Interview>>(interviews);
   const [selectedApplication, setSelectedApplication] = useState<ApplicationRow | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
+
+  useEffect(() => {
+    setApplicationRows(applications);
+  }, [applications]);
+
+  useEffect(() => {
+    applicationIdsRef.current = new Set(applicationRows.map((app) => app.id));
+  }, [applicationRows]);
+
+  useEffect(() => {
+    setInterviewMap(interviews);
+  }, [interviews]);
+
+  useEffect(() => {
+    if (!selectedApplication) return;
+    const refreshed = applicationRows.find((app) => app.id === selectedApplication.id);
+    if (refreshed) {
+      setSelectedApplication(refreshed);
+    }
+  }, [applicationRows, selectedApplication]);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`job-applicants-${jobId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "applications",
+          filter: `job_posting_id=eq.${jobId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
+            if (!deletedId) return;
+
+            setApplicationRows((prev) => prev.filter((app) => app.id !== deletedId));
+            return;
+          }
+
+          const changed = payload.new as Partial<ApplicationRow> | null;
+          if (!changed?.id) return;
+
+          setApplicationRows((prev) => {
+            const index = prev.findIndex((app) => app.id === changed.id);
+
+            if (index === -1) {
+              return prev;
+            }
+
+            const next = [...prev];
+            next[index] = { ...next[index], ...changed };
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "interviews",
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deleted = payload.old as { application_id?: string } | null;
+            if (!deleted?.application_id) return;
+            if (!applicationIdsRef.current.has(deleted.application_id)) return;
+
+            setInterviewMap((prev) => {
+              const next = new Map(prev);
+              next.delete(deleted.application_id as string);
+              return next;
+            });
+            return;
+          }
+
+          const changed = payload.new as Interview | null;
+          if (!changed?.application_id) return;
+          if (!applicationIdsRef.current.has(changed.application_id)) return;
+
+          setInterviewMap((prev) => {
+            const next = new Map(prev);
+            next.set(changed.application_id, changed);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [jobId]);
 
   const handleCardClick = (app: ApplicationRow) => {
     setSelectedApplication(app);
@@ -55,7 +156,7 @@ export default function ApplicantsListClient({
     setTimeout(() => setSelectedApplication(null), 300);
   };
 
-  if (!applications || applications.length === 0) {
+  if (!applicationRows || applicationRows.length === 0) {
     return (
       <div className="rounded-2xl bg-surface border border-border p-6 text-center">
         <p className="text-sm text-text-secondary">No applicants yet</p>
@@ -67,12 +168,17 @@ export default function ApplicantsListClient({
     <>
       <div className="h-full min-h-0 overflow-y-auto pr-1">
         <div className="space-y-3 pb-6">
-          {applications.map((app) => {
+          {applicationRows.map((app) => {
             const candidate = app.profiles;
-            const interview = interviews.get(app.id);
+            const interview = interviewMap.get(app.id);
             const fullName = candidate
               ? `${candidate.first_name} ${candidate.last_name}`
               : "Unknown";
+            const isCompleted =
+              String(app.status).toUpperCase() === "COMPLETED" ||
+              interview?.status === "completed";
+            const displayStatus = app.status.replace(/_/g, " ");
+            const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
 
             return (
               <button
@@ -107,10 +213,8 @@ export default function ApplicantsListClient({
                         {app.match_score}%
                       </span>
                     )}
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600"
-                    }`}>
-                      {app.status.replace(/_/g, " ")}
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColorClass}`}>
+                      {displayStatus}
                     </span>
                   </div>
                 </div>
@@ -157,7 +261,7 @@ export default function ApplicantsListClient({
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                     <path fillRule="evenodd" d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 9a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z" clipRule="evenodd" />
                   </svg>
-                  Click to view details & schedule interview
+                  {isCompleted ? "Click to view details" : "Click to view details & schedule interview"}
                 </div>
               </button>
             );
@@ -169,6 +273,10 @@ export default function ApplicantsListClient({
         <ApplicantDetailDrawer
           application={selectedApplication as any}
           jobId={jobId}
+          isCompletedLocked={
+            String(selectedApplication.status).toUpperCase() === "COMPLETED" ||
+            interviewMap.get(selectedApplication.id)?.status === "completed"
+          }
           isOpen={isDrawerOpen}
           onClose={handleCloseDrawer}
           onScheduled={() => router.refresh()}

@@ -5,10 +5,12 @@ import type { InterviewType, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole } from "@/lib/roles";
 import EmployeeDashboardPage from "./employee-dashboard-page";
+import { isActiveInterview } from "@/lib/interviews";
 
 interface CandidateUpcomingInterview {
   id: string;
   scheduled_at: string;
+  duration_minutes: number;
   interview_type: InterviewType;
   job_title: string;
 }
@@ -74,20 +76,17 @@ export default async function DashboardPage() {
     const [
       { count: appCount },
       { count: interviewCount },
-      { data: nextInterview },
+      { data: candidateInterviews },
       { data: pendingPreferenceApps },
     ] = await Promise.all([
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id),
       supabase.from("applications").select("*", { count: "exact", head: true }).eq("candidate_id", user.id).eq("status", "interview_scheduled"),
       supabase
         .from("interviews")
-        .select(`id, scheduled_at, interview_type, applications!inner(candidate_id, job_postings(title))`)
+        .select(`id, scheduled_at, duration_minutes, interview_type, status, applications!inner(candidate_id, job_postings(title))`)
         .eq("applications.candidate_id", user.id)
         .in("status", ["scheduled", "confirmed", "rescheduled"])
-        .gte("scheduled_at", new Date().toISOString())
-        .order("scheduled_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+        .order("scheduled_at", { ascending: true }),
       supabase
         .from("applications")
         .select(`id, status, selected_mode, hr_offered_modes, job_postings(title)`)
@@ -97,11 +96,14 @@ export default async function DashboardPage() {
         .order("updated_at", { ascending: false }),
     ]);
 
+    const nextInterview = (candidateInterviews ?? []).find((interview) => isActiveInterview(interview));
+
     if (nextInterview) {
       const app = nextInterview.applications as unknown as { job_postings?: { title?: string }[] };
       upcomingInterview = {
         id:             nextInterview.id,
         scheduled_at:   nextInterview.scheduled_at,
+        duration_minutes: nextInterview.duration_minutes,
         interview_type: nextInterview.interview_type,
         job_title:      app?.job_postings?.[0]?.title ?? "Interview",
       };

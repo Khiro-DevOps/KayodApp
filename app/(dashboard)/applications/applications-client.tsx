@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { withdrawApplication } from "./actions";
+import { createClient } from "@/lib/supabase/client";
 
 type ApplicationsListItem = {
   id: string;
@@ -28,10 +30,16 @@ type ApplicationsInterviewItem = {
 };
 
 const statusConfig: Record<string, { label: string; classes: string }> = {
-  applied: { label: "Applied", classes: "bg-blue-50 text-info" },
+  draft: { label: "Draft", classes: "bg-gray-100 text-text-secondary" },
+  submitted: { label: "Submitted", classes: "bg-blue-50 text-info" },
+  under_review: { label: "Under Review", classes: "bg-amber-50 text-amber-700" },
   shortlisted: { label: "Shortlisted", classes: "bg-yellow-50 text-warning" },
-  interview: { label: "Interview", classes: "bg-purple-50 text-purple-600" },
+  interview_scheduled: { label: "Interview Scheduled", classes: "bg-purple-50 text-purple-600" },
+  interviewed: { label: "Interviewed", classes: "bg-indigo-50 text-indigo-700" },
+  offer_sent: { label: "Offer Sent", classes: "bg-emerald-50 text-emerald-700" },
   hired: { label: "Hired", classes: "bg-green-50 text-success" },
+  rejected: { label: "Rejected", classes: "bg-red-50 text-danger" },
+  withdrawn: { label: "Withdrawn", classes: "bg-gray-100 text-text-secondary" },
 };
 
 function ApplicationsList({
@@ -62,7 +70,8 @@ function ApplicationsList({
             location: string | null;
           } | undefined;
 
-          const config = statusConfig[app.status] || statusConfig.applied;
+          const interview = interviewMap[app.id];
+          const config = statusConfig[app.status] || statusConfig.submitted;
 
           return (
             <Link
@@ -106,17 +115,17 @@ function ApplicationsList({
                 {(app.status === "interview_scheduled" ||
                   app.status === "interviewed" ||
                   app.status === "hired") &&
-                  interviewMap[app.id] && (
+                  interview && (
                     <div className="rounded-xl bg-purple-50 p-3 space-y-1">
                       <p className="text-xs font-medium text-purple-700">
                         Interview:{" "}
                         {new Date(
-                          interviewMap[app.id].scheduled_at
+                          interview.scheduled_at
                         ).toLocaleString()}
                       </p>
-                      {interviewMap[app.id].interviewer_notes && (
+                      {interview.interviewer_notes && (
                         <p className="text-xs text-purple-600">
-                          {interviewMap[app.id].interviewer_notes}
+                          {interview.interviewer_notes}
                         </p>
                       )}
                     </div>
@@ -159,13 +168,102 @@ export default function ApplicationsClient({
   applications: ApplicationsListItem[];
   interviewMap: Record<string, ApplicationsInterviewItem>;
 }) {
+  const [liveApplications, setLiveApplications] = useState<ApplicationsListItem[]>(applications);
+  const [liveInterviewMap, setLiveInterviewMap] = useState<Record<string, ApplicationsInterviewItem>>(interviewMap);
+  const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
+
+  useEffect(() => {
+    setLiveApplications(applications);
+    applicationIdsRef.current = new Set(applications.map((app) => app.id));
+  }, [applications]);
+
+  useEffect(() => {
+    setLiveInterviewMap(interviewMap);
+  }, [interviewMap]);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("candidate-applications-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "applications" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
+            if (!deletedId) return;
+
+            if (applicationIdsRef.current.has(deletedId)) {
+              setLiveApplications((prev) => prev.filter((app) => app.id !== deletedId));
+              setLiveInterviewMap((prev) => {
+                const next = { ...prev };
+                delete next[deletedId];
+                return next;
+              });
+              applicationIdsRef.current.delete(deletedId);
+            }
+
+            return;
+          }
+
+          const changed = payload.new as Partial<ApplicationsListItem> | null;
+          if (!changed?.id || !applicationIdsRef.current.has(changed.id)) return;
+
+          setLiveApplications((prev) => {
+            const index = prev.findIndex((app) => app.id === changed.id);
+            if (index === -1) return prev;
+
+            const next = [...prev];
+            next[index] = { ...next[index], ...changed };
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "interviews" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedApplicationId = String(
+              (payload.old as { application_id?: string } | null)?.application_id ?? ""
+            );
+            if (!deletedApplicationId || !applicationIdsRef.current.has(deletedApplicationId)) return;
+
+            setLiveInterviewMap((prev) => {
+              const next = { ...prev };
+              delete next[deletedApplicationId];
+              return next;
+            });
+            return;
+          }
+
+          const changed = payload.new as ApplicationsInterviewItem | null;
+          if (!changed?.application_id || !applicationIdsRef.current.has(changed.application_id)) return;
+
+          setLiveInterviewMap((prev) => ({
+            ...prev,
+            [changed.application_id]: {
+              ...prev[changed.application_id],
+              ...changed,
+            },
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
   return (
     <Suspense
       fallback={<div className="text-sm text-text-secondary">Loading...</div>}
     >
       <ApplicationsList
-        applications={applications}
-        interviewMap={interviewMap}
+        applications={liveApplications}
+        interviewMap={liveInterviewMap}
       />
     </Suspense>
   );
