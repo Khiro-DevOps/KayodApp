@@ -52,12 +52,15 @@ export default function ApplicantDetailDrawer({
   // ── Resume Signed URL state ──────────────────────────────────────────────
   const [signedResumeUrl, setSignedResumeUrl] = useState<string | null>(null);
   const [loadingResume, setLoadingResume] = useState(false);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
+  console.log("🔍 Resume object:", resume); //
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
-  const displayStatus = application?.status.replace(/_/g, " ");
+  const displayStatus = application?.status.replace(/_/g, " ").toUpperCase();
 
   const closeScheduleForm = useCallback(() => {
     setShowScheduleForm(false);
@@ -69,6 +72,7 @@ export default function ApplicantDetailDrawer({
       setShowScheduleForm(false);
       setShowLogForm(false);
       setSignedResumeUrl(null);
+      setResumeError(null);
     }
   }, [isOpen]);
 
@@ -90,55 +94,74 @@ export default function ApplicantDetailDrawer({
     fetchLogs();
   }, [isOpen, application.id]);
 
-  // Trigger the signed URL generation when the drawer opens and resume exists
+  // FIX: Fetch the signed URL properly in a useEffect with async/await
   useEffect(() => {
-    if (isOpen && resume?.pdf_url) {
-      getSignedUrl();
-    }
-  }, [isOpen, resume?.pdf_url]);
+    if (!isOpen || !resume?.id) return;
 
-  // Generate Signed URL for Resume
-  async function getSignedUrl() {
-    if (!resume?.pdf_url) return;
+    async function fetchSignedUrl() {
+      setLoadingResume(true);
+      setResumeError(null);
+      setSignedResumeUrl(null);
 
-    setLoadingResume(true);
-    const supabase = createClient();
-    
-    try {
-      const fullUrl = resume.pdf_url;
-      
-      // 1. Extract the path after '/resumes/'
-      const match = fullUrl.match(/\/resumes\/(.+)$/);
-      let filePath = match ? match[1] : null;
+      const supabase = createClient();
 
-      if (filePath) {
-        // 2. Clean the path
-        filePath = filePath.split('?')[0];
-        const decodedPath = decodeURIComponent(filePath);
-        const cleanPath = decodedPath.startsWith('/') 
-          ? decodedPath.substring(1) 
-          : decodedPath;
+      try {
+        // FIX: Use resume.pdf_url but also handle the case where it may be
+        // nested differently — log it so you can debug if still missing
+        const pdfUrl = resume?.pdf_url;
 
-        console.log("DEBUG: Requesting signed URL for path:", cleanPath);
+        if (!pdfUrl) {
+          console.warn("resume.pdf_url is missing. Full resume object:", resume);
+          setResumeError("No PDF URL found for this resume.");
+          return;
+        }
 
-        const { data, error } = await supabase
-          .storage
-          .from('resumes')
-          .createSignedUrl(cleanPath, 3600);
+        // Extract the storage path after '/resumes/'
+        const match = pdfUrl.match(/\/resumes\/(.+)$/);
+        const rawPath = match ? match[1] : null;
+
+        if (!rawPath) {
+          console.warn("Could not extract path from URL:", pdfUrl);
+          setResumeError("Could not parse resume storage path.");
+          return;
+        }
+
+        // Clean query params and decode
+        const cleanPath = decodeURIComponent(rawPath.split("?")[0]);
+        const storagePath = cleanPath.startsWith("/") ? cleanPath.substring(1) : cleanPath;
+
+        const { data, error } = await supabase.storage
+          .from("resumes")
+          .createSignedUrl(storagePath, 3600);
 
         if (error) {
           console.error("Supabase Storage Error:", error.message);
+          setResumeError(error.message || "Failed to generate signed URL.");
           setSignedResumeUrl(null);
         } else {
           setSignedResumeUrl(data.signedUrl);
         }
+      } catch (err: any) {
+        console.error("Signed URL fetch error:", err);
+        setResumeError(String(err?.message ?? err));
+        setSignedResumeUrl(null);
+      } finally {
+        setLoadingResume(false);
       }
-    } catch (err) {
-      console.error("Path parsing error:", err);
-    } finally {
-      setLoadingResume(false);
     }
-  }
+
+    fetchSignedUrl();
+  }, [isOpen, resume?.id]); // re-runs when drawer opens or resume changes
+
+  // Close resume modal on Escape
+  useEffect(() => {
+    if (!showResumeModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowResumeModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showResumeModal]);
 
   useEffect(() => {
     if (!showScheduleForm) return;
@@ -189,9 +212,16 @@ export default function ApplicantDetailDrawer({
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border">
           <div>
-            <h2 className="text-lg font-bold text-text-primary">
-              {candidate?.first_name} {candidate?.last_name}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-text-primary">
+                {candidate?.first_name} {candidate?.last_name}
+              </h2>
+              {application?.match_score != null && (
+                <span className="rounded bg-green-100 px-2 py-1 text-sm font-bold text-green-700">
+                  Match Score: {application.match_score}%
+                </span>
+              )}
+            </div>
             <p className="text-sm text-text-secondary mt-1">{candidate?.email}</p>
           </div>
           <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
@@ -256,24 +286,29 @@ export default function ApplicantDetailDrawer({
           {resume && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-text-primary">Resume</h3>
+
               {loadingResume ? (
                 <div className="p-3 rounded-lg bg-gray-50 text-text-secondary text-sm animate-pulse text-center">
                   Generating secure link...
                 </div>
               ) : signedResumeUrl ? (
-                <a
-                  href={signedResumeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.3A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 101.414 1.414L9 9.414V13H5.5z" />
-                  </svg>
-                  <span className="text-sm font-medium">View {resume.title}</span>
-                </a>
+                <div className="flex items-center gap-4 py-2">
+                  <span className="text-sm font-semibold text-text-primary">Resume:</span>
+                  <button
+                    onClick={() => setShowResumeModal(true)}
+                    className="text-primary hover:underline text-sm font-medium"
+                  >
+                    {resume.title || resume.name || "View Resume"}
+                  </button>
+                  <span className="ml-auto rounded bg-green-100 px-2 py-1 text-xs font-bold text-green-700">
+                    Match Score: {application?.match_score != null ? application.match_score + "%" : "—"}
+                  </span>
+                </div>
               ) : (
-                <p className="text-xs text-red-500">Could not load resume link.</p>
+                // FIX: Show the actual error so you can diagnose what's wrong
+                <p className="text-xs text-red-500">
+                  {resumeError ?? "Could not load resume link."}
+                </p>
               )}
             </div>
           )}
@@ -403,6 +438,53 @@ export default function ApplicantDetailDrawer({
           </button>
         </div>
       </div>
+
+      {/* Resume Preview Modal — rendered outside the drawer scroll container */}
+      {showResumeModal && signedResumeUrl && (
+        <>
+          <div className="fixed inset-0 z-[90] bg-black/50" onClick={() => setShowResumeModal(false)} />
+          <div className="fixed inset-0 z-[91] grid place-items-center p-4">
+            <div className="w-full max-w-4xl rounded-2xl border border-border bg-surface shadow-xl">
+              <div className="flex items-center justify-between border-b border-border px-5 py-3">
+                <h3 className="text-base font-semibold text-text-primary">
+                  {resume.title || "Resume Preview"}
+                </h3>
+                <button
+                  onClick={() => setShowResumeModal(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4">
+                <iframe
+                  src={signedResumeUrl}
+                  className="w-full h-[80vh]"
+                  title="Resume Preview"
+                />
+                <div className="mt-4 flex justify-end gap-2">
+                  <a
+                    href={signedResumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Open in new tab
+                  </a>
+                  <button
+                    onClick={() => setShowResumeModal(false)}
+                    className="px-4 py-2 bg-gray-200 rounded text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Schedule Interview Modal */}
       {showScheduleForm && canReschedule && (

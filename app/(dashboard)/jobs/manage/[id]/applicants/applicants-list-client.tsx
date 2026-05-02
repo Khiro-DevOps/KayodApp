@@ -177,7 +177,7 @@ export default function ApplicantsListClient({
             const isCompleted =
               String(app.status).toUpperCase() === "COMPLETED" ||
               interview?.status === "completed";
-            const displayStatus = app.status.replace(/_/g, " ");
+            const displayStatus = app.status.replace(/_/g, " ").toUpperCase();
             const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
 
             return (
@@ -219,7 +219,7 @@ export default function ApplicantsListClient({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-text-secondary">
+                <div className="flex items-center gap-3 text-xs text-text-secondary flex-wrap">
                   {candidate?.city && (
                     <span>📍 {candidate.city}, {candidate.country}</span>
                   )}

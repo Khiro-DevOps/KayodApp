@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Resume } from "@/lib/types";
-// resume-preview-modal.tsx
-import { getResumeSignedUrl } from "./get-signed-url"; // ← new dedicated file
+import { getResumeSignedUrl } from "./get-signed-url"; 
 
 interface ResumePreviewModalProps {
   resume: Resume | null;

@@ -37,23 +37,26 @@ export default async function ApplicantsPage({
 
   if (!job) redirect("/jobs/manage");
 
-  const { data: rawApplications } = await supabase
-    .from("applications")
-    .select(`
-      id,
-      job_posting_id,
-      candidate_id,
-      status,
-      match_score,
-      submitted_at,
-      cover_letter,
-      resume_id,
-      profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country)
-    `)
-    .eq("job_posting_id", id)
-    .order("match_score", { ascending: false, nullsFirst: false })
-    .order("submitted_at", { ascending: false });
-
+const { data: rawApplications } = await supabase
+  .from("applications")
+  .select(`
+    id,
+    job_posting_id,
+    candidate_id,
+    status,
+    match_score,
+    submitted_at,
+    cover_letter,
+    resume_id,
+    profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
+    resumes (id, title, pdf_url, created_at)
+  `)
+  .eq("job_posting_id", id)
+  .order("match_score", { ascending: false, nullsFirst: false })
+  .order("submitted_at", { ascending: false });
+    
+    // DEBUG
+    console.log("🔍 Raw first application:", JSON.stringify(rawApplications?.[0], null, 2));
   const applications = (rawApplications ?? []) as any[];
 
   const applicationIds = applications.map((a) => a.id);
