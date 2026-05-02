@@ -24,8 +24,8 @@ const NoteTakingPanel: FC<NoteTakingPanelProps> = ({
 
   return (
     <>
-      {/* Note-Taking Panel (right side, 25vw width) - No backdrop to allow control bar interaction */}
-      <div className="absolute top-0 right-0 bottom-0 z-30 w-96 bg-white/95 backdrop-blur-sm shadow-2xl flex flex-col animate-in slide-in-from-right-96">
+      {/* Note-Taking Panel (right side, 25vw width) - rendered as a sibling in a flex container */}
+      <div className="z-30 w-96 bg-white/95 backdrop-blur-sm shadow-2xl flex flex-col animate-in slide-in-from-right-96">
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50">
           <h3 className="font-bold text-lg text-gray-900">

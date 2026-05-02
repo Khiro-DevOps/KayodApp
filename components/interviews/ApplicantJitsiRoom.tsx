@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from "react";
 import MeetingControlBar from "./MeetingControlBar";
 import type { JitsiMeetAPI } from "./jitsi.types";
+import { setDisplayName } from "./jitsi.types";
 import "./jitsi.types";
 
 interface ApplicantJitsiRoomProps {
@@ -72,13 +73,14 @@ export default function ApplicantJitsiRoom({
         parentNode: containerRef.current,
         width: "100%",
         height: "100%",
-        jwt: jwtToken,
+          jwt: jwtToken,
         userInfo: { displayName: userName },
         configOverwrite: {
           startWithAudioMuted: true,
           startWithVideoMuted: false,
           enableWelcomePage: false,
           prejoinPageEnabled: false,
+            disableDeepLinking: true,
           disableSimulcast: false,
         },
         interfaceConfigOverwrite: {
@@ -97,6 +99,8 @@ export default function ApplicantJitsiRoom({
       });
 
       apiRef.current.addEventListener("readyToClose", onLeave);
+      // Ensure display name is applied even if JWT/user info is delayed
+      setDisplayName(apiRef.current, userName);
     };
 
     const existing = document.getElementById(scriptId);
