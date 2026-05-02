@@ -190,7 +190,7 @@ export default function InterviewSchedulingForm({
 
       {offeredModes.includes("online") && (
         <div className="p-3 rounded-lg bg-blue-50 text-blue-700 text-sm">
-          Online interviews include an auto-generated Daily.co meeting room.
+          Online interviews include an auto-generated meeting room.
         </div>
       )}
 

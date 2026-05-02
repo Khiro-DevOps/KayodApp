@@ -56,6 +56,7 @@ export type NotificationType =
   | "application_submitted"
   | "application_status_changed"
   | "interview_scheduled"
+  | "interview_rescheduled"
   | "interview_reminder"
   | "interview_cancelled"
   | "offer_letter"

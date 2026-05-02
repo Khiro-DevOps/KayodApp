@@ -9,6 +9,7 @@ interface ApplicationDetailViewProps {
   userRole: string;
   isCurrentUser: boolean;
   signedResumeUrl: string | null; // ← received from server, no client fetching needed
+  jobOffer?: any | null; // ← job offer data from server
 }
 
 export default function ApplicationDetailView({
@@ -17,6 +18,7 @@ export default function ApplicationDetailView({
   userRole,
   isCurrentUser,
   signedResumeUrl, // ← use directly from props
+  jobOffer,
 }: ApplicationDetailViewProps) {
   const job = application.job_postings as any;
   const resume = application.resumes as any;
@@ -52,7 +54,7 @@ export default function ApplicationDetailView({
           {interviews.length > 0 && (
             <section className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
               <h2 className="text-lg font-bold text-purple-900 mb-4">Interview Details</h2>
-              {interviews.map((interview) => (
+          {interviews.map((interview) => (
                 <div key={interview.id} className="space-y-3 pb-4 border-b border-purple-100 last:border-0 last:pb-0">
                   <div className="flex items-center gap-3">
                     <span className="bg-purple-200 text-purple-800 text-xs font-bold px-2 py-1 rounded">
@@ -62,15 +64,24 @@ export default function ApplicationDetailView({
                       {format(new Date(interview.scheduled_at), "PPPP 'at' p")}
                     </p>
                   </div>
-                  {interview.video_room_url && (
+                  {interview.video_room_url ? (
                     <a
                       href={interview.video_room_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-block bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition-colors"
+                      className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition-colors font-semibold"
                     >
-                      Join Meeting
+                      <span>🎥</span>
+                      <span>Join Meeting</span>
                     </a>
+                  ) : interview.interview_type === "online" ? (
+                    <div className="text-sm text-purple-600 italic">
+                      Meeting link will be available closer to the interview time.
+                    </div>
+                  ) : (
+                    <p className="text-sm text-purple-700 font-medium">
+                      📍 {interview.location_address || interview.location_notes || "Location details to be confirmed"}
+                    </p>
                   )}
                 </div>
               ))}

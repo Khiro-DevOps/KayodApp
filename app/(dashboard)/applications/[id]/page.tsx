@@ -161,36 +161,37 @@ export default async function ApplicationDetailPage({
   }
 
   // Fetch interviews for this application
-  const { data: interviews } = await supabase
-    .from("interviews")
-    .select(`
-      id,
-      application_id,
-      scheduled_by,
-      status,
-      interview_type,
-      available_modes,
-      location_details,
-      applicant_selection,
-      scheduled_at,
-      duration_minutes,
-      timezone,
-      location_address,
-      location_notes,
-      video_room_url,
-      video_room_name,
-      video_provider,
-      interviewer_notes,
-      interview_score,
-      room_not_before,   
-      room_expires_at,
-      created_at,
-      updated_at,
-      profiles ( first_name, last_name, email )
-    `)
-    .eq("application_id", id)
-    .order("scheduled_at", { ascending: false });
-  
+  const { data: interviews, error: interviewError } = await supabase
+  .from("interviews")
+  .select(`
+    id,
+    application_id,
+    scheduled_by,
+    status,
+    interview_type,
+    available_modes,
+    location_details,
+    applicant_selection,
+    scheduled_at,
+    duration_minutes,
+    timezone,
+    location_address,
+    location_notes,
+    video_room_url,
+    video_room_name,
+    video_provider,
+    room_not_before,
+    room_expires_at,
+    interviewer_notes,
+    interview_score,
+    created_at,
+    updated_at,
+    profiles ( first_name, last_name, email )
+  `)
+  .eq("application_id", id)
+  .order("scheduled_at", { ascending: false }) as any;
+  console.log("INTERVIEWS FETCH:", { count: interviews?.length, error: interviewError?.message });
+
     // Add after the interviews fetch:
   const { data: jobOffer } = await supabase
     .from("job_offers")
