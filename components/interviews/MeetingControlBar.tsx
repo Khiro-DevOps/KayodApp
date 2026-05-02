@@ -8,6 +8,7 @@ interface MeetingControlBarProps {
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onEndCall: () => void;
+  onToggleNotes?: () => void;
   applicantName?: string;
 }
 
@@ -17,6 +18,7 @@ const MeetingControlBar: FC<MeetingControlBarProps> = ({
   onToggleMute,
   onToggleCamera,
   onEndCall,
+  onToggleNotes,
   applicantName = "Applicant",
 }) => {
   return (
@@ -82,6 +84,17 @@ const MeetingControlBar: FC<MeetingControlBarProps> = ({
         >
           ☎️
         </button>
+
+          {/* Notes Toggle Button (optional) */}
+          {onToggleNotes && (
+            <button
+              onClick={onToggleNotes}
+              className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center text-white text-xl font-bold active:scale-95"
+              title="Toggle notes"
+            >
+              📝
+            </button>
+          )}
       </div>
     </>
   );

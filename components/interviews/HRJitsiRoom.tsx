@@ -7,7 +7,9 @@ import { useState, useEffect, useRef } from "react";
 import NoteTakingPanel from "./NoteTakingPanel";
 import MeetingControlBar from "./MeetingControlBar";
 import type { JitsiMeetAPI } from "./jitsi.types";
+import { setDisplayName } from "./jitsi.types";
 import "./jitsi.types";
+import { createClient } from "@/lib/supabase/client";
 
 interface HRJitsiRoomProps {
   roomName: string;
@@ -88,6 +90,7 @@ export default function HRJitsiRoom({
           startWithVideoMuted: false,
           enableWelcomePage: false,
           prejoinPageEnabled: false,
+          disableDeepLinking: true,
           disableSimulcast: false,
           disableTileView: true,
           filmstrip: {
@@ -125,6 +128,7 @@ export default function HRJitsiRoom({
       apiRef.current.addEventListener("readyToClose", () => {
         onClose?.();
       });
+      setDisplayName(apiRef.current, displayName);
     };
 
     const existing = document.getElementById(scriptId);
@@ -147,8 +151,28 @@ export default function HRJitsiRoom({
   }, [jwtToken, roomName, displayName, email, onClose]);
 
   // Persist notes
+  const saveTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
-    localStorage.setItem(`interview-notes-${roomName}`, notes);
+    if (!roomName) return;
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("interviews")
+          .upsert(
+            { video_room_name: roomName, notes },
+            { onConflict: "video_room_name" }
+          );
+        if (error) console.error("Failed to persist interview notes:", error);
+      } catch (err) {
+        console.error("Failed to persist notes:", err);
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    };
   }, [notes, roomName]);
 
   const handleToggleMute = () => {
@@ -193,11 +217,22 @@ export default function HRJitsiRoom({
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50">
       <div className="flex-1 relative overflow-hidden">
-        <div
-          ref={containerRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ backgroundColor: "#000000" }}
-        />
+        <div className="absolute inset-0 flex">
+          <div
+            ref={containerRef}
+            className="flex-1 w-full h-full"
+            style={{ backgroundColor: "#000000" }}
+          />
+
+          {isNotePanelOpen && (
+            <NoteTakingPanel
+              notes={notes}
+              onNotesChange={setNotes}
+              onClose={() => setIsNotePanelOpen(false)}
+              applicantName={applicantName}
+            />
+          )}
+        </div>
 
         <MeetingControlBar
           isMuted={isMuted}
@@ -205,25 +240,9 @@ export default function HRJitsiRoom({
           onToggleMute={handleToggleMute}
           onToggleCamera={handleToggleCamera}
           onEndCall={handleEndCall}
+          onToggleNotes={() => setIsNotePanelOpen((v) => !v)}
           applicantName={applicantName}
         />
-
-        <button
-          onClick={() => setIsNotePanelOpen(!isNotePanelOpen)}
-          className="absolute bottom-24 right-6 z-20 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center text-white font-bold text-xl hover:scale-110 active:scale-95"
-          title="Toggle Notes"
-        >
-          📝
-        </button>
-
-        {isNotePanelOpen && (
-          <NoteTakingPanel
-            notes={notes}
-            onNotesChange={setNotes}
-            onClose={() => setIsNotePanelOpen(false)}
-            applicantName={applicantName}
-          />
-        )}
       </div>
     </div>
   );

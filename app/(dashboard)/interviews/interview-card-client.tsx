@@ -75,6 +75,7 @@ useEffect(() => {
   const canJoinRoom =
     interview.interview_type === "online" &&
     interview.video_room_url &&
+    !isExpired &&
     isOngoing &&
     interview.status !== "cancelled" &&
     interview.status !== "completed";
@@ -426,7 +427,10 @@ useEffect(() => {
       {/* Join button */}
       {canJoinRoom && (
         <button
-          onClick={() => setShowRoom(true)}
+          onClick={() => {
+            if (isExpired) return; // extra guard
+            setShowRoom(true);
+          }}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -434,6 +438,13 @@ useEffect(() => {
           </svg>
           Join Meeting
         </button>
+      )}
+
+      {/* Expired room message */}
+      {interview.interview_type === "online" && interview.video_room_url && isExpired && (
+        <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+          The meeting window has ended — this room is no longer available.
+        </div>
       )}
 
       {/* Room not yet open */}

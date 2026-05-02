@@ -18,6 +18,16 @@ export interface JitsiMeetAPI {
   executeCommand: (command: string, ...args: any[]) => void;
 }
 
+// Helper to ensure display name is applied even when JWT name arrives late.
+export function setDisplayName(api: JitsiMeetAPI | null, name?: string) {
+  try {
+    if (!api || !name) return;
+    api.executeCommand("displayName", name);
+  } catch (e) {
+    // ignore: some Jitsi deployments may not expose this command
+  }
+}
+
 // Extend global Window to include Jitsi API
 declare global {
   interface Window {
