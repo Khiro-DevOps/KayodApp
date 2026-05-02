@@ -4,40 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
 
-async function createDailyRoom(applicationId: string) {
-  if (!process.env.DAILY_API_KEY) {
-    throw new Error("Daily.co API key is not configured");
+const JAAS_APP_ID = process.env.JAAS_APP_ID ?? process.env.NEXT_PUBLIC_JAAS_APP_ID;
+const JAAS_DOMAIN = "8x8.vc";
+
+function createJitsiRoom(applicationId: string) {
+  if (!JAAS_APP_ID) {
+    throw new Error("JaaS app ID is not configured");
   }
 
   const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
-  const dailyRes = await fetch("https://api.daily.co/v1/rooms", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-    },
-    body: JSON.stringify({
-      name: roomName,
-      properties: {
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
-        enable_chat: true,
-        enable_screenshare: true,
-      },
-    }),
-  });
-
-  if (!dailyRes.ok) {
-    throw new Error("Failed to create Daily.co meeting room");
-  }
-
-  const room = await dailyRes.json();
-  if (!room?.url || !room?.name) {
-    throw new Error("Daily.co room response is missing required fields");
-  }
 
   return {
-    url: room.url as string,
-    name: room.name as string,
+    url: `https://${JAAS_DOMAIN}/${JAAS_APP_ID}/${roomName}`,
+    name: roomName,
   };
 }
 
@@ -84,8 +63,6 @@ export async function scheduleInterviewProposal(formData: FormData) {
   }
 
   try {
-    // Resolve the target application in a schema-tolerant way.
-    // Some deployments still have legacy fields and some callers may pass candidate_id.
     type ResolvedApplication = {
       id: string;
       candidate_id: string;
@@ -143,6 +120,14 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     const applicationId = application.id;
 
+    const { data: app } = await supabase
+      .from("applications")
+      .select("job_postings(title)")
+      .eq("id", applicationId)
+      .single();
+
+    const jobTitle = (app?.job_postings as any)?.title || "the position";
+
     const selectedMode = application.selected_mode ?? null;
     const interviewType: InterviewType =
       selectedMode && offeredModes.includes(selectedMode)
@@ -151,8 +136,6 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     const hrOfficeAddress = offeredModes.includes("in_person") ? locationDetails : null;
 
-    // Persist HR interview availability on the application when schema supports it.
-    // Older deployments may not yet have hr_offered_modes / hr_office_address columns.
     const { error: appUpdateError } = await supabase
       .from("applications")
       .update({
@@ -167,7 +150,6 @@ export async function scheduleInterviewProposal(formData: FormData) {
         /column/i.test(appUpdateError.message || "");
 
       if (isMissingColumn) {
-        // Retry with a minimal no-op safe update target used later in the flow.
         const { error: fallbackAppUpdateError } = await supabase
           .from("applications")
           .update({ updated_at: new Date().toISOString() })
@@ -185,7 +167,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
     let meetingRoomName: string | null = null;
 
     if (interviewType === "online") {
-      const room = await createDailyRoom(applicationId);
+      const room = createJitsiRoom(applicationId);
       meetingLink = room.url;
       meetingRoomName = room.name;
     }
@@ -199,7 +181,6 @@ export async function scheduleInterviewProposal(formData: FormData) {
       location: interviewType === "in_person" ? hrOfficeAddress : null,
     };
 
-    // Check if interview already exists for this application
     const { data: existingInterview } = await supabase
       .from("interviews")
       .select("id")
@@ -208,8 +189,9 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     let interviewId: string;
 
+    const backgroundTasks: Promise<unknown>[] = [];
+
     if (existingInterview) {
-      // Update existing interview
       const { data, error } = await supabase
         .from("interviews")
         .update({
@@ -221,7 +203,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
           location_notes: null,
           video_room_url: payload.meeting_link,
           video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "daily.co" : null,
+          video_provider: interviewType === "online" ? "jitsi" : null,
           interviewer_notes: notes?.trim() || null,
           updated_at: new Date().toISOString(),
         })
@@ -233,8 +215,23 @@ export async function scheduleInterviewProposal(formData: FormData) {
         throw error;
       }
       interviewId = data.id;
+
+      backgroundTasks.push(
+        Promise.resolve(
+          supabase.from("notifications").insert({
+            recipient_id: application.candidate_id,
+            type: "interview_rescheduled",
+            title: "Interview Rescheduled 🔄",
+            body: `Your interview for ${jobTitle} has been rescheduled. ${
+              interviewType === "online" ? `Meeting link: ${meetingLink}` : `Location: ${hrOfficeAddress}`
+            }`,
+            action_url: `/applications/${applicationId}`,
+          })
+        ).then(() => null).catch((err: unknown) => {
+          console.error("Failed to insert rescheduled notification:", err);
+        })
+      );
     } else {
-      // Create new interview
       const { data, error } = await supabase
         .from("interviews")
         .insert({
@@ -249,7 +246,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
           location_notes: null,
           video_room_url: payload.meeting_link,
           video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "daily.co" : null,
+          video_provider: interviewType === "online" ? "jitsi" : null,
           interviewer_notes: notes?.trim() || null,
         })
         .select("id, interview_type, scheduled_at")
@@ -261,36 +258,44 @@ export async function scheduleInterviewProposal(formData: FormData) {
       interviewId = data.id;
     }
 
-    // Send notification to candidate
-    const { data: app } = await supabase
-      .from("applications")
-      .select("job_postings(title)")
-      .eq("id", applicationId)
-      .single();
+    if (!existingInterview) {
+      const invitationTarget =
+        interviewType === "online"
+          ? `Meeting link: ${meetingLink}`
+          : `Location: ${hrOfficeAddress}`;
 
-    const jobTitle = (app?.job_postings as any)?.title || "the position";
+      backgroundTasks.push(
+        Promise.resolve(
+          supabase.from("notifications").insert({
+            recipient_id: application.candidate_id,
+            type: "interview_scheduled",
+            title: "Interview Invitation 🎉",
+            body: `Your interview for ${jobTitle} is scheduled. ${invitationTarget}`,
+            action_url: `/interviews`,
+          })
+        ).then(() => null).catch((err: unknown) => {
+          console.error("Failed to insert scheduled notification:", err);
+        })
+      );
+    }
 
-    const invitationTarget =
-      interviewType === "online"
-        ? `Meeting link: ${meetingLink}`
-        : `Location: ${hrOfficeAddress}`;
-
-    await supabase.from("notifications").insert({
-      recipient_id: application.candidate_id,
-      type: "interview_scheduled",
-      title: "Interview Invitation 🎉",
-      body: `Your interview for ${jobTitle} is scheduled. ${invitationTarget}`,
-      action_url: `/interviews`,
-    });
-
-    // Update application status
     await supabase
       .from("applications")
       .update({ status: "interview_scheduled" })
       .eq("id", applicationId);
 
-    revalidatePath(`/jobs/manage/${jobId}/applicants`);
-    revalidatePath(`/applications/${applicationId}`);
+    try {
+      revalidatePath(`/jobs/manage/${jobId}/applicants`);
+      revalidatePath(`/applications/${applicationId}`);
+    } catch (err) {
+      console.error("Revalidation error:", err);
+    }
+
+    try {
+      void Promise.allSettled(backgroundTasks);
+    } catch (err) {
+      console.error("Background tasks scheduling failed:", err);
+    }
 
     return {
       success: true,
@@ -299,6 +304,18 @@ export async function scheduleInterviewProposal(formData: FormData) {
     };
   } catch (error) {
     console.error("Interview scheduling error:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    if (/Connect Timeout Error|UND_ERR_CONNECT_TIMEOUT|timeout/i.test(message)) {
+      return {
+        success: false,
+        error: "Network timeout while contacting an external service (JaaS/Jitsi). The interview may have been saved locally — please check the interview list and try again."
+      };
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to schedule interview",
@@ -326,10 +343,9 @@ export async function submitInterviewPreference(formData: FormData) {
   }
 
   try {
-    // Fetch interview for this application
     const { data: interview } = await supabase
       .from("interviews")
-      .select("id, application_id")
+      .select("id, application_id, scheduled_by")
       .eq("application_id", applicationId)
       .single();
 
@@ -337,7 +353,6 @@ export async function submitInterviewPreference(formData: FormData) {
       return { success: false, error: "Interview not found" };
     }
 
-    // Update candidate's preference
     const { error } = await supabase
       .from("interviews")
       .update({
@@ -351,7 +366,6 @@ export async function submitInterviewPreference(formData: FormData) {
       throw error;
     }
 
-    // Send notification to HR
     const { data: profile } = await supabase
       .from("profiles")
       .select("first_name, last_name")
@@ -362,13 +376,19 @@ export async function submitInterviewPreference(formData: FormData) {
       ? `${profile.first_name} ${profile.last_name}`
       : "Candidate";
 
-    await supabase.from("notifications").insert({
-      recipient_id: interview.application_id, // This should be HR's ID, need to fix
-      type: "application_status_changed",
-      title: "Interview Preference Submitted",
-      body: `${candidateName} has submitted their interview format preference.`,
-      action_url: `/jobs/manage/[id]/applicants/${applicationId}`,
-    });
+    if (interview.scheduled_by) {
+      void Promise.resolve(
+        supabase.from("notifications").insert({
+          recipient_id: interview.scheduled_by,
+          type: "application_status_changed",
+          title: "Interview Preference Submitted",
+          body: `${candidateName} has submitted their interview format preference (${preferredType}).`,
+          action_url: `/interviews`,
+        })
+      ).catch((err: unknown) => {
+        console.error("Failed to insert preference notification:", err);
+      });
+    }
 
     revalidatePath(`/interviews/respond/${applicationId}`);
 

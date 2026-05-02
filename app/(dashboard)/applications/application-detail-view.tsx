@@ -141,6 +141,7 @@ export default function ApplicationDetailView({
             <StatusTracker
               status={applicationStatus || application?.status}
               interviews={interviews}
+              applicationId={application.id}
             />
           )}
 

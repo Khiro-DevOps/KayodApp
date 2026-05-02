@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Interview, Profile } from "@/lib/types";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 import Link from "next/link";
 import { InterviewCardClient } from "./interview-card-client";
 import { InterviewCalendar } from "./interview-calendar";
@@ -12,31 +13,38 @@ export default async function InterviewsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const authRole = (user.user_metadata?.role as string | undefined) ?? null;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single<Profile>();
 
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
+  const role = effectiveRole(profile?.role, authRole);
+  const isHR = isHRRole(role);
 
   let interviews: Interview[] = [];
 
+  const now = new Date();
+
   if (isHR) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("interviews")
       .select(`
         *,
         applications (
           *,
-          profiles ( first_name, last_name, email ),
+          profiles!applications_candidate_id_fkey ( first_name, last_name, email ),
           job_postings ( title )
         )
       `)
       .order("scheduled_at", { ascending: true });
+
+    console.log("HR Supabase error:", error);
+    console.log("HR data length:", data?.length);
     interviews = (data as Interview[]) ?? [];
   } else {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("interviews")
       .select(`
         *,
@@ -45,27 +53,43 @@ export default async function InterviewsPage() {
           job_postings ( title )
         )
       `)
-      .eq("applications.candidate_id", user.id)
+      .filter("applications.candidate_id", "eq", user.id)
       .order("scheduled_at", { ascending: true });
+
+    console.log("Applicant Supabase error:", error);
+    console.log("Applicant data length:", data?.length);
     interviews = (data as Interview[]) ?? [];
   }
 
-    // With this:
-  const now = new Date();
-
-  const getEndTime = (interview: Interview) => {
-    const start = new Date(interview.scheduled_at);
-    return new Date(start.getTime() + (interview.duration_minutes ?? 60) * 60000);
-  };
+  console.log("=== INTERVIEW DEBUG ===");
+  interviews.forEach((i) => {
+    const scheduledAt = new Date(i.scheduled_at).getTime();
+    const durationMs = (i.duration_minutes ?? 60) * 60000;
+    console.log({
+      id: i.id,
+      status: i.status,
+      scheduled_at: i.scheduled_at,
+      duration_minutes: i.duration_minutes,
+      now: now.toISOString(),
+      endTime: new Date(scheduledAt + durationMs).toISOString(),
+      isExpired: scheduledAt + durationMs <= now.getTime(),
+    });
+  });
 
   const upcoming = interviews.filter((i) => {
     if (i.status === "cancelled" || i.status === "completed") return false;
-    return getEndTime(i) > now; // still within the meeting window
+    const scheduledAt = new Date(i.scheduled_at).getTime();
+    if (!Number.isFinite(scheduledAt)) return false;
+    const durationMs = (i.duration_minutes ?? 60) * 60000;
+    return scheduledAt + durationMs > now.getTime();
   });
 
   const past = interviews.filter((i) => {
     if (i.status === "cancelled" || i.status === "completed") return true;
-    return getEndTime(i) <= now; // window has fully elapsed
+    const scheduledAt = new Date(i.scheduled_at).getTime();
+    if (!Number.isFinite(scheduledAt)) return true;
+    const durationMs = (i.duration_minutes ?? 60) * 60000;
+    return scheduledAt + durationMs <= now.getTime();
   });
 
   const today = new Date();
@@ -73,12 +97,10 @@ export default async function InterviewsPage() {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const todaysInterviews = interviews.filter(
-    (i) => {
-      const scheduled = new Date(i.scheduled_at);
-      return scheduled >= today && scheduled < tomorrow && i.status !== "cancelled";
-    }
-  );
+  const todaysInterviews = interviews.filter((i) => {
+    const scheduled = new Date(i.scheduled_at);
+    return scheduled >= today && scheduled < tomorrow && i.status !== "cancelled";
+  });
 
   return (
     <div className="flex gap-6">
@@ -149,48 +171,48 @@ export default async function InterviewsPage() {
               )}
             </div>
 
-        {/* Calendar View for HR */}
-        {isHR && (
-          <div className="space-y-4">
-            <InterviewCalendar interviews={interviews} />
-          </div>
-        )}
+            {/* Calendar View for HR */}
+            {isHR && (
+              <div className="space-y-4">
+                <InterviewCalendar interviews={interviews} />
+              </div>
+            )}
 
-        {/* Upcoming */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
-            Upcoming ({upcoming.length})
-          </h2>
-          {upcoming.length === 0 ? (
-            <EmptyState message="No upcoming interviews" />
-          ) : (
-            upcoming.map((interview) => (
-              <InterviewCardClient 
-                key={interview.id} 
-                interview={interview} 
-                isHR={isHR} 
-                showTypeSelection={!isHR}
-              />
-            ))
-          )}
-        </section>
+            {/* Upcoming */}
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                Upcoming ({upcoming.length})
+              </h2>
+              {upcoming.length === 0 ? (
+                <EmptyState message="No upcoming interviews" />
+              ) : (
+                upcoming.map((interview) => (
+                  <InterviewCardClient
+                    key={interview.id}
+                    interview={interview}
+                    isHR={isHR}
+                    showTypeSelection={!isHR}
+                  />
+                ))
+              )}
+            </section>
 
-        {/* Past */}
-        {past.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
-              Past ({past.length})
-            </h2>
-            {past.map((interview) => (
-              <InterviewCardClient 
-                key={interview.id} 
-                interview={interview} 
-                isHR={isHR} 
-                past={true}
-              />
-            ))}
-          </section>
-        )}
+            {/* Past */}
+            {past.length > 0 && (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                  Past ({past.length})
+                </h2>
+                {past.map((interview) => (
+                  <InterviewCardClient
+                    key={interview.id}
+                    interview={interview}
+                    isHR={isHR}
+                    past={true}
+                  />
+                ))}
+              </section>
+            )}
           </div>
         </PageContainer>
       </div>

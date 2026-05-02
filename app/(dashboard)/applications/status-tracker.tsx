@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import type { ApplicationStatus, Interview } from "@/lib/types";
 
 interface StatusTrackerProps {
   status: ApplicationStatus;
   interviews: Interview[];
+  applicationId?: string;
 }
 
 const statusStages = [
@@ -17,7 +19,7 @@ const statusStages = [
   { key: "hired", label: "Hired", icon: "✅" },
 ];
 
-export default function StatusTracker({ status, interviews }: StatusTrackerProps) {
+export default function StatusTracker({ status, interviews, applicationId }: StatusTrackerProps) {
   const currentStageIndex = statusStages.findIndex((s) => s.key === status);
 
   return (
@@ -28,7 +30,6 @@ export default function StatusTracker({ status, interviews }: StatusTrackerProps
         {statusStages.map((stage, index) => {
           const isCompleted = index < currentStageIndex;
           const isCurrent = index === currentStageIndex;
-          const isUpcoming = index > currentStageIndex;
 
           return (
             <div key={stage.key} className="flex gap-4">
@@ -68,7 +69,6 @@ export default function StatusTracker({ status, interviews }: StatusTrackerProps
                   {stage.label}
                 </p>
 
-                {/* Stage Details */}
                 {isCurrent && (
                   <p className="text-xs text-text-secondary mt-1">
                     You are currently at this stage
@@ -105,6 +105,16 @@ export default function StatusTracker({ status, interviews }: StatusTrackerProps
                           </p>
                           {interview.location_address && (
                             <p className="mt-1">{interview.location_address}</p>
+                          )}
+                          {interview.interview_type === "online" && interview.video_room_url && (
+                            <a
+                              href={interview.video_room_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
+                            >
+                              Join Meeting Room
+                            </a>
                           )}
                         </div>
                       ))}
@@ -151,6 +161,44 @@ export default function StatusTracker({ status, interviews }: StatusTrackerProps
           {status === "withdrawn" &&
             "You've withdrawn your application."}
         </p>
+      </div>
+
+      {/* Action: context-aware CTA */}
+      <div className="mt-4 flex justify-end">
+        {(() => {
+          const upcomingInterview = interviews.find(
+            (i) =>
+              (i.status === "scheduled" || i.status === "confirmed") &&
+              i.interview_type === "online" &&
+              i.video_room_url
+          );
+
+          if (upcomingInterview?.video_room_url) {
+            return (
+              <a
+                href={upcomingInterview.video_room_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+              >
+                🎥 Join Scheduled Interview
+              </a>
+            );
+          }
+
+          if (applicationId) {
+            return (
+              <Link
+                href={`/applications/${applicationId}`}
+                className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:opacity-95"
+              >
+                View Application
+              </Link>
+            );
+          }
+
+          return null;
+        })()}
       </div>
     </div>
   );

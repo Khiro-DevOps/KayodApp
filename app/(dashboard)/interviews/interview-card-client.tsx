@@ -2,11 +2,12 @@
 
 import { Interview } from "@/lib/types";
 import { updateInterviewPreference } from "./actions";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
 import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
 import { createClient } from "@/lib/supabase/client";
+
 
 interface InterviewCardClientProps {
   interview: Interview;
@@ -36,6 +37,19 @@ export function InterviewCardClient({
   const [cultureFit, setCultureFit] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
+
+useEffect(() => {
+  if (past) return;
+
+  const scheduledDate = new Date(interview.scheduled_at);
+  const openTime = new Date(scheduledDate.getTime() - 15 * 60 * 1000);
+  const msUntilOpen = openTime.getTime() - Date.now();
+
+  if (msUntilOpen > 0 && msUntilOpen < 30 * 60 * 1000) {
+    const timer = setTimeout(() => router.refresh(), msUntilOpen);
+    return () => clearTimeout(timer);
+  }
+}, [past, interview.scheduled_at, router]);
 
   const app = interview.applications as unknown as {
     id?: string;
