@@ -139,9 +139,6 @@ useEffect(() => {
     const supabase = createClient();
 
     try {
-      // Ensure completion is applied before notes are finalized.
-      await completeInterviewOnce();
-
       const { data: userData } = await supabase.auth.getUser();
       await supabase.from("interview_notes").upsert({
         interview_id: interview.id,
