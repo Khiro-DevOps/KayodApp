@@ -27,7 +27,6 @@ export default function InterviewSchedulingForm({
   const toggleMode = (mode: InterviewType) => {
     setOfferedModes((prev) => {
       if (prev.includes(mode)) {
-        // Keep at least one interview mode selected.
         if (prev.length === 1) return prev;
         return prev.filter((m) => m !== mode);
       }
@@ -67,7 +66,6 @@ export default function InterviewSchedulingForm({
     }
   };
 
-  // Format date for input (default to 3 days from now)
   const defaultDate = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 3);
@@ -79,14 +77,12 @@ export default function InterviewSchedulingForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Error Message */}
       {error && (
         <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
           {error}
         </div>
       )}
 
-      {/* Proposed Date & Time */}
       <div>
         <label htmlFor="scheduled_at" className="block text-sm font-medium text-text-primary mb-2">
           Date & Time
@@ -101,7 +97,6 @@ export default function InterviewSchedulingForm({
         />
       </div>
 
-      {/* Applicant ID */}
       <div>
         <label htmlFor="application_id_display" className="block text-sm font-medium text-text-primary mb-2">
           Applicant ID
@@ -115,7 +110,6 @@ export default function InterviewSchedulingForm({
         />
       </div>
 
-      {/* Duration */}
       <div>
         <label htmlFor="duration_minutes" className="block text-sm font-medium text-text-primary mb-2">
           Duration
@@ -134,7 +128,6 @@ export default function InterviewSchedulingForm({
         </select>
       </div>
 
-      {/* Interview Availability */}
       <div>
         <label className="block text-sm font-medium text-text-primary mb-3">
           Interview Availability
@@ -194,7 +187,6 @@ export default function InterviewSchedulingForm({
         </div>
       )}
 
-      {/* Additional Notes */}
       <div>
         <label htmlFor="notes" className="block text-sm font-medium text-text-primary mb-2">
           Additional Notes (optional)
@@ -208,7 +200,6 @@ export default function InterviewSchedulingForm({
         />
       </div>
 
-      {/* Timezone */}
       <div>
         <label htmlFor="timezone" className="block text-sm font-medium text-text-primary mb-2">
           Timezone
@@ -237,7 +228,6 @@ export default function InterviewSchedulingForm({
         </select>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex gap-2 pt-2">
         <button
           type="submit"

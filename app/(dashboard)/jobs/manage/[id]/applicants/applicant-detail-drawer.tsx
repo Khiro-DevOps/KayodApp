@@ -56,8 +56,10 @@ export default function ApplicantDetailDrawer({
   const [resumeError, setResumeError] = useState<string | null>(null);
 
   const candidate = application?.profiles as any;
-  const resume = application?.resumes as any;
-  console.log("🔍 Resume object:", resume); //
+  const resume = (Array.isArray(application?.resumes)
+    ? application.resumes[0]
+    : application?.resumes) as any;
+
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
   const displayStatus = application?.status.replace(/_/g, " ").toUpperCase();
@@ -94,7 +96,6 @@ export default function ApplicantDetailDrawer({
     fetchLogs();
   }, [isOpen, application.id]);
 
-  // FIX: Fetch the signed URL properly in a useEffect with async/await
   useEffect(() => {
     if (!isOpen || !resume?.id) return;
 
@@ -106,8 +107,6 @@ export default function ApplicantDetailDrawer({
       const supabase = createClient();
 
       try {
-        // FIX: Use resume.pdf_url but also handle the case where it may be
-        // nested differently — log it so you can debug if still missing
         const pdfUrl = resume?.pdf_url;
 
         if (!pdfUrl) {
@@ -116,7 +115,6 @@ export default function ApplicantDetailDrawer({
           return;
         }
 
-        // Extract the storage path after '/resumes/'
         const match = pdfUrl.match(/\/resumes\/(.+)$/);
         const rawPath = match ? match[1] : null;
 
@@ -126,7 +124,6 @@ export default function ApplicantDetailDrawer({
           return;
         }
 
-        // Clean query params and decode
         const cleanPath = decodeURIComponent(rawPath.split("?")[0]);
         const storagePath = cleanPath.startsWith("/") ? cleanPath.substring(1) : cleanPath;
 
@@ -151,7 +148,7 @@ export default function ApplicantDetailDrawer({
     }
 
     fetchSignedUrl();
-  }, [isOpen, resume?.id]); // re-runs when drawer opens or resume changes
+  }, [isOpen, resume?.id]);
 
   // Close resume modal on Escape
   useEffect(() => {
@@ -210,7 +207,7 @@ export default function ApplicantDetailDrawer({
 
       <div className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-surface border-l border-border z-[80] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-border">
+        <div className="flex items-start justify-between p-6 border-b border-border shrink-0">
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-bold text-text-primary">
@@ -293,7 +290,7 @@ export default function ApplicantDetailDrawer({
                 </div>
               ) : signedResumeUrl ? (
                 <div className="flex items-center gap-4 py-2">
-                  <span className="text-sm font-semibold text-text-primary">Resume:</span>
+                  <span className="text-sm font-semibold text-text-primary"></span>
                   <button
                     onClick={() => setShowResumeModal(true)}
                     className="text-primary hover:underline text-sm font-medium"
@@ -305,7 +302,6 @@ export default function ApplicantDetailDrawer({
                   </span>
                 </div>
               ) : (
-                // FIX: Show the actual error so you can diagnose what's wrong
                 <p className="text-xs text-red-500">
                   {resumeError ?? "Could not load resume link."}
                 </p>
@@ -390,7 +386,6 @@ export default function ApplicantDetailDrawer({
                 </div>
               )}
 
-              {/* Existing logs list */}
               <div className="space-y-2">
                 {loadingLogs ? (
                   <p className="text-xs text-text-secondary">Loading logs...</p>
@@ -418,7 +413,7 @@ export default function ApplicantDetailDrawer({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border p-6 space-y-3">
+        <div className="border-t border-border p-6 space-y-3 shrink-0">
           <button
             onClick={() => {
               if (canReschedule) {
@@ -439,7 +434,7 @@ export default function ApplicantDetailDrawer({
         </div>
       </div>
 
-      {/* Resume Preview Modal — rendered outside the drawer scroll container */}
+      {/* Resume Preview Modal */}
       {showResumeModal && signedResumeUrl && (
         <>
           <div className="fixed inset-0 z-[90] bg-black/50" onClick={() => setShowResumeModal(false)} />
@@ -486,13 +481,14 @@ export default function ApplicantDetailDrawer({
         </>
       )}
 
-      {/* Schedule Interview Modal */}
+      {/* Schedule Interview Modal — fixed height with scrollable content */}
       {showScheduleForm && canReschedule && (
         <>
           <div className="fixed inset-0 z-[90] bg-black/50" onClick={closeScheduleForm} />
           <div className="fixed inset-0 z-[91] grid place-items-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl flex flex-col max-h-[90vh]">
+              {/* Fixed header */}
+              <div className="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
                 <h3 className="text-base font-semibold text-text-primary">Schedule Interview</h3>
                 <button onClick={closeScheduleForm} className="text-text-secondary hover:text-text-primary">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -500,7 +496,8 @@ export default function ApplicantDetailDrawer({
                   </svg>
                 </button>
               </div>
-              <div className="p-5">
+              {/* Scrollable body */}
+              <div className="overflow-y-auto flex-1 p-5">
                 <InterviewSchedulingForm
                   applicationId={application.id}
                   jobId={jobId}
