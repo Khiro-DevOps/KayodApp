@@ -140,7 +140,7 @@ function ApplicationsList({
                     app.status === "under_review") && (
                     <form
                       action={withdrawApplication}
-                      onClick={(e) => e.stopPropagation()} // Prevents navigation when clicking withdraw
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <input type="hidden" name="application_id" value={app.id} />
                       <button
@@ -250,7 +250,14 @@ export default function ApplicationsClient({
           }));
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("candidate-applications-live channel error:", err);
+        }
+        if (status === "TIMED_OUT") {
+          console.warn("candidate-applications-live channel timed out, retrying...");
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);

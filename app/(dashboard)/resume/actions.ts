@@ -41,11 +41,6 @@ export async function getResumeSignedUrl(
     filePath = `${user.id}/${resumeId}.pdf`;
   }
 
-    // Debug logs to validate bucket path mapping during signed URL generation.
-  console.log('[DEBUG] pdf_url from DB:', resume.pdf_url);
-  console.log('[DEBUG] filePath passed to createSignedUrl:', filePath);
-  console.log('[DEBUG] bucket:', resumeBucketName);
-
   const { data, error } = await supabase.storage
     .from(resumeBucketName)
     .createSignedUrl(filePath, expiresIn);

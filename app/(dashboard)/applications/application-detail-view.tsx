@@ -139,7 +139,14 @@ export default function ApplicationDetailView({
           });
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error(`application-detail-${application.id} channel error:`, err);
+        }
+        if (status === "TIMED_OUT") {
+          console.warn(`application-detail-${application.id} timed out, retrying...`);
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);
@@ -216,7 +223,7 @@ export default function ApplicationDetailView({
             />
           )}
 
-          {/* ── Job Offer Card — visible to applicant only ── */}
+          {/* Job Offer Card — visible to applicant only */}
           {!isRecruiter && jobOffer && (
             <OfferCard
               offer={jobOffer}
