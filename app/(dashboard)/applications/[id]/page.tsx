@@ -139,11 +139,7 @@ export default async function ApplicationDetailPage({
       if (filePath) {
         const cleanPath = decodeURIComponent(filePath.split('?')[0]).replace(/^\/+/, '');
         const bucketName = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME!;
-
-        console.log("SERVER: Using bucket:", bucketName);
-        console.log("SERVER: Generating signed URL for path:", cleanPath);
-
-        const resumeAdmin = getAdminClient(); // ← declare fresh here, not reusing outer 'admin'
+        const resumeAdmin = getAdminClient(); 
         const { data, error } = await resumeAdmin.storage
           .from('resumes')
           .createSignedUrl(cleanPath, 3600);
@@ -151,7 +147,6 @@ export default async function ApplicationDetailPage({
         if (error) {
           console.error("SERVER: Signed URL error:", error.message);
         } else if (data?.signedUrl) {
-          console.log("SERVER: Generated URL:", data.signedUrl);
           signedResumeUrl = data.signedUrl;
         }
       }
@@ -190,8 +185,6 @@ export default async function ApplicationDetailPage({
   `)
   .eq("application_id", id)
   .order("scheduled_at", { ascending: false }) as any;
-  console.log("INTERVIEWS FETCH:", { count: interviews?.length, error: interviewError?.message });
-
     // Add after the interviews fetch:
   const { data: jobOffer } = await supabase
     .from("job_offers")

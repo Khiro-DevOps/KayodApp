@@ -83,6 +83,9 @@ useEffect(() => {
     interview.status !== "cancelled" &&
     interview.status !== "completed";
 
+  const canCompleteInterview =
+    isHR && interview.status !== "cancelled" && interview.status !== "completed";
+
   const roomName =
     interview.video_room_name ??
     interview.video_room_url?.split("/").pop() ??
@@ -124,7 +127,6 @@ useEffect(() => {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({ error: "Failed to complete interview" }));
-      console.log("Status:", response.status, "Payload:", payload); // debug
       throw new Error(payload?.error || "Failed to complete interview");
     }
 
@@ -475,14 +477,18 @@ useEffect(() => {
         </button>
       )}
 
-      {/* End Interview — HR only, directly under Join Meeting */}
-      {isHR && canJoinRoom && (
+      {/* End Interview — HR only, available even after the meeting window closes */}
+      {canCompleteInterview && (
         <button
           onClick={() => void handleCompleteFromCard()}
           disabled={isCompleting}
           className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isCompleting ? "Completing..." : "End Interview & Write Notes"}
+          {isCompleting
+            ? "Completing..."
+            : canJoinRoom
+            ? "End Interview & Write Notes"
+            : "Mark Complete & Write Notes"}
         </button>
       )}
 
@@ -492,8 +498,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Complete Interview button (HR only, when ongoing) */}
-      
       {/* Expired room message */}
       {interview.interview_type === "online" && interview.video_room_url && isExpired && (
         <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">

@@ -109,6 +109,7 @@ async function callOpenRouter(
   return requestQueue.enqueue(async () => {
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(30000), // 30s — adjust to your needs
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!}`,
         "Content-Type": "application/json",

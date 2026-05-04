@@ -32,7 +32,6 @@ export default async function ManageJobsPage() {
   const role = effectiveRole(profile?.role, authRole);
   const isHR = isHRRole(role);
   if (!isHR) {
-    console.log("User role is not HR:", role);
     redirect("/dashboard");
   }
 
