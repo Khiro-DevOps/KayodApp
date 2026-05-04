@@ -35,7 +35,7 @@ export default async function ReviewBoardPage({
 
   if (!job) redirect("/jobs/manage");
 
-  // Fetch all under_review applicants for this job
+  // Fetch under_review AND negotiating applicants so they don't disappear after being moved
   const { data: applications } = await supabase
     .from("applications")
     .select(`
@@ -47,7 +47,7 @@ export default async function ReviewBoardPage({
       resumes ( id, title )
     `)
     .eq("job_posting_id", id)
-    .eq("status", "under_review")
+    .in("status", ["under_review", "negotiating"])
     .order("match_score", { ascending: false, nullsFirst: false });
 
   const applicationIds = (applications as any[])?.map((a) => a.id) ?? [];
@@ -84,6 +84,9 @@ export default async function ReviewBoardPage({
     return { app, interview, note };
   });
 
+  const onHoldCount = candidates.filter((c) => c.app.status === "under_review").length;
+  const negotiatingCount = candidates.filter((c) => c.app.status === "negotiating").length;
+
   return (
     <PageContainer>
       <div className="space-y-5">
@@ -106,10 +109,15 @@ export default async function ReviewBoardPage({
         </div>
 
         {/* Info banner */}
-        <div className="rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3">
+        <div className="rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3 space-y-1">
           <p className="text-xs text-blue-800">
-            <strong>{candidates.length} applicant{candidates.length !== 1 ? "s" : ""} on hold</strong> — compare interview notes, then move candidates to negotiation or reject them.
+            <strong>{onHoldCount} on hold</strong> — compare interview notes, then move candidates to negotiation or reject them.
           </p>
+          {negotiatingCount > 0 && (
+            <p className="text-xs text-purple-800">
+              <strong>{negotiatingCount} in negotiation</strong> — ready for a job offer.
+            </p>
+          )}
         </div>
 
         {candidates.length === 0 ? (

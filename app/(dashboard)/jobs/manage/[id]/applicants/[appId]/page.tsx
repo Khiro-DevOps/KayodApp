@@ -109,7 +109,6 @@ export default async function ApplicantDetailPage({
     );
   }
 
-  // Fetch resume separately since resume_id is a plain FK column
   const { data: resume } = application.resume_id
     ? await supabase
         .from("resumes")
@@ -128,9 +127,30 @@ export default async function ApplicantDetailPage({
     country: string;
   } | null;
 
+  const statusColors: Record<string, string> = {
+    submitted:           "bg-blue-50 text-blue-700",
+    under_review:        "bg-amber-50 text-amber-700",
+    shortlisted:         "bg-green-50 text-green-700",
+    interview_scheduled: "bg-purple-50 text-purple-700",
+    interviewed:         "bg-indigo-50 text-indigo-700",
+    negotiating:         "bg-purple-100 text-purple-800",
+    offer_sent:          "bg-emerald-50 text-emerald-700",
+    hired:               "bg-emerald-50 text-emerald-700",
+    rejected:            "bg-red-50 text-red-700",
+  };
+
+  const isNegotiating = application.status === "negotiating";
+  const isOfferSent = application.status === "offer_sent";
+  const isHired = application.status === "hired";
+
+  // Steps that come before negotiating — offer not yet available
+  const preNegotiationStatuses = ["submitted", "under_review", "shortlisted", "interview_scheduled", "interviewed"];
+  const isPreNegotiation = preNegotiationStatuses.includes(application.status);
+
   return (
     <PageContainer>
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center gap-3">
           <Link
             href={`/jobs/manage/${id}/applicants`}
@@ -146,22 +166,13 @@ export default async function ApplicantDetailPage({
             </h1>
             <p className="text-xs text-text-secondary truncate">{job.title}</p>
           </div>
-          <div className={`rounded-full px-3 py-1 text-xs font-medium ${
-            application.status === "submitted" ? "bg-blue-50 text-blue-700"
-            : application.status === "under_review" ? "bg-amber-50 text-amber-700"
-            : application.status === "shortlisted" ? "bg-green-50 text-green-700"
-            : application.status === "interview_scheduled" ? "bg-purple-50 text-purple-700"
-            : application.status === "interviewed" ? "bg-indigo-50 text-indigo-700"
-            : application.status === "offer_sent" ? "bg-emerald-50 text-emerald-700"
-            : application.status === "hired" ? "bg-emerald-50 text-emerald-700"
-            : application.status === "rejected" ? "bg-red-50 text-red-700"
-            : "bg-gray-100 text-gray-700"
-          }`}>
+          <div className={`rounded-full px-3 py-1 text-xs font-medium ${statusColors[application.status] ?? "bg-gray-100 text-gray-700"}`}>
             {application.status.replace(/_/g, " ")}
           </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)]">
+          {/* Candidate info */}
           <section className="rounded-2xl border border-border bg-surface p-5 space-y-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-text-secondary">Candidate</p>
@@ -213,21 +224,60 @@ export default async function ApplicantDetailPage({
             )}
           </section>
 
+          {/* Actions sidebar */}
           <aside className="space-y-4">
             <div className="rounded-2xl border border-border bg-surface p-5 space-y-3">
               <h3 className="text-sm font-semibold text-text-primary">Actions</h3>
+
               <Link
                 href={`/jobs/manage/${id}/applicants/${appId}/interview`}
                 className="block rounded-xl bg-primary px-4 py-3 text-center text-sm font-medium text-white hover:bg-primary/90"
               >
                 Schedule interview
               </Link>
-              <Link
-                href={`/jobs/manage/${id}/applicants/${appId}/offer`}
-                className="block rounded-xl border border-border px-4 py-3 text-center text-sm font-medium text-text-primary hover:bg-gray-50"
-              >
-                Create offer
-              </Link>
+
+              {/* Create Offer — only shown when negotiating */}
+              {isNegotiating && (
+                <Link
+                  href={`/jobs/manage/${id}/applicants/${appId}/offer`}
+                  className="block rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                >
+                  🎉 Create Job Offer
+                </Link>
+              )}
+
+              {/* Edit Offer — shown when offer already sent */}
+              {isOfferSent && (
+                <Link
+                  href={`/jobs/manage/${id}/applicants/${appId}/offer`}
+                  className="block rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                >
+                  ✏️ Edit Job Offer
+                </Link>
+              )}
+
+              {/* Hired — no offer action needed */}
+              {isHired && (
+                <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-center text-sm font-medium text-green-700">
+                  ✅ Hired
+                </div>
+              )}
+
+              {/* Pre-negotiation hint */}
+              {isPreNegotiation && (
+                <div className="rounded-xl bg-gray-50 border border-border px-4 py-3 text-center space-y-1">
+                  <p className="text-xs text-text-secondary">
+                    Job offer available after moving to negotiation
+                  </p>
+                  <Link
+                    href={`/jobs/manage/${id}/review`}
+                    className="text-xs text-primary underline underline-offset-2"
+                  >
+                    Go to Review Board →
+                  </Link>
+                </div>
+              )}
+
               <Link
                 href={`/jobs/manage/${id}/applicants`}
                 className="block text-center text-xs text-primary hover:underline"
