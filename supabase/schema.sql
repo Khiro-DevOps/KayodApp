@@ -42,6 +42,7 @@ begin
       'shortlisted',
       'interview_scheduled',
       'interviewed',
+      'negotiating',
       'offer_sent',
       'hired',
       'rejected',

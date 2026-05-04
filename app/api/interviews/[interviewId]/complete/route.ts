@@ -103,7 +103,7 @@ export async function PATCH(_request: Request, { params }: RouteContext) {
 
   const { error: appUpdateError } = await supabase
     .from("applications")
-    .update({ status: "under_review", updated_at: new Date().toISOString() })
+    .update({ status: "interviewed", updated_at: new Date().toISOString() })
     .eq("id", interview.application_id);
 
   if (appUpdateError) {
@@ -117,7 +117,7 @@ export async function PATCH(_request: Request, { params }: RouteContext) {
       interview_id: interviewId,
       application_id: interview.application_id,
       interview_status: "completed",
-      application_status: "under_review",
+      application_status: "interviewed",
     },
   });
 }

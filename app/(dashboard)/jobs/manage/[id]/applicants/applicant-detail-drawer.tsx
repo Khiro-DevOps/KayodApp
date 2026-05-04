@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Application } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
+import { updateApplicationEvaluation } from "@/app/(dashboard)/applications/application-detail-actions";
 
 interface NegotiationLog {
   id: string;
@@ -30,6 +31,36 @@ const outcomeConfig: Record<string, { label: string; color: string }> = {
   follow_up_needed: { label: "📅 Follow-up Needed",   color: "bg-blue-50 text-blue-700 border-blue-200"  },
 };
 
+const statusActions: Record<string, Array<{ label: string; status: string; color: string }>> = {
+  under_review: [
+    { label: "Mark as Interviewed", status: "interviewed", color: "bg-purple-500" },
+    { label: "Shortlist", status: "shortlisted", color: "bg-yellow-500" },
+    { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+  interviewed: [
+    { label: "Move to Review", status: "under_review", color: "bg-blue-500" },
+    { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+  shortlisted: [
+    { label: "Schedule Interview", status: "interview_scheduled", color: "bg-purple-500" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+  interview_scheduled: [
+    { label: "Mark as Interviewed", status: "interviewed", color: "bg-purple-600" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+  offer_sent: [
+    { label: "Mark as Hired", status: "hired", color: "bg-green-600" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+  negotiating: [
+    { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
+    { label: "Reject", status: "rejected", color: "bg-red-500" },
+  ],
+};
+
 export default function ApplicantDetailDrawer({
   application,
   jobId,
@@ -39,6 +70,7 @@ export default function ApplicantDetailDrawer({
   onScheduled,
 }: ApplicantDetailDrawerProps) {
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // ── Negotiation state ────────────────────────────────────────────────────
   const [logs, setLogs] = useState<NegotiationLog[]>([]);
@@ -63,6 +95,7 @@ export default function ApplicantDetailDrawer({
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
   const displayStatus = application?.status.replace(/_/g, " ").toUpperCase();
+  const manualActions = statusActions[application?.status ?? ""] ?? [];
 
   const closeScheduleForm = useCallback(() => {
     setShowScheduleForm(false);
@@ -199,6 +232,22 @@ export default function ApplicantDetailDrawer({
     setSavingLog(false);
   }
 
+  async function handleStatusChange(newStatus: string) {
+    setIsUpdatingStatus(true);
+    try {
+      const formData = new FormData();
+      formData.append("application_id", application.id);
+      formData.append("status", newStatus);
+      await updateApplicationEvaluation(formData);
+      onScheduled?.();
+      onClose();
+    } catch (error) {
+      console.error("Failed to update application status:", error);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }
+
   if (!isOpen) return null;
 
   return (
@@ -325,6 +374,33 @@ export default function ApplicantDetailDrawer({
             }`}>
               {displayStatus}
             </div>
+          </div>
+
+          {/* Manual Status Actions */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-text-primary">Actions</h3>
+            <p className="text-xs text-text-secondary">
+              Manual HR status changes for this applicant.
+            </p>
+            {manualActions.length > 0 ? (
+              <div className="space-y-2">
+                {manualActions.map((action) => (
+                  <button
+                    key={action.status}
+                    type="button"
+                    onClick={() => handleStatusChange(action.status)}
+                    disabled={isUpdatingStatus}
+                    className={`w-full rounded-xl px-4 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50 ${action.color}`}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary">
+                No manual actions are available for the current status.
+              </p>
+            )}
           </div>
 
           {/* Negotiation Log Section */}

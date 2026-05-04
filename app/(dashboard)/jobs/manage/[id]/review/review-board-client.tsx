@@ -52,10 +52,27 @@ export default function ReviewBoardClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"negotiate" | "reject" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"move_under_review" | "negotiate" | "reject" | null>(null);
 
-  // Only under_review candidates are selectable for bulk actions
-  const onHoldCandidates = candidates.filter((c) => c.app.status === "under_review");
+  // Candidates on hold: both "interviewed" and "under_review" candidates are selectable
+  const onHoldCandidates = candidates.filter((c) => c.app.status === "interviewed" || c.app.status === "under_review");
+  
+  // For "interviewed" candidates, offer: move to under_review or reject
+  // For "under_review" candidates, offer: move to negotiating or reject
+  const getActionsForStatus = (status: string) => {
+    if (status === "interviewed") {
+      return { primary: "move_under_review", primaryLabel: "Move to Review" };
+    } else if (status === "under_review") {
+      return { primary: "negotiate", primaryLabel: "Move to Negotiation" };
+    }
+    return null;
+  };
+
+  const getActionLabel = (action: string) => {
+    if (action === "move_under_review") return "Move to Review";
+    if (action === "negotiate") return "Move to Negotiation";
+    return "Reject";
+  };
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -73,13 +90,18 @@ export default function ReviewBoardClient({
     }
   };
 
-  async function handleBulkAction(action: "negotiate" | "reject") {
+  async function handleBulkAction(action: "move_under_review" | "negotiate" | "reject") {
     if (selected.size === 0) return;
     setActing(true);
     const supabase = createClient();
 
     const ids = Array.from(selected);
-    const newStatus = action === "negotiate" ? "negotiating" : "rejected";
+    let newStatus = "rejected";
+    if (action === "move_under_review") {
+      newStatus = "under_review";
+    } else if (action === "negotiate") {
+      newStatus = "negotiating";
+    }
 
     await supabase
       .from("applications")
@@ -122,12 +144,22 @@ export default function ReviewBoardClient({
 
             {selected.size > 0 && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => setConfirmAction("negotiate")}
-                  className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
-                >
-                  📞 Move to Negotiation
-                </button>
+                {Array.from(selected).some((id) => candidates.find((c) => c.app.id === id)?.app.status === "interviewed") && (
+                  <button
+                    onClick={() => setConfirmAction("move_under_review")}
+                    className="rounded-xl bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 transition-colors"
+                  >
+                    📋 Move to Review
+                  </button>
+                )}
+                {Array.from(selected).some((id) => candidates.find((c) => c.app.id === id)?.app.status === "under_review") && (
+                  <button
+                    onClick={() => setConfirmAction("negotiate")}
+                    className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+                  >
+                    📞 Move to Negotiation
+                  </button>
+                )}
                 <button
                   onClick={() => setConfirmAction("reject")}
                   className="rounded-xl bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
@@ -142,12 +174,16 @@ export default function ReviewBoardClient({
           {confirmAction && (
             <div className="rounded-2xl border border-border bg-gray-50 p-4 space-y-3">
               <p className="text-sm font-semibold text-text-primary">
-                {confirmAction === "negotiate"
+                {confirmAction === "move_under_review"
+                  ? `Move ${selected.size} candidate${selected.size !== 1 ? "s" : ""} to review?`
+                  : confirmAction === "negotiate"
                   ? `Move ${selected.size} candidate${selected.size !== 1 ? "s" : ""} to negotiation?`
                   : `Reject ${selected.size} candidate${selected.size !== 1 ? "s" : ""}?`}
               </p>
               <p className="text-xs text-text-secondary">
-                {confirmAction === "negotiate"
+                {confirmAction === "move_under_review"
+                  ? "Their status will change to Under Review. Your review board can then make the final decision."
+                  : confirmAction === "negotiate"
                   ? "Their status will change to Negotiating. You can then create a job offer for them from this board."
                   : "This will mark them as rejected. They will no longer appear on the Review Board."}
               </p>
@@ -162,9 +198,9 @@ export default function ReviewBoardClient({
                   onClick={() => handleBulkAction(confirmAction)}
                   disabled={acting}
                   className={`flex-1 rounded-xl py-2 text-xs font-medium text-white transition-colors disabled:opacity-50 ${
-                    confirmAction === "negotiate"
-                      ? "bg-primary hover:bg-primary/90"
-                      : "bg-red-500 hover:bg-red-600"
+                    confirmAction === "reject"
+                      ? "bg-red-500 hover:bg-red-600"
+                      : "bg-primary hover:bg-primary/90"
                   }`}
                 >
                   {acting ? "Processing..." : "Confirm"}

@@ -140,12 +140,13 @@ export default async function ApplicantDetailPage({
   };
 
   const isNegotiating = application.status === "negotiating";
+  const isUnderReviewForOffer = application.status === "under_review";
   const isOfferSent = application.status === "offer_sent";
   const isHired = application.status === "hired";
 
   // Steps that come before negotiating — offer not yet available
-  const preNegotiationStatuses = ["submitted", "under_review", "shortlisted", "interview_scheduled", "interviewed"];
-  const isPreNegotiation = preNegotiationStatuses.includes(application.status);
+  const preOfferStatuses = ["submitted", "shortlisted", "interview_scheduled", "interviewed"];
+  const isPreOffer = preOfferStatuses.includes(application.status);
 
   return (
     <PageContainer>
@@ -236,8 +237,8 @@ export default async function ApplicantDetailPage({
                 Schedule interview
               </Link>
 
-              {/* Create Offer — only shown when negotiating */}
-              {isNegotiating && (
+              {/* Create Offer — shown when negotiating or under review */}
+              {(isNegotiating || isUnderReviewForOffer) && (
                 <Link
                   href={`/jobs/manage/${id}/applicants/${appId}/offer`}
                   className="block rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-green-700 transition-colors"
@@ -263,11 +264,11 @@ export default async function ApplicantDetailPage({
                 </div>
               )}
 
-              {/* Pre-negotiation hint */}
-              {isPreNegotiation && (
+              {/* Pre-offer hint */}
+              {isPreOffer && (
                 <div className="rounded-xl bg-gray-50 border border-border px-4 py-3 text-center space-y-1">
                   <p className="text-xs text-text-secondary">
-                    Job offer available after moving to negotiation
+                    Job offer available after moving to negotiation or under review
                   </p>
                   <Link
                     href={`/jobs/manage/${id}/review`}

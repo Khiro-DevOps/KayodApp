@@ -50,7 +50,7 @@ begin
     into interview_id, application_id, interview_status, ended_at;
 
   update applications
-      set status = 'under_review',
+      set status = 'interviewed',
          updated_at = now()
    where id = application_id
    returning applications.status into application_status;
