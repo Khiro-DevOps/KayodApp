@@ -8,7 +8,6 @@ import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
 import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
 import { createClient } from "@/lib/supabase/client";
 
-
 interface InterviewCardClientProps {
   interview: Interview;
   isHR: boolean;
@@ -41,18 +40,18 @@ export function InterviewCardClient({
   const [recommendation, setRecommendation] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
 
-useEffect(() => {
-  if (past) return;
+  useEffect(() => {
+    if (past) return;
 
-  const scheduledDate = new Date(interview.scheduled_at);
-  const openTime = new Date(scheduledDate.getTime() - 15 * 60 * 1000);
-  const msUntilOpen = openTime.getTime() - Date.now();
+    const scheduledDate = new Date(interview.scheduled_at);
+    const openTime = new Date(scheduledDate.getTime() - 15 * 60 * 1000);
+    const msUntilOpen = openTime.getTime() - Date.now();
 
-  if (msUntilOpen > 0 && msUntilOpen < 30 * 60 * 1000) {
-    const timer = setTimeout(() => router.refresh(), msUntilOpen);
-    return () => clearTimeout(timer);
-  }
-}, [past, interview.scheduled_at, router]);
+    if (msUntilOpen > 0 && msUntilOpen < 30 * 60 * 1000) {
+      const timer = setTimeout(() => router.refresh(), msUntilOpen);
+      return () => clearTimeout(timer);
+    }
+  }, [past, interview.scheduled_at, router]);
 
   const app = interview.applications as unknown as {
     id?: string;
@@ -83,8 +82,17 @@ useEffect(() => {
     interview.status !== "cancelled" &&
     interview.status !== "completed";
 
+  // HR can complete the interview if:
+  // - they are HR
+  // - not already completed (locally or from prop)
+  // - not cancelled
+  // - interview window has started (ongoing or expired — i.e. not future)
   const canCompleteInterview =
-    isHR && !isCompletedLocally && interview.status !== "cancelled" && interview.status !== "completed";
+    isHR &&
+    !isCompletedLocally &&
+    interview.status !== "cancelled" &&
+    interview.status !== "completed" &&
+    (isOngoing || isExpired);
 
   const roomName =
     interview.video_room_name ??
@@ -116,9 +124,7 @@ useEffect(() => {
   };
 
   async function completeInterviewOnce() {
-    if (isCompletedLocally) {
-      return true;
-    }
+    if (isCompletedLocally) return true;
 
     const response = await fetch(`/api/interviews/${interview.id}/complete`, {
       method: "PATCH",
@@ -173,6 +179,7 @@ useEffect(() => {
         }
       }
 
+      // Set done BEFORE refresh so state isn't wiped
       setNotesStep("done");
       router.refresh();
     } catch (error) {
@@ -196,7 +203,7 @@ useEffect(() => {
     try {
       await completeInterviewOnce();
       setShowRoom(false);
-      setNotesStep("notepad");
+      setNotesStep("notepad"); // show notepad first, refresh happens after save
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to complete interview";
       setCompleteError(message);
@@ -273,9 +280,7 @@ useEffect(() => {
 
         {/* Strengths */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            Strengths
-          </label>
+          <label className="text-xs font-medium text-text-secondary">Strengths</label>
           <textarea
             rows={2}
             value={strengths}
@@ -287,9 +292,7 @@ useEffect(() => {
 
         {/* Concerns */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            Concerns
-          </label>
+          <label className="text-xs font-medium text-text-secondary">Concerns</label>
           <textarea
             rows={2}
             value={concerns}
@@ -301,9 +304,7 @@ useEffect(() => {
 
         {/* Culture Fit */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            Culture Fit
-          </label>
+          <label className="text-xs font-medium text-text-secondary">Culture Fit</label>
           <textarea
             rows={2}
             value={cultureFit}
@@ -315,9 +316,7 @@ useEffect(() => {
 
         {/* Recommendation */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            Recommendation
-          </label>
+          <label className="text-xs font-medium text-text-secondary">Recommendation</label>
           <select
             value={recommendation}
             onChange={(e) => setRecommendation(e.target.value)}
@@ -333,9 +332,7 @@ useEffect(() => {
 
         {/* General Notes */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            General Notes
-          </label>
+          <label className="text-xs font-medium text-text-secondary">General Notes</label>
           <textarea
             rows={3}
             value={generalNotes}
@@ -360,7 +357,7 @@ useEffect(() => {
             Cancel
           </button>
           <button
-            onClick={handleSaveNotepad}
+            onClick={() => void handleSaveNotepad()}
             disabled={saving}
             className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
@@ -476,7 +473,7 @@ useEffect(() => {
         </button>
       )}
 
-      {/* End Interview — HR only, available even after the meeting window closes */}
+      {/* End Interview — HR only, visible when ongoing or expired */}
       {canCompleteInterview && (
         <button
           onClick={() => void handleCompleteFromCard()}
