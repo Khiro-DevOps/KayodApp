@@ -35,7 +35,7 @@ export default async function ReviewBoardPage({
 
   if (!job) redirect("/jobs/manage");
 
-  // Fetch under_review AND negotiating applicants so they don't disappear after being moved
+  // Fetch interviewed, under_review AND negotiating applicants so they don't disappear after being moved
   const { data: applications } = await supabase
     .from("applications")
     .select(`
@@ -47,7 +47,7 @@ export default async function ReviewBoardPage({
       resumes ( id, title )
     `)
     .eq("job_posting_id", id)
-    .in("status", ["under_review", "negotiating"])
+    .in("status", ["interviewed", "under_review", "negotiating"])
     .order("match_score", { ascending: false, nullsFirst: false });
 
   const applicationIds = (applications as any[])?.map((a) => a.id) ?? [];
@@ -84,7 +84,7 @@ export default async function ReviewBoardPage({
     return { app, interview, note };
   });
 
-  const onHoldCount = candidates.filter((c) => c.app.status === "under_review").length;
+  const onHoldCount = candidates.filter((c) => c.app.status === "interviewed" || c.app.status === "under_review").length;
   const negotiatingCount = candidates.filter((c) => c.app.status === "negotiating").length;
 
   return (

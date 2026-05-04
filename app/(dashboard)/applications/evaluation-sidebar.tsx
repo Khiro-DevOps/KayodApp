@@ -50,7 +50,9 @@ export default function EvaluationSidebar({
       color: "text-blue-700",
       bgColor: "bg-blue-50",
       nextActions: [
+        { label: "Mark as Interviewed", status: "interviewed", color: "bg-purple-500" },
         { label: "Shortlist", status: "shortlisted", color: "bg-yellow-500" },
+        { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },
@@ -77,6 +79,7 @@ export default function EvaluationSidebar({
       color: "text-purple-700",
       bgColor: "bg-purple-50",
       nextActions: [
+        { label: "Move to Review", status: "under_review", color: "bg-blue-500" },
         { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
@@ -87,6 +90,15 @@ export default function EvaluationSidebar({
       bgColor: "bg-green-50",
       nextActions: [
         { label: "Mark as Hired", status: "hired", color: "bg-green-600" },
+        { label: "Reject", status: "rejected", color: "bg-red-500" },
+      ],
+    },
+    negotiating: {
+      label: "Negotiating",
+      color: "text-purple-700",
+      bgColor: "bg-purple-50",
+      nextActions: [
+        { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },
@@ -321,10 +333,15 @@ export default function EvaluationSidebar({
       </div>
 
       {/* Action Buttons */}
-      {nextActions.length > 0 && (
-        <div className="rounded-2xl border border-border bg-surface p-6 space-y-3">
-          <p className="text-xs font-medium uppercase text-text-secondary mb-4">Actions</p>
-          {nextActions.map((action) => (
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-3">
+        <div>
+          <p className="text-xs font-medium uppercase text-text-secondary mb-1">Actions</p>
+          <p className="text-xs text-text-secondary">
+            Manual HR status changes for this applicant.
+          </p>
+        </div>
+        {nextActions.length > 0 ? (
+          nextActions.map((action) => (
             <button
               key={action.status}
               onClick={() => handleStatusChange(action.status)}
@@ -333,9 +350,13 @@ export default function EvaluationSidebar({
             >
               {action.label}
             </button>
-          ))}
-        </div>
-      )}
+          ))
+        ) : (
+          <p className="text-xs text-text-secondary">
+            No manual actions are available for the current status.
+          </p>
+        )}
+      </div>
 
       {/* Move to Applied Button - For Rejected Status */}
       {application?.status === "rejected" && (
