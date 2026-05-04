@@ -84,7 +84,7 @@ useEffect(() => {
     interview.status !== "completed";
 
   const canCompleteInterview =
-    isHR && interview.status !== "cancelled" && interview.status !== "completed";
+    isHR && !isCompletedLocally && interview.status !== "cancelled" && interview.status !== "completed";
 
   const roomName =
     interview.video_room_name ??
@@ -197,7 +197,6 @@ useEffect(() => {
       await completeInterviewOnce();
       setShowRoom(false);
       setNotesStep("notepad");
-      router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to complete interview";
       setCompleteError(message);

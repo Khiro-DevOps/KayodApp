@@ -108,14 +108,12 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
                             <p className="mt-1">{interview.location_address}</p>
                           )}
                           {interview.interview_type === "online" && interview.video_room_url && (
-                            <a
-                              href={interview.video_room_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <Link
+                              href="/interviews"
                               className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
                             >
                               Join Meeting Room
-                            </a>
+                            </Link>
                           )}
                         </div>
                       ))}
@@ -176,14 +174,12 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
 
           if (upcomingInterview?.video_room_url) {
             return (
-              <a
-                href={upcomingInterview.video_room_url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/interviews"
                 className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
               >
                 🎥 Join Scheduled Interview
-              </a>
+              </Link>
             );
           }
 
