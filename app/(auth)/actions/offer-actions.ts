@@ -27,6 +27,18 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     throw new Error("Failed to fetch job blueprint");
   }
 
+  const { data: creatorProfile, error: creatorProfileError } = await supabase
+    .from("profiles")
+    .select("tenants(id, name)")
+    .eq("id", job.created_by)
+    .single();
+
+  if (creatorProfileError) {
+    console.warn("[sendHydratedOffer] Failed to resolve company name:", creatorProfileError);
+  }
+
+  const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+
   // Retire any existing active offers so a replacement can be created safely.
   const { error: archiveError } = await admin
     .from("job_offers")
@@ -63,6 +75,11 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       work_setup: job.work_setup || 'Remote',
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
+      job_metadata: {
+        company_name: companyName,
+        start_date: job.offer_letter_settings?.phStartDate || null,
+        job_title: job.title,
+      },
     })
     .select()
     .single();

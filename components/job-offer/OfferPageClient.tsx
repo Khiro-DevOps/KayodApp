@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
 import SigningModal from "@/components/job-offer/SigningModal";
+import { normalizeDocusealEmbedUrl } from "@/lib/docuseal";
 
 interface OfferSummary {
   status: string;
@@ -40,19 +41,6 @@ function formatDate(value: string) {
 function daysRemaining(value: string) {
   const difference = new Date(value).getTime() - Date.now();
   return Math.max(0, Math.ceil(difference / (1000 * 60 * 60 * 24)));
-}
-
-function toEmbedUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (!parsed.pathname.startsWith("/embed/")) {
-      parsed.pathname = "/embed" + parsed.pathname;
-    }
-    return parsed.toString();
-  } catch {
-    return url;
-  }
 }
 
 function formatSalaryRange(minimum: number | null, maximum: number | null, currency: string) {
@@ -359,7 +347,7 @@ export default function OfferPageClient({
         {signingUrl && (
           <SigningModal
             open={signingOpen}
-            embedUrl={toEmbedUrl(signingUrl)}
+            embedUrl={normalizeDocusealEmbedUrl(signingUrl)}
             fallbackUrl={signingUrl}
             onClose={() => {
               setSigningOpen(false);

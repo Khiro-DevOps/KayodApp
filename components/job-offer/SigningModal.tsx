@@ -31,7 +31,7 @@ export default function SigningModal({ open, embedUrl, fallbackUrl, onClose }: S
   const fallbackTimerRef = useRef<number | null>(null);
   const [iframeBlocked, setIframeBlocked] = useState(false);
 
-  const embedSrc = embedUrl;
+  const resolvedEmbedSrc = embedUrl ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -168,10 +168,10 @@ export default function SigningModal({ open, embedUrl, fallbackUrl, onClose }: S
         </div>
 
         <div className="p-5">
-          {!iframeBlocked ? (
+          {!iframeBlocked && resolvedEmbedSrc ? (
             <>
               <iframe
-                src={embedSrc}
+                src={resolvedEmbedSrc ?? undefined}
                 className="h-[520px] w-full rounded-xl border border-border bg-background"
                 title="DocuSeal signing ceremony"
                 onLoad={handleIframeLoad}

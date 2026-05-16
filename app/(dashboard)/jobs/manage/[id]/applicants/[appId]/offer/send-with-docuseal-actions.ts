@@ -52,6 +52,18 @@ export async function sendOfferWithDocuSeal(
       return { error: "Job posting not found", success: false };
     }
 
+    const { data: creatorProfile, error: creatorProfileError } = await supabase
+      .from("profiles")
+      .select("tenants(id, name)")
+      .eq("id", job.created_by)
+      .single();
+
+    if (creatorProfileError) {
+      console.warn("Failed to resolve company name for offer metadata:", creatorProfileError);
+    }
+
+    const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+
     // Fetch the job_offers record to get the current status
     const { data: jobOffer, error: offerError } = await supabase
       .from("job_offers")
@@ -63,6 +75,15 @@ export async function sendOfferWithDocuSeal(
       return { error: "Offer not found", success: false };
     }
 
+    const offerMetadata = (jobOffer.job_metadata as Record<string, unknown> | null) ?? {};
+    const offerStartDate = jobOffer.start_date ?? job.offer_letter_settings?.phStartDate ?? null;
+    const nextJobMetadata = {
+      ...offerMetadata,
+      company_name: companyName ?? offerMetadata.company_name ?? null,
+      start_date: offerStartDate ?? offerMetadata.start_date ?? null,
+      job_title: job.title,
+    };
+
     // Only process if offer is in a "sendable" state
     if (!["DRAFT", "SENT", "NEGOTIATION_PENDING"].includes(jobOffer.status)) {
       return { error: "Offer is not in a valid state to send", success: false };
@@ -70,6 +91,16 @@ export async function sendOfferWithDocuSeal(
 
     // If submission URL already exists, return early
     if (jobOffer.latest_docuseal_url) {
+      if (!offerMetadata.company_name || !offerMetadata.start_date) {
+        await supabase
+          .from("job_offers")
+          .update({
+            job_metadata: nextJobMetadata,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", offerId);
+      }
+
       return { success: true, url: jobOffer.latest_docuseal_url };
     }
 
@@ -235,6 +266,7 @@ export async function sendOfferWithDocuSeal(
       .from("job_offers")
       .update({
         latest_docuseal_url: docusealSubmissionUrl,
+        job_metadata: nextJobMetadata,
         updated_at: new Date().toISOString(),
       })
       .eq("id", offerId);

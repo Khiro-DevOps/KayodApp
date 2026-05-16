@@ -51,6 +51,11 @@ type ApplicationRow = {
     employment_type?: string | null;
     work_setup?: string | null;
     location?: string | null;
+    profiles?: {
+      tenants?: {
+        name?: string | null;
+      } | null;
+    } | null;
   } | null;
 };
 
@@ -62,6 +67,7 @@ type SignedDocumentRow = {
   docuseal_submission_url: string | null;
   latest_docuseal_url?: string | null;
   job_id?: string | null;
+  start_date?: string | null;
   signed_at: string | null;
   pdf_file_path: string | null;
   metadata: Record<string, unknown> | null;
@@ -267,6 +273,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       id,
       application_id,
       job_id,
+      start_date,
       status,
       latest_docuseal_url,
       job_metadata,
@@ -278,6 +285,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     id: string;
     application_id: string;
     job_id?: string | null;
+    start_date?: string | null;
     status: string;
     latest_docuseal_url?: string | null;
     job_metadata?: Record<string, unknown> | null;
@@ -286,32 +294,30 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     updated_at: string;
   } | null = null;
 
-  const { data: jobOfferById } = await admin
+  const { data: jobOfferByApplicationId } = await admin
     .from("job_offers")
     .select(jobOfferSelect)
-    .eq("id", offerId)
+    .eq("application_id", offerId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  console.log("[JobOfferDebug] jobOfferById result:", jobOfferById);
+  console.log("[JobOfferDebug] jobOfferByApplicationId result:", jobOfferByApplicationId);
 
-  if (jobOfferById) {
-    jobOfferRow = jobOfferById;
+  if (jobOfferByApplicationId) {
+    jobOfferRow = jobOfferByApplicationId;
   } else {
-    const latestActiveRes = await admin
+    const { data: jobOfferById } = await admin
       .from("job_offers")
       .select(jobOfferSelect)
-      .eq("application_id", offerId)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
+      .eq("id", offerId)
       .maybeSingle();
 
-    console.log("[JobOfferDebug] latestActiveRes:", latestActiveRes);
-    console.log("[JobOfferDebug] latestActiveRes.error:", latestActiveRes?.error);
-    const { data: latestActiveJobOffer } = latestActiveRes;
+    console.log("[JobOfferDebug] jobOfferById result:", jobOfferById);
 
-    if (latestActiveJobOffer) {
-      jobOfferRow = latestActiveJobOffer;
+    if (jobOfferById) {
+      jobOfferRow = jobOfferById;
     } else {
       const latestAnyRes = await admin
         .from("job_offers")
@@ -353,7 +359,12 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
           currency,
           employment_type,
           work_setup,
-          location
+          location,
+          profiles!job_postings_created_by_fkey (
+            tenants (
+              name
+            )
+          )
         )
       `)
       .eq("id", jobOfferRow.application_id)
@@ -437,7 +448,12 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
               currency,
               employment_type,
               work_setup,
-              location
+              location,
+              profiles!job_postings_created_by_fkey (
+                tenants (
+                  name
+                )
+              )
             )
           `)
           .eq("id", directOffer.application_id)
@@ -474,7 +490,12 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
             currency,
             employment_type,
             work_setup,
-            location
+            location,
+            profiles!job_postings_created_by_fkey (
+              tenants (
+                name
+              )
+            )
           )
         `)
         .eq("id", offerId)
@@ -607,7 +628,12 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
             currency,
             employment_type,
             work_setup,
-            location
+            location,
+            profiles!job_postings_created_by_fkey (
+              tenants (
+                name
+              )
+            )
           )
         )
       `;
@@ -621,7 +647,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       .maybeSingle();
 
     if (legacyOfferById) {
-      legacyOffer = legacyOfferById as LegacyJobOfferRow;
+      legacyOffer = legacyOfferById as unknown as LegacyJobOfferRow;
     } else {
       const { data: latestLegacyOfferByApplication } = await admin
         .from("job_offer_applications")
@@ -632,7 +658,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         .maybeSingle();
 
       if (latestLegacyOfferByApplication) {
-        legacyOffer = latestLegacyOfferByApplication as LegacyJobOfferRow;
+        legacyOffer = latestLegacyOfferByApplication as unknown as LegacyJobOfferRow;
       }
     }
 
@@ -733,6 +759,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     (typeof metadata.companyName === "string" && metadata.companyName.trim()) ||
     (typeof metadata.employer_name === "string" && metadata.employer_name.trim()) ||
     (typeof metadata.organization === "string" && metadata.organization.trim()) ||
+    application.job_postings?.profiles?.tenants?.name?.trim() ||
     null;
   const hrEmail =
     (typeof metadata.hr_email === "string" && metadata.hr_email.trim()) ||
@@ -743,7 +770,11 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   const department = application.job_postings?.department_id ?? null;
   const location = application.job_postings?.location ?? null;
   const employmentType = application.job_postings?.employment_type ?? null;
-  const startDate = typeof metadata.start_date === "string" ? metadata.start_date : typeof metadata.startDate === "string" ? metadata.startDate : null;
+  const startDate =
+    (typeof metadata.start_date === "string" && metadata.start_date.trim()) ||
+    (typeof metadata.startDate === "string" && metadata.startDate.trim()) ||
+    jobOfferRow?.start_date ||
+    null;
   const expiresAt = typeof metadata.expires_at === "string" ? metadata.expires_at : typeof metadata.expiresAt === "string" ? metadata.expiresAt : null;
   const signingUrl = offer.docuseal_submission_url ?? (offer as SignedDocumentRow).latest_docuseal_url ?? null;
   const signedPdfUrl = offer.status === "signed" ? await resolveSignedPdfUrl(offer.pdf_file_path) : null;

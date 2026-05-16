@@ -52,6 +52,42 @@ function getDocusealApiKey() {
   return apiKey;
 }
 
+const DOCUSEAL_REQUEST_TIMEOUT_MS = 8000;
+
+async function fetchDocusealWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DOCUSEAL_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
+export function normalizeDocusealEmbedUrl(url: string | null | undefined) {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!parsed.pathname.startsWith("/embed/")) {
+      parsed.pathname = `/embed${parsed.pathname.startsWith("/") ? parsed.pathname : `/${parsed.pathname}`}`;
+    }
+    return parsed.toString();
+  } catch {
+    if (url.includes("/embed/")) {
+      return url;
+    }
+
+    return url.replace("/s/", "/embed/s/");
+  }
+}
+
 export async function createDocusealSubmission(input: {
   templateId: string;
   submissionName: string;
@@ -60,7 +96,7 @@ export async function createDocusealSubmission(input: {
   externalId: string;
   redirectUrl?: string;
 }) {
-  const response = await fetch(`${getDocusealBaseUrl()}/submissions`, {
+  const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/submissions`, {
     method: "POST",
     headers: {
       "X-Auth-Token": getDocusealApiKey(),
@@ -101,7 +137,7 @@ export async function createDocusealSubmission(input: {
 }
 
 export async function fetchDocusealTemplate(input: { templateId: string }) {
-  const response = await fetch(`${getDocusealBaseUrl()}/templates/${input.templateId}`, {
+  const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/templates/${input.templateId}`, {
     method: "GET",
     headers: {
       "X-Auth-Token": getDocusealApiKey(),
@@ -137,7 +173,7 @@ export async function fetchDocusealTemplate(input: { templateId: string }) {
 }
 
 export async function fetchDocusealSignedDocuments(input: { submissionId: number }) {
-  const response = await fetch(`${getDocusealBaseUrl()}/submissions/${input.submissionId}/documents?merge=true`, {
+  const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/submissions/${input.submissionId}/documents?merge=true`, {
     method: "GET",
     headers: {
       "X-Auth-Token": getDocusealApiKey(),
@@ -154,7 +190,7 @@ export async function fetchDocusealSignedDocuments(input: { submissionId: number
 }
 
 export async function downloadDocusealDocument(url: string) {
-  const response = await fetch(url);
+  const response = await fetchDocusealWithTimeout(url);
   if (!response.ok) {
     throw new Error(`Failed to download Docuseal document: ${response.status}`);
   }

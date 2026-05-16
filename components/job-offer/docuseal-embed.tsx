@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { normalizeDocusealEmbedUrl } from "@/lib/docuseal";
 
 interface Props {
   submissionUrl: string;
@@ -14,6 +15,7 @@ const EMBED_LOAD_TIMEOUT_MS = 8000;
 export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }: Props) {
   const timeoutRef = useRef<number | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "failed">("loading");
+  const embedUrl = normalizeDocusealEmbedUrl(submissionUrl);
 
   useEffect(() => {
     setLoadState("loading");
@@ -93,7 +95,7 @@ export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }
 
       <div className="relative overflow-hidden rounded-lg bg-gray-100">
         <iframe
-          src={submissionUrl}
+          src={embedUrl ?? undefined}
           className="w-full rounded-lg border border-blue-200"
           style={{ minHeight: "600px" }}
           title="DocuSeal Signing Form"
