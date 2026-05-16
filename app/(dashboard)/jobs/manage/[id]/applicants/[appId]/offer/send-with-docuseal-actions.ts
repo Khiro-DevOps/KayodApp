@@ -1,8 +1,7 @@
 "use server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { createJobOfferTemplate, fetchDocusealTemplate, getDocusealApiBaseUrl } from "@/lib/docuseal";
-import { createClient } from "@/lib/supabase/server";
+import { createDocusealSubmission, createJobOfferTemplate, fetchDocusealTemplate } from "@/lib/docuseal";
 
 /**
  * Creates a DocuSeal submission for a job offer stored in job_offers table
@@ -14,7 +13,6 @@ export async function sendOfferWithDocuSeal(
   offerId: string
 ) {
   const supabase = getAdminClient();
-  const userClient = await createClient();
 
   try {
     // Fetch application and candidate details
@@ -67,7 +65,7 @@ export async function sendOfferWithDocuSeal(
     // Fetch the job_offers record to get the current status
     const { data: jobOffer, error: offerError } = await supabase
       .from("job_offers")
-      .select("id, status, latest_docuseal_url")
+      .select("id, status, latest_docuseal_url, job_metadata, start_date")
       .eq("id", offerId)
       .single();
 
@@ -175,97 +173,26 @@ export async function sendOfferWithDocuSeal(
       };
     }
 
-    // Create DocuSeal submission
-    const docusealUrl = `${getDocusealApiBaseUrl()}/submissions`;
     const candidateName = [candidate.first_name, candidate.last_name]
       .filter(Boolean)
       .join(" ") || "Candidate";
-    const parsedTemplateId = Number(templateId);
+    const submission = await createDocusealSubmission({
+      templateId,
+      submitterName: candidateName,
+      submitterEmail: candidate.email,
+      externalId: offerId,
+      sendEmail: false,
+    });
 
-    if (!Number.isInteger(parsedTemplateId)) {
-      return { error: `Invalid template ID: ${templateId}`, success: false };
-    }
-
-    const submissionPayload = {
-      template_id: parsedTemplateId,
-      send_email: true,
-      submitters: [
-        {
-          role: "Candidate",
-          email: candidate.email,
-          name: candidateName,
-          external_id: offerId,
-          fields: [
-            {
-              name: "candidate_name",
-              default_value: candidateName,
-            },
-          ],
-        },
-      ],
-    };
-
-    let docusealResponse: Response;
-    try {
-      docusealResponse = await fetch(docusealUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Auth-Token": process.env.DOCUSEAL_API_KEY || "",
-        },
-        body: JSON.stringify(submissionPayload),
-      });
-    } catch (submissionError) {
-      const errorMessage = submissionError instanceof Error ? submissionError.message : String(submissionError);
-      console.error("DocuSeal submission request failed:", {
-        error: errorMessage,
-        templateId: parsedTemplateId,
-        offerId,
-        applicationId,
-      });
-      return { error: `Failed to contact DocuSeal: ${errorMessage}`, success: false };
-    }
-
-    if (!docusealResponse.ok) {
-      const errorData = await docusealResponse.text();
-      let providerError = errorData || docusealResponse.statusText || "Unknown DocuSeal error";
-
-      try {
-        const parsedError = JSON.parse(errorData) as { error?: string; message?: string; detail?: string };
-        providerError = parsedError.detail || parsedError.message || parsedError.error || providerError;
-      } catch {
-        // Keep the raw response text when DocuSeal does not return JSON.
-      }
-
-      console.error("DocuSeal API error:", {
-        status: docusealResponse.status,
-        statusText: docusealResponse.statusText,
-        providerError,
-        rawResponse: errorData,
-        submissionPayload,
-      });
-      return { error: `Failed to create DocuSeal submission: ${providerError}`, success: false };
-    }
-
-    const docusealData = await docusealResponse.json();
-
-    // Extract submission URL from response
-    const docusealSubmissionUrl =
-      docusealData?.submission?.url ||
-      (Array.isArray(docusealData) && docusealData[0]?.embed_src) ||
-      docusealData?.embed_src ||
-      null;
-
-    if (!docusealSubmissionUrl) {
-      console.error("DocuSeal response missing submission URL:", docusealData);
-      return { error: "DocuSeal submission created but no signing URL returned", success: false };
+    if (!submission.viewerUrl || !submission.embedSrc) {
+      return { error: "DocuSeal submission did not return signing URLs", success: false };
     }
 
     // Update job_offers with the submission URL
     const { error: updateError } = await supabase
       .from("job_offers")
       .update({
-        latest_docuseal_url: docusealSubmissionUrl,
+        latest_docuseal_url: submission.viewerUrl,
         job_metadata: nextJobMetadata,
         updated_at: new Date().toISOString(),
       })
@@ -344,7 +271,7 @@ export async function sendOfferWithDocuSeal(
       console.warn("Non-fatal: failed to persist signed_documents or application link:", err);
     }
 
-    return { success: true, url: docusealSubmissionUrl };
+    return { success: true, url: submission.viewerUrl };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("sendOfferWithDocuSeal error:", errorMessage, error);

@@ -2,7 +2,7 @@
 
 import type { JobOffer } from "@/lib/types";
 import { useState } from "react";
-import { acceptOffer, declineOffer, submitNegotiation } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { acceptOffer, declineOffer } from "@/app/(dashboard)/job-offers/job-offer-actions";
 import { toast } from "sonner";
 import NegotiationForm from "./negotiation-form";
 import DocuSealEmbed from "./docuseal-embed";
@@ -16,6 +16,7 @@ export default function ApplicantActionPanel({ offer }: Props) {
   const [showNegotiation, setShowNegotiation] = useState(false);
   const [showDocuSeal, setShowDocuSeal] = useState(false);
   const [submissionUrl, setSubmissionUrl] = useState<string | null>(null);
+  const [embedSrc, setEmbedSrc] = useState<string | null>(null);
   const [declineConfirm, setDeclineConfirm] = useState(false);
 
   const canNegotiate = offer.negotiation_round < 3 &&
@@ -31,6 +32,7 @@ export default function ApplicantActionPanel({ offer }: Props) {
       const result = await acceptOffer(offer.id);
       if (result.success) {
         setSubmissionUrl(result.submissionUrl || null);
+        setEmbedSrc(result.embedSrc || null);
         setShowDocuSeal(true);
         toast.success("Signing form opened. Please complete the signature process.");
       } else {
@@ -214,7 +216,12 @@ export default function ApplicantActionPanel({ offer }: Props) {
 
       {/* DocuSeal Embed */}
       {showDocuSeal && submissionUrl && (
-        <DocuSealEmbed latest_docuseal_url={submissionUrl} onClose={() => setShowDocuSeal(false)} />
+        <DocuSealEmbed
+          latest_docuseal_url={submissionUrl}
+          embedSrc={embedSrc}
+          onRetry={handleAccept}
+          onClose={() => setShowDocuSeal(false)}
+        />
       )}
     </div>
   );

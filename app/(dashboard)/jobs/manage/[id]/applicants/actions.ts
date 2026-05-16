@@ -523,10 +523,10 @@ export async function sendJobOffer(formData: FormData) {
 
       const submission = await createDocusealSubmission({
         templateId: template.docuseal_template_id,
-        submissionName: `${job.title} - ${candidateName}`,
         submitterName: candidateName,
         submitterEmail: candidateEmail!,
         externalId: signedDoc.id,
+        sendEmail: true,
         redirectUrl: `${appUrl}/applications/${applicationId}`,
       });
 

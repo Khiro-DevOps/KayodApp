@@ -1,5 +1,6 @@
 "use server";
 
+import { createDocusealSubmission } from "@/lib/docuseal";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { sendNotification } from "@/lib/notifications";
@@ -526,6 +527,7 @@ export async function revokeOffer(offerId: string): Promise<{ success: boolean; 
 export async function acceptOffer(offerId: string): Promise<{
   success: boolean;
   submissionUrl?: string;
+  embedSrc?: string;
   error?: string;
 }> {
   const supabase = await createClient();
@@ -568,48 +570,16 @@ export async function acceptOffer(offerId: string): Promise<{
 
     const candidateName = [candidate.first_name, candidate.last_name].filter(Boolean).join(" ");
 
-    // Create DocuSeal submission
-    const response = await fetch(`${process.env.DOCUSEAL_BASE_URL || "https://api.docuseal.com"}/submissions`, {
-      method: "POST",
-      headers: {
-        "X-Auth-Token": process.env.DOCUSEAL_API_KEY || "",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        template_id: parseInt(offer.template_id, 10),
-        send_email: true,
-        submitters: [
-          {
-            role: "Candidate",
-            name: candidateName,
-            email: candidate.email,
-            fields: [
-              {
-                name: "candidate_name",
-                default_value: candidateName,
-              },
-            ],
-          },
-        ],
-        completed_redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/job-offer/${offerId}`,
-      }),
+    const submission = await createDocusealSubmission({
+      templateId: offer.template_id,
+      submitterName: candidateName,
+      submitterEmail: candidate.email,
+      externalId: offerId,
+      sendEmail: true,
+      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/job-offer/${offerId}`,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `DocuSeal API error: ${response.status} ${errorText}`,
-      };
-    }
-
-    const submissions = (await response.json()) as Array<{
-      id?: number;
-      embed_src?: string;
-    }>;
-
-    const submission = submissions[0];
-    if (!submission?.id || !submission?.embed_src) {
+    if (!submission.viewerUrl || !submission.embedSrc) {
       return {
         success: false,
         error: "DocuSeal did not return a valid submission",
@@ -652,7 +622,8 @@ export async function acceptOffer(offerId: string): Promise<{
 
     return {
       success: true,
-      submissionUrl: submission.embed_src,
+      submissionUrl: submission.viewerUrl,
+      embedSrc: submission.embedSrc,
     };
   } catch (error) {
     console.error("Error accepting offer:", error);

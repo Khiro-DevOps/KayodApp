@@ -1,7 +1,7 @@
 "use server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { createJobOfferTemplate, fetchDocusealTemplate, getDocusealApiBaseUrl } from "@/lib/docuseal";
+import { createDocusealSubmission, createJobOfferTemplate, fetchDocusealTemplate } from "@/lib/docuseal";
 
 export async function sendJobOfferLetter(jobId: string, applicationId: string) {
   const supabase = getAdminClient();
@@ -190,18 +190,9 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       return { error: "Applicant email not found", success: false };
     }
 
-    // Create the job offer submission via DocuSeal
-    const docusealUrl = `${getDocusealApiBaseUrl()}/submissions`;
     const applicantName = [applicant.first_name, applicant.last_name]
       .filter(Boolean)
       .join(" ") || "Applicant";
-    const parsedTemplateId = Number(templateId);
-    if (!Number.isInteger(parsedTemplateId)) {
-      return {
-        error: `DocuSeal template ID is invalid: ${templateId}`,
-        success: false,
-      };
-    }
 
     // 1. Get or create contract_template
     let contractTemplateId = null;
@@ -251,63 +242,25 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       .update({ contract_offer_id: signedDoc.id })
       .eq("id", applicationId);
 
-    const submissionPayload = {
-      template_id: parsedTemplateId,
-      send_email: true,
-      submitters: [
-        {
-          role: "Candidate",
-          email: applicant.email,
-          name: applicantName,
-          external_id: signedDoc.id,
-          fields: [
-            {
-              name: "candidate_name",
-              default_value: applicantName,
-            },
-          ],
-        },
-      ],
-    };
-
-    const docusealResponse = await fetch(docusealUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": process.env.DOCUSEAL_API_KEY || "",
-      },
-      body: JSON.stringify(submissionPayload),
+    const submission = await createDocusealSubmission({
+      templateId,
+      submitterName: applicantName,
+      submitterEmail: applicant.email,
+      externalId: signedDoc.id,
+      sendEmail: false,
     });
 
-    if (!docusealResponse.ok) {
-      const errorData = await docusealResponse.text();
-      console.error("DocuSeal API error:", errorData);
-      return { error: "Failed to send offer via DocuSeal", success: false };
-    }
-
-    const docusealData = await docusealResponse.json();
-
-    // Log raw response for debugging
-    try {
-      console.log("[sendJobOfferLetter] Raw DocuSeal response:", JSON.stringify(docusealData));
-    } catch (e) {
-      console.log("[sendJobOfferLetter] Raw DocuSeal response (non-serializable)");
-    }
-
-    // Extract submission id from common response shapes
-    const submissionId =
-      docusealData?.id || docusealData?.submission?.id || (Array.isArray(docusealData) && docusealData[0]?.id) ||
-      (Array.isArray(docusealData) && docusealData[0]?.submission?.id) || null;
+    const submissionId = submission.slug ?? null;
 
     console.log("[sendJobOfferLetter] DocuSeal submission created successfully", {
       jobId,
       applicationId,
       submissionId,
-      externalId: submissionPayload.submitters[0].external_id,
+      externalId: signedDoc.id,
       timestamp: new Date().toISOString(),
     });
 
-    const docusealSubmissionUrl = docusealData?.submission?.url || (Array.isArray(docusealData) && docusealData[0]?.submission?.url) || docusealData?.url || null;
+    const docusealSubmissionUrl = submission.viewerUrl;
 
     // Update signed_documents with the URL from DocuSeal
     await supabase
@@ -316,6 +269,8 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
         docuseal_submission_url: docusealSubmissionUrl,
         metadata: {
           docuseal_submission_id: submissionId,
+          docuseal_embed_src: submission.embedSrc,
+          docuseal_viewer_url: submission.viewerUrl,
           company_name: companyName,
           start_date: job.offer_letter_settings?.phStartDate ?? null,
           job_title: job.title,

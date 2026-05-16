@@ -23,6 +23,8 @@ SUPABASE_SERVICE_ROLE_KEY=xxx
 NEXT_PUBLIC_APP_URL=http://localhost:3000  # or your domain
 ```
 
+`DOCUSEAL_API_KEY` is required for creating submissions and generating the inline `embed_src` used by the signing UI.
+
 ### Step 3: Configure DocuSeal Webhook
 **In DocuSeal Dashboard (Settings > Webhooks):**
 ```
