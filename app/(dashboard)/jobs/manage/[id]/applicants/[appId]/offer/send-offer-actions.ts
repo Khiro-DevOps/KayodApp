@@ -41,6 +41,18 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       return { error: "Job posting not found", success: false };
     }
 
+    const { data: creatorProfile, error: creatorProfileError } = await supabase
+      .from("profiles")
+      .select("tenants(id, name)")
+      .eq("id", job.created_by)
+      .single();
+
+    if (creatorProfileError) {
+      console.warn("sendJobOfferLetter: failed to resolve company name", creatorProfileError);
+    }
+
+    const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+
     // If no template exists and we have DocuSeal API key, create one
     let docusealTemplateId = job.docuseal_template_id;
     if (!docusealTemplateId) {
@@ -303,7 +315,10 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       .update({
         docuseal_submission_url: docusealSubmissionUrl,
         metadata: {
-          docuseal_submission_id: submissionId
+          docuseal_submission_id: submissionId,
+          company_name: companyName,
+          start_date: job.offer_letter_settings?.phStartDate ?? null,
+          job_title: job.title,
         }
       })
       .eq("id", signedDoc.id);
