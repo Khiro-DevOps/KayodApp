@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { sendOfferWithDocuSeal } from "./send-with-docuseal-actions";
 
 const BENEFITS_OPTIONS = [
   "HMO / Health Insurance",
@@ -110,9 +111,12 @@ export default function OfferForm({
     );
   };
 
-  async function buildPayload(status: "draft" | "sent") {
+  async function buildPayload(status: "draft" | "sent" | "DRAFT" | "SENT") {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Normalize status to uppercase (job_offers schema uses uppercase)
+    const normalizedStatus = status.toUpperCase() as "DRAFT" | "SENT";
 
     return {
       application_id: appId,
@@ -133,7 +137,7 @@ export default function OfferForm({
         ? new Date(offerExpiry).toISOString()
         : null,
       hr_notes: hrNotes || null,
-      status,
+      status: normalizedStatus,
     };
   }
 
@@ -169,7 +173,7 @@ export default function OfferForm({
     setSending(true);
     setError(null);
     const supabase = createClient();
-    const payload = await buildPayload("sent");
+    const payload = await buildPayload("SENT");
 
     let offerId = existingOffer?.id;
     let err;
@@ -201,20 +205,34 @@ export default function OfferForm({
       .update({ status: "offer_sent" })
       .eq("id", appId);
 
+    // Create DocuSeal submission and store signing URL in job_offers
+    const docusealResult = await sendOfferWithDocuSeal(jobId, appId, offerId);
+    
+    if (!docusealResult.success) {
+      setError(docusealResult.error || "Failed to generate signing link");
+      setSending(false);
+      return;
+    }
+
     // Send notification to candidate
     const { data: appData } = await supabase
       .from("applications")
-      .select("candidate_id")
+      .select("candidate_id, profiles!applications_candidate_id_fkey(first_name, last_name)")
       .eq("id", appId)
       .single();
 
     if (appData?.candidate_id) {
+      const profileData = appData.profiles as any;
+      const candidateName = [profileData?.first_name, profileData?.last_name]
+        .filter(Boolean)
+        .join(" ") || "Candidate";
+
       await supabase.from("notifications").insert({
         recipient_id: appData.candidate_id,
         type: "offer_sent",
         title: "🎉 You've received a Job Offer!",
         body: `You have received a job offer for ${positionTitle}. Please review and respond before ${new Date(offerExpiry).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}.`,
-        action_url: `/applications/${appId}`,
+        action_url: `/job-offer/${offerId}`,
         is_read: false,
       });
     }

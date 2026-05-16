@@ -83,18 +83,11 @@ export default async function ApplicationsPage() {
           My Applications
         </h1>
 
-        {!applications || applications.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-            <p className="text-sm text-text-secondary">
-              You haven&apos;t applied to any jobs yet. Browse available positions to get started.
-            </p>
-          </div>
-        ) : (
-          <ApplicationsClient
-            applications={applications ?? []}
-            interviewMap={interviewMap}
-          />
-        )}
+        <ApplicationsClient
+          applications={applications ?? []}
+          interviewMap={interviewMap}
+          candidateId={user.id}
+        />
       </div>
     </PageContainer>
   );

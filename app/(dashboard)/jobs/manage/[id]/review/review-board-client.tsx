@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 interface Note {
   interview_score: number | null;
@@ -53,6 +54,27 @@ export default function ReviewBoardClient({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"move_under_review" | "negotiate" | "reject" | null>(null);
+  const [sendingOfferId, setSendingOfferId] = useState<string | null>(null);
+
+  const handleSendOffer = async (appId: string) => {
+    setSendingOfferId(appId);
+    try {
+      const { sendHydratedOffer } = await import("@/app/(auth)/actions/offer-actions");
+      const res = await sendHydratedOffer(jobId, appId);
+      if (res && (res as any).success) {
+        toast.success("Offer sent successfully!");
+        router.refresh();
+      } else {
+        console.error("sendHydratedOffer returned failure:", res);
+        toast.error(((res as any)?.error) || "Failed to send offer");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Failed to send offer");
+    } finally {
+      setSendingOfferId(null);
+    }
+  };
 
   // Candidates on hold: both "interviewed" and "under_review" candidates are selectable
   const onHoldCandidates = candidates.filter((c) => c.app.status === "interviewed" || c.app.status === "under_review");
@@ -222,6 +244,8 @@ export default function ReviewBoardClient({
               onExpand={(id) => setExpanded(expanded === id ? null : id)}
               scoreColor={scoreColor}
               showCheckbox
+              sendingOfferId={sendingOfferId}
+              onSendOffer={handleSendOffer}
             />
           )}
         </div>
@@ -248,6 +272,8 @@ export default function ReviewBoardClient({
                 onExpand={(id) => setExpanded(expanded === id ? null : id)}
                 scoreColor={scoreColor}
                 showCheckbox={false}
+                sendingOfferId={sendingOfferId}
+                onSendOffer={handleSendOffer}
               />
             )}
         </div>
@@ -267,6 +293,8 @@ function CandidateCard({
   onExpand,
   scoreColor,
   showCheckbox,
+  sendingOfferId,
+  onSendOffer,
 }: {
   app: Candidate["app"];
   interview: Candidate["interview"];
@@ -278,6 +306,8 @@ function CandidateCard({
   onExpand: (id: string) => void;
   scoreColor: (score: number | null) => string;
   showCheckbox: boolean;
+  sendingOfferId: string | null;
+  onSendOffer: (appId: string) => Promise<void>;
 }) {
   const name = app.profiles
     ? `${app.profiles.first_name} ${app.profiles.last_name}`
@@ -419,12 +449,13 @@ function CandidateCard({
                 View profile
               </Link>
               {isNegotiating && (
-                <Link
-                  href={`/jobs/manage/${jobId}/applicants/${app.id}/offer`}
-                  className="flex-1 text-center rounded-xl bg-primary py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+                <button
+                  onClick={() => onSendOffer(app.id)}
+                  disabled={sendingOfferId === app.id}
+                  className="flex-1 text-center rounded-xl bg-primary py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  🎉 Create Offer
-                </Link>
+                  {sendingOfferId === app.id ? "Sending..." : "🎉 Send Offer"}
+                </button>
               )}
             </div>
           </div>

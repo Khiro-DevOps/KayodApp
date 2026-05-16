@@ -19,6 +19,7 @@ const typeConfig: Record<string, { icon: string; bg: string }> = {
   under_review:               { icon: "🔍", bg: "bg-amber-50"  },
   negotiating:                { icon: "📞", bg: "bg-purple-50" },
   offer_sent:                 { icon: "📨", bg: "bg-green-50"  },
+  offer_letter:               { icon: "📨", bg: "bg-green-50"  },
   offer_accepted:             { icon: "🎉", bg: "bg-green-50"  },
   offer_declined:             { icon: "❌", bg: "bg-red-50"    },
   offer_expiring:             { icon: "⏰", bg: "bg-amber-50"  },

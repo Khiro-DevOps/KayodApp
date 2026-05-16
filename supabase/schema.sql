@@ -180,6 +180,7 @@ create table if not exists profiles (
   work_setup      work_setup,
   city_id         uuid,
   province_id     uuid,
+  tenant_name     text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
@@ -1113,11 +1114,10 @@ $$;
 
 -- Helper: is current user hr or admin?
 create or replace function is_hr()
-returns boolean language sql security definer volatile as $$
+returns boolean language sql security definer stable as $$
   select coalesce(
-    (select p.role in ('hr_manager', 'admin') from profiles p where p.id = auth.uid()),
-    (select (u.raw_user_meta_data->>'role') in ('hr_manager', 'admin')
-     from auth.users u where u.id = auth.uid())
+    (auth.jwt()->>'role') in ('hr_manager', 'admin'),
+    false
   );
 $$;
 

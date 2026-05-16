@@ -2,31 +2,31 @@
 
 import { useEffect, useState } from "react";
 import type { Application, Interview, UserRole } from "@/lib/types";
-import ResumeViewer from "./resume-viewer";
+import { useRouter } from "next/navigation";
 import StatusTracker from "./status-tracker";
 import EvaluationSidebar from "./evaluation-sidebar";
 import InterviewTimeline from "./interview-timeline";
 import OfferCard from "./offer-card";
 import { createClient } from "@/lib/supabase/client";
 
-interface JobOffer {
+interface ContractTemplateSummary {
+  id: string;
+  template_name: string | null;
+  docuseal_template_id: string;
+}
+
+interface ActiveContractOffer {
   id: string;
   status: string;
-  position_title: string;
-  department: string | null;
-  employment_type: string;
-  salary_amount: number | null;
-  salary_currency: string;
-  pay_frequency: string;
-  benefits: string[];
-  work_setup: string;
-  work_location: string | null;
-  work_schedule: string | null;
-  employment_terms: string | null;
-  start_date: string | null;
-  offer_expires_at: string | null;
+  signing_method: string;
+  contract_template_id?: string;
   signed_at: string | null;
-  signature_data: string | null;
+  docuseal_submission_url: string | null;
+  contract_templates?: Array<{
+    id: string;
+    template_name: string | null;
+    docuseal_template_id: string;
+  }> | null;
 }
 
 interface ApplicationDetailViewProps {
@@ -34,8 +34,10 @@ interface ApplicationDetailViewProps {
   interviews: Interview[];
   userRole: UserRole;
   isCurrentUser: boolean;
-  signedResumeUrl: string | null;
-  jobOffer: JobOffer | null;
+  contractTemplates: ContractTemplateSummary[];
+  activeContractOffer: ActiveContractOffer | null;
+  offerId?: string | null;
+  offerRouteId?: string | null;
 }
 
 function normalizeName(value: unknown): string {
@@ -60,18 +62,24 @@ export default function ApplicationDetailView({
   interviews,
   userRole,
   isCurrentUser,
-  signedResumeUrl,
-  jobOffer,
+  contractTemplates,
+  activeContractOffer,
+  offerId,
+  offerRouteId,
 }: ApplicationDetailViewProps) {
   const [applicationStatus, setApplicationStatus] = useState(application?.status);
   const [liveInterviews, setLiveInterviews] = useState<Interview[]>(interviews);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const router = useRouter();
 
   const isRecruiter = userRole === "hr_manager" || userRole === "admin";
   const candidate = application?.profiles as any;
   const resume = application?.resumes as any;
   const job = application?.job_postings as any;
   const candidateName = deriveDisplayName(candidate);
+
+  const normalizedStatus = String(applicationStatus || "").toLowerCase();
+  const shouldShowOfferPipelineButton = normalizedStatus === "offer_sent" || normalizedStatus === "negotiating";
 
   const handleStatusUpdate = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -80,6 +88,12 @@ export default function ApplicationDetailView({
   useEffect(() => {
     setApplicationStatus(application?.status);
   }, [application?.status]);
+
+  useEffect(() => {
+    if (applicationStatus === "hired" || applicationStatus === "rejected") {
+      router.refresh();
+    }
+  }, [applicationStatus, router]);
 
   useEffect(() => {
     setLiveInterviews(interviews);
@@ -139,9 +153,9 @@ export default function ApplicationDetailView({
           });
         }
       )
-      .subscribe((status, err) => {
+      .subscribe((status) => {
         if (status === "CHANNEL_ERROR") {
-          console.error(`application-detail-${application.id} channel error:`, err);
+          console.error(`application-detail-${application.id} channel error: subscription failed`);
         }
         if (status === "TIMED_OUT") {
           console.warn(`application-detail-${application.id} timed out, retrying...`);
@@ -220,24 +234,19 @@ export default function ApplicationDetailView({
               status={applicationStatus || application?.status}
               interviews={liveInterviews}
               applicationId={application.id}
+              offerRouteId={offerRouteId}
             />
           )}
 
-          {/* Job Offer Card — visible to applicant only */}
-          {!isRecruiter && jobOffer && (
-            <OfferCard
-              offer={jobOffer}
-              applicationId={application.id}
-            />
-          )}
-
-          {/* Resume Viewer */}
-          {resume && (
-            <ResumeViewer
-              resume={resume}
-              candidateName={candidateName}
-              signedResumeUrl={signedResumeUrl}
-            />
+          {/* Applicant View: Active Offer */}
+          {!isRecruiter && activeContractOffer && (
+            <div id="active-offer">
+              <OfferCard
+                offer={activeContractOffer}
+                applicationId={application.id}
+                offerRouteId={offerRouteId}
+              />
+            </div>
           )}
 
           {/* Interview Timeline */}
@@ -261,6 +270,8 @@ export default function ApplicationDetailView({
             application={application}
             job={job}
             onStatusUpdate={handleStatusUpdate}
+            contractTemplates={contractTemplates}
+            activeContractOffer={activeContractOffer}
           />
         )}
       </div>

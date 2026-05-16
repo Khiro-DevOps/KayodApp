@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useActionState, useEffect } from "react";
 import { login } from "../actions";
 
 export default function LoginPage() {
@@ -14,8 +14,19 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const [state, formAction, pending] = useActionState(login, {
+    error: null,
+    success: false,
+  });
+
+  useEffect(() => {
+    if (state.success) {
+      router.replace("/dashboard");
+    }
+  }, [router, state.success]);
 
   return (
     <div className="space-y-6">
@@ -28,13 +39,13 @@ function LoginForm() {
         </p>
       </div>
 
-      {error && (
+      {(error || state.error) && (
         <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-danger">
-          {error}
+          {state.error || error}
         </div>
       )}
 
-      <form action={login} className="space-y-4">
+      <form action={formAction} className="space-y-4">
         {/* Email */}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium text-text-primary">
@@ -67,9 +78,10 @@ function LoginForm() {
 
         <button
           type="submit"
+          disabled={pending}
           className="w-full rounded-2xl bg-primary py-3 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
         >
-          Log In
+          {pending ? "Logging in..." : "Log In"}
         </button>
       </form>
 

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
+import { createDocusealSubmission } from "@/lib/docuseal";
 
 const JAAS_APP_ID = process.env.JAAS_APP_ID ?? process.env.NEXT_PUBLIC_JAAS_APP_ID;
 const JAAS_DOMAIN = "8x8.vc";
@@ -416,6 +417,467 @@ export async function submitInterviewPreference(formData: FormData) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to submit preference",
+    };
+  }
+}
+
+// ============================================================
+// JOB OFFER ACTIONS (Phase 2)
+// ============================================================
+
+export async function sendJobOffer(formData: FormData) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const applicationId = formData.get("application_id") as string;
+  const contractTemplateId = formData.get("contract_template_id") as string;
+  const signingMethod = formData.get("signing_method") as string;
+  const notes = formData.get("notes") as string | null;
+
+  if (!applicationId || !contractTemplateId || !signingMethod) {
+    return { success: false, error: "Missing required fields" };
+  }
+
+  if (!["digital", "in_person"].includes(signingMethod)) {
+    return { success: false, error: "Invalid signing method" };
+  }
+
+  try {
+    // Verify application exists and belongs to a job by this HR user
+    const { data: application, error: appError } = await supabase
+      .from("applications")
+      .select("id, candidate_id, job_posting_id, status")
+      .eq("id", applicationId)
+      .single();
+
+    if (appError || !application) {
+      return { success: false, error: "Application not found" };
+    }
+
+    // Verify HR user owns the job posting
+    const { data: job, error: jobError } = await supabase
+      .from("job_postings")
+      .select("id, created_by, title")
+      .eq("id", application.job_posting_id)
+      .single();
+
+    if (jobError || !job || job.created_by !== user.id) {
+      return { success: false, error: "Unauthorized: You do not own this job" };
+    }
+
+    // Verify contract template exists and belongs to this job
+    const { data: template, error: templateError } = await supabase
+      .from("contract_templates")
+      .select("id, job_posting_id, docuseal_template_id, template_name")
+      .eq("id", contractTemplateId)
+      .eq("job_posting_id", application.job_posting_id)
+      .single();
+
+    if (templateError || !template) {
+      return { success: false, error: "Contract template not found for this job" };
+    }
+
+    const { data: candidateProfile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, email")
+      .eq("id", application.candidate_id)
+      .single();
+
+    const candidateEmail = candidateProfile?.email;
+    if (signingMethod === "digital" && !candidateEmail) {
+      return { success: false, error: "Candidate email is required for digital signing" };
+    }
+
+    // Create signed_documents record
+    const { data: signedDoc, error: signError } = await supabase
+      .from("signed_documents")
+      .insert({
+        application_id: applicationId,
+        contract_template_id: contractTemplateId,
+        signing_method: signingMethod,
+        status: "sent",
+        metadata: {
+          ...(notes ? { hr_notes: notes } : {}),
+          docuseal_template_id: template.docuseal_template_id,
+        },
+      })
+      .select("id")
+      .single();
+
+    if (signError || !signedDoc) {
+      throw signError || new Error("Failed to create signed document");
+    }
+
+    let docusealSigningUrl: string | null = null;
+
+    if (signingMethod === "digital") {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim() || "http://localhost:3000";
+      const candidateName = [candidateProfile?.first_name, candidateProfile?.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || "Candidate";
+
+      const submission = await createDocusealSubmission({
+        templateId: template.docuseal_template_id,
+        submissionName: `${job.title} - ${candidateName}`,
+        submitterName: candidateName,
+        submitterEmail: candidateEmail!,
+        externalId: signedDoc.id,
+        redirectUrl: `${appUrl}/applications/${applicationId}`,
+      });
+
+      docusealSigningUrl = submission.signingUrl;
+
+      const { error: submissionUpdateError } = await supabase
+        .from("signed_documents")
+        .update({
+          docuseal_submitter_id: submission.submitterId ?? signedDoc.id,
+          docuseal_submission_url: submission.signingUrl,
+          metadata: {
+            ...(notes ? { hr_notes: notes } : {}),
+            docuseal_template_id: template.docuseal_template_id,
+            docuseal_external_id: signedDoc.id,
+          },
+        })
+        .eq("id", signedDoc.id);
+
+      if (submissionUpdateError) {
+        throw submissionUpdateError;
+      }
+    }
+
+    // Update application status and contract_offer_id
+    const { error: updateError } = await supabase
+      .from("applications")
+      .update({
+        status: "offer_sent",
+        contract_offer_id: signedDoc.id,
+      })
+      .eq("id", applicationId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    const jobTitle = job?.title || "the position";
+
+    // Create notification for candidate
+    void Promise.resolve(
+      supabase.from("notifications").insert({
+        recipient_id: application.candidate_id,
+        type: "offer_letter",
+        title: "Job Offer Received 🎉",
+        body: `You have received a job offer for ${jobTitle}. Please review and sign the contract.`,
+        action_url: `/applications/${applicationId}`,
+      })
+    ).catch((err: unknown) => {
+      console.error("Failed to insert offer notification:", err);
+    });
+
+    revalidatePath(`/jobs/manage/${application.job_posting_id}/applicants`);
+    revalidatePath(`/applications/${applicationId}`);
+
+    return {
+      success: true,
+      signedDocumentId: signedDoc.id,
+      docusealSigningUrl,
+    };
+  } catch (error) {
+    console.error("Job offer sending error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to send job offer",
+    };
+  }
+}
+
+export async function withdrawJobOffer(formData: FormData) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const applicationId = formData.get("application_id") as string;
+  const reason = formData.get("reason") as string | null;
+
+  if (!applicationId) {
+    return { success: false, error: "Missing application ID" };
+  }
+
+  try {
+    // Verify application exists
+    const { data: application, error: appError } = await supabase
+      .from("applications")
+      .select("id, candidate_id, job_posting_id, status, contract_offer_id")
+      .eq("id", applicationId)
+      .single();
+
+    if (appError || !application) {
+      return { success: false, error: "Application not found" };
+    }
+
+    // Verify HR user owns the job posting
+    const { data: job } = await supabase
+      .from("job_postings")
+      .select("id, created_by")
+      .eq("id", application.job_posting_id)
+      .single();
+
+    if (!job || job.created_by !== user.id) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    if (!application.contract_offer_id) {
+      return { success: false, error: "No active offer for this application" };
+    }
+
+    // Update signed_documents status
+    const { error: updateDocError } = await supabase
+      .from("signed_documents")
+      .update({
+        status: "expired",
+        metadata: reason ? { withdrawn_reason: reason } : {},
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", application.contract_offer_id);
+
+    if (updateDocError) {
+      throw updateDocError;
+    }
+
+    // Revert application status to interviewed
+    const { error: updateAppError } = await supabase
+      .from("applications")
+      .update({
+        status: "interviewed",
+        contract_offer_id: null,
+      })
+      .eq("id", applicationId);
+
+    if (updateAppError) {
+      throw updateAppError;
+    }
+
+    // Notify candidate
+    void Promise.resolve(
+      supabase.from("notifications").insert({
+        recipient_id: application.candidate_id,
+        type: "application_status_changed",
+        title: "Job Offer Withdrawn",
+        body: reason ? `Your job offer has been withdrawn. Reason: ${reason}` : "Your job offer has been withdrawn.",
+        action_url: `/applications/${applicationId}`,
+      })
+    ).catch((err: unknown) => {
+      console.error("Failed to insert withdrawal notification:", err);
+    });
+
+    revalidatePath(`/jobs/manage/${application.job_posting_id}/applicants`);
+    revalidatePath(`/applications/${applicationId}`);
+
+    return { success: true };
+  } catch (error) {
+    console.error("Job offer withdrawal error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to withdraw job offer",
+    };
+  }
+}
+
+export async function acceptJobOffer(formData: FormData) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const applicationId = formData.get("application_id") as string;
+  const signatureData = String(formData.get("signature_data") ?? "").trim();
+
+  if (!applicationId) {
+    return { success: false, error: "Missing application ID" };
+  }
+
+  if (!signatureData) {
+    return { success: false, error: "Signature is required" };
+  }
+
+  try {
+    // Verify application exists and belongs to candidate
+    const { data: application, error: appError } = await supabase
+      .from("applications")
+      .select("id, candidate_id, job_posting_id, status, contract_offer_id")
+      .eq("id", applicationId)
+      .eq("candidate_id", user.id)
+      .single();
+
+    if (appError || !application) {
+      return { success: false, error: "Application not found" };
+    }
+
+    if (application.status !== "offer_sent") {
+      return { success: false, error: "No pending offer for this application" };
+    }
+
+    // Update signed_documents status
+    const { error: updateDocError } = await supabase
+      .from("signed_documents")
+      .update({
+        status: "signed",
+        signed_at: new Date().toISOString(),
+        signed_values: {
+          signature_data: signatureData,
+          signed_via: "canvas",
+        },
+      })
+      .eq("id", application.contract_offer_id);
+
+    if (updateDocError) {
+      throw updateDocError;
+    }
+
+    // Update application status to hired
+    const { error: updateAppError } = await supabase
+      .from("applications")
+      .update({
+        status: "hired",
+      })
+      .eq("id", applicationId);
+
+    if (updateAppError) {
+      throw updateAppError;
+    }
+
+    // Get HR user to notify them
+    const { data: jobData } = await supabase
+      .from("job_postings")
+      .select("created_by, title")
+      .eq("id", application.job_posting_id)
+      .single();
+
+    if (jobData?.created_by) {
+      void Promise.resolve(
+        supabase.from("notifications").insert({
+          recipient_id: jobData.created_by,
+          type: "application_status_changed",
+          title: "Offer Accepted ✅",
+          body: `Candidate has accepted the job offer for ${jobData.title}.`,
+          action_url: `/jobs/manage/${application.job_posting_id}/applicants`,
+        })
+      ).catch((err: unknown) => {
+        console.error("Failed to insert acceptance notification:", err);
+      });
+    }
+
+    revalidatePath(`/applications/${applicationId}`);
+
+    return { success: true };
+  } catch (error) {
+    console.error("Job offer acceptance error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to accept job offer",
+    };
+  }
+}
+
+export async function declineJobOffer(formData: FormData) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const applicationId = formData.get("application_id") as string;
+  const reason = formData.get("reason") as string | null;
+
+  if (!applicationId) {
+    return { success: false, error: "Missing application ID" };
+  }
+
+  try {
+    // Verify application exists and belongs to candidate
+    const { data: application, error: appError } = await supabase
+      .from("applications")
+      .select("id, candidate_id, job_posting_id, status, contract_offer_id")
+      .eq("id", applicationId)
+      .eq("candidate_id", user.id)
+      .single();
+
+    if (appError || !application) {
+      return { success: false, error: "Application not found" };
+    }
+
+    if (application.status !== "offer_sent") {
+      return { success: false, error: "No pending offer for this application" };
+    }
+
+    // Update signed_documents status
+    const { error: updateDocError } = await supabase
+      .from("signed_documents")
+      .update({
+        status: "declined",
+        metadata: reason ? { decline_reason: reason } : {},
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", application.contract_offer_id);
+
+    if (updateDocError) {
+      throw updateDocError;
+    }
+
+    // Revert application status to interviewed
+    const { error: updateAppError } = await supabase
+      .from("applications")
+      .update({
+        status: "interviewed",
+        contract_offer_id: null,
+      })
+      .eq("id", applicationId);
+
+    if (updateAppError) {
+      throw updateAppError;
+    }
+
+    // Get HR user to notify them
+    const { data: jobData } = await supabase
+      .from("job_postings")
+      .select("created_by, title")
+      .eq("id", application.job_posting_id)
+      .single();
+
+    if (jobData?.created_by) {
+      void Promise.resolve(
+        supabase.from("notifications").insert({
+          recipient_id: jobData.created_by,
+          type: "application_status_changed",
+          title: "Offer Declined ❌",
+          body: reason
+            ? `Candidate declined the offer for ${jobData.title}. Reason: ${reason}`
+            : `Candidate declined the offer for ${jobData.title}.`,
+          action_url: `/jobs/manage/${application.job_posting_id}/applicants`,
+        })
+      ).catch((err: unknown) => {
+        console.error("Failed to insert decline notification:", err);
+      });
+    }
+
+    revalidatePath(`/applications/${applicationId}`);
+
+    return { success: true };
+  } catch (error) {
+    console.error("Job offer decline error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to decline job offer",
     };
   }
 }
