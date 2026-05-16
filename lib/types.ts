@@ -12,6 +12,7 @@ export type ApplicationStatus =
   | "shortlisted"
   | "interview_scheduled"
   | "interviewed"
+  | "negotiating"
   | "offer_sent"
   | "hired"
   | "rejected"
@@ -60,6 +61,11 @@ export type NotificationType =
   | "interview_reminder"
   | "interview_cancelled"
   | "offer_letter"
+  | "offer_sent"
+  | "offer_accepted"
+  | "offer_declined"
+  | "offer_negotiation_submitted"
+  | "offer_negotiation_responded"
   | "leave_status_changed"
   | "payroll_processed"
   | "schedule_published"
@@ -101,6 +107,7 @@ export interface Profile {
   work_setup?: WorkSetup | null;
   city_id?: string | null;
   province_id?: string | null;
+  tenant_id?: string | null;
   created_at: string;
   updated_at: string;
   full_name?: string;
@@ -188,6 +195,7 @@ export interface Application {
   job_posting_id: string;
   candidate_id: string;
   resume_id: string;
+  contract_offer_id?: string | null;
   status: ApplicationStatus;
   cover_letter: string | null;
   match_score: number | null;
@@ -408,6 +416,7 @@ export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
   shortlisted:          "bg-purple-100 text-purple-700",
   interview_scheduled:  "bg-indigo-100 text-indigo-700",
   interviewed:          "bg-cyan-100 text-cyan-700",
+  negotiating:          "bg-purple-100 text-purple-700",
   offer_sent:           "bg-orange-100 text-orange-700",
   hired:                "bg-green-100 text-green-700",
   rejected:             "bg-red-100 text-red-700",
@@ -427,4 +436,89 @@ export const PAYROLL_STATUS_COLORS: Record<PayrollStatus, string> = {
   approved:         "bg-blue-100 text-blue-700",
   paid:             "bg-green-100 text-green-700",
   cancelled:        "bg-red-100 text-red-700",
+};
+
+// ============================================================
+// JOB OFFER TYPES
+// ============================================================
+
+export type JobOfferStatus = "pending" | "accepted" | "negotiating" | "declined" | "expired";
+
+export type NegotiationIntent = "counter" | "question";
+
+export interface NegotiationPayload {
+  intent: NegotiationIntent;
+  counterSalary?: string;
+  note?: string;
+}
+
+export type NegotiationStatus = "pending" | "approved" | "countered" | "declined";
+
+export interface JobOfferTerms {
+  salary: number;
+  currency: string;
+  employmentType: EmploymentType;
+  startDate: string;
+  workArrangement: WorkSetup;
+  department: string;
+  manager: string;
+  benefits: string[];
+  notes?: string;
+}
+
+export interface JobOffer {
+  id: string;
+  application_id: string;
+  applicant_id: string;
+  hr_id: string;
+  template_id: string;
+  submission_id: string | null;
+  signed_pdf_url: string | null;
+  status: JobOfferStatus;
+  version: number;
+  terms: JobOfferTerms;
+  expires_at: string;
+  issued_at: string;
+  viewed_at: string | null;
+  accepted_at: string | null;
+  negotiation_round: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NegotiationItem {
+  term: "salary" | "start_date" | "work_arrangement" | "benefits" | "other";
+  currentValue: string;
+  requestedValue: string;
+  reason: string;
+}
+
+export interface NegotiationResponse {
+  [itemIndex: number]: {
+    action: "approve" | "counter" | "decline";
+    counterValue?: string;
+    notes?: string;
+  };
+}
+
+export interface NegotiationRequest {
+  id: string;
+  offer_id: string;
+  round: number;
+  submitted_by: string;
+  items: NegotiationItem[];
+  status: NegotiationStatus;
+  hr_response: NegotiationResponse | null;
+  submitted_at: string;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const JOB_OFFER_STATUS_COLORS: Record<JobOfferStatus, string> = {
+  pending:     "bg-amber-100 text-amber-700",
+  accepted:    "bg-green-100 text-green-700",
+  negotiating: "bg-blue-100 text-blue-700",
+  declined:    "bg-red-100 text-red-700",
+  expired:     "bg-gray-100 text-gray-500",
 };
