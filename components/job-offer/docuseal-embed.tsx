@@ -2,22 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { DocusealForm, type DocusealFormCompleteData } from "@docuseal/react";
+import { toast } from "sonner";
+import { processDocuSealCompletion } from "@/app/(dashboard)/job-offers/job-offer-actions";
 import { normalizeDocusealEmbedUrl } from "@/lib/docuseal";
 
 interface Props {
-  submissionUrl: string;
+  latest_docuseal_url: string;
+  submissionUrl?: string;
   openSigningUrl?: string;
   onClose?: () => void;
 }
 
 const EMBED_LOAD_TIMEOUT_MS = 8000;
 
-export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }: Props) {
+export default function DocuSealEmbed({ latest_docuseal_url, submissionUrl, openSigningUrl, onClose }: Props) {
   const timeoutRef = useRef<number | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "failed">("loading");
-  const embedUrl = normalizeDocusealEmbedUrl(submissionUrl);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const submissionSource = latest_docuseal_url || submissionUrl || "";
+  const embedUrl = normalizeDocusealEmbedUrl(submissionSource);
 
   useEffect(() => {
+    if (!embedUrl) {
+      setLoadState("failed");
+      return;
+    }
+
     setLoadState("loading");
 
     if (timeoutRef.current !== null) {
@@ -34,7 +46,7 @@ export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }
         timeoutRef.current = null;
       }
     };
-  }, [submissionUrl]);
+  }, [embedUrl]);
 
   const handleLoad = () => {
     if (timeoutRef.current !== null) {
@@ -44,43 +56,37 @@ export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }
     setLoadState("loaded");
   };
 
-  const handleError = () => {
-    if (timeoutRef.current !== null) {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+  const handleComplete = async (data: DocusealFormCompleteData) => {
+    const submissionId = data?.submission?.id;
+    const completedSubmissionUrl = data?.submission?.url ?? embedUrl;
+    const signedPdfUrl = data?.submission?.combined_document_url ?? data?.submission_url;
+
+    if (!submissionId || !completedSubmissionUrl || !signedPdfUrl) {
+      toast.error("Signing completed, but finalization data is missing. Please refresh this page.");
+      return;
     }
-    setLoadState("failed");
+
+    setIsCompleting(true);
+
+    try {
+      const result = await processDocuSealCompletion(String(submissionId), completedSubmissionUrl, signedPdfUrl);
+
+      if (!result.success) {
+        toast.error(result.error || "Failed to finalize offer signing.");
+        return;
+      }
+
+      toast.success("Offer signed successfully.");
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to finalize DocuSeal completion:", error);
+      toast.error("Failed to finalize offer signing.");
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
-  const fallbackUrl = openSigningUrl ?? submissionUrl;
-
-  if (loadState === "failed") {
-    return (
-      <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase text-blue-900">Sign Your Contract</p>
-          {onClose && (
-            <button onClick={onClose} className="text-blue-600 hover:text-blue-900">
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-blue-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-          <p className="font-medium text-slate-900">Your browser blocked the inline signing view.</p>
-          <p className="mt-1 text-slate-600">Open the signing page in a new tab to continue securely.</p>
-          <a
-            href={fallbackUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
-          >
-            Open Signing Page
-          </a>
-        </div>
-      </div>
-    );
-  }
+  const fallbackUrl = openSigningUrl ?? submissionSource;
 
   return (
     <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -93,20 +99,25 @@ export default function DocuSealEmbed({ submissionUrl, openSigningUrl, onClose }
         )}
       </div>
 
-      <div className="relative overflow-hidden rounded-lg bg-gray-100">
-        <iframe
-          src={embedUrl ?? undefined}
-          className="w-full rounded-lg border border-blue-200"
-          style={{ minHeight: "600px" }}
-          title="DocuSeal Signing Form"
-          onLoad={handleLoad}
-          onError={handleError}
-          allow="clipboard-read; clipboard-write; fullscreen"
-        />
+      <div className="relative overflow-hidden rounded-lg border border-blue-200 bg-white" style={{ minHeight: "600px" }}>
+        {embedUrl ? (
+          <DocusealForm
+            src={embedUrl}
+            className="w-full"
+            style={{ minHeight: "600px" }}
+            onLoad={handleLoad}
+            onComplete={handleComplete}
+          />
+        ) : null}
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs text-center text-blue-700">Complete the signing process to accept the offer.</p>
+        <p className="text-xs text-center text-blue-700">
+          {isCompleting ? "Finalizing your signature..." : "Complete the signing process to accept the offer."}
+        </p>
+        {loadState === "failed" && (
+          <p className="text-xs text-center text-red-700">Inline signing failed to load. Use the fallback button below.</p>
+        )}
         <div className="text-center">
           <a
             href={fallbackUrl}
