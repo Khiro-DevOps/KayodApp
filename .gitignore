@@ -79,6 +79,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+echo "docs/" >> .gitignore      # adjust folder name as needed
+echo "migrations/" >> .gitignore  # if you ever recreate the folder
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
