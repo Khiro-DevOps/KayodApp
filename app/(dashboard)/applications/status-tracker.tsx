@@ -1,13 +1,14 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ApplicationStatus, Interview } from "@/lib/types";
 import { isActiveInterview } from "@/lib/interviews";
 
 interface StatusTrackerProps {
   status: ApplicationStatus;
   interviews: Interview[];
-  applicationId?: string;
+  applicationId: string;
+  offerRouteId?: string | null;
 }
 
 const statusStages = [
@@ -20,8 +21,22 @@ const statusStages = [
   { key: "hired", label: "Hired", icon: "✅" },
 ];
 
-export default function StatusTracker({ status, interviews, applicationId }: StatusTrackerProps) {
-  const currentStageIndex = statusStages.findIndex((s) => s.key === status);
+export default function StatusTracker({ status, interviews, applicationId, offerRouteId }: StatusTrackerProps) {
+  const router = useRouter();
+  const normalizedStatus = String(status || "").toLowerCase();
+  const displayStatus = normalizedStatus === "negotiating" ? "offer_sent" : normalizedStatus;
+  const currentStageIndex = statusStages.findIndex((s) => s.key === displayStatus);
+  const subStatusLabel = normalizedStatus === "negotiating" ? "Negotiating" : null;
+  const showOfferAction = normalizedStatus === "offer_sent" || normalizedStatus === "negotiating";
+
+  const handleNegotiatingClick = () => {
+    router.push("/offer-signing");
+  };
+
+  const handleOfferPipelineClick = () => {
+    const targetId = offerRouteId || applicationId;
+    router.push(`/job-offer/${encodeURIComponent(targetId)}`);
+  };
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-6">
@@ -76,6 +91,30 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
                   </p>
                 )}
 
+                {isCurrent && subStatusLabel && (
+                  <button
+                    type="button"
+                    onClick={handleNegotiatingClick}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline transition-colors"
+                    aria-label="View and negotiate offer"
+                  >
+                    <span>Status: {subStatusLabel} (Click to view/negotiate offer)</span>
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                )}
+
+                {isCurrent && showOfferAction && (
+                  <button
+                    type="button"
+                    onClick={handleOfferPipelineClick}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900 hover:underline transition-colors"
+                    aria-label="Open offer pipeline"
+                  >
+                    <span>Status: Offer available (Click to open pipeline)</span>
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                )}
+
                 {isCompleted && (
                   <p className="text-xs text-green-700 mt-1">✓ Completed</p>
                 )}
@@ -106,14 +145,6 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
                           </p>
                           {interview.location_address && (
                             <p className="mt-1">{interview.location_address}</p>
-                          )}
-                          {interview.interview_type === "online" && interview.video_room_url && (
-                            <Link
-                              href="/interviews"
-                              className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
-                            >
-                              Join Meeting Room
-                            </Link>
                           )}
                         </div>
                       ))}
@@ -151,6 +182,8 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
             "Great! Your interview has been scheduled. Please check the details above."}
           {status === "interviewed" &&
             "Thank you for your interview! We're reviewing your performance and will be in touch soon."}
+          {status === "negotiating" &&
+            "Your offer is now in negotiation. Please review the offer details above and respond when ready."}
           {status === "offer_sent" &&
             "Excellent! We're pleased to extend you a job offer. Check your email for details."}
           {status === "hired" &&
@@ -162,41 +195,6 @@ export default function StatusTracker({ status, interviews, applicationId }: Sta
         </p>
       </div>
 
-      {/* Action: context-aware CTA */}
-      <div className="mt-4 flex justify-end">
-        {(() => {
-          const upcomingInterview = interviews.find(
-            (i) =>
-              isActiveInterview(i) &&
-              i.interview_type === "online" &&
-              i.video_room_url
-          );
-
-          if (upcomingInterview?.video_room_url) {
-            return (
-              <Link
-                href="/interviews"
-                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
-              >
-                🎥 Join Scheduled Interview
-              </Link>
-            );
-          }
-
-          if (applicationId) {
-            return (
-              <Link
-                href={`/applications/${applicationId}`}
-                className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:opacity-95"
-              >
-                View Application
-              </Link>
-            );
-          }
-
-          return null;
-        })()}
-      </div>
     </div>
   );
 }

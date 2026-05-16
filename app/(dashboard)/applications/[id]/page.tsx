@@ -40,6 +40,18 @@ function deriveNamesFromUser(user: {
   };
 }
 
+function isActiveSignedDocumentStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return ["sent", "pending", "negotiating"].includes(String(status).toLowerCase());
+}
+
+function isActiveJobOfferStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return ["sent", "negotiating", "pending_review", "pending", "negotiation_pending"].includes(
+    String(status).toLowerCase()
+  );
+}
+
 export default async function ApplicationDetailPage({
   params,
 }: {
@@ -67,6 +79,7 @@ export default async function ApplicationDetailPage({
     .select(`
       id,
       job_posting_id,
+      contract_offer_id,
       candidate_id,
       resume_id,
       status,
@@ -127,34 +140,6 @@ export default async function ApplicationDetailPage({
   }
 
   // ── Generate signed resume URL server-side (private bucket requires server auth) ──
-  let signedResumeUrl: string | null = null;
-
-  const resume = application.resumes as any;
-  if (resume?.pdf_url) {
-    try {
-      const fullUrl = resume.pdf_url;
-      const match = fullUrl.match(/\/resumes\/(.+)$/);
-      let filePath = match ? match[1] : null;
-
-      if (filePath) {
-        const cleanPath = decodeURIComponent(filePath.split('?')[0]).replace(/^\/+/, '');
-        const bucketName = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME!;
-        const resumeAdmin = getAdminClient(); 
-        const { data, error } = await resumeAdmin.storage
-          .from('resumes')
-          .createSignedUrl(cleanPath, 3600);
-
-        if (error) {
-          console.error("SERVER: Signed URL error:", error.message);
-        } else if (data?.signedUrl) {
-          signedResumeUrl = data.signedUrl;
-        }
-      }
-    } catch (err) {
-      console.error("SERVER: Resume URL generation failed:", err);
-    }
-  }
-
   // Fetch interviews for this application
   const { data: interviews, error: interviewError } = await supabase
   .from("interviews")
@@ -185,12 +170,116 @@ export default async function ApplicationDetailPage({
   `)
   .eq("application_id", id)
   .order("scheduled_at", { ascending: false }) as any;
-    // Add after the interviews fetch:
+
+  const { data: contractTemplates } = await supabase
+    .from("contract_templates")
+    .select("id, template_name, docuseal_template_id")
+    .eq("job_posting_id", application.job_posting_id)
+    .order("created_at", { ascending: false });
+
   const { data: jobOffer } = await supabase
-    .from("job_offers")
-    .select("*")
-    .eq("application_id", id)
+    .from("job_offer_applications")
+    .select("id")
+    .eq("application_id", application.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
+
+  const admin = getAdminClient();
+
+  const { data: latestJobOffer } = await admin
+    .from("job_offers")
+    .select("id, status, latest_docuseal_url, contract_template_id, created_at")
+    .eq("application_id", application.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: latestJobOfferTemplate } = latestJobOffer?.contract_template_id
+    ? await admin
+        .from("contract_templates")
+        .select("id, template_name, docuseal_template_id")
+        .eq("id", latestJobOffer.contract_template_id)
+        .maybeSingle()
+    : { data: null };
+
+  const offerSelect = `
+          id,
+          status,
+          signing_method,
+          docuseal_submission_url,
+          contract_template_id,
+          signed_at,
+          contract_templates (
+            id,
+            template_name,
+            docuseal_template_id
+          )
+        `;
+
+  const { data: activeContractOfferById } = application.contract_offer_id
+    ? await admin
+        .from("signed_documents")
+        .select(offerSelect)
+        .eq("id", application.contract_offer_id)
+        .maybeSingle()
+    : { data: null };
+
+  const { data: latestContractOfferByApplication } = activeContractOfferById
+    ? { data: null }
+    : await admin
+        .from("signed_documents")
+        .select(offerSelect)
+        .eq("application_id", application.id)
+        .in("status", ["sent", "pending"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+  const activeContractOffer = isActiveSignedDocumentStatus(activeContractOfferById?.status)
+    ? activeContractOfferById
+    : latestContractOfferByApplication;
+
+  const resolvedActiveContractOffer = activeContractOffer
+    ? activeContractOffer
+    : latestJobOffer && isActiveJobOfferStatus(latestJobOffer.status)
+      ? {
+          id: latestJobOffer.id,
+          status: String(latestJobOffer.status || "sent").toLowerCase(),
+          signing_method: "digital",
+          signed_at: null,
+          docuseal_submission_url: latestJobOffer.latest_docuseal_url ?? null,
+          contract_template_id: latestJobOffer.contract_template_id ?? "",
+          contract_templates: latestJobOfferTemplate
+            ? [latestJobOfferTemplate]
+            : [],
+        }
+      : null;
+
+  console.log("[ApplicationDetailPage] Contract offer lookup:", {
+    applicationId: application.id,
+    contractOfferId: application.contract_offer_id ?? null,
+    resolvedOfferId: resolvedActiveContractOffer?.id ?? null,
+    resolvedStatus: resolvedActiveContractOffer?.status ?? null,
+    fallbackJobOfferId: latestJobOffer?.id ?? null,
+  });
+
+  const normalizedActiveContractOffer = resolvedActiveContractOffer
+    ? {
+        ...resolvedActiveContractOffer,
+        contract_templates: Array.isArray(resolvedActiveContractOffer.contract_templates)
+          ? resolvedActiveContractOffer.contract_templates
+          : resolvedActiveContractOffer.contract_templates
+            ? [resolvedActiveContractOffer.contract_templates]
+            : null,
+      }
+    : null;
+
+  const offerRouteId =
+    normalizedActiveContractOffer?.id ??
+    latestJobOffer?.id ??
+    jobOffer?.id ??
+    application.id;
 
   return (
     <PageContainer>
@@ -199,8 +288,10 @@ export default async function ApplicationDetailPage({
         interviews={interviews ?? []}
         userRole={role}
         isCurrentUser={!isHR}
-        signedResumeUrl={signedResumeUrl}
-        jobOffer={jobOffer ?? null} 
+        contractTemplates={contractTemplates ?? []}
+        activeContractOffer={normalizedActiveContractOffer}
+        offerId={jobOffer?.id ?? null}
+        offerRouteId={offerRouteId}
       />
     </PageContainer>
   );

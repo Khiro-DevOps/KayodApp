@@ -4,14 +4,26 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
-export async function login(formData: FormData) {
+export async function login(
+  _prevState: { error: string | null; success: boolean },
+  formData: FormData
+) {
   const supabase = await createClient();
   const email    = formData.get("email") as string;
   const password = formData.get("password") as string;
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
-  redirect("/dashboard");
+  if (error) {
+    return {
+      error: error.message,
+      success: false,
+    };
+  }
+
+  return {
+    error: null,
+    success: true,
+  };
 }
 
 function formatPhilippinesPhone(value: string) {
@@ -36,7 +48,7 @@ function formatPhilippinesPhone(value: string) {
 }
 
 export async function register(formData: FormData) {
-  const supabase = await createServerActionClient({ cookies });
+  const supabase = await createClient();
 
   // 1. Extract form data
   const email = formData.get("email") as string;
@@ -57,9 +69,9 @@ export async function register(formData: FormData) {
   // 2. If HR, create the Tenant (Company) first
   if (role === "hr_manager" && companyName) {
     const { data: tenant, error: tenantError } = await supabase
-      .from('tenants')
+      .from("tenants")
       .insert({ name: companyName })
-      .select('id')
+      .select("id")
       .single();
 
     if (tenantError) {
@@ -70,6 +82,7 @@ export async function register(formData: FormData) {
 
   // 3. Sign up the Auth user
   // This triggers your 'handle_new_user' function in Postgres
+  // NOTE: tenant_id is passed in metadata to be extracted by the trigger
   const { error: signUpError } = await supabase.auth.signUp({
     email,
     password,
@@ -84,7 +97,8 @@ export async function register(formData: FormData) {
         address: address,
         city: city,
         country: country,
-        tenant_id: tenantId, // Passed to metadata for the SQL trigger
+        // Pass tenant_id to the trigger so it saves to profiles.tenant_id
+        tenant_id: tenantId,
       },
     },
   });

@@ -113,6 +113,7 @@ export default function ApplicantsListClient({
           event: "*",
           schema: "public",
           table: "interviews",
+          filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
         },
         (payload) => {
           if (payload.eventType === "DELETE") {

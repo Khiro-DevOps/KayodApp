@@ -1,20 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import type { Application, JobPosting } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import type { Application, JobPosting, EmploymentType, WorkSetup } from "@/lib/types";
 import { configureInterviewAvailability, updateApplicationEvaluation } from "./application-detail-actions";
+import { sendJobOffer, withdrawJobOffer } from "../jobs/manage/[id]/applicants/actions";
+import { createJobOffer } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { toast } from "sonner";
 
 interface EvaluationSidebarProps {
   application: Application;
   job: JobPosting;
   onStatusUpdate: () => void;
+  contractTemplates: Array<{
+    id: string;
+    template_name: string | null;
+    docuseal_template_id: string;
+  }>;
+  activeContractOffer: {
+    id: string;
+    status: string;
+    signing_method: string;
+    contract_template_id: string;
+    signed_at: string | null;
+    contract_templates?: Array<{
+      id: string;
+      template_name: string | null;
+      docuseal_template_id: string;
+    }> | null;
+  } | null;
 }
 
 export default function EvaluationSidebar({
   application,
   job,
   onStatusUpdate,
+  contractTemplates,
+  activeContractOffer,
 }: EvaluationSidebarProps) {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [hrNotes, setHrNotes] = useState(application?.hr_notes || "");
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -26,6 +50,29 @@ export default function EvaluationSidebar({
     application?.hr_offered_modes?.includes("in_person") ?? false
   );
   const [officeAddress, setOfficeAddress] = useState(application?.hr_office_address || "");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(
+    activeContractOffer?.contract_template_id || contractTemplates[0]?.id || ""
+  );
+  const [signingMethod, setSigningMethod] = useState<string>(
+    activeContractOffer?.signing_method || "digital"
+  );
+  const [offerNotes, setOfferNotes] = useState("");
+  const [offerError, setOfferError] = useState<string | null>(null);
+  const [isSendingOffer, setIsSendingOffer] = useState(false);
+  const [isWithdrawingOffer, setIsWithdrawingOffer] = useState(false);
+
+  // New Offer Form State
+  const [showNewOfferForm, setShowNewOfferForm] = useState(false);
+  const [newOfferError, setNewOfferError] = useState<string | null>(null);
+  const [isCreatingOffer, setIsCreatingOffer] = useState(false);
+  const [salary, setSalary] = useState<number | "">(job?.salary_min || "");
+  const [currency, setCurrency] = useState(job?.currency || "PHP");
+  const [employmentType, setEmploymentType] = useState<EmploymentType>((job?.employment_type as EmploymentType) || "full-time");
+  const [startDate, setStartDate] = useState("");
+  const [workArrangement, setWorkArrangement] = useState<WorkSetup>("hybrid");
+  const [expiryDays, setExpiryDays] = useState(7);
+  const [benefits, setBenefits] = useState<string[]>([]);
+  const [newBenefit, setNewBenefit] = useState("");
 
   const statusConfig: Record<
     string,
@@ -37,7 +84,7 @@ export default function EvaluationSidebar({
     }
   > = {
     submitted: {
-      label: "Under Review",
+      label: "Submitted",
       color: "text-blue-700",
       bgColor: "bg-blue-50",
       nextActions: [
@@ -52,7 +99,6 @@ export default function EvaluationSidebar({
       nextActions: [
         { label: "Mark as Interviewed", status: "interviewed", color: "bg-purple-500" },
         { label: "Shortlist", status: "shortlisted", color: "bg-yellow-500" },
-        { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },
@@ -80,7 +126,6 @@ export default function EvaluationSidebar({
       bgColor: "bg-purple-50",
       nextActions: [
         { label: "Move to Review", status: "under_review", color: "bg-blue-500" },
-        { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },
@@ -98,7 +143,6 @@ export default function EvaluationSidebar({
       color: "text-purple-700",
       bgColor: "bg-purple-50",
       nextActions: [
-        { label: "Send Offer", status: "offer_sent", color: "bg-green-500" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },
@@ -118,6 +162,7 @@ export default function EvaluationSidebar({
 
   const config = statusConfig[application?.status] || statusConfig.submitted;
   const nextActions = config.nextActions;
+  const matchScore = application?.match_score ?? null;
 
   const handleStatusChange = async (newStatus: string) => {
     setIsLoading(true);
@@ -172,12 +217,122 @@ export default function EvaluationSidebar({
     }
   };
 
+  const handleSendOffer = async () => {
+    setOfferError(null);
+
+    if (!selectedTemplateId) {
+      setOfferError("Choose a contract template before sending an offer.");
+      return;
+    }
+
+    setIsSendingOffer(true);
+    try {
+      const formData = new FormData();
+      formData.append("application_id", application.id);
+      formData.append("contract_template_id", selectedTemplateId);
+      formData.append("signing_method", signingMethod);
+      if (offerNotes.trim()) {
+        formData.append("notes", offerNotes.trim());
+      }
+
+      const result = await sendJobOffer(formData);
+      if (!result?.success) {
+        setOfferError(result?.error || "Failed to send job offer");
+        toast.error(result?.error || "Failed to send job offer");
+        return;
+      }
+
+      setOfferNotes("");
+      toast.success("Success: Offer has been sent to the applicant.");
+      onStatusUpdate();
+    } finally {
+      setIsSendingOffer(false);
+    }
+  };
+
+  const handleWithdrawOffer = async () => {
+    setOfferError(null);
+    setIsWithdrawingOffer(true);
+    try {
+      const formData = new FormData();
+      formData.append("application_id", application.id);
+
+      const result = await withdrawJobOffer(formData);
+      if (!result?.success) {
+        setOfferError(result?.error || "Failed to withdraw job offer");
+        return;
+      }
+
+      onStatusUpdate();
+    } finally {
+      setIsWithdrawingOffer(false);
+    }
+  };
+
+  const handleCreateNewOffer = async () => {
+    setNewOfferError(null);
+
+    if (!salary) {
+      setNewOfferError("Salary is required");
+      return;
+    }
+
+    if (!startDate) {
+      setNewOfferError("Start date is required");
+      return;
+    }
+
+    if (expiryDays < 1 || expiryDays > 90) {
+      setNewOfferError("Expiry days must be between 1 and 90");
+      return;
+    }
+
+    setIsCreatingOffer(true);
+    try {
+      const terms = {
+        salary: Number(salary),
+        currency,
+        employmentType,
+        startDate,
+        workArrangement,
+        department: (job as any)?.department || "General",
+        manager: "", // Optional - can be set later
+        benefits,
+        notes: "",
+      };
+
+      const result = await createJobOffer(application.id, terms, expiryDays);
+
+      if (!result.success) {
+        setNewOfferError(result.error || "Failed to create job offer");
+        return;
+      }
+
+      toast.success("Job offer created successfully!");
+      router.push(`/job-offer/${result.offerId}`);
+    } catch (error) {
+      setNewOfferError(error instanceof Error ? error.message : "Failed to create job offer");
+    } finally {
+      setIsCreatingOffer(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Current Status */}
       <div className={`rounded-2xl border border-border ${config.bgColor} p-6`}>
         <p className="text-xs font-medium uppercase text-text-secondary mb-2">Current Status</p>
         <p className={`text-lg font-bold ${config.color} capitalize`}>{config.label}</p>
+        {matchScore !== null && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-text-primary">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                matchScore >= 70 ? "bg-green-500" : matchScore >= 40 ? "bg-yellow-500" : "bg-red-500"
+              }`}
+            />
+            Resume match {matchScore}%
+          </div>
+        )}
         <p className="text-xs text-text-secondary mt-3">
           Last updated {new Date(application?.updated_at).toLocaleDateString()}
         </p>
@@ -188,24 +343,24 @@ export default function EvaluationSidebar({
         <div>
           <p className="text-xs font-medium uppercase text-text-secondary mb-2">Match Score</p>
           <div className="flex items-center gap-3">
-            {application?.match_score !== null && (
+            {matchScore !== null ? (
               <>
-                <div className="text-2xl font-bold text-text-primary">
-                  {application?.match_score}%
-                </div>
+                <div className="text-2xl font-bold text-text-primary">{matchScore}%</div>
                 <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
                   <div
                     className={`h-full transition-all ${
-                      application.match_score >= 70
+                      matchScore >= 70
                         ? "bg-green-500"
-                        : application.match_score >= 40
+                        : matchScore >= 40
                         ? "bg-yellow-500"
                         : "bg-red-500"
                     }`}
-                    style={{ width: `${application.match_score}%` }}
+                    style={{ width: `${matchScore}%` }}
                   />
                 </div>
               </>
+            ) : (
+              <p className="text-sm text-text-secondary">Match score not available</p>
             )}
           </div>
         </div>
@@ -332,6 +487,255 @@ export default function EvaluationSidebar({
         </button>
       </div>
 
+      {/* Job Offer */}
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <div>
+          <p className="text-xs font-medium uppercase text-text-secondary mb-1">Job Offer</p>
+          <p className="text-xs text-text-secondary">
+            Prepare and send the contract-backed offer for this applicant.
+          </p>
+        </div>
+
+        {activeContractOffer ? (
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-2">
+            <p className="text-sm font-semibold text-green-800">Active offer</p>
+            <p className="text-xs text-green-700">
+              Status: {activeContractOffer.status}
+            </p>
+            <p className="text-xs text-green-700">
+              Template: {activeContractOffer.contract_templates?.[0]?.template_name || "Unnamed template"}
+            </p>
+            {activeContractOffer.status === "sent" && (
+              <button
+                type="button"
+                onClick={handleWithdrawOffer}
+                disabled={isWithdrawingOffer}
+                className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                {isWithdrawingOffer ? "Withdrawing..." : "Withdraw Offer"}
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <label className="text-xs text-text-secondary">Contract Template</label>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Select a template</option>
+                {contractTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.template_name || template.docuseal_template_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-text-secondary">Signing Method</label>
+              <select
+                value={signingMethod}
+                onChange={(e) => setSigningMethod(e.target.value)}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="digital">Digital</option>
+                <option value="in_person">In Person</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-text-secondary">Internal Notes</label>
+              <textarea
+                value={offerNotes}
+                onChange={(e) => setOfferNotes(e.target.value)}
+                rows={3}
+                placeholder="Optional notes for the offer record"
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              />
+            </div>
+
+            {offerError && (
+              <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{offerError}</p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSendOffer}
+              disabled={isSendingOffer || !selectedTemplateId}
+              className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            >
+              {isSendingOffer ? "Sending..." : "Send Job Offer"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* New Job Offer - Full Negotiation & DocuSeal */}
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <div>
+          <p className="text-xs font-medium uppercase text-text-secondary mb-1">New Job Offer</p>
+          <p className="text-xs text-text-secondary">
+            Create a negotiable offer with digital signing via DocuSeal.
+          </p>
+        </div>
+
+        {!showNewOfferForm ? (
+          <button
+            type="button"
+            onClick={() => setShowNewOfferForm(true)}
+            className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+          >
+            Create New Offer
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs text-text-secondary">Salary</label>
+                <input
+                  type="number"
+                  value={salary}
+                  onChange={(e) => setSalary(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="0"
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-text-secondary">Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="PHP">PHP</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-text-secondary">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs text-text-secondary">Employment Type</label>
+                <select
+                  value={employmentType}
+                  onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="full-time">Full-time</option>
+                  <option value="part-time">Part-time</option>
+                  <option value="contract">Contract</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-text-secondary">Work Arrangement</label>
+                <select
+                  value={workArrangement}
+                  onChange={(e) => setWorkArrangement(e.target.value as WorkSetup)}
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="onsite">Onsite</option>
+                  <option value="wfh">WFH</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-text-secondary">Expiry (days)</label>
+              <input
+                type="number"
+                value={expiryDays}
+                onChange={(e) => setExpiryDays(Math.max(1, Math.min(90, Number(e.target.value))))}
+                min="1"
+                max="90"
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <p className="text-xs text-text-tertiary">Offer expires in {expiryDays} days</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-text-secondary">Benefits</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newBenefit}
+                  onChange={(e) => setNewBenefit(e.target.value)}
+                  placeholder="e.g., Health insurance"
+                  className="flex-1 rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newBenefit.trim()) {
+                      setBenefits([...benefits, newBenefit.trim()]);
+                      setNewBenefit("");
+                    }
+                  }}
+                  className="rounded-xl border border-primary bg-primary/5 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10"
+                >
+                  Add
+                </button>
+              </div>
+              {benefits.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {benefits.map((benefit, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-xs"
+                    >
+                      <span>{benefit}</span>
+                      <button
+                        type="button"
+                        onClick={() => setBenefits(benefits.filter((_, i) => i !== idx))}
+                        className="text-primary hover:text-primary-dark"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {newOfferError && (
+              <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{newOfferError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowNewOfferForm(false)}
+                className="flex-1 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateNewOffer}
+                disabled={isCreatingOffer}
+                className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isCreatingOffer ? "Creating..." : "Create & Send"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Action Buttons */}
       <div className="rounded-2xl border border-border bg-surface p-6 space-y-3">
         <div>
@@ -396,9 +800,19 @@ export default function EvaluationSidebar({
         <p className="text-xs font-medium uppercase text-text-secondary mb-4">Timeline</p>
         <div className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <span className="text-text-secondary">Applied:</span>
+            <span className="text-text-secondary">Status:</span>
+            <span className="text-text-primary font-medium capitalize">{config.label}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-secondary">Submitted:</span>
             <span className="text-text-primary font-medium">
               {new Date(application?.submitted_at).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-secondary">Last Updated:</span>
+            <span className="text-text-primary font-medium">
+              {new Date(application?.updated_at).toLocaleDateString()}
             </span>
           </div>
           <div className="flex justify-between">

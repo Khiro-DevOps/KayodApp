@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { withdrawApplication } from "./actions";
 import { createClient } from "@/lib/supabase/client";
@@ -21,8 +20,6 @@ type ApplicationsListItem = {
 };
 
 type ApplicationsInterviewItem = {
-  id: string;
-  application_id: string;
   interview_type: "online" | "in_person";
   status: string;
   scheduled_at: string;
@@ -34,12 +31,11 @@ const statusConfig: Record<string, { label: string; classes: string }> = {
   submitted: { label: "Submitted", classes: "bg-blue-50 text-info" },
   under_review: { label: "Under Review", classes: "bg-amber-50 text-amber-700" },
   shortlisted: { label: "Shortlisted", classes: "bg-yellow-50 text-warning" },
-  interview_scheduled: { label: "Interview Scheduled", classes: "bg-purple-50 text-purple-600" },
-  interviewed: { label: "Interviewed", classes: "bg-indigo-50 text-indigo-700" },
-  offer_sent: { label: "Offer Sent", classes: "bg-emerald-50 text-emerald-700" },
+  interview_scheduled: { label: "Interview Scheduled", classes: "bg-purple-50 text-purple-700" },
+  interviewed: { label: "Interviewed", classes: "bg-purple-50 text-purple-700" },
+  offer_sent: { label: "Offer Sent", classes: "bg-green-50 text-success" },
   hired: { label: "Hired", classes: "bg-green-50 text-success" },
   rejected: { label: "Rejected", classes: "bg-red-50 text-danger" },
-  withdrawn: { label: "Withdrawn", classes: "bg-gray-100 text-text-secondary" },
 };
 
 function ApplicationsList({
@@ -49,21 +45,16 @@ function ApplicationsList({
   applications: ApplicationsListItem[];
   interviewMap: Record<string, ApplicationsInterviewItem>;
 }) {
-  const searchParams = useSearchParams();
-  const success = searchParams.get("success");
-
-  if (applications.length === 0 && !success) return null;
-
   return (
-    <div className="max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
-      <div className="space-y-3 pb-4">
-        {success && (
-          <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-sm text-success">
-            {success}
-          </div>
-        )}
-
-        {applications.map((app) => {
+    <div className="space-y-3">
+      {applications.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+          <p className="text-sm text-text-secondary">
+            You haven&apos;t applied to any jobs yet. Browse available positions to get started.
+          </p>
+        </div>
+      ) : (
+        applications.map((app) => {
           const job = app.job_postings as unknown as {
             id: string;
             title: string;
@@ -118,10 +109,7 @@ function ApplicationsList({
                   interview && (
                     <div className="rounded-xl bg-purple-50 p-3 space-y-1">
                       <p className="text-xs font-medium text-purple-700">
-                        Interview:{" "}
-                        {new Date(
-                          interview.scheduled_at
-                        ).toLocaleString()}
+                        Interview: {new Date(interview.scheduled_at).toLocaleString()}
                       </p>
                       {interview.interviewer_notes && (
                         <p className="text-xs text-purple-600">
@@ -155,8 +143,8 @@ function ApplicationsList({
               </div>
             </Link>
           );
-        })}
-      </div>
+        })
+      )}
     </div>
   );
 }
@@ -164,113 +152,69 @@ function ApplicationsList({
 export default function ApplicationsClient({
   applications,
   interviewMap,
+  candidateId,
 }: {
   applications: ApplicationsListItem[];
   interviewMap: Record<string, ApplicationsInterviewItem>;
+  candidateId: string;
 }) {
-  const [liveApplications, setLiveApplications] = useState<ApplicationsListItem[]>(applications);
-  const [liveInterviewMap, setLiveInterviewMap] = useState<Record<string, ApplicationsInterviewItem>>(interviewMap);
-  const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
-
-  useEffect(() => {
-    setLiveApplications(applications);
-    applicationIdsRef.current = new Set(applications.map((app) => app.id));
-  }, [applications]);
-
-  useEffect(() => {
-    setLiveInterviewMap(interviewMap);
-  }, [interviewMap]);
+  const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
+
+    const applicationIds = applications.map((app) => app.id);
 
     const channel = supabase
       .channel("candidate-applications-live")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "applications" },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
-            if (!deletedId) return;
-
-            if (applicationIdsRef.current.has(deletedId)) {
-              setLiveApplications((prev) => prev.filter((app) => app.id !== deletedId));
-              setLiveInterviewMap((prev) => {
-                const next = { ...prev };
-                delete next[deletedId];
-                return next;
-              });
-              applicationIdsRef.current.delete(deletedId);
-            }
-
-            return;
-          }
-
-          const changed = payload.new as Partial<ApplicationsListItem> | null;
-          if (!changed?.id || !applicationIdsRef.current.has(changed.id)) return;
-
-          setLiveApplications((prev) => {
-            const index = prev.findIndex((app) => app.id === changed.id);
-            if (index === -1) return prev;
-
-            const next = [...prev];
-            next[index] = { ...next[index], ...changed };
-            return next;
-          });
+        {
+          event: "*",
+          schema: "public",
+          table: "applications",
+          filter: `candidate_id=eq.${candidateId}`
+        },
+        () => {
+          router.refresh();
         }
       )
-      .on(
+    if (applicationIds.length > 0) {
+      channel.on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "interviews" },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deletedApplicationId = String(
-              (payload.old as { application_id?: string } | null)?.application_id ?? ""
-            );
-            if (!deletedApplicationId || !applicationIdsRef.current.has(deletedApplicationId)) return;
-
-            setLiveInterviewMap((prev) => {
-              const next = { ...prev };
-              delete next[deletedApplicationId];
-              return next;
-            });
-            return;
-          }
-
-          const changed = payload.new as ApplicationsInterviewItem | null;
-          if (!changed?.application_id || !applicationIdsRef.current.has(changed.application_id)) return;
-
-          setLiveInterviewMap((prev) => ({
-            ...prev,
-            [changed.application_id]: {
-              ...prev[changed.application_id],
-              ...changed,
-            },
-          }));
+        {
+          event: "*",
+          schema: "public",
+          table: "interviews",
+          filter: `application_id=in.(${applicationIds.join(",")})`
+        },
+        () => {
+          router.refresh();
         }
-      )
-      .subscribe((status, err) => {
-        if (status === "CHANNEL_ERROR") {
-          console.error("candidate-applications-live channel error:", err);
-        }
-        if (status === "TIMED_OUT") {
-          console.warn("candidate-applications-live channel timed out, retrying...");
-        }
-      });
+      );
+    }
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("candidate-applications-live channel error: subscription failed");
+      }
+      if (status === "TIMED_OUT") {
+        console.warn("candidate-applications-live channel timed out, retrying...");
+      }
+    });
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [applications, candidateId, router]);
 
   return (
     <Suspense
       fallback={<div className="text-sm text-text-secondary">Loading...</div>}
     >
       <ApplicationsList
-        applications={liveApplications}
-        interviewMap={liveInterviewMap}
+        applications={applications}
+        interviewMap={interviewMap}
       />
     </Suspense>
   );

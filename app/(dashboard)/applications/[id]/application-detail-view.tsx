@@ -24,6 +24,10 @@ export default function ApplicationDetailView({
   const job = application.job_postings as any;
   const resume = application.resumes as any;
   const status = application.status;
+  const normalizedStatus = String(status || "").toLowerCase();
+  const showOfferDetails = normalizedStatus === "offer_sent" || normalizedStatus === "negotiating";
+  const offerStatusLabel = normalizedStatus === "negotiating" ? "Negotiating" : "Offer Sent";
+  const offerActionLabel = normalizedStatus === "negotiating" ? "Continue Negotiation" : "Review Offer";
 
   const getStatusStyle = (s: string) => {
     switch (s) {
@@ -84,6 +88,29 @@ export default function ApplicationDetailView({
                   )}
                 </div>
               ))}
+            </section>
+          )}
+
+          {showOfferDetails && (
+            <section className="bg-blue-50 border border-blue-100 rounded-2xl p-6">
+              <h2 className="text-lg font-bold text-blue-900 mb-4">Offer Details</h2>
+              <div className="space-y-3 pb-4 border-b border-blue-100 last:border-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                  <span className="bg-blue-200 text-blue-800 text-xs font-bold px-2 py-1 rounded">
+                    {offerStatusLabel.toUpperCase()}
+                  </span>
+                  <p className="font-medium text-blue-900">
+                    Your offer is ready for signing or negotiation.
+                  </p>
+                </div>
+                <Link
+                  href="/offer-signing"
+                  className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors font-semibold"
+                >
+                  <span>📝</span>
+                  <span>{offerActionLabel}</span>
+                </Link>
+              </div>
             </section>
           )}
 

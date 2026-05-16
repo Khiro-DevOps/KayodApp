@@ -52,7 +52,8 @@ export default async function InterviewPage({
     .maybeSingle();
 
   const applicant = application.profiles as unknown as {
-    full_name: string;
+    first_name: string;
+    last_name: string;
     email: string;
   } | null;
 
@@ -98,11 +99,11 @@ export default async function InterviewPage({
         <div className="rounded-2xl bg-surface border border-border p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
-              {applicant?.full_name?.charAt(0)?.toUpperCase() || "?"}
+              {applicant?.first_name?.charAt(0)?.toUpperCase() || "?"}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-text-primary truncate">
-                {applicant?.full_name || "Unknown"}
+                {[applicant?.first_name, applicant?.last_name].filter(Boolean).join(" ") || "Unknown"}
               </p>
               <p className="text-xs text-text-secondary truncate">
                 {applicant?.email || ""}
@@ -158,6 +159,14 @@ export default async function InterviewPage({
             {interview ? "Update Interview" : "Schedule Interview"}
           </button>
         </form>
+
+        {/* Create offer button */}
+        <Link
+          href={`/jobs/manage/${id}/applicants/${appId}/interview/offer`}
+          className="block rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-green-700 transition-colors"
+        >
+          🎉 Create Job Offer
+        </Link>
       </div>
     </PageContainer>
   );

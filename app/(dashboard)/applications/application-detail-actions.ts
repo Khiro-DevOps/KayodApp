@@ -311,3 +311,130 @@ export async function markAsHired(applicationId: string) {
   revalidatePath("/applications");
   revalidatePath(`/applications/${applicationId}`);
 }
+
+export async function acceptJobOffer(formData: FormData) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const applicationId = formData.get("application_id") as string;
+    const signatureData = formData.get("signature_data") as string | null;
+
+    if (!applicationId) {
+      return { success: false, error: "Application ID is required" };
+    }
+
+    // Verify the application belongs to the user
+    const { data: application } = await supabase
+      .from("applications")
+      .select("id, candidate_id")
+      .eq("id", applicationId)
+      .single();
+
+    if (!application || application.candidate_id !== user.id) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // Update the contract offer status to signed
+    const { error: updateError } = await supabase
+      .from("contract_offers")
+      .update({
+        status: "signed",
+        signed_at: new Date().toISOString(),
+        signature_data: signatureData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("application_id", applicationId);
+
+    if (updateError) {
+      return { success: false, error: `Failed to accept offer: ${updateError.message}` };
+    }
+
+    // Update application status to offer_accepted
+    const { error: appError } = await supabase
+      .from("applications")
+      .update({
+        status: "offer_accepted",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", applicationId);
+
+    if (appError) {
+      return { success: false, error: `Failed to update application: ${appError.message}` };
+    }
+
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${applicationId}`);
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "An error occurred" };
+  }
+}
+
+export async function declineJobOffer(formData: FormData) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const applicationId = formData.get("application_id") as string;
+    const reason = formData.get("reason") as string | null;
+
+    if (!applicationId) {
+      return { success: false, error: "Application ID is required" };
+    }
+
+    // Verify the application belongs to the user
+    const { data: application } = await supabase
+      .from("applications")
+      .select("id, candidate_id")
+      .eq("id", applicationId)
+      .single();
+
+    if (!application || application.candidate_id !== user.id) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // Update the contract offer status to declined
+    const { error: updateError } = await supabase
+      .from("contract_offers")
+      .update({
+        status: "declined",
+        declined_reason: reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("application_id", applicationId);
+
+    if (updateError) {
+      return { success: false, error: `Failed to decline offer: ${updateError.message}` };
+    }
+
+    // Update application status to offer_declined
+    const { error: appError } = await supabase
+      .from("applications")
+      .update({
+        status: "offer_declined",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", applicationId);
+
+    if (appError) {
+      return { success: false, error: `Failed to update application: ${appError.message}` };
+    }
+
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${applicationId}`);
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "An error occurred" };
+  }
+}

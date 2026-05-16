@@ -27,7 +27,6 @@ export default async function CreateOfferPage({
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  // Verify job exists
   const { data: job } = await supabase
     .from("job_postings")
     .select("id, title, salary_min, salary_max, currency, employment_type, location, is_remote, departments(name)")
@@ -36,25 +35,20 @@ export default async function CreateOfferPage({
 
   if (!job) notFound();
 
-  // Verify application exists and belongs to this job
   const { data: application } = await supabase
     .from("applications")
-    .select(`
-      id, status,
-      profiles ( id, first_name, last_name, email )
-    `)
+    .select(`id, status, profiles!applications_candidate_id_fkey ( id, first_name, last_name, email )`)
     .eq("id", appId)
     .eq("job_posting_id", id)
     .single();
 
   if (!application) notFound();
 
-  // Guard — only allow offer creation for negotiating applicants
-  if (application.status !== "negotiating") {
+  const allowedStatuses = ["negotiating", "interviewed", "under_review"];
+  if (!allowedStatuses.includes(application.status)) {
     redirect(`/jobs/manage/${id}/applicants`);
   }
 
-  // Check for existing draft offer
   const { data: existingOffer } = await supabase
     .from("job_offers")
     .select("*")
@@ -67,10 +61,9 @@ export default async function CreateOfferPage({
   return (
     <PageContainer>
       <div className="space-y-5 max-w-xl mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <Link
-            href={`/jobs/manage/${id}/applicants`}
+            href={`/jobs/manage/${id}/applicants/${appId}/interview`}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -85,7 +78,6 @@ export default async function CreateOfferPage({
           </div>
         </div>
 
-        {/* Candidate info */}
         <div className="rounded-2xl bg-surface border border-border p-4 flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
             {candidate?.first_name?.charAt(0)?.toUpperCase() ?? "?"}
