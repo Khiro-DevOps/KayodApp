@@ -214,7 +214,7 @@ export default function ApplicantActionPanel({ offer }: Props) {
 
       {/* DocuSeal Embed */}
       {showDocuSeal && submissionUrl && (
-        <DocuSealEmbed submissionUrl={submissionUrl} onClose={() => setShowDocuSeal(false)} />
+        <DocuSealEmbed latest_docuseal_url={submissionUrl} onClose={() => setShowDocuSeal(false)} />
       )}
     </div>
   );
