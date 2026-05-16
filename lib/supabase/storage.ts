@@ -1,8 +1,14 @@
 const DEFAULT_RESUME_BUCKET_NAME = "resumes";
+const DEFAULT_CONTRACT_BUCKET_NAME = "contracts";
 
 export function getResumeBucketName() {
   const configuredName = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME?.trim();
   return configuredName || DEFAULT_RESUME_BUCKET_NAME;
+}
+
+export function getContractBucketName() {
+  const configuredName = process.env.NEXT_PUBLIC_SUPABASE_CONTRACT_BUCKET_NAME?.trim();
+  return configuredName || DEFAULT_CONTRACT_BUCKET_NAME;
 }
 
 function getPublicObjectPrefix(bucketName: string) {
