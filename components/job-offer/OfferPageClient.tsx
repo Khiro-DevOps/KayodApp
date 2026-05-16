@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
 import SigningModal from "@/components/job-offer/SigningModal";
-import { normalizeDocusealEmbedUrl } from "@/lib/docuseal";
+import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 
 interface OfferSummary {
   status: string;
@@ -29,6 +29,8 @@ interface OfferPageClientProps {
   currency: string;
   hrEmail?: string | null;
   signingUrl?: string | null;
+  embedSrc?: string | null;
+  docusealEmbedError?: string | null;
   signedPdfUrl?: string | null;
 }
 
@@ -230,11 +232,16 @@ export default function OfferPageClient({
   currency,
   hrEmail,
   signingUrl,
+  embedSrc,
+  docusealEmbedError,
   signedPdfUrl,
 }: OfferPageClientProps) {
   const router = useRouter();
   const signSectionRef = useRef<HTMLDivElement>(null);
   const [signingOpen, setSigningOpen] = useState(false);
+  const [resolvedEmbedSrc, setResolvedEmbedSrc] = useState(embedSrc?.trim() || null);
+  const [embedLoadError, setEmbedLoadError] = useState(docusealEmbedError?.trim() || null);
+  const [isResolvingEmbedSrc, setIsResolvingEmbedSrc] = useState(false);
 
   useEffect(() => {
     if (!signingOpen) {
@@ -247,6 +254,25 @@ export default function OfferPageClient({
 
     return () => window.clearInterval(intervalId);
   }, [router, signingOpen]);
+
+  useEffect(() => {
+    setResolvedEmbedSrc(embedSrc?.trim() || null);
+    setEmbedLoadError(docusealEmbedError?.trim() || null);
+  }, [docusealEmbedError, embedSrc]);
+
+  const handleRetryDocusealEmbed = async () => {
+    setIsResolvingEmbedSrc(true);
+    try {
+      const nextEmbedSrc = await getOrCreateDocusealEmbedSrc(token);
+      setResolvedEmbedSrc(nextEmbedSrc);
+      setEmbedLoadError(null);
+    } catch (error) {
+      console.error("[OfferPageClient] Failed to resolve DocuSeal embed source", error);
+      setEmbedLoadError(error instanceof Error ? error.message : "Unable to load signing form. Please try refreshing the page.");
+    } finally {
+      setIsResolvingEmbedSrc(false);
+    }
+  };
 
   const status = offer.status.toLowerCase();
   const canSign = Boolean(signingUrl) && status !== "signed";
@@ -288,7 +314,7 @@ export default function OfferPageClient({
               <h3 className="mb-1 text-base font-medium text-text-primary">Sign your contract</h3>
               <p className="mb-4 text-sm text-text-secondary">Ready to accept? Sign your offer letter digitally - takes under 2 minutes.</p>
 
-                {showSignedBanner ? (
+              {showSignedBanner ? (
                 <div className="rounded-xl border border-green-200 bg-green-50 p-4">
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 h-5 w-5 text-green-600" />
@@ -310,27 +336,33 @@ export default function OfferPageClient({
                   ) : null}
                 </div>
               ) : canSign ? (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-start gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSigningOpen(true)}
-                    className="inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark w-full sm:w-auto"
-                  >
-                    <PenLine className="mr-2 h-4 w-4" />
-                    Sign now
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => window.open(signingUrl!, "_blank", "noopener,noreferrer")}
-                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-5 py-2.5 text-sm font-medium text-text-primary transition-colors hover:bg-slate-50 w-full sm:w-auto"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Open in new tab
-                  </button>
-                  <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
-                    Secured by DocuSeal
-                  </span>
-                </div>
+                resolvedEmbedSrc ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => setSigningOpen(true)}
+                      className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark sm:w-auto"
+                    >
+                      <PenLine className="mr-2 h-4 w-4" />
+                      Sign now
+                    </button>
+                    <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
+                      Secured by DocuSeal
+                    </span>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                    <p className="text-sm font-medium text-red-800">{embedLoadError ?? "Unable to load signing form. Please try refreshing the page."}</p>
+                    <button
+                      type="button"
+                      onClick={handleRetryDocusealEmbed}
+                      disabled={isResolvingEmbedSrc}
+                      className="mt-3 inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isResolvingEmbedSrc ? "Retrying..." : "Retry loading signing form"}
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
                   The signing session has not been generated yet.
@@ -344,10 +376,10 @@ export default function OfferPageClient({
           <Footer hrEmail={hrEmail} />
         </div>
 
-        {signingUrl && (
+        {signingUrl && resolvedEmbedSrc && (
           <SigningModal
             open={signingOpen}
-            embedUrl={normalizeDocusealEmbedUrl(signingUrl)}
+            embedSrc={resolvedEmbedSrc}
             fallbackUrl={signingUrl}
             onClose={() => {
               setSigningOpen(false);

@@ -90,12 +90,13 @@ export function normalizeDocusealEmbedUrl(url: string | null | undefined) {
 
 export async function createDocusealSubmission(input: {
   templateId: string;
-  submissionName: string;
   submitterName: string;
   submitterEmail: string;
   externalId: string;
+  sendEmail?: boolean;
   redirectUrl?: string;
 }) {
+  const sendEmail = input.sendEmail ?? true;
   const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/submissions`, {
     method: "POST",
     headers: {
@@ -104,7 +105,7 @@ export async function createDocusealSubmission(input: {
     },
     body: JSON.stringify({
       template_id: Number.parseInt(input.templateId, 10),
-      send_email: true,
+      send_email: sendEmail,
       submitters: [
         {
           role: "Candidate",
@@ -129,9 +130,14 @@ export async function createDocusealSubmission(input: {
     throw new Error("Docuseal did not return a signing URL");
   }
 
+  const viewerUrl = submitter.slug ? `https://docuseal.com/s/${submitter.slug}` : null;
+
   return {
     submitterId: submitter.uuid ?? submitter.slug ?? null,
+    embedSrc: submitter.embed_src,
     signingUrl: submitter.embed_src,
+    viewerUrl,
+    slug: submitter.slug ?? null,
     raw: data,
   };
 }

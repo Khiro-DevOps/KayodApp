@@ -17,7 +17,7 @@ import JobOfferTermsPanel from "@/components/job-offer/job-offer-terms-panel";
 import JobOfferPdfPanel from "@/components/job-offer/job-offer-pdf-panel";
 import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel";
 import HRActionPanel from "@/components/job-offer/hr-action-panel";
-import DocuSealEmbed from "@/components/job-offer/docuseal-embed";
+import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -400,7 +400,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       .maybeSingle();
 
     console.log("[SignedDocDebug] directOfferById result:", directOfferById);
-    console.log("[SignedDocDebug] directOfferById.error:", (directOfferById as any)?.error ?? null);
+    console.log("[SignedDocDebug] directOfferById.error:", (directOfferById as { error?: unknown } | null)?.error ?? null);
 
     if (directOfferById) {
       directOffer = directOfferById as SignedDocumentRow;
@@ -754,6 +754,9 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   if (process.env.NODE_ENV !== "production") {
     console.log("[JobOfferMetadata] metadata keys:", Object.keys(metadata || {}));
   }
+  const embedSrc = typeof metadata.docuseal_embed_src === "string" && metadata.docuseal_embed_src.trim()
+    ? metadata.docuseal_embed_src.trim()
+    : null;
   const companyNameOrNull =
     (typeof metadata.company_name === "string" && metadata.company_name.trim()) ||
     (typeof metadata.companyName === "string" && metadata.companyName.trim()) ||
@@ -778,6 +781,25 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   const expiresAt = typeof metadata.expires_at === "string" ? metadata.expires_at : typeof metadata.expiresAt === "string" ? metadata.expiresAt : null;
   const signingUrl = offer.docuseal_submission_url ?? (offer as SignedDocumentRow).latest_docuseal_url ?? null;
   const signedPdfUrl = offer.status === "signed" ? await resolveSignedPdfUrl(offer.pdf_file_path) : null;
+  let resolvedEmbedSrc = embedSrc;
+  let docusealEmbedError: string | null = null;
+
+  const needsEmbedSrc =
+    !!jobOfferRow &&
+    !!jobOfferRow.latest_docuseal_url &&
+    !["signed", "declined", "expired", "hired", "accepted"].includes(jobOfferRow.status?.toLowerCase?.() ?? "");
+
+  if (needsEmbedSrc) {
+    try {
+      resolvedEmbedSrc = await getOrCreateDocusealEmbedSrc(jobOfferRow.id);
+    } catch (error) {
+      docusealEmbedError = error instanceof Error ? error.message : "Unable to load signing form. Please try refreshing the page.";
+      console.error("[Job Offer Page] Failed to resolve DocuSeal embed source", {
+        jobOfferId: jobOfferRow.id,
+        error,
+      });
+    }
+  }
 
   return (
     <OfferPageClient
@@ -797,6 +819,8 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       currency={currency}
       hrEmail={hrEmail}
       signingUrl={signingUrl}
+      embedSrc={resolvedEmbedSrc}
+      docusealEmbedError={docusealEmbedError}
       signedPdfUrl={signedPdfUrl}
     />
   );
