@@ -8,7 +8,26 @@ type JobOfferRow = {
   job_metadata?: Record<string, unknown> | null;
 };
 
+type DocusealSubmitterRecord = {
+  id?: number;
+  slug?: string | null;
+  embed_src?: string | null;
+  embed_token?: string | null;
+  status?: string | null;
+};
+
+type DocusealResponsePayload =
+  | DocusealSubmitterRecord
+  | DocusealSubmitterRecord[]
+  | {
+      data?: DocusealSubmitterRecord[];
+    };
+
 const DOCUSEAL_REQUEST_TIMEOUT_MS = 8000;
+
+function getDocusealApiUrl() {
+  return process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+}
 
 async function fetchDocusealWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DOCUSEAL_REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -52,6 +71,31 @@ function extractDocusealSlug(url: string | null | undefined) {
   }
 }
 
+function normalizeEmbedSrc(raw: string | null | undefined, slug: string): string {
+  if (!raw) {
+    return `https://docuseal.com/s/${slug}`;
+  }
+
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw;
+  }
+
+  const normalizedSlug = raw.replace(/^\/?(s\/)?/, "").split("?")[0].trim();
+  return `https://docuseal.com/s/${normalizedSlug}`;
+}
+
+function readDocusealSubmitter(payload: DocusealResponsePayload): DocusealSubmitterRecord | null {
+  if (Array.isArray(payload)) {
+    return payload[0] ?? null;
+  }
+
+  if (payload && "data" in payload && Array.isArray(payload.data)) {
+    return payload.data[0] ?? null;
+  }
+
+  return (payload as DocusealSubmitterRecord) ?? null;
+}
+
 async function fetchDocusealEmbedSrcForSlug(
   slug: string,
   jobOfferId: string
@@ -62,7 +106,8 @@ async function fetchDocusealEmbedSrcForSlug(
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const res = await fetch(`https://api.docuseal.com/submitters?slug=${encodeURIComponent(slug)}`, {
+    const apiUrl = getDocusealApiUrl();
+    const res = await fetch(`${apiUrl}/submitters?slug=${encodeURIComponent(slug)}`, {
       method: "GET",
       headers: {
         "X-Auth-Token": apiKey,
@@ -77,61 +122,78 @@ async function fetchDocusealEmbedSrcForSlug(
       );
     }
 
-    const payload = (await res.json()) as {
-      id?: number;
-      embed_src?: string | null;
-      status?: string | null;
-      data?: Array<{ id?: number; embed_src?: string | null; status?: string | null }>;
-    };
-    const submitter = payload.embed_src !== undefined ? payload : payload.data?.[0];
+    const payload = (await res.json()) as DocusealResponsePayload;
+    const submitter = readDocusealSubmitter(payload);
 
     console.log("[DocuSeal] Submitter response:", {
       jobOfferId,
       slug,
       hasEmbedSrc: !!submitter?.embed_src,
+      hasEmbedToken: !!submitter?.embed_token,
       status: submitter?.status,
     });
 
-    if (!submitter?.embed_src) {
-      const completedStatuses = ["completed", "declined", "expired"];
-      const isRefreshable = submitter?.id && !completedStatuses.includes(submitter?.status ?? "");
+    const directEmbedSrc = submitter?.embed_src?.trim() || null;
+    if (directEmbedSrc) {
+      return directEmbedSrc;
+    }
 
-      if (!isRefreshable) {
-        throw new Error(
-          `DocuSeal submitter ${slug} cannot be refreshed — status: ${submitter?.status}`
-        );
-      }
-
-      // Request a fresh embed_src from DocuSeal
-      const refreshRes = await fetchDocusealWithTimeout(
-        `https://api.docuseal.com/submitters/${submitter.id}`,
+    if (submitter?.id) {
+      const submissionRes = await fetchDocusealWithTimeout(
+        `${apiUrl}/submissions/${submitter.id}`,
         {
-          method: "PATCH",
+          method: "GET",
           headers: {
             "X-Auth-Token": apiKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ send_email: false }),
         }
       );
 
-      if (!refreshRes.ok) {
-        throw new Error(
-          `DocuSeal submitter refresh failed for ${slug}: ${refreshRes.status} ${refreshRes.statusText}`
-        );
+      if (submissionRes.ok) {
+        const submissionPayload = (await submissionRes.json()) as DocusealResponsePayload;
+        const submissionSubmitter = readDocusealSubmitter(submissionPayload);
+        const submissionEmbedSrc = submissionSubmitter?.embed_src?.trim() || null;
+
+        if (submissionEmbedSrc) {
+          return submissionEmbedSrc;
+        }
       }
 
-      const refreshed = (await refreshRes.json()) as { embed_src?: string | null };
-      if (!refreshed.embed_src) {
-        throw new Error(
-          `DocuSeal submitter ${slug} still has no embed_src after refresh`
-        );
-      }
+      const completedStatuses = ["completed", "declined", "expired"];
+      const isRefreshable = !completedStatuses.includes(submitter?.status ?? "");
 
-      return refreshed.embed_src;
+      if (isRefreshable) {
+        // Request a fresh embed_src from DocuSeal
+        const refreshRes = await fetchDocusealWithTimeout(
+          `${apiUrl}/submitters/${submitter.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "X-Auth-Token": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ send_email: false }),
+          }
+        );
+
+        if (!refreshRes.ok) {
+          throw new Error(
+            `DocuSeal submitter refresh failed for ${slug}: ${refreshRes.status} ${refreshRes.statusText}`
+          );
+        }
+
+        const refreshed = (await refreshRes.json()) as DocusealResponsePayload;
+        const refreshedSubmitter = readDocusealSubmitter(refreshed);
+        const refreshedEmbedSrc = refreshedSubmitter?.embed_src?.trim() || null;
+
+        if (refreshedEmbedSrc) {
+          return refreshedEmbedSrc;
+        }
+      }
     }
 
-    return submitter.embed_src as string;
+    return normalizeEmbedSrc(null, submitter?.slug?.trim() || slug);
 
   } finally {
     clearTimeout(timeout);
@@ -168,6 +230,7 @@ export async function getOrCreateDocusealEmbedSrc(jobOfferId: string): Promise<s
 
   try {
     const embedSrc = await fetchDocusealEmbedSrcForSlug(slug, jobOfferId);
+
     const updatedMetadata = {
       ...cleanedMetadata,
       docuseal_embed_src: embedSrc,

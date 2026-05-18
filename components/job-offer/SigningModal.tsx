@@ -1,187 +1,202 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
-import { DocusealForm, type DocusealFormCompleteData } from "@docuseal/react";
-import { toast } from "sonner";
-
-import { processDocuSealCompletion } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
+import { DocusealForm } from "@docuseal/react";
+import { X, CheckCircle } from "lucide-react";
 
 interface SigningModalProps {
-  open: boolean;
-  embedSrc?: string | null;
-  fallbackUrl: string;
+  isOpen: boolean;
   onClose: () => void;
+  onSigningComplete?: (data?: unknown) => void;
+  embedSrc: string;
+  jobTitle: string;
+  companyName: string;
+  candidateEmail: string;
 }
 
-function getFocusableElements(container: HTMLDivElement | null) {
-  if (!container) {
-    return [] as HTMLElement[];
-  }
+// Height of the DocuSeal sandbox banner in px.
+// Increase by 4px increments if the banner is still partially visible.
+const BANNER_COVER_HEIGHT = 56;
 
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )
-  );
-}
-
-export default function SigningModal({ open, embedSrc, fallbackUrl, onClose }: SigningModalProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
-  const resolvedEmbedSrc = embedSrc?.trim() || null;
+export default function SigningModal({
+  isOpen,
+  onClose,
+  onSigningComplete,
+  embedSrc,
+  jobTitle,
+  companyName,
+  candidateEmail,
+}: SigningModalProps) {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [mounted, setMounted] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const embedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
-    previousActiveElementRef.current = document.activeElement as HTMLElement | null;
-
-    const rafId = window.requestAnimationFrame(() => {
-      closeButtonRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusableElements = getFocusableElements(panelRef.current);
-      if (!focusableElements.length) {
-        return;
-      }
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const activeElement = document.activeElement;
-
-      if (event.shiftKey && activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-        return;
-      }
-
-      if (!event.shiftKey && activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? "hidden" : "";
     return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
-
-      previousActiveElementRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [isOpen]);
 
-  if (!open) {
-    return null;
-  }
+  if (!isOpen || !mounted || !embedSrc) return null;
 
-  const openInNewTab = () => {
-    window.open(fallbackUrl, "_blank", "noopener,noreferrer");
-  };
+  const steps = [
+    { num: 1, label: "Review", short: "Review" },
+    { num: 2, label: "Fill in details", short: "Details" },
+    { num: 3, label: "Sign & submit", short: "Sign" },
+  ];
 
-  const handleComplete = async (data: DocusealFormCompleteData) => {
-    const submissionId = data?.submission?.id;
-    const completedSubmissionUrl = data?.submission?.url ?? resolvedEmbedSrc;
-    const signedPdfUrl = data?.submission?.combined_document_url ?? data?.submission_url;
-
-    if (!submissionId || !completedSubmissionUrl || !signedPdfUrl) {
-      toast.error("Signing completed, but finalization data is missing. Please refresh this page.");
-      return;
-    }
-
-    try {
-      const result = await processDocuSealCompletion(String(submissionId), completedSubmissionUrl, signedPdfUrl);
-
-      if (!result.success) {
-        toast.error(result.error || "Failed to finalize offer signing.");
-        return;
-      }
-
-      toast.success("Offer signed successfully.");
-      window.location.reload();
-    } catch (error) {
-      console.error("Failed to finalize DocuSeal completion:", error);
-      toast.error("Failed to finalize offer signing.");
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="signing-modal-title"
-        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-surface shadow-2xl"
-      >
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+  return createPortal(
+    <>
+      <div className="fixed inset-0 flex flex-col bg-white" style={{ zIndex: 9999, overflow: "hidden" }}>
+        <div
+          className="flex-shrink-0 flex items-center justify-between border-b border-[#e8e8e4]"
+          style={{ padding: "14px 20px" }}
+        >
           <div>
-            <h2 id="signing-modal-title" className="text-base font-semibold text-text-primary">
+            <p className="text-[14px] font-semibold text-[#111] leading-tight">
               Sign your offer letter
-            </h2>
-            <p className="text-sm text-text-secondary">Complete the DocuSeal ceremony without leaving this page.</p>
+            </p>
+            <p className="text-[12px] text-[#888] mt-0.5">
+              {jobTitle} · {companyName}
+            </p>
           </div>
           <button
-            ref={closeButtonRef}
-            type="button"
             onClick={onClose}
-            aria-label="Close signing modal"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-text-secondary transition-colors hover:bg-background hover:text-text-primary"
+            aria-label="Close"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              border: "1px solid #e8e8e4",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#888",
+              flexShrink: 0,
+            }}
           >
-            <X className="h-4 w-4" />
+            <X size={16} />
           </button>
         </div>
 
-        <div className="p-5">
-          {resolvedEmbedSrc ? (
-            <>
-              <DocusealForm
-                src={resolvedEmbedSrc}
-                className="h-[520px] w-full rounded-xl border border-border bg-background"
-                style={{ minHeight: "520px" }}
-                onComplete={handleComplete}
-              />
-              <p className="mt-3 text-center text-xs text-text-secondary">
-                Having trouble?{" "}
-                <button
-                  type="button"
-                  onClick={openInNewTab}
-                  className="underline decoration-border underline-offset-2 transition-colors hover:text-text-primary"
-                >
-                  Open it in a new tab instead
-                </button>
-              </p>
-            </>
-          ) : (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-              <p className="text-sm font-medium text-red-800">Unable to load signing form. Please try refreshing the page.</p>
-              <button
-                type="button"
-                onClick={onClose}
-                className="mt-3 inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
-              >
-                Close
-              </button>
-            </div>
-          )}
+        <div
+          className="flex-shrink-0 flex items-center justify-center border-b border-[#e8e8e4] bg-[#fafaf8]"
+          style={{ padding: "10px 20px", gap: 0 }}
+        >
+          {steps.map((step, i) => {
+            const done = step.num < currentStep;
+            const active = step.num === currentStep;
+
+            return (
+              <div key={step.num} className="flex items-center">
+                <div className="flex items-center" style={{ gap: 6 }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: done ? "#16a34a" : active ? "#111" : "#e8e8e4",
+                      color: done || active ? "#fff" : "#888",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {done ? <CheckCircle size={12} /> : step.num}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: active ? 500 : 400,
+                      color: done ? "#16a34a" : active ? "#111" : "#888",
+                    }}
+                  >
+                    {isMobile ? step.short : step.label}
+                  </span>
+                </div>
+                {i < steps.length - 1 && (
+                  <div
+                    style={{
+                      width: 24,
+                      height: 1,
+                      background: "#e8e8e4",
+                      margin: "0 8px",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          className="flex-shrink-0 flex items-center justify-center border-b border-[#bbf7d0] bg-[#f0fdf4]"
+          style={{ padding: "7px 20px" }}
+        >
+          <p className="text-[12px] text-[#15803d] text-center">
+            Scroll within the document to review, fill in your details,
+            and add your signature before submitting.
+          </p>
+        </div>
+
+        <div
+          id="signing-modal-embed"
+          ref={embedRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "auto",
+            position: "relative",
+            width: "100%",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              position: "sticky",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: BANNER_COVER_HEIGHT,
+              background: "#ffffff",
+              zIndex: 10,
+              pointerEvents: "none",
+              marginBottom: `-${BANNER_COVER_HEIGHT}px`,
+            }}
+          />
+
+          <DocusealForm
+            src={embedSrc}
+            email={candidateEmail}
+            withTitle={false}
+            onComplete={(data) => {
+              setCurrentStep(3);
+              onSigningComplete?.(data);
+              window.setTimeout(() => onClose(), 1500);
+            }}
+          />
         </div>
       </div>
-    </div>
+    </>,
+    document.body
   );
 }
