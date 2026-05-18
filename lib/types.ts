@@ -15,6 +15,7 @@ export type ApplicationStatus =
   | "negotiating"
   | "offer_sent"
   | "hired"
+  | "hire_confirmed"
   | "rejected"
   | "withdrawn";
 
@@ -419,6 +420,7 @@ export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
   negotiating:          "bg-purple-100 text-purple-700",
   offer_sent:           "bg-orange-100 text-orange-700",
   hired:                "bg-green-100 text-green-700",
+  hire_confirmed:       "bg-emerald-100 text-emerald-700",
   rejected:             "bg-red-100 text-red-700",
   withdrawn:            "bg-gray-100 text-gray-500",
 };
