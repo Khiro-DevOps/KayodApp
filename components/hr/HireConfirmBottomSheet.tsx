@@ -10,6 +10,7 @@ interface HireConfirmBottomSheetProps {
   onClose: () => void;
   onHireConfirmed: (applicationId: string) => void;
   applicationId: string;
+  offerId: string;
   candidateName: string;
   candidateEmail: string;
   jobTitle: string;
@@ -33,6 +34,7 @@ export default function HireConfirmBottomSheet({
   onClose,
   onHireConfirmed,
   applicationId,
+  offerId,
   candidateName,
   candidateEmail,
   jobTitle,
@@ -43,10 +45,12 @@ export default function HireConfirmBottomSheet({
 }: HireConfirmBottomSheetProps) {
   const router = useRouter();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
   const [mounted, setMounted] = useState(false);
   const [confirmStep, setConfirmStep] = useState<ConfirmStep>("review");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [resolvedSignedPdfUrl, setResolvedSignedPdfUrl] = useState<string | null>(offerMetadata.signedPdfUrl);
   const [signedPdfState, setSignedPdfState] = useState<SignedPdfState>(offerMetadata.signedPdfUrl ? "ready" : "loading");
 
   useEffect(() => {
@@ -56,6 +60,7 @@ export default function HireConfirmBottomSheet({
   useEffect(() => {
     if (!isOpen) {
       document.body.style.overflow = "";
+      fetchAbortRef.current?.abort();
       return;
     }
 
@@ -63,6 +68,7 @@ export default function HireConfirmBottomSheet({
     setConfirmStep(isAlreadyConfirmed ? "confirmed" : "review");
     setErrorMessage(null);
     setShowConfirmDialog(false);
+    setResolvedSignedPdfUrl(offerMetadata.signedPdfUrl);
     setSignedPdfState(offerMetadata.signedPdfUrl ? "ready" : "loading");
 
     if (timeoutRef.current) {
@@ -70,23 +76,51 @@ export default function HireConfirmBottomSheet({
       timeoutRef.current = null;
     }
 
-    if (!offerMetadata.signedPdfUrl) {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    if (!offerMetadata.signedPdfUrl && offerId) {
+      void fetch(`/api/hr/signed-pdf-url?offerId=${encodeURIComponent(offerId)}`, {
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Failed to resolve signed PDF");
+          }
+
+          return response.json() as Promise<{ url?: string | null }>;
+        })
+        .then((payload) => {
+          if (controller.signal.aborted) return;
+
+          const url = typeof payload.url === "string" && payload.url.trim() ? payload.url : null;
+          setResolvedSignedPdfUrl(url);
+          setSignedPdfState(url ? "ready" : "unavailable");
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setSignedPdfState("unavailable");
+        });
+
       timeoutRef.current = setTimeout(() => {
         setSignedPdfState((current) => (current === "loading" ? "unavailable" : current));
-      }, 2500);
+      }, 7000);
     }
 
     return () => {
       document.body.style.overflow = "";
+      fetchAbortRef.current?.abort();
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
     };
-  }, [isOpen, isAlreadyConfirmed, offerMetadata.signedPdfUrl]);
+  }, [isOpen, isAlreadyConfirmed, offerMetadata.signedPdfUrl, offerId]);
 
   useEffect(() => {
     if (offerMetadata.signedPdfUrl) {
+      setResolvedSignedPdfUrl(offerMetadata.signedPdfUrl);
       setSignedPdfState("ready");
     }
   }, [offerMetadata.signedPdfUrl]);
@@ -134,7 +168,7 @@ export default function HireConfirmBottomSheet({
       );
     }
 
-    if (!offerMetadata.signedPdfUrl || signedPdfState === "unavailable") {
+    if (!resolvedSignedPdfUrl || signedPdfState === "unavailable") {
       return (
         <div className="flex h-[180px] items-center justify-center px-6 text-center">
           <div>
@@ -147,7 +181,7 @@ export default function HireConfirmBottomSheet({
 
     return (
       <iframe
-        src={offerMetadata.signedPdfUrl}
+        src={resolvedSignedPdfUrl}
         title="Signed offer letter"
         className="block h-[380px] w-full border-0"
       />
@@ -281,10 +315,10 @@ export default function HireConfirmBottomSheet({
               <div className="overflow-hidden rounded-[14px] border border-[#e8e8e4]">
                 <div className="flex items-center justify-between gap-4 border-b border-[#e8e8e4] px-4 py-3">
                   <p className="m-0 text-[13px] font-semibold text-[#111]">Signed document</p>
-                  {offerMetadata.signedPdfUrl && signedPdfState === "ready" && (
+                  {resolvedSignedPdfUrl && signedPdfState === "ready" && (
                     <div className="flex gap-2">
                       <a
-                        href={offerMetadata.signedPdfUrl}
+                        href={resolvedSignedPdfUrl}
                         download
                         className="flex items-center gap-1 rounded-lg border border-[#e8e8e4] bg-white px-2.5 py-1.5 text-xs text-[#555] no-underline"
                       >
@@ -292,7 +326,7 @@ export default function HireConfirmBottomSheet({
                         Download
                       </a>
                       <a
-                        href={offerMetadata.signedPdfUrl}
+                        href={resolvedSignedPdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 rounded-lg border border-[#e8e8e4] bg-white px-2.5 py-1.5 text-xs text-[#555] no-underline"

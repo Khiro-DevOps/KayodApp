@@ -21,12 +21,16 @@ export async function POST(request: NextRequest) {
         decline_reason?: string;
         completed_at?: string;
         declined_at?: string;
+        audit_log_url?: string | null;
+        combined_document_url?: string | null;
+        documents?: Array<{ url?: string | null }>;
         submission?: {
           id?: number;
           status?: string;
           url?: string;
-          audit_log_url?: string;
-          combined_document_url?: string;
+          audit_log_url?: string | null;
+          combined_document_url?: string | null;
+          documents?: Array<{ url?: string | null }>;
         };
       };
     };
@@ -113,10 +117,18 @@ export async function POST(request: NextRequest) {
     switch (eventType) {
       case "form.completed":
       case "submission.completed":
+        const completedPdfUrl =
+          payload.data?.combined_document_url ??
+          payload.data?.submission?.combined_document_url ??
+          payload.data?.documents?.[0]?.url ??
+          payload.data?.submission?.documents?.[0]?.url ??
+          payload.data?.submission?.url ??
+          null;
         newStatus = "signed";
         updates = {
           status: newStatus,
           signed_at: payload.data?.completed_at || new Date().toISOString(),
+          ...(completedPdfUrl ? { pdf_file_path: completedPdfUrl } : {}),
         };
         applicationUpdates = { status: "hired" };
         if (jobOffer) {

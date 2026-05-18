@@ -11,8 +11,24 @@ type JobOfferRow = {
   id: string;
   application_id: string;
   status: string;
+  salary: number | null;
+  start_date: string | null;
+  work_setup: string | null;
+  department: string | null;
   latest_docuseal_url: string | null;
   job_metadata: Record<string, unknown> | null;
+  updated_at: string | null;
+};
+
+type SignedDocumentRow = {
+  id: string;
+  application_id: string;
+  status: string;
+  docuseal_submitter_id: string | null;
+  docuseal_submission_url: string | null;
+  latest_docuseal_url: string | null;
+  pdf_file_path: string | null;
+  metadata: Record<string, unknown> | null;
   updated_at: string | null;
 };
 
@@ -94,10 +110,27 @@ export default async function ApplicantsPage({
   const { data: jobOffers } = applicationIds.length
     ? await supabase
         .from("job_offers")
-        .select("id, application_id, status, latest_docuseal_url, job_metadata, updated_at")
+        .select("id, application_id, status, salary, start_date, work_setup, department, latest_docuseal_url, job_metadata, updated_at")
         .in("application_id", applicationIds)
         .order("created_at", { ascending: false })
     : { data: [] as JobOfferRow[] };
+
+  const { data: signedDocuments } = applicationIds.length
+    ? await supabase
+        .from("signed_documents")
+        .select("id, application_id, status, docuseal_submitter_id, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata, updated_at")
+        .in("application_id", applicationIds)
+        .order("created_at", { ascending: false })
+    : { data: [] as SignedDocumentRow[] };
+
+  const signedDocumentMap = Object.fromEntries(
+    (signedDocuments ?? []).reduce((accumulator, signedDocument) => {
+      if (!accumulator.some((entry) => entry[0] === signedDocument.application_id)) {
+        accumulator.push([signedDocument.application_id, signedDocument]);
+      }
+      return accumulator;
+    }, [] as Array<[string, SignedDocumentRow]>)
+  ) as Record<string, SignedDocumentRow>;
 
   const pendingOffers = (jobOffers ?? []).filter((jobOffer) => {
     const status = String(jobOffer.status ?? "").toUpperCase();
@@ -231,6 +264,7 @@ export default async function ApplicantsPage({
             applications={updatedApplications}
             interviews={interviewMap}
             jobOffers={jobOfferData}
+            signedDocuments={signedDocumentMap}
           />
         </div>
       </div>

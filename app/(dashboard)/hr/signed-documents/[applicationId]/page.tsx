@@ -12,13 +12,20 @@ type OfferRow = {
   application_id: string;
   status: string;
   updated_at: string;
+  salary: number | null;
+  start_date: string | null;
+  work_setup: string | null;
+  department: string | null;
+  probation_days: number | null;
   job_metadata: Record<string, unknown> | null;
+  latest_docuseal_url: string | null;
   applications: {
     id: string;
     candidate_id: string;
     status: string;
     submitted_at: string;
     updated_at: string;
+    contract_offer_id?: string | null;
     profiles?: {
       first_name?: string | null;
       last_name?: string | null;
@@ -29,8 +36,29 @@ type OfferRow = {
       id?: string;
       title?: string | null;
       created_by?: string | null;
+      salary_min?: number | null;
+      salary_max?: number | null;
+      currency?: string | null;
+      employment_type?: string | null;
+      work_setup?: string | null;
+      location?: string | null;
+      profiles?: {
+        tenants?: {
+          name?: string | null;
+        } | null;
+      } | null;
     } | null;
   } | null;
+};
+
+type SignedDocumentRow = {
+  id: string;
+  application_id: string;
+  status: string;
+  docuseal_submission_url: string | null;
+  latest_docuseal_url: string | null;
+  pdf_file_path: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type DocusealPayload =
@@ -81,7 +109,11 @@ function formatName(profile: OfferRow["applications"] extends { profiles?: infer
   return [firstName, lastName].filter(Boolean).join(" ").trim() || profile?.email || "Unknown Applicant";
 }
 
-async function resolveSignedPdfUrl(metadata: Record<string, unknown> | null | undefined) {
+async function resolveSignedPdfUrl(source: {
+  metadata?: Record<string, unknown> | null;
+  docuseal_submission_url?: string | null;
+  latest_docuseal_url?: string | null;
+}) {
   const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
   const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
 
@@ -90,8 +122,10 @@ async function resolveSignedPdfUrl(metadata: Record<string, unknown> | null | un
   }
 
   const sourceUrl =
-    (typeof metadata?.docuseal_submission_url === "string" && metadata.docuseal_submission_url) ||
-    (typeof metadata?.docuseal_embed_src === "string" && metadata.docuseal_embed_src) ||
+    source.docuseal_submission_url ||
+    source.latest_docuseal_url ||
+    (typeof source.metadata?.docuseal_submission_url === "string" && source.metadata.docuseal_submission_url) ||
+    (typeof source.metadata?.docuseal_embed_src === "string" && source.metadata.docuseal_embed_src) ||
     null;
 
   const slug = extractDocusealSlug(sourceUrl);
@@ -154,13 +188,20 @@ export default async function SignedDocumentReviewPage({
       application_id,
       status,
       updated_at,
+      salary,
+      start_date,
+      work_setup,
+      department,
+      probation_days,
       job_metadata,
+      latest_docuseal_url,
       applications!inner (
         id,
         candidate_id,
         status,
         submitted_at,
         updated_at,
+        contract_offer_id,
         profiles!applications_candidate_id_fkey (
           first_name,
           last_name,
@@ -170,7 +211,18 @@ export default async function SignedDocumentReviewPage({
         job_postings!inner (
           id,
           title,
-          created_by
+          created_by,
+          salary_min,
+          salary_max,
+          currency,
+          employment_type,
+          work_setup,
+          location,
+          profiles!job_postings_created_by_fkey (
+            tenants (
+              name
+            )
+          )
         )
       )
     `)
@@ -194,12 +246,37 @@ export default async function SignedDocumentReviewPage({
 
   const candidateName = formatName(candidate);
   const isConfirmed = normalizeStatus(application.status) === "hire_confirmed" || normalizeStatus(offer.status) === "hired";
-  const signedPdfUrl = await resolveSignedPdfUrl(offer.job_metadata);
+  const signedDocumentQuery = application.contract_offer_id
+    ? await admin
+        .from("signed_documents")
+        .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+        .eq("id", application.contract_offer_id)
+        .maybeSingle<SignedDocumentRow>()
+    : await admin
+        .from("signed_documents")
+        .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+        .eq("application_id", applicationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<SignedDocumentRow>();
 
-  const startDate = typeof offer.job_metadata?.start_date === "string" ? offer.job_metadata.start_date : null;
-  const workSetup = typeof offer.job_metadata?.work_setup === "string" ? offer.job_metadata.work_setup : null;
-  const salaryAmount = typeof offer.job_metadata?.salary_amount === "number" ? offer.job_metadata.salary_amount : null;
-  const salaryCurrency = typeof offer.job_metadata?.salary_currency === "string" ? offer.job_metadata.salary_currency : "PHP";
+  const signedDocument = signedDocumentQuery.data ?? null;
+  const signedPdfUrl = await resolveSignedPdfUrl({
+    metadata: signedDocument?.metadata ?? offer.job_metadata,
+    docuseal_submission_url: signedDocument?.docuseal_submission_url ?? null,
+    latest_docuseal_url: signedDocument?.latest_docuseal_url ?? offer.latest_docuseal_url,
+  });
+
+  const startDate = offer.start_date ?? (typeof offer.job_metadata?.start_date === "string" ? offer.job_metadata.start_date : null);
+  const workSetup = offer.work_setup ?? (typeof offer.job_metadata?.work_setup === "string" ? offer.job_metadata.work_setup : null) ?? jobPosting?.work_setup ?? null;
+  const salaryAmount = offer.salary ?? jobPosting?.salary_min ?? jobPosting?.salary_max ?? null;
+  const salaryCurrency = typeof offer.job_metadata?.salary_currency === "string"
+    ? offer.job_metadata.salary_currency
+    : jobPosting?.currency ?? "PHP";
+  const companyName =
+    (typeof offer.job_metadata?.company_name === "string" && offer.job_metadata.company_name) ||
+    jobPosting?.profiles?.tenants?.name ||
+    null;
 
   return (
     <PageContainer>
@@ -218,7 +295,7 @@ export default async function SignedDocumentReviewPage({
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-text-primary">Signed document</p>
-                <p className="text-xs text-text-secondary">{jobPosting.title ?? "Untitled position"}</p>
+                <p className="text-xs text-text-secondary">{jobPosting?.title ?? "Untitled position"}</p>
               </div>
               {signedPdfUrl ? (
                 <a
@@ -260,7 +337,7 @@ export default async function SignedDocumentReviewPage({
             <ApplicantContractCard
               candidateName={candidateName}
               candidateEmail={candidate?.email ?? ""}
-              jobTitle={jobPosting.title ?? "Untitled position"}
+              jobTitle={jobPosting?.title ?? "Untitled position"}
               avatarUrl={candidate?.avatar_url ?? null}
               badge={
                 <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${isConfirmed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
@@ -289,6 +366,10 @@ export default async function SignedDocumentReviewPage({
                 <div className="flex items-center justify-between gap-3">
                   <span>Work setup</span>
                   <span className="font-medium text-text-primary">{workSetup ?? "Not set"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Company</span>
+                  <span className="font-medium text-text-primary">{companyName ?? "Not set"}</span>
                 </div>
               </div>
             </div>

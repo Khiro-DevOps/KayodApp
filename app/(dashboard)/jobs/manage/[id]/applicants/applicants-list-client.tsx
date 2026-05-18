@@ -45,8 +45,24 @@ interface JobOfferRow {
   id: string;
   application_id: string;
   status: string;
+  salary: number | null;
+  start_date: string | null;
+  work_setup: string | null;
+  department: string | null;
   latest_docuseal_url: string | null;
   job_metadata: Record<string, unknown> | null;
+  updated_at: string | null;
+}
+
+interface SignedDocumentRow {
+  id: string;
+  application_id: string;
+  status: string;
+  docuseal_submitter_id: string | null;
+  docuseal_submission_url: string | null;
+  latest_docuseal_url: string | null;
+  pdf_file_path: string | null;
+  metadata: Record<string, unknown> | null;
   updated_at: string | null;
 }
 
@@ -80,6 +96,7 @@ interface ApplicantsHubClientProps {
   applications: ApplicationRow[];
   interviews: Map<string, Interview>;
   jobOffers: Record<string, JobOfferRow>;
+  signedDocuments: Record<string, SignedDocumentRow>;
 }
 
 interface ConfirmSheetAppState {
@@ -156,11 +173,13 @@ export default function ApplicantsHubClient({
   applications,
   interviews,
   jobOffers: initialJobOffers,
+  signedDocuments: initialSignedDocuments,
 }: ApplicantsHubClientProps) {
   const router = useRouter();
   const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>(applications);
   const [interviewMap, setInterviewMap] = useState<Map<string, Interview>>(interviews);
   const [jobOffers, setJobOffers] = useState<Record<string, JobOfferRow>>(initialJobOffers);
+  const [signedDocuments, setSignedDocuments] = useState<Record<string, SignedDocumentRow>>(initialSignedDocuments);
   const [activeStage, setActiveStage] = useState(() => {
     const hasSignedPendingConfirmation = applications.some((app) => {
       const offer = initialJobOffers[app.id];
@@ -188,6 +207,10 @@ export default function ApplicantsHubClient({
   useEffect(() => {
     setJobOffers(initialJobOffers);
   }, [initialJobOffers]);
+
+  useEffect(() => {
+    setSignedDocuments(initialSignedDocuments);
+  }, [initialSignedDocuments]);
 
   useEffect(() => {
     applicationIdsRef.current = new Set(applicationRows.map((app) => app.id));
@@ -300,6 +323,37 @@ export default function ApplicantsHubClient({
           }));
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "signed_documents",
+          filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deleted = payload.old as { application_id?: string } | null;
+            if (!deleted?.application_id) return;
+
+            setSignedDocuments((prev) => {
+              if (!prev[deleted.application_id]) return prev;
+              const next = { ...prev };
+              delete next[deleted.application_id];
+              return next;
+            });
+            return;
+          }
+
+          const changed = payload.new as SignedDocumentRow | null;
+          if (!changed?.application_id) return;
+
+          setSignedDocuments((prev) => ({
+            ...prev,
+            [changed.application_id]: changed,
+          }));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -384,8 +438,10 @@ export default function ApplicantsHubClient({
         return;
       case "confirm_hire": {
         const offer = jobOffers[app.id];
-        const meta = offer?.job_metadata ?? {};
+        const signedDocument = signedDocuments[app.id];
         const name = app.profiles ? `${app.profiles.first_name} ${app.profiles.last_name}`.trim() : "Candidate";
+        const metadata = offer?.job_metadata ?? {};
+        const storedSignedPdfUrl = signedDocument?.pdf_file_path || signedDocument?.docuseal_submission_url || signedDocument?.latest_docuseal_url || null;
 
         setConfirmSheetApp({
           applicationId: app.id,
@@ -394,11 +450,11 @@ export default function ApplicantsHubClient({
           jobTitle,
           isAlreadyConfirmed: app.status === "hire_confirmed",
           offerMetadata: {
-            startDate: typeof meta.start_date === "string" ? meta.start_date : null,
-            workSetup: typeof meta.work_setup === "string" ? meta.work_setup : null,
-            salaryAmount: typeof meta.salary_amount === "number" ? meta.salary_amount : null,
-            salaryCurrency: typeof meta.salary_currency === "string" ? meta.salary_currency : "PHP",
-            signedPdfUrl: null,
+            startDate: offer?.start_date ?? (typeof metadata.start_date === "string" ? metadata.start_date : null),
+            workSetup: offer?.work_setup ?? (typeof metadata.work_setup === "string" ? metadata.work_setup : null),
+            salaryAmount: offer?.salary ?? (typeof metadata.salary_amount === "number" ? metadata.salary_amount : null),
+            salaryCurrency: typeof metadata.salary_currency === "string" ? metadata.salary_currency : "PHP",
+            signedPdfUrl: storedSignedPdfUrl,
           },
           signedAt: offer?.updated_at ?? null,
           submittedAt: app.submitted_at,
@@ -791,6 +847,7 @@ export default function ApplicantsHubClient({
           onClose={() => setConfirmSheetApp(null)}
           onHireConfirmed={handleHireConfirmed}
           applicationId={confirmSheetApp.applicationId}
+          offerId={(jobOffers[confirmSheetApp.applicationId]?.id ?? signedDocuments[confirmSheetApp.applicationId]?.id ?? "")}
           candidateName={confirmSheetApp.candidateName}
           candidateEmail={confirmSheetApp.candidateEmail}
           jobTitle={confirmSheetApp.jobTitle}
