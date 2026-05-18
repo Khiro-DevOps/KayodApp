@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, PenLine, ShieldCheck } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { CheckCircle, ExternalLink, PenLine } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
@@ -15,7 +15,9 @@ interface OfferSummary {
 interface OfferPageClientProps {
   token: string;
   offer: OfferSummary;
+  isAlreadySigned: boolean;
   companyName: string;
+  candidateEmail: string;
   candidateFirstName: string;
   jobTitle: string;
   location: string | null;
@@ -61,20 +63,6 @@ function formatSalaryRange(minimum: number | null, maximum: number | null, curre
   }
 
   return formatter.format(minimum ?? maximum ?? 0);
-}
-
-function resolveTimelineStep(status: string) {
-  const normalized = status.toLowerCase();
-
-  if (normalized === "signed") {
-    return 3;
-  }
-
-  if (normalized === "pending_signature") {
-    return 2;
-  }
-
-  return 1;
 }
 
 function getStatusPill(status: string) {
@@ -166,35 +154,66 @@ function TermItem({
   );
 }
 
-function Timeline({ status }: { status: string }) {
-  const steps = ["Offer sent", "Your response", "HR review", "Signed & done"];
-  const currentStep = resolveTimelineStep(status);
+function Timeline({ status, hasSigned }: { status: string; hasSigned: boolean }) {
+  const normalizedStatus = status.toLowerCase();
+  const timelineStages = [
+    {
+      key: "offer_sent",
+      label: "Offer sent",
+      active: true,
+    },
+    {
+      key: "your_response",
+      label: "Your response",
+      active: ["sent", "negotiating", "pending_signature", "accepted", "signed", "hired", "declined"].includes(normalizedStatus),
+    },
+    {
+      key: "hr_review",
+      label: "HR review",
+      active: ["pending_signature", "accepted", "signed", "hired"].includes(normalizedStatus) || hasSigned,
+    },
+    {
+      key: "signed_done",
+      label: "Signed & done",
+      active: ["accepted", "signed", "hired"].includes(normalizedStatus) || hasSigned,
+    },
+  ];
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
       <h2 className="text-base font-semibold text-text-primary">Offer timeline</h2>
-      <div className="mt-5 flex flex-row items-start overflow-x-hidden">
-        {steps.map((step, index) => {
-          const isCompleted = index < currentStep;
-          const isCurrent = index === currentStep;
-          const dotClass = isCompleted
-            ? "border-green-500 bg-green-500"
-            : isCurrent
-              ? "border-amber-500 bg-amber-500 ring-4 ring-amber-100"
-              : "border-border bg-surface";
-          const lineClass = index < 3 ? (index < currentStep ? "bg-green-500" : "bg-border") : "";
-
-          return (
-            <div key={step} className="flex flex-col items-center flex-1 min-w-0">
-              <div className="flex w-full items-center">
-                <div className={`h-px flex-1 ${index === 0 ? "opacity-0" : lineClass}`} />
-                <span className={`relative z-10 h-4 w-4 rounded-full border-2 ${dotClass}`} aria-hidden="true" />
-                <div className={`h-px flex-1 ${index === steps.length - 1 ? "opacity-0" : lineClass}`} />
-              </div>
-              <p className="mt-3 text-center text-[10px] leading-tight text-text-secondary px-0.5">{step}</p>
+      <div style={{ display: "flex", alignItems: "center", padding: "20px 0" }}>
+        {timelineStages.map((stage, index) => (
+          <Fragment key={stage.key}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: stage.active ? "#16a34a" : "#e8e8e4",
+                  border: stage.active ? "2px solid #16a34a" : "2px solid #d1d5db",
+                  transition: "background 0.3s, border-color 0.3s",
+                }}
+              />
+              <span style={{ fontSize: 11, color: stage.active ? "#16a34a" : "#9ca3af", whiteSpace: "nowrap" }}>
+                {stage.label}
+              </span>
             </div>
-          );
-        })}
+            {index < timelineStages.length - 1 && (
+              <div
+                style={{
+                  flex: 1,
+                  height: 2,
+                  background: timelineStages[index + 1].active ? "#16a34a" : "#e8e8e4",
+                  margin: "0 4px",
+                  marginBottom: 18,
+                  transition: "background 0.3s",
+                }}
+              />
+            )}
+          </Fragment>
+        ))}
       </div>
     </section>
   );
@@ -218,7 +237,9 @@ function Footer({ hrEmail }: { hrEmail?: string | null }) {
 export default function OfferPageClient({
   token,
   offer,
+  isAlreadySigned,
   companyName,
+  candidateEmail,
   candidateFirstName,
   jobTitle,
   location,
@@ -242,9 +263,20 @@ export default function OfferPageClient({
   const [resolvedEmbedSrc, setResolvedEmbedSrc] = useState(embedSrc?.trim() || null);
   const [embedLoadError, setEmbedLoadError] = useState(docusealEmbedError?.trim() || null);
   const [isResolvingEmbedSrc, setIsResolvingEmbedSrc] = useState(false);
+  const normalizedStatus = offer.status.toLowerCase();
+  const isSignedStatus = ["signed", "accepted", "hired"].includes(normalizedStatus);
+  const [hasSigned, setHasSigned] = useState(isAlreadySigned || isSignedStatus);
+  const pollableStatuses = ["sent", "pending_signature", "negotiating"];
+  const shouldPollOffer = !hasSigned && pollableStatuses.includes(normalizedStatus);
 
   useEffect(() => {
-    if (!signingOpen) {
+    if (isAlreadySigned || isSignedStatus) {
+      setHasSigned(true);
+    }
+  }, [isAlreadySigned, isSignedStatus]);
+
+  useEffect(() => {
+    if (!shouldPollOffer) {
       return;
     }
 
@@ -253,7 +285,7 @@ export default function OfferPageClient({
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [router, signingOpen]);
+  }, [router, shouldPollOffer]);
 
   useEffect(() => {
     setResolvedEmbedSrc(embedSrc?.trim() || null);
@@ -274,9 +306,30 @@ export default function OfferPageClient({
     }
   };
 
-  const status = offer.status.toLowerCase();
-  const canSign = Boolean(signingUrl) && status !== "signed";
-  const showSignedBanner = status === "signed";
+  const handleSigningComplete = async (data?: unknown) => {
+    setHasSigned(true);
+
+    try {
+      const response = await fetch(`/api/job-offers/${token}/sign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "signed", docusealData: data }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Signing update failed with status ${response.status}`);
+      }
+
+      router.refresh();
+    } catch (error) {
+      console.error("[OfferPage] Failed to update signing status:", error);
+    }
+  };
+
+  const status = normalizedStatus;
+  const displayStatus = hasSigned ? "signed" : status;
+  const canSign = Boolean(resolvedEmbedSrc) && !hasSigned;
+  const showSignedBanner = hasSigned;
   const salaryText = formatSalaryRange(salaryMin, salaryMax, currency);
 
   return (
@@ -287,7 +340,7 @@ export default function OfferPageClient({
             <CompanyBadge name={companyName} />
             <h1 className="mt-6 text-2xl font-medium text-text-primary">Your offer is ready, {candidateFirstName}</h1>
             <p className="mb-5 mt-1 text-base text-text-secondary">{jobTitle}</p>
-            <StatusPill status={status} />
+            <StatusPill status={displayStatus} />
             {expiresAt && (
               <p className="mt-3 text-sm text-text-secondary">
                 Offer expires <strong>{formatDate(expiresAt)}</strong> · {daysRemaining(expiresAt)} days remaining
@@ -315,12 +368,42 @@ export default function OfferPageClient({
               <p className="mb-4 text-sm text-text-secondary">Ready to accept? Sign your offer letter digitally - takes under 2 minutes.</p>
 
               {showSignedBanner ? (
-                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <ShieldCheck className="mt-0.5 h-5 w-5 text-green-600" />
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      padding: "16px",
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        background: "#16a34a",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CheckCircle size={20} color="#fff" />
+                    </div>
                     <div>
-                      <p className="font-medium text-green-800">Contract signed</p>
-                      <p className="text-sm text-green-700">Your signed copy is ready.</p>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: "#15803d" }}>Contract signed</p>
+                      <p style={{ fontSize: 12, color: "#16a34a", marginTop: 2 }}>
+                        Signed on {new Intl.DateTimeFormat("en-PH", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        }).format(new Date())}
+                      </p>
                     </div>
                   </div>
                   {signedPdfUrl ? (
@@ -328,7 +411,7 @@ export default function OfferPageClient({
                       href={signedPdfUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
                     >
                       <ExternalLink className="h-4 w-4" />
                       Download signed contract
@@ -336,33 +419,24 @@ export default function OfferPageClient({
                   ) : null}
                 </div>
               ) : canSign ? (
-                resolvedEmbedSrc ? (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
-                    <button
-                      type="button"
-                      onClick={() => setSigningOpen(true)}
-                      className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark sm:w-auto"
-                    >
-                      <PenLine className="mr-2 h-4 w-4" />
-                      Sign now
-                    </button>
-                    <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
-                      Secured by DocuSeal
-                    </span>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                    <p className="text-sm font-medium text-red-800">{embedLoadError ?? "Unable to load signing form. Please try refreshing the page."}</p>
-                    <button
-                      type="button"
-                      onClick={handleRetryDocusealEmbed}
-                      disabled={isResolvingEmbedSrc}
-                      className="mt-3 inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isResolvingEmbedSrc ? "Retrying..." : "Retry loading signing form"}
-                    </button>
-                  </div>
-                )
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hasSigned) return;
+                      if (resolvedEmbedSrc) setSigningOpen(true);
+                    }}
+                    disabled={!resolvedEmbedSrc || hasSigned}
+                    title={!resolvedEmbedSrc ? "Signing link is being prepared" : undefined}
+                    className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
+                  >
+                    <PenLine className="mr-2 h-4 w-4" />
+                    {resolvedEmbedSrc ? "Sign now" : "Preparing..."}
+                  </button>
+                  <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
+                    Secured by DocuSeal
+                  </span>
+                </div>
               ) : (
                 <div className="rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
                   The signing session has not been generated yet.
@@ -371,20 +445,24 @@ export default function OfferPageClient({
             </div>
           </section>
 
-          <Timeline status={status} />
+          <Timeline status={displayStatus} hasSigned={hasSigned} />
 
           <Footer hrEmail={hrEmail} />
         </div>
 
-        {signingUrl && resolvedEmbedSrc && (
+        {/* Signing Modal is rendered directly in the top level flex container instead of in the overflow:hidden layout container */}
+        {!hasSigned && signingUrl && resolvedEmbedSrc && (
           <SigningModal
-            open={signingOpen}
-            embedSrc={resolvedEmbedSrc}
-            fallbackUrl={signingUrl}
+            isOpen={signingOpen}
             onClose={() => {
               setSigningOpen(false);
               router.refresh();
             }}
+            onSigningComplete={handleSigningComplete}
+            embedSrc={resolvedEmbedSrc}
+            jobTitle={jobTitle}
+            companyName={companyName}
+            candidateEmail={candidateEmail}
           />
         )}
       </div>

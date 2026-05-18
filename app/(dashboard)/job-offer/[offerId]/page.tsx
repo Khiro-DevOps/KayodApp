@@ -198,6 +198,15 @@ async function resolveSignedPdfUrl(filePath: string | null) {
   }
 }
 
+function extractDocusealSlug(url: string | null | undefined) {
+  if (!url) {
+    return null;
+  }
+
+  const match = url.match(/\/s\/([^/?#]+)/i) ?? url.match(/\/embed\/s\/([^/?#]+)/i);
+  return match?.[1] ?? null;
+}
+
 export default async function JobOfferPage({ params }: OfferPageParams) {
   const resolvedParams = await params;
   const offerId = resolvedParams.offerId || resolvedParams.offerid;
@@ -747,6 +756,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   }
 
   const candidateFirstName = displayName(application.profiles).split(" ")[0] || "Candidate";
+  const candidateEmail = application.profiles?.email?.trim() ?? "";
   const salaryMin = application.job_postings?.salary_min;
   const salaryMax = application.job_postings?.salary_max;
   const currency = application.job_postings?.currency ?? "PHP";
@@ -780,33 +790,121 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     null;
   const expiresAt = typeof metadata.expires_at === "string" ? metadata.expires_at : typeof metadata.expiresAt === "string" ? metadata.expiresAt : null;
   const signingUrl = offer.docuseal_submission_url ?? (offer as SignedDocumentRow).latest_docuseal_url ?? null;
-  const signedPdfUrl = offer.status === "signed" ? await resolveSignedPdfUrl(offer.pdf_file_path) : null;
+  let isAlreadySigned = ["signed", "accepted", "hired"].includes(offer.status.toLowerCase());
+  let completedSignedDocument: SignedDocumentRow | null = null;
   let resolvedEmbedSrc = embedSrc;
   let docusealEmbedError: string | null = null;
 
   const needsEmbedSrc =
     !!jobOfferRow &&
     !!jobOfferRow.latest_docuseal_url &&
+    !resolvedEmbedSrc &&
     !["signed", "declined", "expired", "hired", "accepted"].includes(jobOfferRow.status?.toLowerCase?.() ?? "");
 
-  if (needsEmbedSrc) {
+  if (needsEmbedSrc && jobOfferRow) {
+    const activeJobOfferRow = jobOfferRow;
     try {
-      resolvedEmbedSrc = await getOrCreateDocusealEmbedSrc(jobOfferRow.id);
+      resolvedEmbedSrc = await getOrCreateDocusealEmbedSrc(activeJobOfferRow.id);
     } catch (error) {
       docusealEmbedError = error instanceof Error ? error.message : "Unable to load signing form. Please try refreshing the page.";
       console.error("[Job Offer Page] Failed to resolve DocuSeal embed source", {
-        jobOfferId: jobOfferRow.id,
+        jobOfferId: activeJobOfferRow.id,
         error,
       });
     }
   }
 
+  const docusealStatus = typeof jobOfferRow?.job_metadata?.docuseal_status === "string"
+    ? jobOfferRow.job_metadata.docuseal_status
+    : null;
+
+  if (docusealStatus && ["completed", "signed"].includes(docusealStatus.toLowerCase())) {
+    isAlreadySigned = true;
+  }
+
+  if (!isAlreadySigned && signingUrl) {
+    try {
+      const docusealApiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+      const slug = extractDocusealSlug(signingUrl);
+
+      if (slug) {
+        const dsRes = await fetch(`${docusealApiUrl}/submitters?slug=${encodeURIComponent(slug)}`, {
+          headers: {
+            "X-Auth-Token": process.env.DOCUSEAL_API_KEY?.trim() ?? "",
+          },
+          cache: "no-store",
+        });
+
+        if (dsRes.ok) {
+          const dsData = await dsRes.json();
+          const submitter = Array.isArray(dsData?.data) ? dsData.data[0] : dsData;
+
+          if (submitter?.status === "completed" || submitter?.completed_at) {
+            isAlreadySigned = true;
+
+            const backfillTimestamp = new Date().toISOString();
+            if (jobOfferRow) {
+              await admin
+                .from("job_offers")
+                .update({
+                  status: "SIGNED",
+                  updated_at: backfillTimestamp,
+                })
+                .eq("id", jobOfferRow.id);
+
+              if (jobOfferRow.application_id) {
+                await admin
+                  .from("applications")
+                  .update({ status: "hired", contract_offer_id: jobOfferRow.id })
+                  .eq("id", jobOfferRow.application_id);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[JobOfferPage] DocuSeal status reconciliation failed:", error);
+    }
+  }
+
+  if (application?.contract_offer_id) {
+    const { data: linkedSignedDocument } = await admin
+      .from("signed_documents")
+      .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
+      .eq("id", application.contract_offer_id)
+      .maybeSingle();
+
+    if (linkedSignedDocument) {
+      completedSignedDocument = linkedSignedDocument as SignedDocumentRow;
+    }
+  }
+
+  if (!completedSignedDocument) {
+    const { data: latestSignedDocument } = await admin
+      .from("signed_documents")
+      .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
+      .eq("application_id", application.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestSignedDocument) {
+      completedSignedDocument = latestSignedDocument as SignedDocumentRow;
+    }
+  }
+
+  const signedDocumentStatus = completedSignedDocument?.status?.toLowerCase?.() ?? "";
+  const isCompletedSigning = isAlreadySigned || ["signed", "accepted", "hired"].includes(signedDocumentStatus) || Boolean(completedSignedDocument?.signed_at) || Boolean(completedSignedDocument?.pdf_file_path) || Boolean(offer.signed_at) || Boolean(offer.pdf_file_path);
+  const signedPdfUrl = isCompletedSigning ? await resolveSignedPdfUrl(completedSignedDocument?.pdf_file_path ?? offer.pdf_file_path) : null;
+
   return (
     <OfferPageClient
       token={offer.id}
-      offer={{ status: offer.status }}
+      offer={{ status: isCompletedSigning ? "signed" : offer.status }}
+      isAlreadySigned={isAlreadySigned || isCompletedSigning}
       companyName={companyNameOrNull ?? "Hiring Company"}
       candidateFirstName={candidateFirstName}
+      candidateEmail={candidateEmail}
       jobTitle={jobTitle}
       location={location}
       employmentType={employmentType}
