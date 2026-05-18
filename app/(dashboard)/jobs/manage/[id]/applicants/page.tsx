@@ -1,10 +1,31 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import ApplicantsListClient from "./applicants-list-client";
+import ApplicantsHubClient from "./applicants-list-client";
 import type { Interview, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+
+type JobOfferRow = {
+  id: string;
+  application_id: string;
+  status: string;
+  latest_docuseal_url: string | null;
+  job_metadata: Record<string, unknown> | null;
+  updated_at: string | null;
+};
+
+const SIGNED_STATUSES = new Set(["SIGNED", "HIRED", "ACCEPTED", "HIRE_CONFIRMED"]);
+
+function extractDocusealSlug(sourceUrl: string | null | undefined) {
+  if (!sourceUrl) {
+    return null;
+  }
+
+  const match = sourceUrl.match(/\/(?:embed\/)?s\/([^/?#]+)/i);
+  return match?.[1] ?? null;
+}
 
 export default async function ApplicantsPage({
   params,
@@ -37,26 +58,24 @@ export default async function ApplicantsPage({
 
   if (!job) redirect("/jobs/manage");
 
-const { data: rawApplications } = await supabase
-  .from("applications")
-  .select(`
-    id,
-    job_posting_id,
-    candidate_id,
-    status,
-    match_score,
-    submitted_at,
-    cover_letter,
-    resume_id,
-    profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
-    resumes (id, title, pdf_url, created_at)
-  `)
-  .eq("job_posting_id", id)
-  .order("match_score", { ascending: false, nullsFirst: false })
-  .order("submitted_at", { ascending: false });
-    
-    // DEBUG
-    console.log("🔍 Raw first application:", JSON.stringify(rawApplications?.[0], null, 2));
+  const { data: rawApplications } = await supabase
+    .from("applications")
+    .select(`
+      id,
+      job_posting_id,
+      candidate_id,
+      status,
+      match_score,
+      submitted_at,
+      cover_letter,
+      resume_id,
+      profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
+      resumes (id, title, pdf_url, created_at)
+    `)
+    .eq("job_posting_id", id)
+    .order("match_score", { ascending: false, nullsFirst: false })
+    .order("submitted_at", { ascending: false });
+
   const applications = (rawApplications ?? []) as any[];
 
   const applicationIds = applications.map((a) => a.id);
@@ -70,6 +89,113 @@ const { data: rawApplications } = await supabase
 
   const interviewMap = new Map(
     (interviews || []).map((i) => [i.application_id, i])
+  );
+
+  const { data: jobOffers } = applicationIds.length
+    ? await supabase
+        .from("job_offers")
+        .select("id, application_id, status, latest_docuseal_url, job_metadata, updated_at")
+        .in("application_id", applicationIds)
+        .order("created_at", { ascending: false })
+    : { data: [] as JobOfferRow[] };
+
+  const pendingOffers = (jobOffers ?? []).filter((jobOffer) => {
+    const status = String(jobOffer.status ?? "").toUpperCase();
+    return !SIGNED_STATUSES.has(status);
+  });
+
+  const pendingToCheck = [...pendingOffers]
+    .sort((left, right) => {
+      const leftUpdated = new Date(left.updated_at ?? 0).getTime();
+      const rightUpdated = new Date(right.updated_at ?? 0).getTime();
+      return rightUpdated - leftUpdated;
+    })
+    .slice(0, 5);
+
+  const reconciledOffers = await Promise.all(
+    (jobOffers ?? []).map(async (jobOffer) => {
+      const status = String(jobOffer.status ?? "").toUpperCase();
+      if (SIGNED_STATUSES.has(status)) {
+        return jobOffer;
+      }
+
+      const shouldCheck = pendingToCheck.some((pendingOffer) => pendingOffer.id === jobOffer.id);
+      if (!shouldCheck) {
+        return jobOffer;
+      }
+
+      const sourceUrl =
+        (typeof jobOffer.job_metadata?.docuseal_embed_src === "string" && jobOffer.job_metadata.docuseal_embed_src) ||
+        (typeof jobOffer.job_metadata?.docuseal_submission_url === "string" && jobOffer.job_metadata.docuseal_submission_url) ||
+        jobOffer.latest_docuseal_url ||
+        null;
+
+      const slug = extractDocusealSlug(sourceUrl);
+      if (!slug) {
+        return jobOffer;
+      }
+
+      try {
+        const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+        const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
+        if (!apiKey) {
+          return jobOffer;
+        }
+
+        const response = await fetch(`${apiUrl}/submitters?slug=${encodeURIComponent(slug)}`, {
+          headers: { "X-Auth-Token": apiKey },
+          next: { revalidate: 30 },
+        });
+
+        if (!response.ok) {
+          return jobOffer;
+        }
+
+        const payload = await response.json();
+        const submitter = Array.isArray(payload?.data)
+          ? payload.data[0]
+          : Array.isArray(payload)
+            ? payload[0]
+            : payload;
+
+        const isCompleted = submitter?.status === "completed" || !!submitter?.completed_at;
+
+        if (!isCompleted) {
+          return jobOffer;
+        }
+
+        const admin = getAdminClient();
+        await Promise.all([
+          admin
+            .from("job_offers")
+            .update({ status: "SIGNED", updated_at: new Date().toISOString() })
+            .eq("id", jobOffer.id),
+          admin
+            .from("applications")
+            .update({ status: "hired", updated_at: new Date().toISOString() })
+            .eq("id", jobOffer.application_id),
+        ]);
+
+        return { ...jobOffer, status: "SIGNED" };
+      } catch {
+        return jobOffer;
+      }
+    })
+  );
+
+  const jobOfferMap = new Map(
+    reconciledOffers.map((jobOffer) => [jobOffer.application_id, jobOffer])
+  );
+  const jobOfferData = Object.fromEntries(jobOfferMap) as Record<string, JobOfferRow>;
+
+  const updatedApplicationIds = reconciledOffers
+    .filter((jobOffer) => SIGNED_STATUSES.has(String(jobOffer.status ?? "").toUpperCase()))
+    .map((jobOffer) => jobOffer.application_id);
+
+  const updatedApplications = applications.map((application) =>
+    updatedApplicationIds.includes(application.id)
+      ? { ...application, status: "hired" as const }
+      : application
   );
 
   return (
@@ -99,10 +225,12 @@ const { data: rawApplications } = await supabase
         {/* Debug output removed — applicants count displayed above */}
 
         <div className="mt-4 min-h-0 flex-1 overflow-hidden">
-          <ApplicantsListClient
+          <ApplicantsHubClient
             jobId={id}
-            applications={applications}
+            jobTitle={job.title}
+            applications={updatedApplications}
             interviews={interviewMap}
+            jobOffers={jobOfferData}
           />
         </div>
       </div>
