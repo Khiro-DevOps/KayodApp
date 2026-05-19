@@ -7,6 +7,9 @@ const publicRoutes = ["/", "/login", "/register", "/auth/callback"];
 // Route prefixes that don't require authentication
 const publicPrefixes = ["/api/webhooks"];
 
+// In development, also allow dev routes to bypass auth
+const devPrefixes = process.env.NODE_ENV === "development" ? ["/api/dev", "/dev"] : [];
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -50,9 +53,12 @@ export async function updateSession(request: NextRequest) {
     const isPublicPrefix = publicPrefixes.some((prefix) =>
       pathname.startsWith(prefix)
     );
+    const isDevPrefix = devPrefixes.some((prefix) =>
+      pathname.startsWith(prefix)
+    );
 
     // If user is not authenticated and trying to access protected route
-    if (!user && !isPublicRoute && !isPublicPrefix) {
+    if (!user && !isPublicRoute && !isPublicPrefix && !isDevPrefix) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);
