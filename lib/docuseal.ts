@@ -95,6 +95,7 @@ export async function createDocusealSubmission(input: {
   externalId: string;
   sendEmail?: boolean;
   redirectUrl?: string;
+  prefillFields?: Record<string, string>;
 }) {
   const sendEmail = input.sendEmail ?? true;
   const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/submissions`, {
@@ -112,6 +113,14 @@ export async function createDocusealSubmission(input: {
           name: input.submitterName,
           email: input.submitterEmail,
           external_id: input.externalId,
+          // Pre-fill template fields so [JOB_TITLE] and [COMPANY_NAME]
+          // are replaced with actual values in the rendered PDF
+          values: input.prefillFields
+            ? Object.entries(input.prefillFields).map(([field, value]) => ({
+                field,
+                value,
+              }))
+            : [],
         },
       ],
       completed_redirect_url: input.redirectUrl,
@@ -238,7 +247,7 @@ export interface TenantInfo {
 
 const DEFAULT_OFFER_INTRO = `Dear Candidate,
 
-We are pleased to extend an offer of employment to you for the position of [JOB_TITLE] at [COMPANY_NAME].
+We are pleased to extend an offer of employment to you for the position of {{job_title}} at {{company_name}}.
 
 We believe you will be an excellent addition to our team, and we look forward to welcoming you on board.`;
 
@@ -254,7 +263,17 @@ export function buildOfferLetterHtml(
   tenant: TenantInfo,
   settings?: OfferLetterSettings
 ): string {
-  const intro = settings?.introMessage || DEFAULT_OFFER_INTRO;
+  const rawIntro = settings?.introMessage || DEFAULT_OFFER_INTRO;
+  // Escape HTML first, then inject DocuSeal field tags for dynamic prefilling
+  const escapedIntro = escapeHtml(rawIntro)
+    .replace(
+      /\{\{job_title\}\}/g,
+      `<text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:280px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+    )
+    .replace(
+      /\{\{company_name\}\}/g,
+      `<text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+    );
   const additionalTerms = settings?.additionalTerms || "";
   const hasCountersignature = settings?.requireCountersignature ?? false;
 
@@ -386,7 +405,7 @@ export function buildOfferLetterHtml(
     </div>
 
     <div class="content">
-      <div class="intro-section">${escapeHtml(intro)}</div>
+      <div class="intro-section">${escapedIntro}</div>
 
       <div class="details-section">
         <div class="detail-row">

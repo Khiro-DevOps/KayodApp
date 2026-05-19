@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -180,7 +180,7 @@ export default function ApplicantsHubClient({
   const [interviewMap, setInterviewMap] = useState<Map<string, Interview>>(interviews);
   const [jobOffers, setJobOffers] = useState<Record<string, JobOfferRow>>(initialJobOffers);
   const [signedDocuments, setSignedDocuments] = useState<Record<string, SignedDocumentRow>>(initialSignedDocuments);
-  const [activeStage, setActiveStage] = useState(() => {
+  const [activeTab, setActiveTab] = useState(() => {
     const hasSignedPendingConfirmation = applications.some((app) => {
       const offer = initialJobOffers[app.id];
       return SIGNED_STATUSES.has(String(offer?.status ?? "").trim().toUpperCase()) && app.status !== "hire_confirmed";
@@ -382,13 +382,13 @@ export default function ApplicantsHubClient({
 
   const activeStatuses = showClosed
     ? CLOSED_STATUSES
-    : STAGES.find((stage) => stage.key === activeStage)?.statuses ?? [];
+    : STAGES.find((stage) => stage.key === activeTab)?.statuses ?? [];
 
   const filteredApps = applicationRows.filter((app) => {
     const jobOffer = jobOffers[app.id];
     const isSignedOffer = SIGNED_STATUSES.has(String(jobOffer?.status ?? "").trim().toUpperCase());
 
-    if (activeStage === "hired" && !showClosed) {
+    if (activeTab === "hired" && !showClosed) {
       const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
       const matchesStage = isHiredStatus || isSignedOffer;
       const candidate = app.profiles;
@@ -403,6 +403,27 @@ export default function ApplicantsHubClient({
     const matchesSearch = !searchQuery || searchTarget.includes(searchQuery.toLowerCase());
     return matchesStage && matchesSearch;
   });
+
+  // Helper function to get applications for a specific stage
+  const getAppsForStage = (stageKey: string) => {
+    const stage = STAGES.find((s) => s.key === stageKey);
+    if (!stage) return [];
+    return applicationRows.filter((app) => {
+      const jobOffer = jobOffers[app.id];
+      const isSignedOffer = SIGNED_STATUSES.has(String(jobOffer?.status ?? "").trim().toUpperCase());
+
+      if (stageKey === "hired") {
+        const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
+        return isHiredStatus || isSignedOffer;
+      }
+
+      const matchesStage = stage.statuses.includes(app.status);
+      const candidate = app.profiles;
+      const searchTarget = `${candidate?.first_name ?? ""} ${candidate?.last_name ?? ""} ${candidate?.email ?? ""}`.toLowerCase();
+      const matchesSearch = !searchQuery || searchTarget.includes(searchQuery.toLowerCase());
+      return matchesStage && matchesSearch;
+    });
+  };
 
   const handleCardClick = (app: ApplicationRow) => {
     setSelectedApplication(app);
@@ -513,313 +534,126 @@ export default function ApplicantsHubClient({
 
   return (
     <>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="shrink-0 space-y-4 border-b border-border/70 pb-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="truncate font-(family-name:--font-heading) text-xl font-bold text-text-primary">{jobTitle}</h1>
-              <p className="text-xs text-text-secondary">Unified HR Applicant Hub</p>
+      <div className="flex h-full min-h-0 flex-col bg-background">
+        {/* STICKY CONTROL HEADER */}
+        <div className="shrink-0 space-y-3 border-b border-border/70 bg-surface/95 backdrop-blur-sm sticky top-0 z-20 pb-3">
+          {/* Top Row: Title and Total Count */}
+          <div className="px-4 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate font-(family-name:--font-heading) text-lg font-bold text-text-primary">{jobTitle}</h1>
+                <p className="text-xs text-text-secondary">
+                  {applicationRows.length} Total Applicants
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 overflow-x-auto py-2 scrollbar-none">
-            {STAGES.map((stage, index) => {
-              const count = stageCounts[stage.key] ?? 0;
-              return (
-                <Fragment key={stage.key}>
+          {/* Search Bar */}
+          <div className="px-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search applicants..."
+                  className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none"
+                />
+              </div>
+              <svg className="h-4 w-4 shrink-0 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+          </div>
+
+          {/* MOBILE: Horizontal Scrollable Tabs */}
+          <div className="md:hidden px-4">
+            <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-none">
+              {STAGES.map((stage) => {
+                const appsCount = getAppsForStage(stage.key).length;
+                return (
                   <button
-                    onClick={() => {
-                      setActiveStage(stage.key);
-                      setShowClosed(false);
-                    }}
-                    className="flex-shrink-0 flex flex-col items-center gap-1"
-                    type="button"
-                  >
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
-                      style={{
-                        background: count > 0 ? stage.color : "#e8e8e4",
-                        color: count > 0 ? "#fff" : "#aaa",
-                      }}
-                    >
-                      {count}
-                    </div>
-                    <span className="text-[9px] text-gray-500">{stage.label}</span>
-                  </button>
-                  {index < STAGES.length - 1 && <div className="mb-4 h-px w-4 flex-shrink-0 bg-gray-200" />}
-                </Fragment>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {STAGES.map((stage) => (
-              <button
-                key={stage.key}
-                onClick={() => {
-                  setActiveStage(stage.key);
-                  setShowClosed(false);
-                }}
-                className="flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{
-                  background: activeStage === stage.key && !showClosed ? stage.color : "#f5f5f0",
-                  color: activeStage === stage.key && !showClosed ? "#fff" : "#555",
-                }}
-                type="button"
-              >
-                {stage.label}
-                {stageCounts[stage.key] > 0 && (
-                  <span
-                    className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                    key={stage.key}
+                    onClick={() => setActiveTab(stage.key)}
+                    className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all"
                     style={{
-                      background: activeStage === stage.key && !showClosed ? "rgba(255,255,255,0.3)" : "#e8e8e4",
-                      color: activeStage === stage.key && !showClosed ? "#fff" : "#888",
+                      background: activeTab === stage.key ? stage.color : "#f5f5f0",
+                      color: activeTab === stage.key ? "#fff" : "#666",
+                      border: activeTab === stage.key ? "none" : "1px solid #e8e8e4",
                     }}
                   >
-                    {stageCounts[stage.key]}
-                  </span>
-                )}
-              </button>
-            ))}
-
-            <button
-              onClick={() => setShowClosed((value) => !value)}
-              className="flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                background: showClosed ? "#6b7280" : "#f5f5f0",
-                color: showClosed ? "#fff" : "#555",
-              }}
-              type="button"
-            >
-              Closed
-              {closedCount > 0 && (
-                <span
-                  className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                  style={{
-                    background: showClosed ? "rgba(255,255,255,0.3)" : "#e8e8e4",
-                    color: showClosed ? "#fff" : "#888",
-                  }}
-                >
-                  {closedCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search applicants by name or email"
-                className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none"
-              />
+                    {stage.label} ({appsCount})
+                  </button>
+                );
+              })}
             </div>
-            <button
-              onClick={() => setShowClosed((value) => !value)}
-              type="button"
-              className="flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                background: showClosed ? "#111827" : "#f5f5f0",
-                color: showClosed ? "#fff" : "#555",
-              }}
-            >
-              Show closed
-            </button>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1 pt-4">
+        {/* DESKTOP: Multi-Column Pipeline View */}
+        <div className="hidden md:flex h-full min-h-0 flex-1 overflow-x-auto gap-6 p-6 bg-gradient-to-b from-background to-surface">
+          {STAGES.map((stage) => {
+            const stageApps = getAppsForStage(stage.key);
+            return (
+              <div key={stage.key} className="flex-shrink-0 w-80 flex flex-col">
+                {/* Column Header */}
+                <div className="mb-4 pb-3 border-b border-border/50">
+                  <h2 className="text-sm font-semibold text-text-primary">{stage.label}</h2>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {stageApps.length} {stageApps.length === 1 ? "candidate" : "candidates"}
+                  </p>
+                </div>
+
+                {/* Column Cards */}
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  {stageApps.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border/50 p-6 text-center">
+                      <p className="text-xs text-text-secondary">No applicants</p>
+                    </div>
+                  ) : (
+                    stageApps.map((app) => (
+                      <ApplicantCardComponent
+                        key={app.id}
+                        app={app}
+                        candidate={app.profiles}
+                        interview={interviewMap.get(app.id)}
+                        jobOffer={jobOffers[app.id]}
+                        onCardClick={() => handleCardClick(app)}
+                        onQuickAction={(action) => handleQuickAction(app, action)}
+                        isMobile={false}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* MOBILE: Single-Column Tab View */}
+        <div className="md:hidden h-full min-h-0 flex-1 overflow-y-auto">
           {filteredApps.length === 0 ? (
-            <div className="rounded-2xl border border-border bg-surface p-6 text-center">
-              <p className="text-sm font-semibold text-text-primary">No applicants match this view</p>
-              <p className="mt-1 text-xs text-text-secondary">Try another stage or clear your search filter.</p>
+            <div className="p-4">
+              <div className="rounded-2xl border border-border bg-surface p-6 text-center">
+                <p className="text-sm font-semibold text-text-primary">No applicants match this view</p>
+                <p className="mt-1 text-xs text-text-secondary">Try another stage or clear your search filter.</p>
+              </div>
             </div>
           ) : (
-            <div className="space-y-3 pb-6">
-              {filteredApps.map((app) => {
-                const candidate = app.profiles;
-                const interview = interviewMap.get(app.id);
-                const jobOffer = jobOffers[app.id];
-                const fullName = getApplicantName(candidate);
-                const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
-                const jobOfferBadge = getJobOfferBadge(jobOffer);
-                const hasSignedContract = jobOfferBadge?.isSigned ?? false;
-                const quickAction = getQuickAction(app, hasSignedContract);
-                const displayStatus = app.status.replace(/_/g, " ").toUpperCase();
-
-                return (
-                  <div
-                    key={app.id}
-                    onClick={() => handleCardClick(app)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        handleCardClick(app);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    className="group w-full min-w-0 cursor-pointer space-y-3 rounded-2xl border border-border bg-surface p-4 text-left transition-all duration-200 hover:border-primary hover:shadow-md"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-sm text-primary transition-colors group-hover:bg-primary/20">
-                          {fullName.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-primary">
-                            {fullName}
-                          </p>
-                          <p className="truncate text-xs text-text-secondary">{candidate?.email}</p>
-                          {candidate?.phone && <p className="text-xs text-text-tertiary">{candidate.phone}</p>}
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        {app.match_score !== null && (
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                              app.match_score >= 70
-                                ? "bg-green-50 text-green-600"
-                                : app.match_score >= 40
-                                  ? "bg-yellow-50 text-yellow-600"
-                                  : "bg-gray-100 text-text-secondary"
-                            }`}
-                          >
-                            {app.match_score}%
-                          </span>
-                        )}
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColorClass}`}>
-                          {displayStatus}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
-                      {candidate?.city && <span>📍 {candidate.city}, {candidate.country}</span>}
-                      <span className="ml-auto">Applied {new Date(app.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    </div>
-
-                    {app.cover_letter && (
-                      <p className="line-clamp-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-secondary">
-                        {app.cover_letter}
-                      </p>
-                    )}
-
-                    {interview && (
-                      <div className="rounded-lg bg-purple-50 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-purple-700">
-                            📅 Interview: {new Date(interview.scheduled_at).toLocaleDateString()} at {new Date(interview.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                          {interview.applicant_selection && (
-                            <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-600">
-                              {interview.applicant_selection === "online" ? "📹 Online" : "🏢 In-Person"}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {jobOfferBadge && (
-                      <div className="mt-1 flex items-center gap-1.5 text-xs" style={{ color: jobOfferBadge.color }}>
-                        <span>{jobOfferBadge.label}</span>
-                        <span className="text-gray-400">
-                          {jobOfferBadge.updatedAt ? new Date(jobOfferBadge.updatedAt).toLocaleDateString() : ""}
-                        </span>
-                      </div>
-                    )}
-
-                    {hasSignedContract && app.status !== "hire_confirmed" && (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "10px 12px",
-                          background: "#f0fdf4",
-                          border: "1px solid #bbf7d0",
-                          borderRadius: 10,
-                          marginTop: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: "50%",
-                            background: "#16a34a",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                            <path d="M2 5l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontSize: 12, fontWeight: 600, color: "#15803d", margin: 0 }}>
-                            Contract signed - awaiting your confirmation
-                          </p>
-                          {jobOffer?.updated_at && (
-                            <p style={{ fontSize: 11, color: "#16a34a", margin: 0 }}>
-                              Signed on {new Date(jobOffer.updated_at).toLocaleDateString("en-PH", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {app.status === "offer_sent" && jobOffer && !hasSignedContract && (
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          router.refresh();
-                          toast.info("Checking signature status...");
-                        }}
-                        type="button"
-                        className="mt-1 w-full rounded-xl border border-[#e8e8e4] bg-[#f5f5f0] py-2 text-xs font-medium text-[#555] transition-opacity hover:opacity-90"
-                      >
-                        ↻ Check if signed
-                      </button>
-                    )}
-
-                    {quickAction && quickAction.action && (
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleQuickAction(app, quickAction.action);
-                        }}
-                        type="button"
-                        className="mt-2 w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                        style={{ background: quickAction.color }}
-                      >
-                        {quickAction.label}
-                      </button>
-                    )}
-
-                    {quickAction && !quickAction.action && (
-                      <div className="mt-2 w-full rounded-xl bg-[#f0fdf4] py-2 text-center text-xs font-semibold" style={{ color: "#16a34a" }}>
-                        {quickAction.label}
-                      </div>
-                    )}
-
-                    {!quickAction && (
-                      <div className="mt-2 w-full rounded-xl bg-[#f5f5f0] py-2 text-center text-xs font-semibold text-[#777]">
-                        Click to view details
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="space-y-3 p-4 pb-6">
+              {filteredApps.map((app) => (
+                <ApplicantCardComponent
+                  key={app.id}
+                  app={app}
+                  candidate={app.profiles}
+                  interview={interviewMap.get(app.id)}
+                  jobOffer={jobOffers[app.id]}
+                  onCardClick={() => handleCardClick(app)}
+                  onQuickAction={(action) => handleQuickAction(app, action)}
+                  isMobile={true}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -858,5 +692,220 @@ export default function ApplicantsHubClient({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Reusable applicant card component that adapts for mobile and desktop
+ */
+function ApplicantCardComponent({
+  app,
+  candidate,
+  interview,
+  jobOffer,
+  onCardClick,
+  onQuickAction,
+  isMobile,
+}: {
+  app: ApplicationRow;
+  candidate: CandidateProfile | null;
+  interview?: Interview;
+  jobOffer?: JobOfferRow;
+  onCardClick: () => void;
+  onQuickAction: (action: NonNullable<QuickAction["action"]>) => void;
+  isMobile: boolean;
+}) {
+  const fullName = getApplicantName(candidate);
+  const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
+  const jobOfferBadge = getJobOfferBadge(jobOffer);
+  const hasSignedContract = jobOfferBadge?.isSigned ?? false;
+  const quickAction = getQuickAction(app, hasSignedContract);
+  const displayStatus = app.status.replace(/_/g, " ").toUpperCase();
+
+  return (
+    <div
+      onClick={onCardClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onCardClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      className="group w-full cursor-pointer rounded-2xl border border-border bg-surface transition-all duration-200 hover:border-primary hover:shadow-md"
+    >
+      {/* Card Content */}
+      <div className="p-4 space-y-3">
+        {/* Header: Name, Avatar, Score, Status */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-sm text-primary transition-colors group-hover:bg-primary/20">
+              {fullName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-primary">
+                {fullName}
+              </p>
+              <p className="truncate text-xs text-text-secondary">{candidate?.email}</p>
+            </div>
+          </div>
+
+          {/* Score and Status - Right aligned */}
+          <div className="flex shrink-0 items-center gap-2">
+            {app.match_score !== null && (
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap ${
+                  app.match_score >= 70
+                    ? "bg-green-50 text-green-600"
+                    : app.match_score >= 40
+                      ? "bg-yellow-50 text-yellow-600"
+                      : "bg-gray-100 text-text-secondary"
+                }`}
+              >
+                {app.match_score}%
+              </span>
+            )}
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusColorClass}`}>
+              {displayStatus}
+            </span>
+          </div>
+        </div>
+
+        {/* Contact and Date */}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          {candidate?.phone && <span>📞 {candidate.phone}</span>}
+          {candidate?.city && <span>📍 {candidate.city}</span>}
+          <span className="ml-auto">
+            {new Date(app.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </span>
+        </div>
+
+        {/* Cover Letter Preview */}
+        {app.cover_letter && (
+          <p className="line-clamp-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-secondary">
+            {app.cover_letter}
+          </p>
+        )}
+
+        {/* Interview Info */}
+        {interview && (
+          <div className="rounded-lg bg-purple-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-purple-700">
+                📅 {new Date(interview.scheduled_at).toLocaleDateString()} at{" "}
+                {new Date(interview.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </p>
+              {interview.applicant_selection && (
+                <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-600 whitespace-nowrap">
+                  {interview.applicant_selection === "online" ? "📹 Online" : "🏢 In-Person"}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Job Offer Badge */}
+        {jobOfferBadge && (
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: jobOfferBadge.color }}>
+            <span className="font-medium">{jobOfferBadge.label}</span>
+            <span className="text-gray-400">
+              {jobOfferBadge.updatedAt ? new Date(jobOfferBadge.updatedAt).toLocaleDateString() : ""}
+            </span>
+          </div>
+        )}
+
+        {/* Signed Contract Indicator */}
+        {hasSignedContract && app.status !== "hire_confirmed" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: "50%",
+                background: "#16a34a",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                <path d="M2 5l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "#15803d", margin: 0 }}>
+                Contract signed - awaiting confirmation
+              </p>
+              {jobOffer?.updated_at && (
+                <p style={{ fontSize: 11, color: "#16a34a", margin: 0 }}>
+                  Signed on {new Date(jobOffer.updated_at).toLocaleDateString("en-PH")}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons - Layout adapts for mobile vs desktop */}
+        <div className={isMobile ? "flex flex-col gap-2" : "space-y-2"}>
+          {/* Check Signature Button */}
+          {app.status === "offer_sent" && jobOffer && !hasSignedContract && (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                // Refresh logic here
+              }}
+              type="button"
+              className="w-full rounded-xl border border-[#e8e8e4] bg-[#f5f5f0] py-2 text-xs font-medium text-[#555] transition-opacity hover:opacity-90"
+            >
+              ↻ Check if signed
+            </button>
+          )}
+
+          {/* Quick Action Button */}
+          {quickAction && quickAction.action && (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                void onQuickAction(quickAction.action);
+              }}
+              type="button"
+              className="w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: quickAction.color }}
+            >
+              {quickAction.label}
+            </button>
+          )}
+
+          {/* Hired Confirmation State */}
+          {quickAction && !quickAction.action && (
+            <div
+              className="w-full rounded-xl py-2 text-center text-xs font-semibold"
+              style={{ background: "#f0fdf4", color: "#16a34a" }}
+            >
+              {quickAction.label}
+            </div>
+          )}
+
+          {/* Default CTA */}
+          {!quickAction && (
+            <div className="w-full rounded-xl bg-[#f5f5f0] py-2 text-center text-xs font-semibold text-[#777]">
+              Click to view details
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -182,6 +182,15 @@ export async function sendOfferWithDocuSeal(
       submitterEmail: candidate.email,
       externalId: offerId,
       sendEmail: false,
+      prefillFields: {
+        // Field names must EXACTLY match the name="" attributes in DocuSeal template tags
+        "job_title": job.title,
+        "company_name": companyName ?? "",
+        "candidate_name": candidateName,
+        ...(offerStartDate && { "date_signed": offerStartDate }),
+        ...(job.employment_type && { "employment_type": job.employment_type }),
+        ...(job.location && { "location": job.location }),
+      },
     });
 
     if (!submission.viewerUrl || !submission.embedSrc) {
