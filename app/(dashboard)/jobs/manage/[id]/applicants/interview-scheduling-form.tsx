@@ -98,19 +98,6 @@ export default function InterviewSchedulingForm({
       </div>
 
       <div>
-        <label htmlFor="application_id_display" className="block text-sm font-medium text-text-primary mb-2">
-          Applicant ID
-        </label>
-        <input
-          id="application_id_display"
-          type="text"
-          value={applicationId}
-          readOnly
-          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-gray-50 text-text-secondary"
-        />
-      </div>
-
-      <div>
         <label htmlFor="duration_minutes" className="block text-sm font-medium text-text-primary mb-2">
           Duration
         </label>

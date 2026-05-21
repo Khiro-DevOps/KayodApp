@@ -216,10 +216,12 @@ export default async function ApplicantsPage({
     })
   );
 
-  const jobOfferMap = new Map(
-    reconciledOffers.map((jobOffer) => [jobOffer.application_id, jobOffer])
-  );
-  const jobOfferData = Object.fromEntries(jobOfferMap) as Record<string, JobOfferRow>;
+  const jobOfferData = [...reconciledOffers]
+    .reverse()
+    .reduce<Record<string, JobOfferRow>>((accumulator, jobOffer) => {
+      accumulator[jobOffer.application_id] = jobOffer;
+      return accumulator;
+    }, {});
 
   const updatedApplicationIds = reconciledOffers
     .filter((jobOffer) => SIGNED_STATUSES.has(String(jobOffer.status ?? "").toUpperCase()))
@@ -257,7 +259,7 @@ export default async function ApplicantsPage({
 
         {/* Debug output removed — applicants count displayed above */}
 
-        <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+        <div className="mt-4 min-h-0 flex-1 overflow-visible">
           <ApplicantsHubClient
             jobId={id}
             jobTitle={job.title}

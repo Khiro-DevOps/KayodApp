@@ -44,7 +44,7 @@ export default async function CreateOfferPage({
 
   if (!application) notFound();
 
-  const allowedStatuses = ["negotiating", "interviewed", "under_review"];
+  const allowedStatuses = ["negotiating", "interviewed", "under_review", "offer_sent"];
   if (!allowedStatuses.includes(application.status)) {
     redirect(`/jobs/manage/${id}/applicants`);
   }
@@ -72,7 +72,11 @@ export default async function CreateOfferPage({
           </Link>
           <div className="min-w-0 flex-1">
             <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-              {existingOffer ? "Edit Job Offer" : "Create Job Offer"}
+              {existingOffer
+                ? application.status === "negotiating"
+                  ? "Continue Negotiation"
+                  : "Sent Offer"
+                : "Send Offer"}
             </h1>
             <p className="text-xs text-text-secondary truncate">{job.title}</p>
           </div>

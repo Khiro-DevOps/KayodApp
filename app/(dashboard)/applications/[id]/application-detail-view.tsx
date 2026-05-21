@@ -25,7 +25,7 @@ export default function ApplicationDetailView({
   const resume = application.resumes as any;
   const status = application.status;
   const normalizedStatus = String(status || "").toLowerCase();
-  const showOfferDetails = normalizedStatus === "offer_sent" || normalizedStatus === "negotiating";
+  const showOfferDetails = Boolean(jobOffer) && (normalizedStatus === "offer_sent" || normalizedStatus === "negotiating");
   const offerStatusLabel = normalizedStatus === "negotiating" ? "Negotiating" : "Offer Sent";
   const offerActionLabel = normalizedStatus === "negotiating" ? "Continue Negotiation" : "Review Offer";
 

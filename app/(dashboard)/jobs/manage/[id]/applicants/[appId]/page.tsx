@@ -109,6 +109,12 @@ export default async function ApplicantDetailPage({
     );
   }
 
+  const { data: existingOffer } = await supabase
+    .from("job_offers")
+    .select("id, status")
+    .eq("application_id", appId)
+    .maybeSingle();
+
   const { data: resume } = application.resume_id
     ? await supabase
         .from("resumes")
@@ -142,6 +148,15 @@ export default async function ApplicantDetailPage({
   const isNegotiating = application.status === "negotiating";
   const isUnderReviewForOffer = application.status === "under_review";
   const isOfferSent = application.status === "offer_sent";
+  const hasSentOffer = Boolean(existingOffer && String(existingOffer.status ?? "").toUpperCase() !== "DRAFT");
+  const offerButtonLabel = isNegotiating
+    ? "Continue Negotiation"
+    : hasSentOffer || isOfferSent
+      ? "Sent Offer"
+      : "Send Offer";
+  const offerButtonTone = isNegotiating || hasSentOffer || isOfferSent
+    ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+    : "bg-green-600 text-white hover:bg-green-700";
   const isHired = application.status === "hired";
 
   // Steps that come before negotiating — offer not yet available
@@ -237,23 +252,13 @@ export default async function ApplicantDetailPage({
                 Schedule interview
               </Link>
 
-              {/* Create Offer — shown when negotiating or under review */}
-              {(isNegotiating || isUnderReviewForOffer) && (
+              {/* Offer stage — shown once the application reaches offer territory */}
+              {(isNegotiating || isUnderReviewForOffer || isOfferSent) && (
                 <Link
                   href={`/jobs/manage/${id}/applicants/${appId}/offer`}
-                  className="block rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                  className={`block rounded-xl px-4 py-3 text-center text-sm font-medium transition-colors ${offerButtonTone}`}
                 >
-                  🎉 Create Job Offer
-                </Link>
-              )}
-
-              {/* Edit Offer — shown when offer already sent */}
-              {isOfferSent && (
-                <Link
-                  href={`/jobs/manage/${id}/applicants/${appId}/offer`}
-                  className="block rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
-                >
-                  ✏️ Edit Job Offer
+                  {offerButtonLabel}
                 </Link>
               )}
 

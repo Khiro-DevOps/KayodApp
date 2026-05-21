@@ -9,6 +9,7 @@ type JobOfferRow = {
   job_posting_id: string;
   status: string;
   updated_at: string;
+  latest_docuseal_url: string | null;
   job_metadata: Record<string, unknown> | null;
   applications: {
     id: string;
@@ -72,6 +73,7 @@ export async function POST(_request: NextRequest, { params }: { params: { applic
         job_posting_id,
         status,
         updated_at,
+        latest_docuseal_url,
         job_metadata,
         applications!inner (
           id,
@@ -115,8 +117,57 @@ export async function POST(_request: NextRequest, { params }: { params: { applic
       return NextResponse.json({ success: true, alreadyConfirmed: true, employeeId: application.candidate_id });
     }
 
-    if (!(["signed", "accepted", "hired"].includes(normalizedOfferStatus) || normalizedApplicationStatus === "hired")) {
+    // Check if offer status allows confirmation
+    const isReadyForConfirmation = ["signed", "accepted", "hired"].includes(normalizedOfferStatus) || normalizedApplicationStatus === "hired";
+    let isActuallySigned = isReadyForConfirmation;
+
+    // If not ready yet, try a live DocuSeal check for "sent" status
+    if (!isReadyForConfirmation && normalizedOfferStatus === "sent") {
+      try {
+        const slug = offer.latest_docuseal_url?.match(
+          /\/(?:embed\/)?s\/([^/?#]+)/i
+        )?.[1];
+        if (slug) {
+          const apiUrl = process.env.DOCUSEAL_API_URL || "https://api.docuseal.com";
+          const apiKey = process.env.REDACTED_DOCUSEAL_API_KEY;
+          if (apiKey) {
+            const dsRes = await fetch(
+              `${apiUrl}/submitters?slug=${encodeURIComponent(slug)}`,
+              { 
+                headers: { "X-Auth-Token": apiKey }, 
+                cache: "no-store" as const 
+              }
+            );
+            if (dsRes.ok) {
+              const dsData = await dsRes.json();
+              const submitter = Array.isArray(dsData?.data)
+                ? dsData.data[0]
+                : Array.isArray(dsData)
+                ? dsData[0]
+                : dsData;
+              isActuallySigned =
+                submitter?.status === "completed" ||
+                !!submitter?.completed_at;
+            }
+          }
+        }
+      } catch (err) {
+        // Silently ignore DocuSeal API errors
+        console.warn("[Confirm Hire] DocuSeal live check failed:", err);
+      }
+    }
+
+    if (!isActuallySigned) {
       return NextResponse.json({ error: "Offer is not ready for confirmation" }, { status: 409 });
+    }
+
+    // If we confirmed via DocuSeal live check, backfill the status
+    if (isActuallySigned && !isReadyForConfirmation) {
+      const now = new Date().toISOString();
+      await admin
+        .from("job_offers")
+        .update({ status: "SIGNED", updated_at: now })
+        .eq("id", offer.id);
     }
 
     const now = new Date().toISOString();

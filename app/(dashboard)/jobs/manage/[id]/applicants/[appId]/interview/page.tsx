@@ -165,7 +165,7 @@ export default async function InterviewPage({
           href={`/jobs/manage/${id}/applicants/${appId}/interview/offer`}
           className="block rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-green-700 transition-colors"
         >
-          🎉 Create Job Offer
+          Send Offer
         </Link>
       </div>
     </PageContainer>

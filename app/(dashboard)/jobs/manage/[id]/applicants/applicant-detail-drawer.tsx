@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import type { Application } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
+import { moveToScreening } from "./pipeline-actions";
+import { getCurrentStage } from "@/lib/pipeline";
 
 interface NegotiationLog {
   id: string;
@@ -15,7 +19,11 @@ interface NegotiationLog {
 
 interface ApplicantDetailDrawerProps {
   application: Application;
+  jobOffer?: {
+    status?: string | null;
+  };
   jobId: string;
+  initialTab?: string | null;
   isCompletedLocked?: boolean;
   isOpen: boolean;
   onClose: () => void;
@@ -32,12 +40,15 @@ const outcomeConfig: Record<string, { label: string; color: string }> = {
 
 export default function ApplicantDetailDrawer({
   application,
+  jobOffer,
   jobId,
+  initialTab,
   isCompletedLocked = false,
   isOpen,
   onClose,
   onScheduled,
 }: ApplicantDetailDrawerProps) {
+  const router = useRouter();
   const [showScheduleForm, setShowScheduleForm] = useState(false);
 
   // ── Negotiation state ────────────────────────────────────────────────────
@@ -59,10 +70,94 @@ export default function ApplicantDetailDrawer({
   const resume = (Array.isArray(application?.resumes)
     ? application.resumes[0]
     : application?.resumes) as any;
+  const currentStage = getCurrentStage(application?.status);
+  const normalizedAppStatus = String(application?.status ?? "").toLowerCase();
+  const normalizedOfferStatus = String(jobOffer?.status ?? "").toUpperCase();
+  const isOfferStage = ["offer_sent", "negotiating"].includes(normalizedAppStatus);
+  const offerHasBeenSent = [
+    "SENT",
+    "NEGOTIATION_PENDING",
+    "REVISED",
+    "ACCEPTED",
+    "SIGNED",
+    "HIRED",
+    "HIRE_CONFIRMED",
+    "DECLINED",
+    "EXPIRED",
+  ].includes(normalizedOfferStatus);
+  const shouldShowOfferNotSent = isOfferStage && !!jobOffer && !offerHasBeenSent;
+
+  const displayStatus = shouldShowOfferNotSent
+    ? "Offer"
+    : currentStage?.label ?? application?.status.replace(/_/g, " ").toUpperCase();
+
+  const statusTone = shouldShowOfferNotSent
+    ? "bg-amber-50 text-amber-700"
+    : currentStage?.key === "new"
+    ? "bg-blue-50 text-blue-700"
+    : currentStage?.key === "screening"
+      ? "bg-amber-50 text-amber-700"
+      : currentStage?.key === "interview"
+        ? "bg-purple-50 text-purple-700"
+        : currentStage?.key === "offer"
+          ? "bg-orange-50 text-orange-700"
+          : currentStage?.key === "hired"
+            ? "bg-green-50 text-green-700"
+            : "bg-blue-50 text-blue-700";
 
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
-  const displayStatus = application?.status.replace(/_/g, " ").toUpperCase();
+  const drawerPrimaryAction = (() => {
+    if (initialTab === "send_offer" || shouldShowOfferNotSent) {
+      return {
+        label: "Send Offer",
+        color: "bg-orange-600 text-white",
+        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/offer`),
+      };
+    }
+
+    if (initialTab === "view_offer" || ["negotiating", "offer_sent"].includes(normalizedAppStatus) || offerHasBeenSent) {
+      return {
+        label: "Open Offer Page",
+        color: "bg-orange-600 text-white",
+        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/offer`),
+      };
+    }
+
+    if (initialTab === "view_interview" || application?.status === "interview_scheduled") {
+      return {
+        label: "View Scheduled Interview",
+        color: "bg-primary text-white",
+        onClick: () => router.push("/interviews"),
+      };
+    }
+
+    if (["under_review", "shortlisted", "interviewed"].includes(application?.status)) {
+      return {
+        label: "Schedule Interview",
+        color: "bg-primary text-white",
+        onClick: () => router.push(`/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`),
+      };
+    }
+
+    if (["submitted", "draft"].includes(application?.status)) {
+      return {
+        label: "Move to Screening",
+        color: "bg-amber-600 text-white",
+        onClick: async () => {
+          const result = await moveToScreening(application.id);
+          if (!result.success) {
+            toast.error(result.error || "Failed to move to screening");
+            return;
+          }
+          toast.success(`✓ ${result.applicantName} moved to Screening`);
+          router.refresh();
+        },
+      };
+    }
+
+    return null;
+  })();
 
   const closeScheduleForm = useCallback(() => {
     setShowScheduleForm(false);
@@ -311,20 +406,13 @@ export default function ApplicantDetailDrawer({
 
           {/* Application Status */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-text-primary">Application Status</h3>
-            <div className={`px-3 py-2 rounded-lg text-sm font-medium ${
-              application?.status === "submitted"            ? "bg-blue-50 text-blue-700"
-              : application?.status === "draft"                ? "bg-gray-50 text-gray-700"
-              : application?.status === "under_review"         ? "bg-amber-50 text-amber-700"
-              : application?.status === "shortlisted"          ? "bg-green-50 text-green-700"
-              : application?.status === "interview_scheduled"  ? "bg-purple-50 text-purple-700"
-              : application?.status === "interviewed"          ? "bg-indigo-50 text-indigo-700"
-              : application?.status === "offer_sent"           ? "bg-green-50 text-green-700"
-              : application?.status === "withdrawn"            ? "bg-red-50 text-red-700"
-              : "bg-blue-50 text-blue-700"
-            }`}>
+            <h3 className="text-sm font-semibold text-text-primary">Pipeline Stage</h3>
+            <div className={`px-3 py-2 rounded-lg text-sm font-medium ${statusTone}`}>
               {displayStatus}
             </div>
+            <p className="text-xs text-text-secondary">
+              Status: {shouldShowOfferNotSent ? "OFFER NOT SENT" : application?.status.replace(/_/g, " ").toUpperCase()}
+            </p>
           </div>
 
           {/* Negotiation Log Section */}
@@ -414,17 +502,28 @@ export default function ApplicantDetailDrawer({
 
         {/* Footer */}
         <div className="border-t border-border p-6 space-y-3 shrink-0">
-          <button
-            onClick={() => {
-              if (canReschedule) {
-                setShowScheduleForm(true);
-              }
-            }}
-            disabled={!canReschedule}
-            className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {canReschedule ? "Schedule Interview" : "Interview Completed"}
-          </button>
+          {drawerPrimaryAction ? (
+            <button
+              onClick={() => {
+                void drawerPrimaryAction.onClick();
+              }}
+              className={`w-full py-2.5 rounded-lg font-medium transition-colors ${drawerPrimaryAction.color}`}
+            >
+              {drawerPrimaryAction.label}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (canReschedule) {
+                  router.push(`/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`);
+                }
+              }}
+              disabled={!canReschedule}
+              className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {canReschedule ? "Schedule Interview" : "Interview Completed"}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="w-full border border-border text-text-primary py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors"
@@ -501,10 +600,14 @@ export default function ApplicantDetailDrawer({
                 <InterviewSchedulingForm
                   applicationId={application.id}
                   jobId={jobId}
-                  onSuccess={() => {
-                    closeScheduleForm();
-                    onScheduled?.();
-                    onClose();
+                  onSuccess={async () => {
+                    // Update application status to interview_scheduled
+                    const result = await confirmInterviewScheduled(application.id);
+                    if (result.success) {
+                      closeScheduleForm();
+                      onScheduled?.();
+                      onClose();
+                    }
                   }}
                   onCancel={closeScheduleForm}
                 />

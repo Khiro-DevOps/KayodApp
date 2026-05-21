@@ -64,26 +64,40 @@ export async function POST(request: NextRequest) {
       supabaseServiceKey
     );
 
-    // Resolve either the legacy signed document or the modern job offer record.
-    const { data: signedDocument, error: signedDocumentError } = await supabase
-      .from("signed_documents")
+    // Try job_offers first (modern flow — externalId = job_offers.id)
+    const { data: jobOffer, error: jobOfferError } = await supabase
+      .from("job_offers")
       .select("id, application_id, status")
       .eq("id", externalId)
       .maybeSingle();
 
-    const { data: jobOffer, error: jobOfferError } = signedDocument
-      ? { data: null, error: null }
-      : await supabase
-          .from("job_offers")
-          .select("id, application_id, status, latest_docuseal_url, updated_at")
+    // Fall back to signed_documents (legacy flow — externalId = signed_documents.id)
+    const { data: signedDocument, error: signedDocumentError } = !jobOffer
+      ? await supabase
+          .from("signed_documents")
+          .select("id, application_id, status")
           .eq("id", externalId)
-          .maybeSingle();
+          .maybeSingle()
+      : { data: null, error: null };
 
-    if (signedDocumentError && jobOfferError) {
+    // If signed_documents found, also look up the linked job_offer
+    let linkedJobOffer = jobOffer;
+    if (signedDocument && !linkedJobOffer) {
+      const { data: linkedOffer } = await supabase
+        .from("job_offers")
+        .select("id, application_id, status")
+        .eq("application_id", signedDocument.application_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      linkedJobOffer = linkedOffer;
+    }
+
+    if (jobOfferError && signedDocumentError) {
       console.error("[DocuSeal Webhook] Failed to resolve offer by external_id:", {
         externalId,
-        signedDocumentError: signedDocumentError.message,
         jobOfferError: jobOfferError?.message,
+        signedDocumentError: signedDocumentError?.message,
       });
     }
 
@@ -92,7 +106,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
 
-    const applicationId = signedDocument?.application_id ?? jobOffer?.application_id ?? null;
+    const applicationId =
+      jobOffer?.application_id ??
+      signedDocument?.application_id ??
+      null;
 
     if (!applicationId) {
       console.warn(`[DocuSeal Webhook] Application ID missing for submission ${externalId}`);
@@ -116,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     switch (eventType) {
       case "form.completed":
-      case "submission.completed":
+      case "submission.completed": {
         const completedPdfUrl =
           payload.data?.combined_document_url ??
           payload.data?.submission?.combined_document_url ??
@@ -131,60 +148,72 @@ export async function POST(request: NextRequest) {
           ...(completedPdfUrl ? { pdf_file_path: completedPdfUrl } : {}),
         };
         applicationUpdates = { status: "hired" };
-        if (jobOffer) {
+        
+        const now = new Date().toISOString();
+        // Update job_offers (modern flow)
+        if (linkedJobOffer) {
           await supabase
             .from("job_offers")
-            .update({
-              status: "HIRED",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", jobOffer.id);
+            .update({ status: "SIGNED", updated_at: now })
+            .eq("id", linkedJobOffer.id);
         }
+        
         console.log(
           `[DocuSeal Webhook] Offer signed for application ${application.id}`
         );
         break;
+      }
 
       case "form.declined":
-      case "submission.declined":
+      case "submission.declined": {
         newStatus = "declined";
         updates = {
           status: newStatus,
         };
         applicationUpdates = { status: "rejected" };
-        if (jobOffer) {
+        
+        const now = new Date().toISOString();
+        // Update job_offers (modern flow)
+        if (linkedJobOffer) {
           await supabase
             .from("job_offers")
             .update({
               status: "DECLINED",
-              updated_at: new Date().toISOString(),
+              updated_at: now,
             })
-            .eq("id", jobOffer.id);
+            .eq("id", linkedJobOffer.id);
         }
+        
         console.log(
           `[DocuSeal Webhook] Offer declined for application ${application.id}`
         );
         break;
+      }
 
-      case "submission.expired":
+      case "submission.expired": {
         newStatus = "expired";
         updates = {
           status: newStatus,
         };
         applicationUpdates = { status: "rejected" };
-        if (jobOffer) {
+        
+        const now = new Date().toISOString();
+        // Update job_offers (modern flow)
+        if (linkedJobOffer) {
           await supabase
             .from("job_offers")
             .update({
               status: "EXPIRED",
-              updated_at: new Date().toISOString(),
+              updated_at: now,
             })
-            .eq("id", jobOffer.id);
+            .eq("id", linkedJobOffer.id);
         }
+        
         console.log(
           `[DocuSeal Webhook] Offer expired for application ${application.id}`
         );
         break;
+      }
 
       default:
         console.log(`[DocuSeal Webhook] Unrecognized event type: ${eventType}`);

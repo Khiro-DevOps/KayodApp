@@ -113,14 +113,8 @@ export async function createDocusealSubmission(input: {
           name: input.submitterName,
           email: input.submitterEmail,
           external_id: input.externalId,
-          // Pre-fill template fields so [JOB_TITLE] and [COMPANY_NAME]
-          // are replaced with actual values in the rendered PDF
-          values: input.prefillFields
-            ? Object.entries(input.prefillFields).map(([field, value]) => ({
-                field,
-                value,
-              }))
-            : [],
+          // DocuSeal expects submitter values as a keyed object map.
+          values: input.prefillFields ?? {},
         },
       ],
       completed_redirect_url: input.redirectUrl,

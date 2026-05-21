@@ -2,6 +2,7 @@
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createDocusealSubmission, createJobOfferTemplate, fetchDocusealTemplate } from "@/lib/docuseal";
+import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
 /**
  * Creates a DocuSeal submission for a job offer stored in job_offers table
@@ -215,67 +216,38 @@ export async function sendOfferWithDocuSeal(
     // Create a signed_documents placeholder and link it back to the application so
     // legacy pages that resolve via `applications.contract_offer_id` continue to work.
     try {
-      // Ensure we have a contract_templates record to satisfy the NOT NULL constraint
-      let contractTemplateId: string | null = null;
-      const templateKey = String(docusealTemplateId || "").trim();
-      if (templateKey) {
-        const { data: existingTemplate } = await supabase
-          .from("contract_templates")
-          .select("id")
-          .eq("docuseal_template_id", templateKey)
-          .maybeSingle();
+      const { signedDocumentId } = await createSignedDocumentPlaceholderWithTemplateFallback(supabase, {
+        applicationId,
+        jobPostingId: job.id,
+        docusealTemplateId,
+        createdBy: job.created_by,
+        signingMethod: "digital",
+        status: "sent",
+        metadata: {
+          ...(jobOffer?.job_metadata ?? {}),
+          docuseal_submission_id: submissionId,
+          docuseal_embed_src: submission.embedSrc,
+          docuseal_viewer_url: submission.viewerUrl,
+          company_name: companyName,
+          start_date: job.offer_letter_settings?.phStartDate ?? null,
+          job_title: job.title,
+          job_offer_id: offerId,
+        },
+      });
 
-        if (existingTemplate) {
-          contractTemplateId = existingTemplate.id;
-        } else {
-          const { data: newTemplate } = await supabase
-            .from("contract_templates")
-            .insert({
-              job_posting_id: job.id,
-              template_name: `Template ${templateKey}`,
-              docuseal_template_id: templateKey,
-              external_id: templateKey,
-              created_by: job.created_by,
-            })
-            .select("id")
-            .single();
-          contractTemplateId = newTemplate?.id ?? null;
-        }
-      }
-
-      const { data: signedDoc, error: signedDocError } = await supabase
+      await supabase
         .from("signed_documents")
-        .insert({
-          application_id: applicationId,
-          contract_template_id: contractTemplateId,
-          signing_method: "digital",
-          status: "sent",
+        .update({
+          docuseal_submission_url: submission.viewerUrl,
+          updated_at: new Date().toISOString(),
         })
-        .select("id")
-        .single();
+        .eq("id", signedDocumentId);
 
-      if (signedDocError || !signedDoc?.id) {
-        console.error("Failed to create signed_documents placeholder:", signedDocError);
-      } else {
-        // Update signed_documents with the DocuSeal URL and metadata containing the job_offers id
-        await supabase
-          .from("signed_documents")
-          .update({
-            docuseal_submission_url: docusealSubmissionUrl,
-            metadata: {
-              ...(jobOffer?.metadata ?? {}),
-              job_offer_id: offerId,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", signedDoc.id);
-
-        // Link application -> signed_documents for legacy lookups
-        await supabase
-          .from("applications")
-          .update({ status: "offer_sent", contract_offer_id: signedDoc.id })
-          .eq("id", applicationId);
-      }
+      // Link application -> signed_documents for legacy lookups
+      await supabase
+        .from("applications")
+        .update({ status: "offer_sent", contract_offer_id: signedDocumentId })
+        .eq("id", applicationId);
     } catch (err) {
       console.warn("Non-fatal: failed to persist signed_documents or application link:", err);
     }

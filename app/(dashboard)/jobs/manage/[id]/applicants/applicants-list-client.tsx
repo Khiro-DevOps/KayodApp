@@ -9,6 +9,9 @@ import HireConfirmBottomSheet from "@/components/hr/HireConfirmBottomSheet";
 import { createClient } from "@/lib/supabase/client";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import type { ApplicationStatus, Interview } from "@/lib/types";
+import { getCurrentStage } from "@/lib/pipeline";
+import { moveToScreening, moveToInterview, moveToHired } from "./pipeline-actions";
+import { sendHydratedOffer } from "@/app/(auth)/actions/offer-actions";
 
 interface CandidateProfile {
   id: string;
@@ -83,6 +86,32 @@ const STAGES: StageDefinition[] = [
 
 const CLOSED_STATUSES: ApplicationStatus[] = ["rejected", "withdrawn"];
 const SIGNED_STATUSES = new Set(["SIGNED", "HIRED", "ACCEPTED", "HIRE_CONFIRMED"]);
+const OFFER_SENT_STATUSES = new Set([
+  "SENT",
+  "NEGOTIATION_PENDING",
+  "REVISED",
+  "ACCEPTED",
+  "SIGNED",
+  "HIRED",
+  "HIRE_CONFIRMED",
+  "DECLINED",
+  "EXPIRED",
+]);
+
+function getOfferDeliveryState(jobOffer?: JobOfferRow): "signed" | "sent" | "not_sent" | null {
+  if (!jobOffer) return null;
+
+  const normalizedStatus = String(jobOffer.status ?? "").trim().toUpperCase();
+  if (SIGNED_STATUSES.has(normalizedStatus)) {
+    return "signed";
+  }
+
+  if (OFFER_SENT_STATUSES.has(normalizedStatus)) {
+    return "sent";
+  }
+
+  return "not_sent";
+}
 
 type QuickAction = {
   label: string;
@@ -129,12 +158,14 @@ function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickA
     case "shortlisted":
       return { label: "Schedule interview", action: "interview", color: "#a855f7" };
     case "interview_scheduled":
-      return { label: "View interview", action: "view_interview", color: "#a855f7" };
+      return { label: "View Scheduled Interview", action: "view_interview", color: "#a855f7" };
     case "interviewed":
+      // Still allow scheduling (follow-up) from the interview panel — use the existing interview flow
+      return { label: "Schedule interview", action: "interview", color: "#a855f7" };
     case "negotiating":
-      return { label: "Send offer", action: "send_offer", color: "#f97316" };
     case "offer_sent":
-      return { label: "View offer", action: "view_offer", color: "#f97316" };
+      // Offer stage should be read-only for quick actions in the pipeline view
+      return null;
     case "hired":
       return { label: "Confirm hire ✓", action: "confirm_hire", color: "#16a34a" };
     case "hire_confirmed":
@@ -147,11 +178,24 @@ function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickA
 function getJobOfferBadge(jobOffer?: JobOfferRow) {
   if (!jobOffer) return null;
 
-  const normalizedStatus = String(jobOffer.status ?? "").trim().toUpperCase();
-  const isSigned = SIGNED_STATUSES.has(normalizedStatus);
+  const deliveryState = getOfferDeliveryState(jobOffer);
+  const isSigned = deliveryState === "signed";
+
+  const label = deliveryState === "signed"
+    ? "✓ Signed - confirm hire"
+    : deliveryState === "sent"
+      ? "⏳ Awaiting signature"
+      : "⚠ Offer not sent yet";
+
+  const color = deliveryState === "signed"
+    ? "#16a34a"
+    : deliveryState === "sent"
+      ? "#f97316"
+      : "#b45309";
+
   return {
-    label: isSigned ? "✓ Signed — confirm hire" : "⏳ Awaiting signature",
-    color: isSigned ? "#16a34a" : "#f97316",
+    label,
+    color,
     updatedAt: jobOffer.updated_at,
     isSigned,
   };
@@ -180,6 +224,7 @@ export default function ApplicantsHubClient({
   const [interviewMap, setInterviewMap] = useState<Map<string, Interview>>(interviews);
   const [jobOffers, setJobOffers] = useState<Record<string, JobOfferRow>>(initialJobOffers);
   const [signedDocuments, setSignedDocuments] = useState<Record<string, SignedDocumentRow>>(initialSignedDocuments);
+  const [realtimeConnected, setRealtimeConnected] = useState(true);
   const [activeTab, setActiveTab] = useState(() => {
     const hasSignedPendingConfirmation = applications.some((app) => {
       const offer = initialJobOffers[app.id];
@@ -225,139 +270,184 @@ export default function ApplicantsHubClient({
   }, [applicationRows, selectedApplication]);
 
   useEffect(() => {
-    const supabase = createClient();
+    let isMounted = true;
 
-    const channel = supabase
-      .channel(`job-applicants-${jobId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "applications",
-          filter: `job_posting_id=eq.${jobId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
-            if (!deletedId) return;
+    const setupRealtimeSubscription = () => {
+      try {
+        const supabase = createClient();
 
-            setApplicationRows((prev) => prev.filter((app) => app.id !== deletedId));
-            return;
-          }
+        const channel = supabase
+          .channel(`job-applicants-${jobId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "applications",
+              filter: `job_posting_id=eq.${jobId}`,
+            },
+            (payload) => {
+              if (payload.eventType === "DELETE") {
+                const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
+                if (!deletedId) return;
 
-          const changed = payload.new as Partial<ApplicationRow> | null;
-          if (!changed?.id) return;
+                if (isMounted) {
+                  setApplicationRows((prev) => prev.filter((app) => app.id !== deletedId));
+                }
+                return;
+              }
 
-          setApplicationRows((prev) => {
-            const index = prev.findIndex((app) => app.id === changed.id);
-            if (index === -1) return prev;
+              const changed = payload.new as Partial<ApplicationRow> | null;
+              if (!changed?.id) return;
 
-            const next = [...prev];
-            next[index] = { ...next[index], ...changed };
-            return next;
+              if (isMounted) {
+                setApplicationRows((prev) => {
+                  const index = prev.findIndex((app) => app.id === changed.id);
+                  if (index === -1) return prev;
+
+                  const next = [...prev];
+                  next[index] = { ...next[index], ...changed };
+                  return next;
+                });
+              }
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "interviews",
+              filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
+            },
+            (payload) => {
+              if (payload.eventType === "DELETE") {
+                const deleted = payload.old as { application_id?: string } | null;
+                if (!deleted?.application_id) return;
+                if (!applicationIdsRef.current.has(deleted.application_id)) return;
+
+                if (isMounted) {
+                  setInterviewMap((prev) => {
+                    const next = new Map(prev);
+                    next.delete(deleted.application_id as string);
+                    return next;
+                  });
+                }
+                return;
+              }
+
+              const changed = payload.new as Interview | null;
+              if (!changed?.application_id) return;
+              if (!applicationIdsRef.current.has(changed.application_id)) return;
+
+              if (isMounted) {
+                setInterviewMap((prev) => {
+                  const next = new Map(prev);
+                  next.set(changed.application_id, changed);
+                  return next;
+                });
+              }
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "job_offers",
+              filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
+            },
+            (payload) => {
+              if (payload.eventType === "DELETE") {
+                const deleted = payload.old as { application_id?: string } | null;
+                if (!deleted?.application_id) return;
+
+                if (isMounted) {
+                  setJobOffers((prev) => {
+                    if (!prev[deleted.application_id]) return prev;
+                    const next = { ...prev };
+                    delete next[deleted.application_id];
+                    return next;
+                  });
+                }
+                return;
+              }
+
+              const changed = payload.new as JobOfferRow | null;
+              if (!changed?.application_id) return;
+
+              if (isMounted) {
+                setJobOffers((prev) => ({
+                  ...prev,
+                  [changed.application_id]: changed,
+                }));
+              }
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "signed_documents",
+              filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
+            },
+            (payload) => {
+              if (payload.eventType === "DELETE") {
+                const deleted = payload.old as { application_id?: string } | null;
+                if (!deleted?.application_id) return;
+
+                if (isMounted) {
+                  setSignedDocuments((prev) => {
+                    if (!prev[deleted.application_id]) return prev;
+                    const next = { ...prev };
+                    delete next[deleted.application_id];
+                    return next;
+                  });
+                }
+                return;
+              }
+
+              const changed = payload.new as SignedDocumentRow | null;
+              if (!changed?.application_id) return;
+
+              if (isMounted) {
+                setSignedDocuments((prev) => ({
+                  ...prev,
+                  [changed.application_id]: changed,
+                }));
+              }
+            }
+          )
+          .subscribe((status) => {
+            if (isMounted) {
+              if (status === "SUBSCRIBED") {
+                setRealtimeConnected(true);
+                if (process.env.NODE_ENV === "development") {
+                  console.log("[Realtime] Successfully subscribed to applicants channel");
+                }
+              } else if (status === "CHANNEL_ERROR") {
+                setRealtimeConnected(false);
+                console.warn("[Realtime] Channel error - updates may not sync");
+              }
+            }
           });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "interviews",
-          filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deleted = payload.old as { application_id?: string } | null;
-            if (!deleted?.application_id) return;
-            if (!applicationIdsRef.current.has(deleted.application_id)) return;
 
-            setInterviewMap((prev) => {
-              const next = new Map(prev);
-              next.delete(deleted.application_id as string);
-              return next;
-            });
-            return;
-          }
+        return () => {
+          void supabase.removeChannel(channel);
+        };
+      } catch (error) {
+        console.error("[Realtime] Failed to setup subscription:", error);
+        // Realtime is optional - app still functions without it
+        return () => {};
+      }
+    };
 
-          const changed = payload.new as Interview | null;
-          if (!changed?.application_id) return;
-          if (!applicationIdsRef.current.has(changed.application_id)) return;
-
-          setInterviewMap((prev) => {
-            const next = new Map(prev);
-            next.set(changed.application_id, changed);
-            return next;
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "job_offers",
-          filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deleted = payload.old as { application_id?: string } | null;
-            if (!deleted?.application_id) return;
-
-            setJobOffers((prev) => {
-              if (!prev[deleted.application_id]) return prev;
-              const next = { ...prev };
-              delete next[deleted.application_id];
-              return next;
-            });
-            return;
-          }
-
-          const changed = payload.new as JobOfferRow | null;
-          if (!changed?.application_id) return;
-
-          setJobOffers((prev) => ({
-            ...prev,
-            [changed.application_id]: changed,
-          }));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "signed_documents",
-          filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            const deleted = payload.old as { application_id?: string } | null;
-            if (!deleted?.application_id) return;
-
-            setSignedDocuments((prev) => {
-              if (!prev[deleted.application_id]) return prev;
-              const next = { ...prev };
-              delete next[deleted.application_id];
-              return next;
-            });
-            return;
-          }
-
-          const changed = payload.new as SignedDocumentRow | null;
-          if (!changed?.application_id) return;
-
-          setSignedDocuments((prev) => ({
-            ...prev,
-            [changed.application_id]: changed,
-          }));
-        }
-      )
-      .subscribe();
+    const cleanup = setupRealtimeSubscription();
 
     return () => {
-      void supabase.removeChannel(channel);
+      isMounted = false;
+      cleanup();
     };
   }, [jobId]);
 
@@ -431,80 +521,113 @@ export default function ApplicantsHubClient({
   };
 
   const handleQuickAction = async (app: ApplicationRow, action: NonNullable<QuickAction["action"]>) => {
-    switch (action) {
-      case "screen": {
-        const response = await fetch(`/api/applications/${app.id}/status`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "under_review" }),
-        });
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => null);
-          toast.error(body?.error ?? "Failed to update status");
+    try {
+      switch (action) {
+        case "screen": {
+          const result = await moveToScreening(app.id);
+          if (!result.success) {
+            toast.error(result.error || "Failed to move to screening");
+            return;
+          }
+          toast.success(`✓ ${result.applicantName} moved to Screening`);
           return;
         }
 
-        setApplicationRows((prev) => prev.map((row) => (row.id === app.id ? { ...row, status: "under_review" } : row)));
-        toast.success("Moved to screening");
-        return;
-      }
-      case "interview":
-      case "view_interview":
-      case "send_offer":
-      case "view_offer":
-        setSelectedApplication(app);
-        setDrawerInitialTab(action);
-        setIsDrawerOpen(true);
-        return;
-      case "confirm_hire": {
-        const offer = jobOffers[app.id];
-        const signedDocument = signedDocuments[app.id];
-        const name = app.profiles ? `${app.profiles.first_name} ${app.profiles.last_name}`.trim() : "Candidate";
-        const metadata = offer?.job_metadata ?? {};
-        const storedSignedPdfUrl = signedDocument?.pdf_file_path || signedDocument?.docuseal_submission_url || signedDocument?.latest_docuseal_url || null;
-
-        setConfirmSheetApp({
-          applicationId: app.id,
-          candidateName: name,
-          candidateEmail: app.profiles?.email ?? "",
-          jobTitle,
-          isAlreadyConfirmed: app.status === "hire_confirmed",
-          offerMetadata: {
-            startDate: offer?.start_date ?? (typeof metadata.start_date === "string" ? metadata.start_date : null),
-            workSetup: offer?.work_setup ?? (typeof metadata.work_setup === "string" ? metadata.work_setup : null),
-            salaryAmount: offer?.salary ?? (typeof metadata.salary_amount === "number" ? metadata.salary_amount : null),
-            salaryCurrency: typeof metadata.salary_currency === "string" ? metadata.salary_currency : "PHP",
-            signedPdfUrl: storedSignedPdfUrl,
-          },
-          signedAt: offer?.updated_at ?? null,
-          submittedAt: app.submitted_at,
-        });
-
-        if (offer?.id) {
-          void fetch(`/api/hr/signed-pdf-url?offerId=${offer.id}`)
-            .then((response) => response.json())
-            .then((data: { url?: string }) => {
-              if (!data.url) return;
-
-              setConfirmSheetApp((current) =>
-                current && current.applicationId === app.id
-                  ? {
-                      ...current,
-                      offerMetadata: {
-                        ...current.offerMetadata,
-                        signedPdfUrl: data.url ?? null,
-                      },
-                    }
-                  : current
-              );
-            })
-            .catch(() => {
-              // Signed PDF is optional; the sheet can still confirm the hire without it.
-            });
+        case "interview": {
+          // Redirect HR to the central Interview Schedule page to use the existing scheduling flow
+          try {
+            router.push(`/interviews/schedule?applicationId=${encodeURIComponent(app.id)}`);
+          } catch (err) {
+            toast.error("Failed to open schedule page");
+          }
+          return;
         }
-        return;
+
+        case "view_interview": {
+          router.push("/interviews");
+          return;
+        }
+
+        case "send_offer": {
+          toast.info("Sending offer through DocuSeal...");
+          const result = await sendHydratedOffer(jobId, app.id);
+          if (!result.success) {
+            toast.error(result.error || "Failed to send offer");
+            return;
+          }
+          toast.success(`✓ Offer sent to ${getApplicantName(app.profiles)}`);
+          router.refresh();
+          return;
+        }
+
+        case "view_offer": {
+          setSelectedApplication(app);
+          setDrawerInitialTab("view_offer");
+          setIsDrawerOpen(true);
+          return;
+        }
+
+        case "confirm_hire": {
+          const result = await moveToHired(app.id);
+          if (result.requiresModal && result.nextAction === "confirm_hire") {
+            // Open the hire confirmation sheet
+            const offer = jobOffers[app.id];
+            const signedDocument = signedDocuments[app.id];
+            const name = app.profiles ? `${app.profiles.first_name} ${app.profiles.last_name}`.trim() : "Candidate";
+            const metadata = offer?.job_metadata ?? {};
+            const storedSignedPdfUrl = signedDocument?.pdf_file_path || signedDocument?.docuseal_submission_url || signedDocument?.latest_docuseal_url || null;
+
+            setConfirmSheetApp({
+              applicationId: app.id,
+              candidateName: name,
+              candidateEmail: app.profiles?.email ?? "",
+              jobTitle,
+              isAlreadyConfirmed: app.status === "hire_confirmed",
+              offerMetadata: {
+                startDate: offer?.start_date ?? (typeof metadata.start_date === "string" ? metadata.start_date : null),
+                workSetup: offer?.work_setup ?? (typeof metadata.work_setup === "string" ? metadata.work_setup : null),
+                salaryAmount: offer?.salary ?? (typeof metadata.salary_amount === "number" ? metadata.salary_amount : null),
+                salaryCurrency: typeof metadata.salary_currency === "string" ? metadata.salary_currency : "PHP",
+                signedPdfUrl: storedSignedPdfUrl,
+              },
+              signedAt: offer?.updated_at ?? null,
+              submittedAt: app.submitted_at,
+            });
+
+            if (offer?.id) {
+              void fetch(`/api/hr/signed-pdf-url?offerId=${offer.id}`)
+                .then((response) => response.json())
+                .then((data: { url?: string }) => {
+                  if (!data.url) return;
+
+                  setConfirmSheetApp((current) =>
+                    current && current.applicationId === app.id
+                      ? {
+                          ...current,
+                          offerMetadata: {
+                            ...current.offerMetadata,
+                            signedPdfUrl: data.url ?? null,
+                          },
+                        }
+                      : current
+                  );
+                })
+                .catch(() => {
+                  // Signed PDF is optional
+                });
+            }
+            return;
+          }
+          if (!result.success) {
+            toast.error(result.error || "Failed to confirm hire");
+            return;
+          }
+          toast.success(`✓ ${result.applicantName} hired successfully`);
+          return;
+        }
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "An unexpected error occurred");
     }
   };
 
@@ -663,6 +786,7 @@ export default function ApplicantsHubClient({
         <ApplicantDetailDrawer
           {...({
             application: selectedApplication as any,
+            jobOffer: jobOffers[selectedApplication.id],
             jobId,
             initialTab: drawerInitialTab,
             isCompletedLocked:
@@ -719,8 +843,13 @@ function ApplicantCardComponent({
   const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
   const jobOfferBadge = getJobOfferBadge(jobOffer);
   const hasSignedContract = jobOfferBadge?.isSigned ?? false;
+  const offerDeliveryState = getOfferDeliveryState(jobOffer);
+  const currentStage = getCurrentStage(app.status);
+  const isOfferStage = app.status === "negotiating" || app.status === "offer_sent";
+  const shouldShowCheckSigned = !hasSignedContract && isOfferStage && offerDeliveryState === "sent";
+  const shouldShowSendOffer = !hasSignedContract && isOfferStage && offerDeliveryState !== "sent";
   const quickAction = getQuickAction(app, hasSignedContract);
-  const displayStatus = app.status.replace(/_/g, " ").toUpperCase();
+  const displayStatus = currentStage?.label ?? app.status.replace(/_/g, " ").toUpperCase();
 
   return (
     <div
@@ -736,7 +865,7 @@ function ApplicantCardComponent({
       className="group w-full cursor-pointer rounded-2xl border border-border bg-surface transition-all duration-200 hover:border-primary hover:shadow-md"
     >
       {/* Card Content */}
-      <div className="p-4 space-y-3">
+      <div className="p-4 pb-1 space-y-3">
         {/* Header: Name, Avatar, Score, Status */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -859,8 +988,8 @@ function ApplicantCardComponent({
 
         {/* Action Buttons - Layout adapts for mobile vs desktop */}
         <div className={isMobile ? "flex flex-col gap-2" : "space-y-2"}>
-          {/* Check Signature Button */}
-          {app.status === "offer_sent" && jobOffer && !hasSignedContract && (
+          {/* Offer Delivery Action */}
+          {shouldShowCheckSigned && (
             <button
               onClick={(event) => {
                 event.stopPropagation();
@@ -870,6 +999,20 @@ function ApplicantCardComponent({
               className="w-full rounded-xl border border-[#e8e8e4] bg-[#f5f5f0] py-2 text-xs font-medium text-[#555] transition-opacity hover:opacity-90"
             >
               ↻ Check if signed
+            </button>
+          )}
+
+          {shouldShowSendOffer && (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                void onQuickAction("send_offer");
+              }}
+              type="button"
+              style={{ background: "#ea580c", color: "#fff" }}
+              className="w-full rounded-xl py-2 text-xs font-semibold transition-opacity hover:opacity-90"
+            >
+              Send Offer
             </button>
           )}
 
@@ -899,7 +1042,7 @@ function ApplicantCardComponent({
           )}
 
           {/* Default CTA */}
-          {!quickAction && (
+          {!shouldShowCheckSigned && !shouldShowSendOffer && !quickAction && (
             <div className="w-full rounded-xl bg-[#f5f5f0] py-2 text-center text-xs font-semibold text-[#777]">
               Click to view details
             </div>

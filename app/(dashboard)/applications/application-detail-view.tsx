@@ -29,6 +29,11 @@ interface ActiveContractOffer {
   }> | null;
 }
 
+interface StatusTrackerOffer {
+  id: string;
+  status: string;
+}
+
 interface ApplicationDetailViewProps {
   application: Application;
   interviews: Interview[];
@@ -235,6 +240,7 @@ export default function ApplicationDetailView({
               interviews={liveInterviews}
               applicationId={application.id}
               offerRouteId={offerRouteId}
+                activeOffer={activeContractOffer ? { id: activeContractOffer.id, status: activeContractOffer.status } : null}
             />
           )}
 

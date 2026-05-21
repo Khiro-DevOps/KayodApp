@@ -144,7 +144,11 @@ export default function HireConfirmBottomSheet({
       setTimeout(() => router.refresh(), 800);
     } catch (error) {
       setConfirmStep("error");
-      setErrorMessage(error instanceof Error ? error.message : "Failed to confirm hire");
+      const rawMessage = error instanceof Error ? error.message : "Failed to confirm hire";
+      const userMessage = rawMessage.includes("not ready for confirmation")
+        ? "The contract hasn't been marked as signed yet. The system will re-check DocuSeal — please try again in a moment."
+        : rawMessage;
+      setErrorMessage(userMessage);
     }
   }
 
@@ -341,9 +345,22 @@ export default function HireConfirmBottomSheet({
               </div>
 
               {confirmStep === "error" && errorMessage && (
-                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
-                  <AlertCircle size={14} color="#ef4444" className="mt-0.5 flex-shrink-0" />
-                  <p className="m-0 text-[13px] text-red-600">{errorMessage}</p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
+                    <AlertCircle size={14} color="#ef4444" className="mt-0.5 flex-shrink-0" />
+                    <p className="m-0 text-[13px] text-red-600">{errorMessage}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmStep("review");
+                      setShowConfirmDialog(false);
+                      setErrorMessage(null);
+                    }}
+                    className="w-full rounded-[10px] border border-[#e8e8e4] bg-white py-[11px] text-sm font-medium text-[#555]"
+                  >
+                    Try again
+                  </button>
                 </div>
               )}
 

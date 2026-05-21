@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
 import { createDocusealSubmission } from "@/lib/docuseal";
+import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
 const JAAS_APP_ID = process.env.JAAS_APP_ID ?? process.env.NEXT_PUBLIC_JAAS_APP_ID;
 const JAAS_DOMAIN = "8x8.vc";
@@ -196,13 +197,6 @@ export async function scheduleInterviewProposal(formData: FormData) {
       .eq("application_id", applicationId)
       .maybeSingle();
 
-    if (existingInterview?.status === "completed") {
-      return {
-        success: false,
-        error: "This interview is already completed. Rescheduling is locked.",
-      };
-    }
-
     let interviewId: string;
 
     const backgroundTasks: Promise<unknown>[] = [];
@@ -211,6 +205,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
       const { data, error } = await supabase
         .from("interviews")
         .update({
+          status: "scheduled",
           scheduled_at: payload.scheduled_at,
           duration_minutes: payload.duration_minutes,
           timezone,
@@ -493,24 +488,18 @@ export async function sendJobOffer(formData: FormData) {
     }
 
     // Create signed_documents record
-    const { data: signedDoc, error: signError } = await supabase
-      .from("signed_documents")
-      .insert({
-        application_id: applicationId,
-        contract_template_id: contractTemplateId,
-        signing_method: signingMethod,
-        status: "sent",
-        metadata: {
-          ...(notes ? { hr_notes: notes } : {}),
-          docuseal_template_id: template.docuseal_template_id,
-        },
-      })
-      .select("id")
-      .single();
-
-    if (signError || !signedDoc) {
-      throw signError || new Error("Failed to create signed document");
-    }
+    const signedDoc = await createSignedDocumentPlaceholderWithTemplateFallback(supabase, {
+      applicationId,
+      jobPostingId: application.job_posting_id,
+      docusealTemplateId: template.docuseal_template_id,
+      createdBy: job.created_by,
+      signingMethod,
+      status: "sent",
+      metadata: {
+        ...(notes ? { hr_notes: notes } : {}),
+        docuseal_template_id: template.docuseal_template_id,
+      },
+    });
 
     let docusealSigningUrl: string | null = null;
 
@@ -535,15 +524,15 @@ export async function sendJobOffer(formData: FormData) {
       const { error: submissionUpdateError } = await supabase
         .from("signed_documents")
         .update({
-          docuseal_submitter_id: submission.submitterId ?? signedDoc.id,
+          docuseal_submitter_id: submission.submitterId ?? signedDoc.signedDocumentId,
           docuseal_submission_url: submission.signingUrl,
           metadata: {
             ...(notes ? { hr_notes: notes } : {}),
             docuseal_template_id: template.docuseal_template_id,
-            docuseal_external_id: signedDoc.id,
+            docuseal_external_id: signedDoc.signedDocumentId,
           },
         })
-        .eq("id", signedDoc.id);
+        .eq("id", signedDoc.signedDocumentId);
 
       if (submissionUpdateError) {
         throw submissionUpdateError;
@@ -555,7 +544,7 @@ export async function sendJobOffer(formData: FormData) {
       .from("applications")
       .update({
         status: "offer_sent",
-        contract_offer_id: signedDoc.id,
+        contract_offer_id: signedDoc.signedDocumentId,
       })
       .eq("id", applicationId);
 

@@ -137,6 +137,7 @@ export function InterviewCardClient({
     }
 
     setIsCompletedLocally(true);
+    router.refresh();
     return true;
   }
 
@@ -204,6 +205,7 @@ export function InterviewCardClient({
       await completeInterviewOnce();
       setShowRoom(false);
       setNotesStep("notepad"); // show notepad first, refresh happens after save
+        router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to complete interview";
       setCompleteError(message);
@@ -212,6 +214,37 @@ export function InterviewCardClient({
       setIsCompleting(false);
     }
   };
+
+  // Complete and optionally advance to offer stage
+  async function completeAndMoveToOffer() {
+    if (isCompletedLocally) return true;
+    setIsCompleting(true);
+    setCompleteError(null);
+    try {
+      const response = await fetch(`/api/interviews/${interview.id}/complete`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ moveToOffer: true }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to complete interview" }));
+        throw new Error(payload?.error || "Failed to complete interview");
+      }
+
+      setIsCompletedLocally(true);
+      setShowRoom(false);
+      setNotesStep("notepad");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to complete interview";
+      setCompleteError(message);
+      console.error("Failed to complete interview and move to offer:", error);
+      return false;
+    } finally {
+      setIsCompleting(false);
+    }
+  }
 
   // ── Fullscreen Jitsi — HR ────────────────────────────────────────────────
   if (showRoom && isHR) {
@@ -223,13 +256,22 @@ export function InterviewCardClient({
           interviewId={interview.id}
           onClose={() => setShowRoom(false)}
         />
-        <button
-          onClick={() => void handleCompleteFromCard()}
-          disabled={isCompleting}
-          className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
-        >
-          {isCompleting ? "Completing..." : "End Interview & Write Notes"}
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => void handleCompleteFromCard()}
+            disabled={isCompleting}
+            className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
+          >
+            {isCompleting ? "Completing..." : "End Interview & Write Notes"}
+          </button>
+          <button
+            onClick={() => void completeAndMoveToOffer()}
+            disabled={isCompleting}
+            className="w-full rounded-xl bg-orange-600 hover:bg-orange-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
+          >
+            {isCompleting ? "Completing..." : "End Interview & Move to Offer"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -475,17 +517,26 @@ export function InterviewCardClient({
 
       {/* End Interview — HR only, visible when ongoing or expired */}
       {canCompleteInterview && (
-        <button
-          onClick={() => void handleCompleteFromCard()}
-          disabled={isCompleting}
-          className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isCompleting
-            ? "Completing..."
-            : canJoinRoom
-            ? "End Interview & Write Notes"
-            : "Mark Complete & Write Notes"}
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => void handleCompleteFromCard()}
+            disabled={isCompleting}
+            className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCompleting
+              ? "Completing..."
+              : canJoinRoom
+              ? "End Interview & Write Notes"
+              : "Mark Complete & Write Notes"}
+          </button>
+          <button
+            onClick={() => void completeAndMoveToOffer()}
+            disabled={isCompleting}
+            className="w-full rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCompleting ? "Completing..." : "Mark Complete & Move to Offer"}
+          </button>
+        </div>
       )}
 
       {completeError && (

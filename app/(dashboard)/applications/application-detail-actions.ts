@@ -339,16 +339,37 @@ export async function acceptJobOffer(formData: FormData) {
       return { success: false, error: "Unauthorized" };
     }
 
-    // Update the contract offer status to signed
+    const { data: activeOffer } = await supabase
+      .from("job_offers")
+      .select("id")
+      .eq("application_id", applicationId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    const { data: fallbackOffer } = activeOffer
+      ? { data: null }
+      : await supabase
+          .from("job_offers")
+          .select("id")
+          .eq("application_id", applicationId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+    const offerId = activeOffer?.id ?? fallbackOffer?.id ?? null;
+
+    if (!offerId) {
+      return { success: false, error: "Offer not found" };
+    }
+
+    // Update the active job offer status to signed
     const { error: updateError } = await supabase
-      .from("contract_offers")
+      .from("job_offers")
       .update({
-        status: "signed",
-        signed_at: new Date().toISOString(),
-        signature_data: signatureData,
+        status: "SIGNED",
         updated_at: new Date().toISOString(),
       })
-      .eq("application_id", applicationId);
+      .eq("id", offerId);
 
     if (updateError) {
       return { success: false, error: `Failed to accept offer: ${updateError.message}` };
@@ -403,15 +424,37 @@ export async function declineJobOffer(formData: FormData) {
       return { success: false, error: "Unauthorized" };
     }
 
-    // Update the contract offer status to declined
+    const { data: activeOffer } = await supabase
+      .from("job_offers")
+      .select("id")
+      .eq("application_id", applicationId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    const { data: fallbackOffer } = activeOffer
+      ? { data: null }
+      : await supabase
+          .from("job_offers")
+          .select("id")
+          .eq("application_id", applicationId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+    const offerId = activeOffer?.id ?? fallbackOffer?.id ?? null;
+
+    if (!offerId) {
+      return { success: false, error: "Offer not found" };
+    }
+
+    // Update the active job offer status to declined
     const { error: updateError } = await supabase
-      .from("contract_offers")
+      .from("job_offers")
       .update({
-        status: "declined",
-        declined_reason: reason,
+        status: "DECLINED",
         updated_at: new Date().toISOString(),
       })
-      .eq("application_id", applicationId);
+      .eq("id", offerId);
 
     if (updateError) {
       return { success: false, error: `Failed to decline offer: ${updateError.message}` };

@@ -47,7 +47,7 @@ function isActiveSignedDocumentStatus(status: string | null | undefined): boolea
 
 function isActiveJobOfferStatus(status: string | null | undefined): boolean {
   if (!status) return false;
-  return ["sent", "negotiating", "pending_review", "pending", "negotiation_pending"].includes(
+  return ["draft", "sent", "negotiating", "pending_review", "pending", "negotiation_pending"].includes(
     String(status).toLowerCase()
   );
 }
@@ -189,11 +189,22 @@ export default async function ApplicationDetailPage({
 
   const { data: latestJobOffer } = await admin
     .from("job_offers")
-    .select("id, status, latest_docuseal_url, contract_template_id, created_at")
+    .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
     .eq("application_id", application.id)
-    .order("created_at", { ascending: false })
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const { data: latestJobOfferFallback } = latestJobOffer
+    ? { data: null }
+    : await admin
+        .from("job_offers")
+        .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
+        .eq("application_id", application.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
   const { data: latestJobOfferTemplate } = latestJobOffer?.contract_template_id
     ? await admin
@@ -217,7 +228,7 @@ export default async function ApplicationDetailPage({
           )
         `;
 
-  const { data: activeContractOfferById } = application.contract_offer_id
+  const { data: activeSignedDocumentById } = application.contract_offer_id
     ? await admin
         .from("signed_documents")
         .select(offerSelect)
@@ -225,7 +236,7 @@ export default async function ApplicationDetailPage({
         .maybeSingle()
     : { data: null };
 
-  const { data: latestContractOfferByApplication } = activeContractOfferById
+  const { data: latestSignedDocumentByApplication } = activeSignedDocumentById
     ? { data: null }
     : await admin
         .from("signed_documents")
@@ -236,20 +247,38 @@ export default async function ApplicationDetailPage({
         .limit(1)
         .maybeSingle();
 
-  const activeContractOffer = isActiveSignedDocumentStatus(activeContractOfferById?.status)
-    ? activeContractOfferById
-    : latestContractOfferByApplication;
+  const activeContractOffer = latestJobOffer
+    ? {
+        id: latestJobOffer.id,
+        status: String(latestJobOffer.status ?? "draft").toLowerCase(),
+        signing_method: "digital",
+        signed_at: null,
+        docuseal_submission_url: latestJobOffer.latest_docuseal_url ?? null,
+        contract_templates: latestJobOffer.contract_template_id && contractTemplates?.length ? [contractTemplates[0]] : [],
+      }
+    : latestJobOfferFallback
+      ? {
+          id: latestJobOfferFallback.id,
+          status: String(latestJobOfferFallback.status ?? "draft").toLowerCase(),
+          signing_method: "digital",
+          signed_at: null,
+          docuseal_submission_url: latestJobOfferFallback.latest_docuseal_url ?? null,
+          contract_templates: latestJobOfferFallback.contract_template_id && contractTemplates?.length ? [contractTemplates[0]] : [],
+        }
+      : isActiveSignedDocumentStatus(activeSignedDocumentById?.status)
+        ? activeSignedDocumentById
+        : latestSignedDocumentByApplication;
 
   const resolvedActiveContractOffer = activeContractOffer
     ? activeContractOffer
-    : latestJobOffer && isActiveJobOfferStatus(latestJobOffer.status)
+    : latestJobOffer || latestJobOfferFallback
       ? {
-          id: latestJobOffer.id,
-          status: String(latestJobOffer.status || "sent").toLowerCase(),
+          id: (latestJobOffer ?? latestJobOfferFallback)!.id,
+          status: String((latestJobOffer ?? latestJobOfferFallback)!.status || "sent").toLowerCase(),
           signing_method: "digital",
           signed_at: null,
-          docuseal_submission_url: latestJobOffer.latest_docuseal_url ?? null,
-          contract_template_id: latestJobOffer.contract_template_id ?? "",
+          docuseal_submission_url: (latestJobOffer ?? latestJobOfferFallback)!.latest_docuseal_url ?? null,
+          contract_template_id: (latestJobOffer ?? latestJobOfferFallback)!.contract_template_id ?? "",
           contract_templates: latestJobOfferTemplate
             ? [latestJobOfferTemplate]
             : [],
@@ -261,7 +290,7 @@ export default async function ApplicationDetailPage({
     contractOfferId: application.contract_offer_id ?? null,
     resolvedOfferId: resolvedActiveContractOffer?.id ?? null,
     resolvedStatus: resolvedActiveContractOffer?.status ?? null,
-    fallbackJobOfferId: latestJobOffer?.id ?? null,
+    fallbackJobOfferId: latestJobOffer?.id ?? latestJobOfferFallback?.id ?? null,
   });
 
   const normalizedActiveContractOffer = resolvedActiveContractOffer
@@ -279,7 +308,7 @@ export default async function ApplicationDetailPage({
     normalizedActiveContractOffer?.id ??
     latestJobOffer?.id ??
     jobOffer?.id ??
-    application.id;
+    null;
 
   return (
     <PageContainer>

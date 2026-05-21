@@ -2,6 +2,7 @@
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createDocusealSubmission, createJobOfferTemplate, fetchDocusealTemplate } from "@/lib/docuseal";
+import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
 export async function sendJobOfferLetter(jobId: string, applicationId: string) {
   const supabase = getAdminClient();
@@ -202,36 +203,45 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       .eq("docuseal_template_id", parsedTemplateId.toString())
       .maybeSingle();
 
-    if (existingTemplate) {
-      contractTemplateId = existingTemplate.id;
-    } else {
+    const templateKey = parsedTemplateId.toString();
+    const { data: existingTemplate } = await supabase
+      .from("contract_templates")
+      .select("id")
+      .eq("docuseal_template_id", templateKey)
+      .maybeSingle();
+
+    if (!existingTemplate) {
       const { data: newTemplate } = await supabase
         .from("contract_templates")
         .insert({
           job_posting_id: jobId,
           template_name: `Template ${parsedTemplateId}`,
-          docuseal_template_id: parsedTemplateId.toString(),
-          external_id: parsedTemplateId.toString(),
-          created_by: job.created_by
+          docuseal_template_id: templateKey,
+          external_id: templateKey,
+          created_by: job.created_by,
         })
         .select("id")
         .single();
-      contractTemplateId = newTemplate?.id;
+
+      if (!newTemplate?.id) {
+        console.error("sendJobOfferLetter: Failed to create contract_templates record");
+        return { error: "Failed to initialize signing process", success: false };
+      }
     }
 
     // 2. Create signed_documents placeholder so we have an ID for external_id
-    const { data: signedDoc, error: signedDocError } = await supabase
-      .from("signed_documents")
-      .insert({
-        application_id: applicationId,
-        contract_template_id: contractTemplateId,
-        signing_method: "digital",
-        status: "sent"
-      })
-      .select("id")
-      .single();
-
-    if (signedDocError || !signedDoc) {
+    let signedDocId: string;
+    try {
+      const result = await createSignedDocumentPlaceholderWithTemplateFallback(supabase, {
+        applicationId,
+        jobPostingId: jobId,
+        docusealTemplateId: templateKey,
+        createdBy: job.created_by,
+        signingMethod: "digital",
+        status: "sent",
+      });
+      signedDocId = result.signedDocumentId;
+    } catch (signedDocError) {
       console.error("sendJobOfferLetter: Failed to create signed_documents", signedDocError);
       return { error: "Failed to initialize signing process", success: false };
     }
@@ -239,14 +249,14 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
     // Link application to the new signed document
     await supabase
       .from("applications")
-      .update({ contract_offer_id: signedDoc.id })
+      .update({ contract_offer_id: signedDocId })
       .eq("id", applicationId);
 
     const submission = await createDocusealSubmission({
       templateId,
       submitterName: applicantName,
       submitterEmail: applicant.email,
-      externalId: signedDoc.id,
+      externalId: signedDocId,
       sendEmail: false,
     });
 
@@ -256,7 +266,7 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
       jobId,
       applicationId,
       submissionId,
-      externalId: signedDoc.id,
+      externalId: signedDocId,
       timestamp: new Date().toISOString(),
     });
 
@@ -269,14 +279,14 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
         docuseal_submission_url: docusealSubmissionUrl,
         metadata: {
           docuseal_submission_id: submissionId,
-          docuseal_embed_src: submission.embedSrc,
+      .eq("id", signedDocId);
           docuseal_viewer_url: submission.viewerUrl,
           company_name: companyName,
           start_date: job.offer_letter_settings?.phStartDate ?? null,
           job_title: job.title,
         }
       })
-      .eq("id", signedDoc.id);
+        contract_offer_id: signedDocId,
 
     // Mark the application as having an active offer so the signing route can resolve it.
     const { data: updatedRows, error: updateError } = await supabase
@@ -296,7 +306,7 @@ export async function sendJobOfferLetter(jobId: string, applicationId: string) {
     console.log("[sendJobOfferLetter] application status updated to offer_sent", {
       applicationId,
       status: "offer_sent",
-      docusealSubmissionId: submissionId,
+      signedDocId,
       updatedRowsCount: Array.isArray(updatedRows) ? updatedRows.length : 0,
       timestamp: new Date().toISOString(),
     });
