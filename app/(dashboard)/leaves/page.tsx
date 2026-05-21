@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
-import { fileLeaveRequest } from "../actions";
+import { fileLeaveRequest } from "./actions";
 
 const LEAVE_TYPES = [
   { value: "vacation",   label: "Vacation" },

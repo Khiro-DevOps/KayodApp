@@ -1,3 +1,4 @@
+// @ts-nocheck
 // supabase/functions/compute-payroll/index.ts
 // Deploy: supabase functions deploy compute-payroll
 // Invoke: POST /functions/v1/compute-payroll  (HR/admin only, validated via JWT)

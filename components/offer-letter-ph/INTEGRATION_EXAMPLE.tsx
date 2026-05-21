@@ -9,7 +9,7 @@
 
 import React, { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createJob } from "../../actions";
+import { createJob } from "@/app/(dashboard)/jobs/actions";
 import OfferLetterPhAccordion from "@/components/offer-letter-ph/offer-letter-ph-accordion";
 import type { OfferLetterPhType } from "@/lib/schemas/offer-letter-ph";
 import { flattenOfferLetterPhToFormData } from "@/lib/offer-letter-ph-utils";
@@ -17,7 +17,7 @@ import { flattenOfferLetterPhToFormData } from "@/lib/offer-letter-ph-utils";
 export default function JobFormWithOfferLetterExample() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  const formRef = useRef<HTMLFormElement>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   // Track expanded state of basic job details
   const [expandOfferSettings, setExpandOfferSettings] = useState(false);
@@ -130,7 +130,7 @@ export default function JobFormWithOfferLetterExample() {
         <OfferLetterPhAccordion
           initialValues={offerLetterValues}
           onValuesChange={setOfferLetterValues}
-          formRef={formRef}
+          formRef={formRef as React.RefObject<HTMLFormElement>}
         />
       </div>
 

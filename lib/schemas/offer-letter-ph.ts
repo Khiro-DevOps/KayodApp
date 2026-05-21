@@ -46,9 +46,7 @@ export type JobDetailsType = z.infer<typeof JobDetailsSchema>;
 // SECTION 2: EMPLOYMENT TERMS (PH Compliance)
 // ============================================================
 export const EmploymentTermsSchema = z.object({
-  employmentStatus: z.enum(["regular", "probationary", "project_based", "seasonal", "casual"], {
-    errorMap: () => ({ message: "Select a valid employment status" }),
-  }),
+  employmentStatus: z.enum(["regular", "probationary", "project_based", "seasonal", "casual"] as const),
   probationPeriod: z
     .number()
     .int("Probation period must be a whole number")
@@ -96,9 +94,7 @@ export const CompensationSchema = z.object({
     .positive("Monthly basic salary must be greater than 0")
     .finite("Monthly basic salary must be a valid number")
     .describe("In Philippine Peso (PHP)"),
-  payFrequency: z.enum(["monthly", "semi_monthly", "weekly"], {
-    errorMap: () => ({ message: "Select a valid pay frequency" }),
-  }),
+  payFrequency: z.enum(["monthly", "semi_monthly", "weekly"] as const),
   mandatory13thMonth: z
     .boolean()
     .default(true)

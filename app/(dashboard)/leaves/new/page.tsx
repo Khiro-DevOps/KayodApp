@@ -4,7 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import type { LeaveRequest, LeaveBalance, Profile } from "@/lib/types";
 import { LEAVE_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
-import { reviewLeaveRequest, cancelLeaveRequest } from "./actions";
+import { reviewLeaveRequest, cancelLeaveRequest } from "../actions";
 
 interface Props {
   searchParams: Promise<{ error?: string; success?: string }>;

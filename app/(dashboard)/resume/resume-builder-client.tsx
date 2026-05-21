@@ -469,7 +469,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
           <h2 className="text-sm font-semibold text-text-primary">Upload Resume</h2>
           <p className="text-xs text-text-secondary">Or upload an existing resume file instead of creating one</p>
         </div>
-        <ResumeUploadClient resumes={resumes} />
+        <ResumeUploadClient />
       </div>
     </div>
   );

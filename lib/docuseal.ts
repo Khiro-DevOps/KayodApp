@@ -220,7 +220,6 @@ export interface OfferLetterSettings {
   additionalTerms?: string;
   signingDeadlineDays?: number;
   requireCountersignature?: boolean;
-  phInternetAllowance?: number;
   // Extended fields used by job creation form
   selectedBenefits?: string[];
   offerExpiryDays?: number;
@@ -228,6 +227,29 @@ export interface OfferLetterSettings {
   counterOfferAllowed?: boolean;
   offerNotes?: string;
   requirementsToProceed?: string;
+  // Philippine-specific mapped fields
+  phDepartment?: string;
+  phSupervisorName?: string;
+  phSupervisorTitle?: string;
+  phEmploymentStatus?: string;
+  phProbationPeriodDays?: number;
+  phStartDate?: string;
+  phWorkSchedule?: string;
+  phMonthlyBasicSalary?: number;
+  phPayFrequency?: string;
+  phSigningBonus?: number;
+  phTransportAllowance?: number;
+  phInternetAllowance?: number;
+  phMealAllowance?: number;
+  phNightDifferential?: number;
+  phServiceIncentiveLeave?: number;
+  phVacationLeaveDays?: number;
+  phSickLeaveDays?: number;
+  phHmoProvider?: string;
+  phMandatory13thMonth?: boolean;
+  phSssEnrolled?: boolean;
+  phPhilhealthEnrolled?: boolean;
+  phPagibigEnrolled?: boolean;
 }
 
 export interface JobOfferInput {

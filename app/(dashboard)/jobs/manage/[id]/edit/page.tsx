@@ -34,8 +34,8 @@ function EditJobForm({ jobId }: { jobId: string }) {
         .from("job_postings")
         .select("*")
         .eq("id", jobId)
-        .single<JobPosting>();
-      setJob(data);
+        .single();
+      setJob(data as JobPosting | null);
       setLoading(false);
     }
     fetchJob();

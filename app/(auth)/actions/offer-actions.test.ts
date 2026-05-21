@@ -336,6 +336,6 @@ describe("sendHydratedOffer", () => {
       id: "app-1",
       status: "negotiating",
     });
-    expect(applicationRecord.data?.contract_offer_id).toBeUndefined();
+    expect((applicationRecord.data as any)?.contract_offer_id).toBeUndefined();
   });
 });

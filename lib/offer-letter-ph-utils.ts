@@ -239,7 +239,8 @@ export function formatOfferLetterPhForDocuSeal(
 export function mapOfferLetterPhToJobPosting(
   data: Partial<OfferLetterPhType>
 ): Record<string, any> {
-  const compensation = data.compensation || {};
+  // Some incoming section shapes can be partial or untyped; coerce where needed
+  const compensation = (data.compensation || {}) as any;
 
   return {
     // Basic employment info

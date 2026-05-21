@@ -251,11 +251,12 @@ export async function updateJob(formData: FormData) {
 
   if (error) {
     console.error("Update job error:", error);
-    return { error: error.message };
+    redirect(`/jobs/manage/${jobId}?error=${encodeURIComponent(error.message)}`);
   }
 
   revalidatePath("/jobs");
-  return { success: true };
+  revalidatePath(`/jobs/manage/${jobId}`);
+  redirect(`/jobs/manage/${jobId}`);
 }
 
 export async function deleteJob(formData: FormData) {

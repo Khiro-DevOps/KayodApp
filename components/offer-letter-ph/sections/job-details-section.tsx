@@ -29,7 +29,7 @@ export default function JobDetailsSection({
     placeholder?: string,
     description?: string
   ) => {
-    const value = initialValues[name] || "";
+    const value = String(initialValues[name] ?? "");
 
     return (
       <div key={name} className="space-y-2">
