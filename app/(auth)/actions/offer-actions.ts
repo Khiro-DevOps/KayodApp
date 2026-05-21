@@ -209,3 +209,144 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     docusealUrl,
   };
 }
+
+// Create a hydrated draft offer (DRAFT) but do not send to DocuSeal.
+export async function createHydratedOfferDraft(jobId: string, applicationId: string) {
+  const supabase = await createClient();
+  const admin = getAdminClient();
+
+  const { data: job, error: jobError } = await supabase
+    .from("job_postings")
+    .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+    .eq("id", jobId)
+    .single();
+
+  if (jobError || !job) {
+    console.error("Job fetch error:", jobError);
+    throw new Error("Failed to fetch job blueprint");
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Must be logged in to create an offer draft");
+  }
+
+  const { data: creatorProfile } = await supabase
+    .from("profiles")
+    .select("tenants(id, name)")
+    .eq("id", job.created_by)
+    .single();
+
+  const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+
+  const { data: offer, error: offerError } = await admin
+    .from("job_offers")
+    .insert({
+      application_id: applicationId,
+      job_id: jobId,
+      status: "DRAFT",
+      version_id: 1,
+      is_active: true,
+      created_by: user.id,
+      salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
+      start_date: job.offer_letter_settings?.phStartDate || null,
+      work_setup: job.work_setup || "Remote",
+      department: job.offer_letter_settings?.phDepartment || null,
+      probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
+      job_metadata: {
+        company_name: companyName,
+        start_date: job.offer_letter_settings?.phStartDate || null,
+        job_title: job.title,
+        // include any selected benefits if present in job.offer_letter_settings
+        benefits: job.offer_letter_settings?.selectedBenefits ?? null,
+      },
+    })
+    .select()
+    .single();
+
+  if (offerError) {
+    console.error("Offer draft creation error:", offerError);
+    throw new Error(`Failed to generate offer draft: ${offerError.message}`);
+  }
+
+  return { success: true, offer };
+}
+
+// Update fields on an existing draft offer. Accepts a partial updates object.
+export async function updateOfferDraft(offerId: string, updates: Record<string, any>) {
+  const admin = getAdminClient();
+
+  const { data, error } = await admin
+    .from("job_offers")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", offerId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("updateOfferDraft error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, offer: data };
+}
+
+// Send an existing draft offer via DocuSeal and finalize records.
+export async function sendDraftOffer(jobId: string, applicationId: string, offerId: string) {
+  const admin = getAdminClient();
+  const supabase = await createClient();
+
+  // Dispatch DocuSeal submission
+  const sendResult = await sendOfferWithDocuSeal(jobId, applicationId, offerId);
+  if (!sendResult.success) {
+    console.error(`DocuSeal integration failed: ${sendResult.error}`);
+    throw new Error(`Failed to send contract via DocuSeal: ${sendResult.error}`);
+  }
+
+  // Create signed_documents placeholder
+  let signedDocId: string;
+  try {
+    const { data: job } = await supabase
+      .from("job_postings")
+      .select("docuseal_template_id, created_by")
+      .eq("id", jobId)
+      .single();
+
+    const result = await createSignedDocumentPlaceholderWithTemplateFallback(admin, {
+      applicationId,
+      jobPostingId: jobId,
+      docusealTemplateId: String(job?.docuseal_template_id ?? "").trim(),
+      createdBy: job?.created_by ?? "",
+      signingMethod: "digital",
+      status: "sent",
+      metadata: { job_offer_id: offerId },
+    });
+
+    signedDocId = result.signedDocumentId;
+  } catch (signedDocError) {
+    throw new Error(
+      `Failed to create signed_documents placeholder: ${signedDocError instanceof Error ? signedDocError.message : "unknown error"}`
+    );
+  }
+
+  const docusealUrl = sendResult.url ?? null;
+
+  try {
+    await admin
+      .from("signed_documents")
+      .update({ docuseal_submission_url: docusealUrl, metadata: { job_offer_id: offerId }, updated_at: new Date().toISOString() })
+      .eq("id", signedDocId);
+
+    await admin.from("job_offers").update({ status: "SENT", updated_at: new Date().toISOString() }).eq("id", offerId);
+
+    await admin
+      .from("applications")
+      .update({ status: "offer_sent", contract_offer_id: signedDocId, updated_at: new Date().toISOString() })
+      .eq("id", applicationId);
+  } catch (err) {
+    console.error("sendDraftOffer: failed to finalize offer", err);
+    throw new Error("Failed to finalize offer creation; no changes were applied. Please try again.");
+  }
+
+  return { success: true, offerId, signedDocId, docusealUrl };
+}

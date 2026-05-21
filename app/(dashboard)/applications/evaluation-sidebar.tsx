@@ -21,7 +21,7 @@ interface EvaluationSidebarProps {
     id: string;
     status: string;
     signing_method: string;
-    contract_template_id: string;
+    contract_template_id?: string;
     signed_at: string | null;
     contract_templates?: Array<{
       id: string;

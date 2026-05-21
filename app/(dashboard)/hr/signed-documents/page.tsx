@@ -62,7 +62,7 @@ export default async function SignedDocumentsPage() {
     redirect("/login");
   }
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")

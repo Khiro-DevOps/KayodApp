@@ -46,9 +46,11 @@ function getJobTitle(application: JobOfferRow["applications"]) {
   return application?.job_postings?.title?.trim() || "the role";
 }
 
-export async function POST(_request: NextRequest, { params }: { params: { applicationId: string } }) {
+export async function POST(_request: NextRequest, ctx: any) {
   try {
-    const { applicationId } = params;
+    const rawParams = ctx?.params;
+    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
+    const applicationId = params?.applicationId as string | undefined;
 
     if (!applicationId) {
       return NextResponse.json({ error: "Missing application id" }, { status: 400 });

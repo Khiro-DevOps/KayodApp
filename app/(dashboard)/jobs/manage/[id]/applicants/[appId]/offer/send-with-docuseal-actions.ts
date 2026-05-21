@@ -225,7 +225,7 @@ export async function sendOfferWithDocuSeal(
         status: "sent",
         metadata: {
           ...(jobOffer?.job_metadata ?? {}),
-          docuseal_submission_id: submissionId,
+          docuseal_submission_id: submission.submitterId ?? submission.slug,
           docuseal_embed_src: submission.embedSrc,
           docuseal_viewer_url: submission.viewerUrl,
           company_name: companyName,

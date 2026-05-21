@@ -589,7 +589,7 @@ export async function acceptOffer(offerId: string): Promise<{
     // Update offer with submission ID (but don't mark as accepted yet - wait for webhook)
     const { error: updateError } = await supabase
       .from("job_offer_applications")
-      .update({ submission_id: submission.id.toString() })
+      .update({ submission_id: (submission.submitterId ?? submission.slug) as string | null })
       .eq("id", offerId);
 
     if (updateError) {

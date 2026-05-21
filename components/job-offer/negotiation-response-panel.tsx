@@ -14,7 +14,7 @@ interface Props {
 export default function NegotiationResponsePanel({ offerId, onClose }: Props) {
   const [negotiations, setNegotiations] = useState<NegotiationRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [responses, setResponses] = useState<Record<number, any>>({});
+  const [responses, setResponses] = useState<Record<string, Record<number, { action?: string; counterValue?: string; notes?: string }>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function NegotiationResponsePanel({ offerId, onClose }: Props) {
 
     setIsSubmitting(true);
     try {
-      const result = await respondToNegotiation(negotiationId, response);
+      const result = await respondToNegotiation(negotiationId, response as any);
       if (result.success) {
         toast.success("Negotiation response submitted!");
         fetchNegotiations();

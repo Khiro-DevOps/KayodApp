@@ -80,9 +80,9 @@ export function validateOfferLetterPhFormData(
 
     if (!parsedData.success) {
       const errors: Record<string, string> = {};
-      parsedData.error.errors.forEach((error) => {
-        const path = error.path.join(".");
-        errors[path] = error.message;
+      parsedData.error.issues.forEach((issue) => {
+        const path = issue.path.join(".");
+        errors[path] = issue.message;
       });
       return { success: false, errors };
     }
@@ -152,11 +152,11 @@ export function createOfferLetterSummary(
 export function formatOfferLetterPhForDocuSeal(
   data: Partial<OfferLetterPhType>
 ): Record<string, any> {
-  const compensation = data.compensation || {};
-  const employmentTerms = data.employmentTerms || {};
-  const acceptanceSigning = data.acceptanceSigning || {};
-  const terminationLanguage = data.terminationLanguage || {};
-  const benefits = data.benefitsPackage || {};
+  const compensation = (data.compensation || {}) as any;
+  const employmentTerms = (data.employmentTerms || {}) as any;
+  const acceptanceSigning = (data.acceptanceSigning || {}) as any;
+  const terminationLanguage = (data.terminationLanguage || {}) as any;
+  const benefits = (data.benefitsPackage || {}) as any;
 
   return {
     // Basic job info

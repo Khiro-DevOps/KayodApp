@@ -11,7 +11,8 @@ import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import type { ApplicationStatus, Interview } from "@/lib/types";
 import { getCurrentStage } from "@/lib/pipeline";
 import { moveToScreening, moveToInterview, moveToHired } from "./pipeline-actions";
-import { sendHydratedOffer } from "@/app/(auth)/actions/offer-actions";
+import { createHydratedOfferDraft } from "@/app/(auth)/actions/offer-actions";
+import OfferReviewModal from "./offer-review-modal";
 
 interface CandidateProfile {
   id: string;
@@ -239,6 +240,8 @@ export default function ApplicantsHubClient({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [drawerInitialTab, setDrawerInitialTab] = useState<string | null>(null);
   const [confirmSheetApp, setConfirmSheetApp] = useState<ConfirmSheetAppState | null>(null);
+  const [offerDraft, setOfferDraft] = useState<any | null>(null);
+  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
 
   useEffect(() => {
@@ -286,7 +289,7 @@ export default function ApplicantsHubClient({
               table: "applications",
               filter: `job_posting_id=eq.${jobId}`,
             },
-            (payload) => {
+            (payload: any) => {
               if (payload.eventType === "DELETE") {
                 const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
                 if (!deletedId) return;
@@ -320,16 +323,17 @@ export default function ApplicantsHubClient({
               table: "interviews",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload) => {
+            (payload: any) => {
               if (payload.eventType === "DELETE") {
                 const deleted = payload.old as { application_id?: string } | null;
                 if (!deleted?.application_id) return;
-                if (!applicationIdsRef.current.has(deleted.application_id)) return;
+                const deletedId = deleted.application_id;
+                if (!applicationIdsRef.current.has(deletedId)) return;
 
                 if (isMounted) {
                   setInterviewMap((prev) => {
                     const next = new Map(prev);
-                    next.delete(deleted.application_id as string);
+                    next.delete(deletedId);
                     return next;
                   });
                 }
@@ -338,12 +342,13 @@ export default function ApplicantsHubClient({
 
               const changed = payload.new as Interview | null;
               if (!changed?.application_id) return;
-              if (!applicationIdsRef.current.has(changed.application_id)) return;
+              const changedId = changed.application_id;
+              if (!applicationIdsRef.current.has(changedId)) return;
 
               if (isMounted) {
                 setInterviewMap((prev) => {
                   const next = new Map(prev);
-                  next.set(changed.application_id, changed);
+                  next.set(changedId, changed);
                   return next;
                 });
               }
@@ -357,16 +362,17 @@ export default function ApplicantsHubClient({
               table: "job_offers",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload) => {
+            (payload: any) => {
               if (payload.eventType === "DELETE") {
                 const deleted = payload.old as { application_id?: string } | null;
                 if (!deleted?.application_id) return;
+                const deletedId = deleted.application_id;
 
                 if (isMounted) {
                   setJobOffers((prev) => {
-                    if (!prev[deleted.application_id]) return prev;
+                    if (!prev[deletedId]) return prev;
                     const next = { ...prev };
-                    delete next[deleted.application_id];
+                    delete next[deletedId];
                     return next;
                   });
                 }
@@ -375,11 +381,12 @@ export default function ApplicantsHubClient({
 
               const changed = payload.new as JobOfferRow | null;
               if (!changed?.application_id) return;
+              const changedId = changed.application_id;
 
               if (isMounted) {
                 setJobOffers((prev) => ({
                   ...prev,
-                  [changed.application_id]: changed,
+                  [changedId]: changed,
                 }));
               }
             }
@@ -392,16 +399,17 @@ export default function ApplicantsHubClient({
               table: "signed_documents",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload) => {
+            (payload: any) => {
               if (payload.eventType === "DELETE") {
                 const deleted = payload.old as { application_id?: string } | null;
                 if (!deleted?.application_id) return;
+                const deletedId = deleted.application_id;
 
                 if (isMounted) {
                   setSignedDocuments((prev) => {
-                    if (!prev[deleted.application_id]) return prev;
+                    if (!prev[deletedId]) return prev;
                     const next = { ...prev };
-                    delete next[deleted.application_id];
+                    delete next[deletedId];
                     return next;
                   });
                 }
@@ -410,23 +418,24 @@ export default function ApplicantsHubClient({
 
               const changed = payload.new as SignedDocumentRow | null;
               if (!changed?.application_id) return;
+              const changedId = changed.application_id;
 
               if (isMounted) {
                 setSignedDocuments((prev) => ({
                   ...prev,
-                  [changed.application_id]: changed,
+                  [changedId]: changed,
                 }));
               }
             }
           )
-          .subscribe((status) => {
+          .subscribe((status: string) => {
             if (isMounted) {
               if (status === "SUBSCRIBED") {
                 setRealtimeConnected(true);
                 if (process.env.NODE_ENV === "development") {
                   console.log("[Realtime] Successfully subscribed to applicants channel");
                 }
-              } else if (status === "CHANNEL_ERROR") {
+                } else if (status === "CHANNEL_ERROR") {
                 setRealtimeConnected(false);
                 console.warn("[Realtime] Channel error - updates may not sync");
               }
@@ -549,14 +558,19 @@ export default function ApplicantsHubClient({
         }
 
         case "send_offer": {
-          toast.info("Sending offer through DocuSeal...");
-          const result = await sendHydratedOffer(jobId, app.id);
-          if (!result.success) {
-            toast.error(result.error || "Failed to send offer");
-            return;
+          toast.info("Preparing offer draft...");
+          try {
+            const result = await createHydratedOfferDraft(jobId, app.id);
+            if (!result?.success) {
+              toast.error("Failed to create offer draft");
+              return;
+            }
+
+            setOfferDraft(result.offer);
+            setIsOfferModalOpen(true);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to create offer draft");
           }
-          toast.success(`✓ Offer sent to ${getApplicantName(app.profiles)}`);
-          router.refresh();
           return;
         }
 
@@ -815,6 +829,24 @@ export default function ApplicantsHubClient({
           submittedAt={confirmSheetApp.submittedAt}
         />
       )}
+
+      {offerDraft && (
+        <OfferReviewModal
+          isOpen={isOfferModalOpen}
+          onClose={() => {
+            setIsOfferModalOpen(false);
+            setOfferDraft(null);
+          }}
+          jobId={jobId}
+          applicationId={offerDraft.application_id}
+          offer={offerDraft}
+          onSent={() => {
+            setIsOfferModalOpen(false);
+            setOfferDraft(null);
+            router.refresh();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -1021,7 +1053,7 @@ function ApplicantCardComponent({
             <button
               onClick={(event) => {
                 event.stopPropagation();
-                void onQuickAction(quickAction.action);
+                void onQuickAction(quickAction.action!);
               }}
               type="button"
               className="w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"

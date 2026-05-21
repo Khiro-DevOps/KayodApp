@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import type { Application } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
-import { moveToScreening } from "./pipeline-actions";
+import { moveToScreening, confirmInterviewScheduled } from "./pipeline-actions";
 import { getCurrentStage } from "@/lib/pipeline";
 
 interface NegotiationLog {

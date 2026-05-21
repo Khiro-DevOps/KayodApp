@@ -3,10 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { applicationId: string } }
-) {
+export async function PATCH(req: NextRequest, ctx: any) {
   try {
     const supabase = await createClient();
     const {
@@ -25,6 +22,9 @@ export async function PATCH(
     }
 
     const admin = getAdminClient();
+
+    const rawParams = ctx?.params;
+    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
 
     const { data: app, error: appError } = await admin
       .from("applications")

@@ -8,7 +8,7 @@ function normalizeIntent(intent: string | undefined) {
   return intent === "counter" || intent === "question" ? intent : null;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, ctx: any) {
   try {
     const body = (await req.json()) as Partial<NegotiationPayload>;
     const intent = normalizeIntent(body.intent);
@@ -17,7 +17,10 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       return NextResponse.json({ error: "Invalid negotiation intent" }, { status: 400 });
     }
 
-    const token = params.token;
+    // Next's route context may provide `params` directly or as a Promise.
+    const rawParams = ctx?.params;
+    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
+    const token = params?.token as string | undefined;
     const admin = getAdminClient();
 
     const { data: offer, error: offerError } = await admin

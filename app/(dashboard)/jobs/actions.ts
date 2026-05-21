@@ -63,6 +63,14 @@ export async function createJob(formData: FormData) {
   const ph_sick_leave_days = formData.get("ph_sick_leave_days") as string;
   const ph_hmo_provider = formData.get("ph_hmo_provider") as string;
 
+  // Additional offer defaults (benefits & terms)
+  const selectedBenefits = formData.getAll("selectedBenefits") as string[];
+  const offerExpiryDays = formData.get("offer_expiry_days") as string;
+  const negotiationAllowed = formData.get("negotiation_allowed") === "on";
+  const counterOfferAllowed = formData.get("counter_offer_allowed") === "on";
+  const offerNotes = formData.get("offer_notes") as string;
+  const requirementsToProceed = formData.get("requirements_to_proceed") as string;
+
   // Process skills
   const skills = skillsRaw ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
@@ -94,6 +102,13 @@ export async function createJob(formData: FormData) {
     phSssEnrolled: true,
     phPhilhealthEnrolled: true,
     phPagibigEnrolled: true,
+    // New offer defaults
+    selectedBenefits: selectedBenefits && selectedBenefits.length > 0 ? selectedBenefits : undefined,
+    offerExpiryDays: offerExpiryDays ? parseInt(offerExpiryDays, 10) : undefined,
+    negotiationAllowed: negotiationAllowed ? true : undefined,
+    counterOfferAllowed: counterOfferAllowed ? true : undefined,
+    offerNotes: offerNotes || undefined,
+    requirementsToProceed: requirementsToProceed || undefined,
   };
 
   const adminClient = getAdminClient();

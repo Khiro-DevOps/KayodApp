@@ -103,7 +103,7 @@ function readDocuments(payload: DocusealPayload) {
   return payload.documents ?? [];
 }
 
-function formatName(profile: OfferRow["applications"] extends { profiles?: infer T } ? T : never) {
+function formatName(profile: { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined) {
   const firstName = profile?.first_name?.trim() ?? "";
   const lastName = profile?.last_name?.trim() ?? "";
   return [firstName, lastName].filter(Boolean).join(" ").trim() || profile?.email || "Unknown Applicant";
@@ -172,7 +172,7 @@ export default async function SignedDocumentReviewPage({
     redirect("/login");
   }
 
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")

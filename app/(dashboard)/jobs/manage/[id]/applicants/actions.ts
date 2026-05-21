@@ -493,7 +493,7 @@ export async function sendJobOffer(formData: FormData) {
       jobPostingId: application.job_posting_id,
       docusealTemplateId: template.docuseal_template_id,
       createdBy: job.created_by,
-      signingMethod,
+      signingMethod: signingMethod as "digital" | "in_person",
       status: "sent",
       metadata: {
         ...(notes ? { hr_notes: notes } : {}),
@@ -514,7 +514,7 @@ export async function sendJobOffer(formData: FormData) {
         templateId: template.docuseal_template_id,
         submitterName: candidateName,
         submitterEmail: candidateEmail!,
-        externalId: signedDoc.id,
+        externalId: signedDoc.signedDocumentId,
         sendEmail: true,
         redirectUrl: `${appUrl}/applications/${applicationId}`,
       });
@@ -572,7 +572,7 @@ export async function sendJobOffer(formData: FormData) {
 
     return {
       success: true,
-      signedDocumentId: signedDoc.id,
+      signedDocumentId: signedDoc.signedDocumentId,
       docusealSigningUrl,
     };
   } catch (error) {

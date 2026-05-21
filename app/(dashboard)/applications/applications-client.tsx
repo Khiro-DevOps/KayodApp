@@ -194,7 +194,7 @@ export default function ApplicationsClient({
       );
     }
 
-    channel.subscribe((status) => {
+    channel.subscribe((status: string) => {
       if (status === "CHANNEL_ERROR") {
         console.error("candidate-applications-live channel error: subscription failed");
       }

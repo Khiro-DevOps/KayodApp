@@ -221,6 +221,13 @@ export interface OfferLetterSettings {
   signingDeadlineDays?: number;
   requireCountersignature?: boolean;
   phInternetAllowance?: number;
+  // Extended fields used by job creation form
+  selectedBenefits?: string[];
+  offerExpiryDays?: number;
+  negotiationAllowed?: boolean;
+  counterOfferAllowed?: boolean;
+  offerNotes?: string;
+  requirementsToProceed?: string;
 }
 
 export interface JobOfferInput {

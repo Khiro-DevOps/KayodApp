@@ -3,7 +3,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { OfferContext } from "@/lib/offer-templating";
-import { Database } from "@/lib/database.types";
 
 export type OfferStatus = 'DRAFT' | 'SENT' | 'NEGOTIATION_PENDING' | 'REVISED' | 'ACCEPTED' | 'DECLINED' | 'HIRED';
 
@@ -21,7 +20,7 @@ export interface OfferData {
  * Fetches an offer and populates the OfferContext payload for Handlebars.
  */
 export async function getOfferContext(offerId: string): Promise<OfferContext> {
-  const supabase = createClient();
+  const supabase = await createClient();
   
   const { data: offer, error } = await supabase
     .from('job_offers')
@@ -72,7 +71,7 @@ export async function getOfferContext(offerId: string): Promise<OfferContext> {
  * Creates an initial DRAFT offer for an application.
  */
 export async function createDraftOffer(applicationId: string, jobPostingId: string, initialData?: OfferData) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData, error: authError } = await supabase.auth.getUser();
   if (authError || !userData.user) throw new Error("Unauthorized");
 
@@ -106,7 +105,7 @@ export async function createDraftOffer(applicationId: string, jobPostingId: stri
  * Updates an existing DRAFT or NEGOTIATION_PENDING offer.
  */
 export async function updateOffer(offerId: string, updateData: OfferData) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // First fetch the current offer to ensure it's updatable
   const { data: currentOffer, error: fetchError } = await supabase
@@ -146,7 +145,7 @@ export async function updateOffer(offerId: string, updateData: OfferData) {
  * Transitions an offer to SENT state.
  */
 export async function sendOffer(offerId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('job_offers')
     .update({ status: 'SENT', updated_at: new Date().toISOString() })
@@ -163,7 +162,7 @@ export async function sendOffer(offerId: string) {
  * Candidate requests changes, transitioning offer to NEGOTIATION_PENDING.
  */
 export async function requestNegotiation(offerId: string, candidateNotes?: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   // We might store notes in workflow_meta
   // For now just change status
   const { data, error } = await supabase
@@ -183,7 +182,7 @@ export async function requestNegotiation(offerId: string, candidateNotes?: strin
  * This increments version_id, sets the old offer to is_active = false, and creates a new one.
  */
 export async function createRevisedOffer(parentOfferId: string, overrideData: OfferData) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   // 1. Fetch parent offer
@@ -238,7 +237,7 @@ export async function createRevisedOffer(parentOfferId: string, overrideData: Of
  * Transitions an offer to ACCEPTED state (before DocuSeal signing).
  */
 export async function acceptOffer(offerId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('job_offers')
     .update({ status: 'ACCEPTED', updated_at: new Date().toISOString() })
@@ -255,7 +254,7 @@ export async function acceptOffer(offerId: string) {
  * Transitions an offer to DECLINED state.
  */
 export async function declineOffer(offerId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('job_offers')
     .update({ status: 'DECLINED', updated_at: new Date().toISOString() })

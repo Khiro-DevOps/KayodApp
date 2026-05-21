@@ -46,7 +46,7 @@ export default function PunchBar({ employeeId }: Props) {
       .gte("punched_at", todayStart.toISOString());
 
     const hours = (todayLogs ?? []).reduce(
-      (sum, l) => sum + (l.total_hours ?? 0),
+      (sum: number, l: { total_hours?: number | null }) => sum + (l.total_hours ?? 0),
       0
     );
     setTodayHours(Math.round(hours * 100) / 100);

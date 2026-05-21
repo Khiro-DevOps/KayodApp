@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
 
-export async function POST(_req: NextRequest, { params }: { params: { jobOfferId: string } }) {
+export async function POST(_req: NextRequest, ctx: any) {
   try {
     const admin = getAdminClient();
-    const { jobOfferId } = params;
+    const rawParams = ctx?.params;
+    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
+    const jobOfferId = params?.jobOfferId as string | undefined;
 
     const { data: offer, error: offerError } = await admin
       .from("job_offers")

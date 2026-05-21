@@ -117,7 +117,7 @@ export default function ApplicationDetailView({
           table: "applications",
           filter: `id=eq.${application.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           const nextStatus = (payload.new as { status?: Application["status"] } | null)?.status;
           if (nextStatus) {
             setApplicationStatus(nextStatus);
@@ -132,7 +132,7 @@ export default function ApplicationDetailView({
           table: "interviews",
           filter: `application_id=eq.${application.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === "DELETE") {
             const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
             if (!deletedId) return;
@@ -158,7 +158,7 @@ export default function ApplicationDetailView({
           });
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === "CHANNEL_ERROR") {
           console.error(`application-detail-${application.id} channel error: subscription failed`);
         }

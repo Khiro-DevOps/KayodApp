@@ -42,6 +42,7 @@ export default function InterviewTimeline({ interviews, isRecruiter }: Interview
       <HRJitsiRoom
         roomName={activeRoom.roomName}
         displayName={activeRoom.userName}
+        interviewId={activeRoom.interviewId}
         onClose={handleHRLeave}
       />
     ) : (

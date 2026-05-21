@@ -544,6 +544,76 @@ export default function NewJobForm() {
             </div>
 
             {/* SUBSECTION 4: Benefits Package */}
+            
+            {/* SUBSECTION 5: Offer Defaults & Terms (for DocuSeal template) */}
+            <div className="mb-6 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="font-semibold text-gray-900">5. Offer Defaults & Terms</h3>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-900">Default Benefits (pre-select commonly offered items)</p>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {[
+                    { key: "HMO", label: "HMO / Health Insurance" },
+                    { key: "SSS", label: "SSS" },
+                    { key: "PhilHealth", label: "PhilHealth" },
+                    { key: "Pag-IBIG", label: "Pag-IBIG" },
+                    { key: "13th Month", label: "13th Month Pay" },
+                    { key: "14th Month", label: "14th Month Pay" },
+                    { key: "Transport", label: "Transportation Allowance" },
+                    { key: "Meal", label: "Meal Allowance" },
+                    { key: "Comm", label: "Communication Allowance" },
+                    { key: "Bonus", label: "Performance Bonus" },
+                    { key: "Vacation", label: "Paid Vacation Leave" },
+                    { key: "Sick", label: "Sick Leave" },
+                    { key: "Birthday", label: "Birthday Leave" },
+                    { key: "RemoteSetup", label: "Remote Work Setup" },
+                    { key: "Training", label: "Training & Development" },
+                  ].map((item) => (
+                    <label key={item.key} className="inline-flex items-center gap-2">
+                      <input type="checkbox" name="selectedBenefits" value={item.key} className="cursor-pointer" />
+                      <span className="text-sm text-gray-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label htmlFor="offer_expiry_days" className="text-sm font-medium text-gray-900">
+                    Offer Expiry (Days)
+                  </label>
+                  <input
+                    type="number"
+                    id="offer_expiry_days"
+                    name="offer_expiry_days"
+                    min="1"
+                    defaultValue={14}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="flex items-center gap-3">
+                    <input type="checkbox" id="negotiation_allowed" name="negotiation_allowed" className="cursor-pointer" />
+                    <span className="text-sm text-gray-700">Allow negotiation</span>
+                  </label>
+                  <label className="flex items-center gap-3">
+                    <input type="checkbox" id="counter_offer_allowed" name="counter_offer_allowed" className="cursor-pointer" />
+                    <span className="text-sm text-gray-700">Allow counter-offers</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="offer_notes" className="text-sm font-medium text-gray-900">Offer Notes</label>
+                <textarea id="offer_notes" name="offer_notes" rows={3} placeholder="Internal notes or standard clauses included in the offer" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none" />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="requirements_to_proceed" className="text-sm font-medium text-gray-900">Requirements to Proceed</label>
+                <textarea id="requirements_to_proceed" name="requirements_to_proceed" rows={2} placeholder="e.g. background check, medical exam" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none" />
+              </div>
+            </div>
             <div className="mb-6 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <h3 className="font-semibold text-gray-900">
                 4. Benefits & Leave Entitlements <span className="text-red-600 text-xs font-normal">Required</span>
