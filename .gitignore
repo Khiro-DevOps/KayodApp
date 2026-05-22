@@ -40,7 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-=======
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -73,23 +72,22 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (do not commit local env files)
 .env*
 
 # vercel
 .vercel
 
-echo "docs/" >> .gitignore      # adjust folder name as needed
-echo "migrations/" >> .gitignore  # if you ever recreate the folder
+# project specific ignores
+docs/
+migrations/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
->>>>>>> bbd97e515d96a32a53271c33b2540cd0e27c4a10
-.env*
+
+# local build artifacts
 .next/
-.remediation/
-kayod-repo-mirror.git/
 .remediation/
 kayod-repo-mirror.git/
 "tall detect-secrets"
