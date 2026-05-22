@@ -90,3 +90,6 @@ next-env.d.ts
 .next/
 .remediation/
 kayod-repo-mirror.git/
+.remediation/
+kayod-repo-mirror.git/
+"tall detect-secrets"
