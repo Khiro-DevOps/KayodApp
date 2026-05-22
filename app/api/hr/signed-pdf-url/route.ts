@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
   }
 
   const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
-  const apiKey = process.env.REDACTED_DOCUSEAL_API_KEY?.trim();
+  const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({ url: null });
   }

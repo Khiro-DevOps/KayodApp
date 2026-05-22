@@ -139,8 +139,8 @@ export async function createJob(formData: FormData) {
   if (!jobData?.id) redirect(`/jobs/manage/new?error=${encodeURIComponent("Failed to create job")}`);
 
   // Create DocuSeal template after job is published
-  if (!process.env.REDACTED_DOCUSEAL_API_KEY) {
-    console.warn("[Job Creation] REDACTED_DOCUSEAL_API_KEY not set - template will be created on first offer send");
+  if (!process.env.DOCUSEAL_API_KEY) {
+    console.warn("[Job Creation] DOCUSEAL_API_KEY not set - template will be created on first offer send");
   } else {
     try {
       const { data: userProfile } = await supabase

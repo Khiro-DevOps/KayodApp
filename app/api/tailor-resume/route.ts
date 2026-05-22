@@ -81,9 +81,9 @@ export async function POST(request: Request) {
     .join("\n\n");
 
   // Check if Gemini API key is configured
-  if (!process.env.REDACTED_GEMINI_API_KEY || process.env.REDACTED_GEMINI_API_KEY === "your-gemini-api-key-here") {
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "your-gemini-api-key-here") {
     return NextResponse.json(
-      { error: "Gemini API key is not configured. Please set REDACTED_GEMINI_API_KEY in .env.local" },
+      { error: "Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local" },
       { status: 500 }
     );
   }

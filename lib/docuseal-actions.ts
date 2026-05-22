@@ -44,9 +44,9 @@ async function fetchDocusealWithTimeout(input: RequestInfo | URL, init: RequestI
 }
 
 function getDocusealApiKey() {
-  const apiKey = process.env.REDACTED_DOCUSEAL_API_KEY?.trim();
+  const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("REDACTED_DOCUSEAL_API_KEY is not configured");
+    throw new Error("DOCUSEAL_API_KEY is not configured");
   }
 
   return apiKey;

@@ -830,7 +830,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       if (slug) {
         const dsRes = await fetch(`${docusealApiUrl}/submitters?slug=${encodeURIComponent(slug)}`, {
           headers: {
-            "X-Auth-Token": process.env.REDACTED_DOCUSEAL_API_KEY?.trim() ?? "",
+            "X-Auth-Token": process.env.DOCUSEAL_API_KEY?.trim() ?? "",
           },
           cache: "no-store",
         });

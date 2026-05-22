@@ -131,7 +131,7 @@ export async function POST(_request: NextRequest, ctx: any) {
         )?.[1];
         if (slug) {
           const apiUrl = process.env.DOCUSEAL_API_URL || "https://api.docuseal.com";
-          const apiKey = process.env.REDACTED_DOCUSEAL_API_KEY;
+          const apiKey = process.env.DOCUSEAL_API_KEY;
           if (apiKey) {
             const dsRes = await fetch(
               `${apiUrl}/submitters?slug=${encodeURIComponent(slug)}`,

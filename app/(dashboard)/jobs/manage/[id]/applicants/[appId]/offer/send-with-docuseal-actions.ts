@@ -106,7 +106,7 @@ export async function sendOfferWithDocuSeal(
     // Get or create DocuSeal template
     let docusealTemplateId = job.docuseal_template_id;
     if (!docusealTemplateId) {
-      if (!process.env.REDACTED_DOCUSEAL_API_KEY) {
+      if (!process.env.DOCUSEAL_API_KEY) {
         return { error: "DocuSeal API key not configured", success: false };
       }
 

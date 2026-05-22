@@ -302,12 +302,12 @@ export async function POST(request: Request) {
 
     try {
       // FIXED: Checking for the correct environment variable
-      if (process.env.REDACTED_OPENROUTER_API_KEY) {
+      if (process.env.OPENROUTER_API_KEY) {
         console.log("Triggering AI synthesis via OpenRouter...");
         aiGeneratedSections = await generateResumeSections(body);
         usedModel = "google/gemini-2.0-flash-001";
       } else {
-        console.warn("No REDACTED_OPENROUTER_API_KEY found, skipping AI enhancement.");
+        console.warn("No OPENROUTER_API_KEY found, skipping AI enhancement.");
       }
     } catch (error) {
       console.error("AI generation failed, falling back to local formatting:", error);

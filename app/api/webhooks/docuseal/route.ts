@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Create a Supabase client with service role for backend operations
     // Note: This webhook runs in the server, so we need to set up Supabase manually
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.REDACTED_SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("[DocuSeal Webhook] Supabase credentials not configured");

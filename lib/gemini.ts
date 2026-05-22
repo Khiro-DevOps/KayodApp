@@ -111,7 +111,7 @@ async function callOpenRouter(
       method: "POST",
       signal: AbortSignal.timeout(30000), // 30s — adjust to your needs
       headers: {
-        Authorization: `Bearer ${process.env.REDACTED_OPENROUTER_API_KEY!}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!}`,
         "Content-Type": "application/json",
         "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
         "X-Title": "Resume Generator",
@@ -548,7 +548,7 @@ function fallbackJobFit(
 export async function analyzeJobFit(
   input: JobFitAnalysisInput
 ): Promise<JobFitAnalysisOutput> {
-  if (!process.env.REDACTED_OPENROUTER_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 

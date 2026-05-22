@@ -1,0 +1,28 @@
+[33mcommit 3955f6d9051e00cc6038908c22f7511582e1ecb3[m
+Author: Khiro-DevOps <bryansumalinog111@gmail.com>
+Date:   2026-05-21
+
+    Refactor: Job Offer Creation, Add: Offer Review Modal, Fix: TSX Errors
+
+[1mdiff --git a/app/(dashboard)/hr/signed-documents/[applicationId]/page.tsx b/app/(dashboard)/hr/signed-documents/[applicationId]/page.tsx[m
+[1mindex 2466ec2..6797d37 100644[m
+[1m--- a/app/(dashboard)/hr/signed-documents/[applicationId]/page.tsx[m
+[1m+++ b/app/(dashboard)/hr/signed-documents/[applicationId]/page.tsx[m
+[36m@@ -103,7 +103,7 @@[m [mfunction readDocuments(payload: DocusealPayload) {[m
+   return payload.documents ?? [];[m
+ }[m
+ [m
+[31m-function formatName(profile: OfferRow["applications"] extends { profiles?: infer T } ? T : never) {[m
+[32m+[m[32mfunction formatName(profile: { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined) {[m
+   const firstName = profile?.first_name?.trim() ?? "";[m
+   const lastName = profile?.last_name?.trim() ?? "";[m
+   return [firstName, lastName].filter(Boolean).join(" ").trim() || profile?.email || "Unknown Applicant";[m
+[36m@@ -172,7 +172,7 @@[m [mexport default async function SignedDocumentReviewPage({[m
+     redirect("/login");[m
+   }[m
+ [m
+[31m-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;[m
+[32m+[m[32m  const authRole = (user.user_metadata?.role) as string | undefined;[m
+   const { data: profile } = await supabase[m
+     .from("profiles")[m
+     .select("role")[m
