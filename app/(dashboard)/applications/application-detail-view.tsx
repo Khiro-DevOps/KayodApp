@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import StatusTracker from "./status-tracker";
 import EvaluationSidebar from "./evaluation-sidebar";
 import InterviewTimeline from "./interview-timeline";
-import OfferCard from "./offer-card";
 import { createClient } from "@/lib/supabase/client";
 
 interface ContractTemplateSummary {
@@ -85,6 +84,18 @@ export default function ApplicationDetailView({
 
   const normalizedStatus = String(applicationStatus || "").toLowerCase();
   const shouldShowOfferPipelineButton = normalizedStatus === "offer_sent" || normalizedStatus === "negotiating";
+  const resolvedApplicantOffer =
+    activeContractOffer ??
+    (!isRecruiter && shouldShowOfferPipelineButton
+      ? {
+          id: offerRouteId ?? application.id,
+          status: "sent",
+          signing_method: "digital",
+          signed_at: null,
+          docuseal_submission_url: null,
+          contract_templates: null,
+        }
+      : null);
 
   const handleStatusUpdate = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -240,20 +251,11 @@ export default function ApplicationDetailView({
               interviews={liveInterviews}
               applicationId={application.id}
               offerRouteId={offerRouteId}
-                activeOffer={activeContractOffer ? { id: activeContractOffer.id, status: activeContractOffer.status } : null}
+              activeOffer={resolvedApplicantOffer ? { id: resolvedApplicantOffer.id, status: resolvedApplicantOffer.status } : null}
             />
           )}
 
-          {/* Applicant View: Active Offer */}
-          {!isRecruiter && activeContractOffer && (
-            <div id="active-offer">
-              <OfferCard
-                offer={activeContractOffer}
-                applicationId={application.id}
-                offerRouteId={offerRouteId}
-              />
-            </div>
-          )}
+          {/* Applicant View: Active Offer removed — pipeline button opens offer page */}
 
           {/* Interview Timeline */}
           {liveInterviews.length > 0 && (

@@ -221,7 +221,22 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     );
   }
   const supabase = await createClient();
-  const admin = getAdminClient();
+
+  let admin;
+  try {
+    admin = getAdminClient();
+  } catch (err) {
+    console.error("[Job Offer Page] Failed to initialize admin Supabase client:", err);
+    return (
+      <PageContainer>
+        <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <h2 className="mb-2 text-xl font-bold text-red-700">Configuration error</h2>
+          <p className="text-sm text-red-700">The server is misconfigured for Supabase admin access (invalid or missing service role key).</p>
+          <p className="mt-2 text-xs text-text-secondary">Set `SUPABASE_SERVICE_ROLE_KEY` in your environment from your Supabase project settings and restart the dev server. Do not commit this key.</p>
+        </div>
+      </PageContainer>
+    );
+  }
 
   const {
     data: { user },
@@ -511,7 +526,15 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         .maybeSingle();
 
       if (applicationError) {
-        console.error("[Job Offer Page] Application lookup failed:", applicationError);
+        try {
+          console.error(
+            "[Job Offer Page] Application lookup failed:",
+            applicationError?.message ?? applicationError,
+            JSON.parse(JSON.stringify(applicationError, Object.getOwnPropertyNames(applicationError)))
+          );
+        } catch (e) {
+          console.error("[Job Offer Page] Application lookup failed:", applicationError);
+        }
       }
 
       // If applicationRow found and has contract_offer_id, fetch the old signed_documents offer

@@ -55,13 +55,16 @@ export default function StatusTracker({ status, interviews, applicationId, offer
     router.push("/offer-signing");
   };
 
-  const handleOfferPipelineClick = () => {
-    if (!offerRouteId) {
-      return;
+  const handleOfferPipelineClick = async () => {
+    const targetId = offerRouteId ?? activeOffer?.id;
+    if (!targetId) return;
+    const path = `/job-offer/${encodeURIComponent(targetId)}`;
+    try {
+      await router.prefetch(path);
+    } catch {
+      // ignore prefetch errors
     }
-
-    const targetId = offerRouteId;
-    router.push(`/job-offer/${encodeURIComponent(targetId)}`);
+    router.push(path);
   };
 
   if (activeRoom) {
@@ -148,9 +151,9 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                     type="button"
                     onClick={handleOfferPipelineClick}
                     className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900 hover:underline transition-colors"
-                    aria-label="Open offer pipeline"
+                    aria-label="View offer"
                   >
-                    <span>Status: Offer available (Click to open pipeline)</span>
+                    <span>Status: Offer available (Click to view)</span>
                     <span aria-hidden="true">↗</span>
                   </button>
                 )}
@@ -161,6 +164,16 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                       <>
                         <p className="font-medium">✓ Offer Sent</p>
                         <p className="mt-1">Your offer is ready for signing or negotiation.</p>
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={handleOfferPipelineClick}
+                            className="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary py-2 px-3 text-xs font-semibold text-white hover:bg-primary/90 transition-colors"
+                          >
+                            View Offer
+                            <span aria-hidden="true">↗</span>
+                          </button>
+                        </div>
                       </>
                     ) : (
                       <>
