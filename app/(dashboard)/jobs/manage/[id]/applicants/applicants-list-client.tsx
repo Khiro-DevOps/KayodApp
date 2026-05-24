@@ -914,17 +914,19 @@ function ApplicantCardComponent({
 
           {/* Score and Status - Right aligned */}
           <div className="flex shrink-0 items-center gap-2">
-            {app.match_score !== null && (
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap ${
-                  app.match_score >= 70
-                    ? "bg-green-50 text-green-600"
-                    : app.match_score >= 40
-                      ? "bg-yellow-50 text-yellow-600"
-                      : "bg-gray-100 text-text-secondary"
-                }`}
-              >
+            {app.match_score !== null ? (
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap ${
+                app.match_score >= 75
+                  ? "bg-green-50 text-green-600"
+                  : app.match_score >= 50
+                    ? "bg-amber-50 text-amber-600"
+                    : "bg-red-50 text-red-600"
+              }`}>
                 {app.match_score}%
+              </span>
+            ) : (
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap bg-gray-100 text-gray-400">
+                Calculating...
               </span>
             )}
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusColorClass}`}>

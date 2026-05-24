@@ -41,9 +41,12 @@ If you cannot find that file, stop and tell the user: _"I can't find .copilot/ka
 Sprint 0  →  Sprint 1  →  Sprint 2  →  Sprint 3 & 4 (parallel)  →  Sprint 5  →  Sprint 6
 ```
 
+> **Sprint 0 note:** The invisible buttons bug on the HR interviews page was removed.
+> That page is being fully rebuilt in Task 0.3 (WebRTC). The bug dies with Jitsi.
+
 | Sprint | Focus | Status |
 |--------|-------|--------|
-| 0 | Bug fixes & blockers | 🔴 Do first |
+| 0 | Bug fixes & blockers (3 tasks — see note) | 🔴 Do first |
 | 1 | Landing page + tenant onboarding | 🔴 Do first |
 | 2 | PWA foundation (manifest, bottom nav) | After Sprint 0 |
 | 3 | Applicant portal UI | After Sprint 2 |

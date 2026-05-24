@@ -5,28 +5,14 @@
 ---
 
 ## Sprint 0 — Bug fixes & blockers
-**Ship this before anything else. ~2–3 days.**
+**Ship this before anything else. ~2 days.**
+
+> **Note:** The invisible confirm/submit buttons on the HR interviews page have been removed from this sprint.
+> That entire page is being rebuilt as part of Task 0.3 (WebRTC replacement) — the bug will be gone when the new room UI replaces it. No separate fix needed.
 
 ---
 
-### Task 0.1 — Invisible confirm/submit buttons (HR Interviews page)
-**Priority:** CRITICAL
-
-**Problem:** Two buttons on `/interviews` (HR side) are in the DOM but not visible or clickable.
-
-**Investigation order:**
-1. Open DevTools → Elements → select both buttons
-2. Check computed styles for: `overflow`, `z-index`, `opacity`, `visibility`, `display`, `clip-path` on the button AND all ancestors
-3. Fix the actual CSS property — do not patch with a z-index hack
-
-**Acceptance criteria:**
-- Both buttons are visible on screen
-- Both buttons are clickable and trigger the correct Supabase actions
-- No other elements on the page are affected
-
----
-
-### Task 0.2 — Match score not displayed on HR applicant views
+### Task 0.1 — Match score not displayed on HR applicant views
 **Priority:** CRITICAL
 
 **Problem:** Match score is computed but does not appear on:
@@ -53,7 +39,7 @@
 
 ---
 
-### Task 0.3 — Match score algorithm replacement
+### Task 0.2 — Match score algorithm replacement
 **Priority:** CRITICAL
 
 **Problem:** Current algorithm is inaccurate. Replace with the weighted hybrid formula.
@@ -97,7 +83,7 @@
 
 ---
 
-### Task 0.4 — Replace Jitsi with WebRTC
+### Task 0.3 — Replace Jitsi with WebRTC
 **Priority:** HIGH
 
 **Problem:** Jitsi iframe is not mobile-compatible, does not allow floating notepad, and can't be controlled.

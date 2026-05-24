@@ -1,9 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "../../../../../../../lib/supabase/server";
 import { redirect } from "next/navigation";
-import PageContainer from "@/components/ui/page-container";
+import PageContainer from "../../../../../../../components/ui/page-container";
 import Link from "next/link";
-import type { Profile } from "@/lib/types";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import type { Profile } from "../../../../../../../lib/types";
+import { effectiveRole, isHRRole } from "../../../../../../../lib/roles";
 
 export default async function ApplicantDetailPage({
   params,

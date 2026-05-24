@@ -294,6 +294,17 @@ export default function ApplicantDetailDrawer({
     setSavingLog(false);
   }
 
+  const matchScorePill = application.match_score !== null
+    ? {
+        label: `Match Score: ${application.match_score}%`,
+        className: application.match_score >= 75
+          ? "bg-green-100 text-green-700"
+          : application.match_score >= 50
+            ? "bg-amber-100 text-amber-700"
+            : "bg-red-100 text-red-700"
+      }
+    : { label: "Calculating...", className: "bg-gray-100 text-gray-400" };
+
   if (!isOpen) return null;
 
   return (
@@ -308,11 +319,9 @@ export default function ApplicantDetailDrawer({
               <h2 className="text-lg font-bold text-text-primary">
                 {candidate?.first_name} {candidate?.last_name}
               </h2>
-              {application?.match_score != null && (
-                <span className="rounded bg-green-100 px-2 py-1 text-sm font-bold text-green-700">
-                  Match Score: {application.match_score}%
-                </span>
-              )}
+              <span className={`rounded px-2 py-1 text-sm font-bold ${matchScorePill.className}`}>
+                {matchScorePill.label}
+              </span>
             </div>
             <p className="text-sm text-text-secondary mt-1">{candidate?.email}</p>
           </div>
@@ -348,32 +357,6 @@ export default function ApplicantDetailDrawer({
             </div>
           </div>
 
-          {/* Match Score */}
-          {application?.match_score !== null && (
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-text-primary">Match Score</h3>
-              <div className="flex items-center gap-3">
-                <div className={`text-2xl font-bold ${
-                  application.match_score >= 70 ? "text-green-600"
-                  : application.match_score >= 40 ? "text-yellow-600"
-                  : "text-red-600"
-                }`}>
-                  {application.match_score}%
-                </div>
-                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-full rounded-full ${
-                      application.match_score >= 70 ? "bg-green-500"
-                      : application.match_score >= 40 ? "bg-yellow-500"
-                      : "bg-red-500"
-                    }`}
-                    style={{ width: `${application.match_score}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Resume Section */}
           {resume && (
             <div className="space-y-3">
@@ -392,8 +375,8 @@ export default function ApplicantDetailDrawer({
                   >
                     {resume.title || resume.name || "View Resume"}
                   </button>
-                  <span className="ml-auto rounded bg-green-100 px-2 py-1 text-xs font-bold text-green-700">
-                    Match Score: {application?.match_score != null ? application.match_score + "%" : "—"}
+                  <span className={`ml-auto rounded px-2 py-1 text-xs font-bold ${matchScorePill.className}`}>
+                    {matchScorePill.label}
                   </span>
                 </div>
               ) : (
