@@ -152,6 +152,67 @@ function skillMatchRatio(resumeText: string, skills: string[]): number {
   return matches / skills.length;
 }
 
+function detectDegreeLevel(text: string): string | null {
+  const normalized = text.toLowerCase();
+
+  if (/\b(ph\.?d\.?|doctorate|doctor of philosophy)\b/i.test(normalized)) return "phd";
+  if (/\b(master|m\.?s\.?|m\.?a\.?|mba|msc|meng)\b/i.test(normalized)) return "master";
+  if (/\b(bachelor|b\.?s\.?|b\.?a\.?|bs\b|ba\b|bsc|beng)\b/i.test(normalized)) return "bachelor";
+  if (/\b(associate|a\.?s\.?|aa\b|aas\b)\b/i.test(normalized)) return "associate";
+
+  return null;
+}
+
+function extractFieldKeywords(text: string): Set<string> {
+  const lowered = text.toLowerCase();
+  const keywords = [
+    "engineering",
+    "computer science",
+    "software",
+    "information technology",
+    "it",
+    "data science",
+    "statistics",
+    "business",
+    "marketing",
+    "finance",
+    "accounting",
+    "human resources",
+    "hr",
+    "management",
+    "nursing",
+    "medicine",
+    "healthcare",
+    "education",
+    "psychology",
+    "design",
+  ];
+
+  return new Set(keywords.filter((keyword) => lowered.includes(keyword)));
+}
+
+function extractYearsHint(text: string): number | null {
+  const explicitMatches = Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)/gi))
+    .map((match) => Number.parseFloat(match[1]))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  if (explicitMatches.length > 0) {
+    return Math.round(Math.max(...explicitMatches));
+  }
+
+  return null;
+}
+
+function detectWorkSetup(text: string): string | null {
+  const normalized = text.toLowerCase();
+
+  if (normalized.includes("hybrid")) return "hybrid";
+  if (normalized.includes("remote") || normalized.includes("wfh")) return "remote";
+  if (normalized.includes("onsite") || normalized.includes("on-site") || normalized.includes("in office") || normalized.includes("in-office")) return "onsite";
+
+  return null;
+}
+
 /**
  * Compute match score between resume text and job data.
  * Returns an integer between 0 and 100.
@@ -163,52 +224,60 @@ export function computeMatchScore(
   if (!resumeText.trim()) return 0;
 
   const resumeKeywords = extractKeywords(resumeText);
+  const jobText = [job.title, job.description, job.requirements ?? "", ...(job.required_skills ?? [])].join(" ");
 
-  // Skills match (50% weight)
-  let skillScore = 0;
-  if (job.required_skills && job.required_skills.length > 0) {
-    skillScore = skillMatchRatio(resumeText, job.required_skills);
-  } else {
-    // If no skills listed, redistribute weight to other factors
-    skillScore = -1; // sentinel for redistribution
-  }
+  const skillScore = job.required_skills && job.required_skills.length > 0
+    ? skillMatchRatio(resumeText, job.required_skills)
+    : 0;
 
-  // Requirements match (30% weight)
-  let reqScore = 0;
-  if (job.requirements) {
-    const reqKeywords = extractKeywords(job.requirements);
-    reqScore = overlapRatio(resumeKeywords, reqKeywords);
-  }
-
-  // Description match (20% weight)
-  const descKeywords = extractKeywords(job.description);
-  const descScore = overlapRatio(resumeKeywords, descKeywords);
-
-  // Title bonus: if job title words appear in resume, add a small boost
   const titleKeywords = extractKeywords(job.title);
-  const titleBonus = overlapRatio(resumeKeywords, titleKeywords) * 10;
+  const titleScore = overlapRatio(resumeKeywords, titleKeywords);
 
-  let score: number;
+  const resumeYears = extractYearsHint(resumeText);
+  const jobYears = extractYearsHint(jobText);
+  const experienceScore = (() => {
+    const candidateYears = resumeYears ?? 0;
+    const minimumYears = jobYears ?? 0;
+    const gap = Math.max(0, minimumYears - candidateYears);
+    return Math.max(0, 1 - gap * 0.1);
+  })();
 
-  if (skillScore === -1) {
-    // No skills listed: redistribute to 60% requirements, 40% description
-    if (job.requirements) {
-      score = reqScore * 60 + descScore * 40;
-    } else {
-      score = descScore * 100;
+  const resumeDegree = detectDegreeLevel(resumeText);
+  const jobDegree = detectDegreeLevel(jobText);
+  const resumeFields = extractFieldKeywords(resumeText);
+  const jobFields = extractFieldKeywords(jobText);
+
+  const educationScore = (() => {
+    if (!resumeDegree || !jobDegree) return 0;
+    const sharedField = [...resumeFields].some((field) => jobFields.has(field));
+    if (resumeDegree === jobDegree && sharedField) return 1;
+
+    const degreeHierarchy = ["associate", "bachelor", "master", "phd"];
+    const resumeIndex = degreeHierarchy.indexOf(resumeDegree);
+    const jobIndex = degreeHierarchy.indexOf(jobDegree);
+    if (resumeIndex >= 0 && jobIndex >= 0 && Math.abs(resumeIndex - jobIndex) <= 1 && (sharedField || resumeDegree === jobDegree)) {
+      return 0.6;
     }
-  } else if (!job.requirements) {
-    // No requirements: 70% skills, 30% description
-    score = skillScore * 70 + descScore * 30;
-  } else {
-    // Standard weighting
-    score = skillScore * 50 + reqScore * 30 + descScore * 20;
-  }
 
-  // Add title bonus (capped)
-  score = Math.min(score + titleBonus, 100);
+    return 0;
+  })();
 
-  // Ensure integer in range
+  const setupScore = (() => {
+    const resumeSetup = detectWorkSetup(resumeText);
+    const jobSetup = detectWorkSetup(jobText);
+
+    if (!resumeSetup || !jobSetup) return 0.5;
+    return resumeSetup === jobSetup ? 1 : 0;
+  })();
+
+  const score = (
+    skillScore * 40 +
+    titleScore * 25 +
+    experienceScore * 15 +
+    educationScore * 10 +
+    setupScore * 10
+  ) * 100;
+
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 

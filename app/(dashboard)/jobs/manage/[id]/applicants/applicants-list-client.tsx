@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -243,6 +243,33 @@ export default function ApplicantsHubClient({
   const [offerDraft, setOfferDraft] = useState<any | null>(null);
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
+  const recomputeInFlightRef = useRef<Set<string>>(new Set());
+
+  const triggerMatchScoreRecompute = useCallback(async (applicationId: string) => {
+    if (recomputeInFlightRef.current.has(applicationId)) {
+      return;
+    }
+
+    recomputeInFlightRef.current.add(applicationId);
+
+    try {
+      const response = await fetch("/api/compute-match-score", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ application_id: applicationId }),
+      });
+
+      if (!response.ok) {
+        console.warn("Failed to recompute match score:", await response.text());
+      }
+    } catch (error) {
+      console.warn("Failed to recompute match score:", error);
+    } finally {
+      recomputeInFlightRef.current.delete(applicationId);
+    }
+  }, []);
 
   useEffect(() => {
     setApplicationRows(applications);
@@ -302,6 +329,10 @@ export default function ApplicantsHubClient({
 
               const changed = payload.new as Partial<ApplicationRow> | null;
               if (!changed?.id) return;
+
+              if (payload.eventType === "UPDATE" && changed.match_score === null) {
+                void triggerMatchScoreRecompute(changed.id);
+              }
 
               if (isMounted) {
                 setApplicationRows((prev) => {
@@ -458,7 +489,7 @@ export default function ApplicantsHubClient({
       isMounted = false;
       cleanup();
     };
-  }, [jobId]);
+  }, [jobId, triggerMatchScoreRecompute]);
 
   const stageCounts = STAGES.reduce((accumulator, stage) => {
     if (stage.key === "hired") {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -15,6 +16,17 @@ interface NegotiationLog {
   call_date: string;
   call_outcome: string;
   call_notes: string | null;
+}
+
+interface MatchScoreBreakdown {
+  score_total: number;
+  score_skills: number | null;
+  score_title: number | null;
+  score_experience: number | null;
+  score_education: number | null;
+  score_setup: number | null;
+  reasons: string[] | null;
+  computed_at: string | null;
 }
 
 interface ApplicantDetailDrawerProps {
@@ -65,6 +77,9 @@ export default function ApplicantDetailDrawer({
   const [loadingResume, setLoadingResume] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [matchScoreDetails, setMatchScoreDetails] = useState<MatchScoreBreakdown | null>(null);
+  const [loadingMatchScore, setLoadingMatchScore] = useState(false);
+  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
 
   const candidate = application?.profiles as any;
   const resume = (Array.isArray(application?.resumes)
@@ -107,6 +122,13 @@ export default function ApplicantDetailDrawer({
 
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
+  const breakdownRows = [
+    { label: "Skills", value: matchScoreDetails?.score_skills ?? 0, weight: "40%" },
+    { label: "Title", value: matchScoreDetails?.score_title ?? 0, weight: "25%" },
+    { label: "Experience", value: matchScoreDetails?.score_experience ?? 0, weight: "15%" },
+    { label: "Education", value: matchScoreDetails?.score_education ?? 0, weight: "10%" },
+    { label: "Work Setup", value: matchScoreDetails?.score_setup ?? 0, weight: "10%" },
+  ];
   const drawerPrimaryAction = (() => {
     if (initialTab === "send_offer" || shouldShowOfferNotSent) {
       return {
@@ -170,6 +192,8 @@ export default function ApplicantDetailDrawer({
       setShowLogForm(false);
       setSignedResumeUrl(null);
       setResumeError(null);
+      setMatchScoreDetails(null);
+      setLoadingMatchScore(false);
     }
   }, [isOpen]);
 
@@ -245,6 +269,41 @@ export default function ApplicantDetailDrawer({
     fetchSignedUrl();
   }, [isOpen, resume?.id]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let active = true;
+
+    async function fetchMatchScore() {
+      setLoadingMatchScore(true);
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("match_scores")
+        .select("score_total, score_skills, score_title, score_experience, score_education, score_setup, reasons, computed_at")
+        .eq("applicant_id", application.candidate_id)
+        .eq("job_id", jobId)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (error) {
+        console.error("Failed to load match score breakdown:", error);
+        setMatchScoreDetails(null);
+      } else {
+        setMatchScoreDetails((data as MatchScoreBreakdown | null) ?? null);
+      }
+
+      setLoadingMatchScore(false);
+    }
+
+    fetchMatchScore();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, application.candidate_id, jobId]);
+
   // Close resume modal on Escape
   useEffect(() => {
     if (!showResumeModal) return;
@@ -319,11 +378,9 @@ export default function ApplicantDetailDrawer({
               <h2 className="text-lg font-bold text-text-primary">
                 {candidate?.first_name} {candidate?.last_name}
               </h2>
-              <span className={`rounded px-2 py-1 text-sm font-bold ${matchScorePill.className}`}>
-                {matchScorePill.label}
-              </span>
             </div>
             <p className="text-sm text-text-secondary mt-1">{candidate?.email}</p>
+            {/* Inline Match Breakdown removed — use the modal to view detailed breakdown */}
           </div>
           <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -375,7 +432,9 @@ export default function ApplicantDetailDrawer({
                   >
                     {resume.title || resume.name || "View Resume"}
                   </button>
-                  <span className={`ml-auto rounded px-2 py-1 text-xs font-bold ${matchScorePill.className}`}>
+                  <span
+                    onClick={() => setIsScoreModalOpen(true)}
+                    className={`ml-auto rounded px-2 py-1 text-xs font-bold cursor-pointer ${matchScorePill.className}`}>
                     {matchScorePill.label}
                   </span>
                 </div>
@@ -561,6 +620,51 @@ export default function ApplicantDetailDrawer({
             </div>
           </div>
         </>
+      )}
+
+      {/* Match Breakdown Modal (portal) */}
+      {isScoreModalOpen && createPortal(
+        <div
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          onClick={() => setIsScoreModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-text-primary">Match Breakdown</h2>
+              <button onClick={() => setIsScoreModalOpen(false)}>✕</button>
+            </div>
+
+            {loadingMatchScore ? (
+              <p className="text-sm text-text-secondary">Loading...</p>
+            ) : matchScoreDetails ? (
+              <div className="space-y-3">
+                {breakdownRows.map((row) => {
+                  const value = Math.max(0, Math.min(100, row.value));
+                  const barColor = value >= 75 ? "bg-green-500" : value >= 50 ? "bg-amber-500" : "bg-red-500";
+                  return (
+                    <div key={row.label} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-primary font-medium">{row.label}</span>
+                        <span className="text-text-secondary">{value}%</span>
+                      </div>
+                      <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+                        <div className={`${barColor} h-full`} style={{ width: `${value}%` }} />
+                      </div>
+                      <div className="text-xs text-text-secondary">{row.weight}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-text-secondary">Score pending</p>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Schedule Interview Modal — fixed height with scrollable content */}

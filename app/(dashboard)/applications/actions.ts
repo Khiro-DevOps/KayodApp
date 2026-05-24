@@ -58,20 +58,39 @@ if (job.closes_at && new Date(job.closes_at) < new Date()) {
   }
 
   // Create application
-  const { error } = await supabase
-  .from("applications")
-  .insert({
-    candidate_id: user.id,
-    job_posting_id: jobId,
-    resume_id: resumeId,
-    cover_letter: coverLetter || null,
-    status: "applied",
-    submitted_at: new Date().toISOString(),
-  });
+  const { data: createdApplication, error } = await supabase
+    .from("applications")
+    .insert({
+      candidate_id: user.id,
+      job_posting_id: jobId,
+      resume_id: resumeId,
+      cover_letter: coverLetter || null,
+      status: "applied",
+      submitted_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
 
-  if (error) {
+  if (error || !createdApplication) {
     console.error("Application submission error:", error);
     redirect(`/jobs/${jobId}/apply?error=Failed+to+submit+application`);
+  }
+
+  try {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+    const response = await fetch(new URL("/api/compute-match-score", siteUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ application_id: createdApplication.id }),
+    });
+
+    if (!response.ok) {
+      console.warn("Match score recompute request failed:", await response.text());
+    }
+  } catch (recomputeError) {
+    console.warn("Match score recompute request failed:", recomputeError);
   }
 
   revalidatePath("/applications");
