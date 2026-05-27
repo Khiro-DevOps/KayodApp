@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
+import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createDocusealSubmission } from "@/lib/docuseal";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
@@ -504,6 +505,7 @@ export async function sendJobOffer(formData: FormData) {
         .join(" ")
         .trim() || "Candidate";
 
+      const companyLogoUrl = await resolveCompanyLogoUrlForUser(user.id);
       const submission = await createDocusealSubmission({
         templateId: template.docuseal_template_id,
         submitterName: candidateName,
@@ -511,6 +513,7 @@ export async function sendJobOffer(formData: FormData) {
         externalId: signedDoc.signedDocumentId,
         sendEmail: true,
         redirectUrl: `${appUrl}/applications/${applicationId}`,
+        companyLogoUrl,
       });
 
       docusealSigningUrl = submission.signingUrl;

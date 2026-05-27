@@ -96,8 +96,14 @@ export async function createDocusealSubmission(input: {
   sendEmail?: boolean;
   redirectUrl?: string;
   prefillFields?: Record<string, string>;
+  companyLogoUrl?: string | null;
 }) {
   const sendEmail = input.sendEmail ?? true;
+  const submitterValues = {
+    ...(input.prefillFields ?? {}),
+    ...(input.companyLogoUrl?.trim() ? { company_logo_url: input.companyLogoUrl.trim() } : {}),
+  };
+
   const response = await fetchDocusealWithTimeout(`${getDocusealBaseUrl()}/submissions`, {
     method: "POST",
     headers: {
@@ -114,7 +120,7 @@ export async function createDocusealSubmission(input: {
           email: input.submitterEmail,
           external_id: input.externalId,
           // DocuSeal expects submitter values as a keyed object map.
-          values: input.prefillFields ?? {},
+          values: submitterValues,
         },
       ],
       completed_redirect_url: input.redirectUrl,
@@ -341,6 +347,10 @@ export function buildOfferLetterHtml(
       padding-bottom: 30px;
       margin-bottom: 30px;
     }
+    .company-logo-wrap {
+      min-height: 72px;
+      margin-bottom: 12px;
+    }
     .company-name {
       font-size: 28px;
       font-weight: 700;
@@ -498,6 +508,9 @@ export function buildOfferLetterHtml(
 </body>
 </html>
   `.trim();
+        <div class="company-logo-wrap">
+          <image-field name="company_logo_url" role="Candidate" style="width: 220px; height: 72px; object-fit: contain; display: block; margin: 0 auto 16px;"></image-field>
+        </div>
 }
 
 /**

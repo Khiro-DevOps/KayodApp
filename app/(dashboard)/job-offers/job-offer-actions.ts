@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createDocusealSubmission } from "@/lib/docuseal";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -570,6 +571,7 @@ export async function acceptOffer(offerId: string): Promise<{
 
     const candidateName = [candidate.first_name, candidate.last_name].filter(Boolean).join(" ");
 
+    const companyLogoUrl = await resolveCompanyLogoUrlForUser(offer.hr_id);
     const submission = await createDocusealSubmission({
       templateId: offer.template_id,
       submitterName: candidateName,
@@ -577,6 +579,7 @@ export async function acceptOffer(offerId: string): Promise<{
       externalId: offerId,
       sendEmail: true,
       redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/job-offer/${offerId}`,
+      companyLogoUrl,
     });
 
     if (!submission.viewerUrl || !submission.embedSrc) {

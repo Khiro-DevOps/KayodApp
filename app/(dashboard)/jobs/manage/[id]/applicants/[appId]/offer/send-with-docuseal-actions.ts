@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createDocusealSubmission } from "@/lib/docuseal";
@@ -64,6 +65,7 @@ export async function sendOfferWithDocuSeal(
       throw new Error("Job posting is missing a DocuSeal template ID");
     }
 
+    const companyLogoUrl = await resolveCompanyLogoUrlForUser(user.id);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim() || "http://localhost:3000";
     const submission = await createDocusealSubmission({
       templateId,
@@ -72,6 +74,7 @@ export async function sendOfferWithDocuSeal(
       externalId: offerId,
       sendEmail: true,
       redirectUrl: `${appUrl}/applications/${applicationId}`,
+      companyLogoUrl,
     });
 
     await admin
