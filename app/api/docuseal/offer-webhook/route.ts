@@ -1,1 +1,2 @@
-export { POST, runtime } from "../webhook/route";
+export { POST } from "../webhook/route";
+export const runtime = "nodejs";

@@ -221,6 +221,140 @@ plan_expires_at timestamptz
 
 ---
 
+## Sprint 1.5 — Pre-employment requirements submission
+**~3–4 days. After Task 1.3 (offer letter flow must be complete). Before Sprint 4 (employee portal).**
+
+> Triggers after the applicant accepts the offer letter (DocuSeal signed). Sits between the offer stage and the employee portal. Applicants submit required documents digitally or walk in personally. HR reviews, verifies, and confirms — which auto-converts the account to an employee.
+
+---
+
+### Pipeline stage addition
+
+Add `pre_employment` as a new stage in the application pipeline, inserted after `offer_accepted`:
+
+```
+applied → screening → interview → offer_sent → offer_accepted → pre_employment → hired
+```
+
+---
+
+### DB schema
+
+New `job_required_documents` table (HR sets per job posting):
+```sql
+id          uuid primary key
+job_id      uuid references jobs(id)
+name        text        -- e.g. "NBI Clearance", "Transcript of Records"
+is_required boolean default true
+created_at  timestamptz
+```
+
+New `applicant_documents` table:
+```sql
+id              uuid primary key
+application_id  uuid references applications(id)
+applicant_id    uuid references profiles(id)
+document_id     uuid references job_required_documents(id)
+file_url        text        -- Supabase Storage: /pre-employment-docs/{application_id}/{document_id}
+submission_type enum: digital | in_person
+submitted_at    timestamptz nullable
+hr_verified     boolean default false
+hr_verified_at  timestamptz nullable
+hr_verified_by  uuid references profiles(id)
+notes           text nullable  -- HR can leave a note per document (e.g. "blurry, resubmit")
+```
+
+Additions to `applications` table:
+```sql
+doc_deadline        timestamptz nullable   -- set by HR when moving to pre_employment
+doc_submission_note text nullable          -- HR instructions shown to applicant
+```
+
+---
+
+### HR side — job posting
+
+On the job creation / edit page, add a **Required Documents** section:
+- HR adds document names (free text) with an `is_required` toggle
+- Default list suggested (but editable): NBI Clearance, BIR Form 2316, SSS ID, PhilHealth ID, Pag-IBIG ID, Birth Certificate, Transcript of Records
+- Documents saved to `job_required_documents` on job save
+
+---
+
+### HR side — moving applicant to pre-employment
+
+When HR clicks "Move to Pre-employment" on the applicant detail page:
+1. Show a modal with:
+   - Submission deadline date picker (default: 7 days from today)
+   - Optional instruction note for the applicant
+   - Preview of the document checklist from the job posting (editable per applicant)
+2. On confirm: set `applications.stage = pre_employment`, write `doc_deadline`, `doc_submission_note`, insert rows into `applicant_documents` (one per required doc, all unverified)
+3. Applicant receives an in-app notification (and email if applicable)
+
+---
+
+### HR side — document review page
+
+Route: `/dashboard/applicants/[id]/documents`
+
+Layout:
+- Header: applicant name, job title, deadline (red if past due), progress bar (e.g. `3 / 5 verified`)
+- Document checklist: one row per required document
+  - Document name
+  - Submission type pill: `Digital` / `In Person` / `Pending`
+  - For digital: thumbnail/filename link → opens file in new tab
+  - For in-person: gray "Not yet received" state
+  - HR actions per row:
+    - **Digital:** "Approve" or "Request resubmission" (opens a note input)
+    - **In-person:** Checkbox — "Mark as received in person" → sets `submission_type = in_person`, `hr_verified = true`
+  - Verified rows show a green checkmark + verified timestamp
+- If deadline has passed and not all docs are verified: show an amber warning banner — `"Deadline passed. Some documents are still incomplete."` — HR still decides manually, no auto-action
+- Bottom: **"Confirm Hire" button** — only enabled when all `is_required` documents are `hr_verified = true`
+
+**"Confirm Hire" flow:**
+1. HR clicks "Confirm Hire" → confirmation modal: `"This will convert [Name] to an employee. This cannot be undone."`
+2. On confirm:
+   - `applications.stage = hired`
+   - `profiles.role = employee`
+   - Insert row into `employees` table (if separate) or populate employee-specific fields
+   - Applicant is redirected to `/employee/dashboard` on next login
+   - HR sees a success toast: `"[Name] has been converted to an employee."`
+
+---
+
+### Applicant side — submission page
+
+Route: `/apply/applications/[id]/documents`
+
+Accessible only when `application.stage = pre_employment`.
+
+Layout:
+- Header: `"Submit your pre-employment requirements"` + deadline countdown (e.g. `"5 days left"`, red if ≤2 days)
+- HR instruction note (if set), shown in a callout box
+- Document list: one card per required document
+  - Document name + `Required` or `Optional` tag
+  - Status: `Pending` / `Submitted` / `Verified` / `Resubmission needed`
+  - If `Resubmission needed`: show HR's note in red, re-upload button
+  - Upload button → file picker (PDF, JPG, PNG ≤10MB) → uploads to Supabase Storage → sets `submission_type = digital`, `submitted_at = now()`
+  - "I will submit in person" toggle per document → sets `submission_type = in_person` (pending HR tick)
+- Progress indicator at top: `"2 of 5 submitted"`
+- Each document saves individually on upload — no submit-all button
+
+---
+
+### Acceptance criteria
+- HR can add required documents to a job posting
+- Moving an applicant to pre-employment generates the correct document checklist
+- Applicant can upload files digitally; files appear in Supabase Storage at the correct path
+- Applicant can mark a document as "I will submit in person"
+- HR can tick in-person documents as received
+- HR can approve or request resubmission on digital uploads
+- "Confirm Hire" is disabled until all required documents are `hr_verified = true`
+- Confirming hire flips `profiles.role` to `employee` and redirects the user to `/employee/dashboard` on next login
+- Deadline warning banner appears on HR side when deadline has passed with incomplete docs — no auto-rejection, HR retains full control
+
+---
+
 ## Sprint 2 — PWA foundation
 **~2–3 days. Start after Sprint 0.**
 
@@ -296,6 +430,7 @@ In root layout or `ClientLayout`:
 | `/apply/applications` | Application tracker | Pipeline card list with status pills |
 | `/apply/applications/[id]` | Application detail | Status timeline. Interview info nested here. |
 | `/apply/applications/[id]/offer` | Offer letter | Full-screen DocuSeal embed |
+| `/apply/applications/[id]/documents` | Pre-employment documents | Submission page — see Sprint 1.5 |
 | `/apply/resume` | AI resume generator | Claude API for generation |
 | `/apply/profile` | Profile + settings | Preferred work setup, logout |
 
@@ -458,4 +593,4 @@ Per page: consistent padding, correct type scale, brand color on interactive ele
 
 ---
 
-*Kayod Architecture Plan v2.0 — May 2026*
+*Kayod Architecture Plan v2.1 — May 2026*

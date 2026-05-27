@@ -159,7 +159,7 @@ function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickA
     case "shortlisted":
       return { label: "Schedule interview", action: "interview", color: "#a855f7" };
     case "interview_scheduled":
-      return { label: "View Scheduled Interview", action: "view_interview", color: "#a855f7" };
+      return { label: "Schedule Interview", action: "interview", color: "#a855f7" };
     case "interviewed":
       // Still allow scheduling (follow-up) from the interview panel — use the existing interview flow
       return { label: "Schedule interview", action: "interview", color: "#a855f7" };
@@ -913,6 +913,10 @@ function ApplicantCardComponent({
   const shouldShowSendOffer = !hasSignedContract && isOfferStage && offerDeliveryState !== "sent";
   const quickAction = getQuickAction(app, hasSignedContract);
   const displayStatus = currentStage?.label ?? app.status.replace(/_/g, " ").toUpperCase();
+  const now = new Date();
+  const scheduledAt = interview ? new Date(interview.scheduled_at) : null;
+  const diffMinutes = scheduledAt ? (scheduledAt.getTime() - now.getTime()) / 60000 : null;
+  const showJoinRoom = diffMinutes !== null && diffMinutes <= 15 && diffMinutes >= -60;
 
   return (
     <div
@@ -1000,13 +1004,17 @@ function ApplicantCardComponent({
         )}
 
         {/* Job Offer Badge */}
-        {jobOfferBadge && (
+        {isOfferStage && jobOfferBadge && (
           <div className="flex items-center gap-1.5 text-xs" style={{ color: jobOfferBadge.color }}>
             <span className="font-medium">{jobOfferBadge.label}</span>
             <span className="text-gray-400">
               {jobOfferBadge.updatedAt ? new Date(jobOfferBadge.updatedAt).toLocaleDateString() : ""}
             </span>
           </div>
+        )}
+
+        {(app.status === "interview_scheduled" || app.status === "interviewed") && !interview && (
+          <p className="text-xs text-text-secondary">No interview scheduled yet</p>
         )}
 
         {/* Signed Contract Indicator */}
@@ -1053,6 +1061,17 @@ function ApplicantCardComponent({
 
         {/* Action Buttons - Layout adapts for mobile vs desktop */}
         <div className={isMobile ? "flex flex-col gap-2" : "space-y-2"}>
+          {showJoinRoom && interview?.video_room_url && (
+            <a
+              href={`/interviews?id=${interview.id}`}
+              onClick={(event) => event.stopPropagation()}
+              className="block w-full rounded-xl py-2 text-center text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: "#7c3aed" }}
+            >
+              🎥 Join Interview Room
+            </a>
+          )}
+
           {/* Offer Delivery Action */}
           {shouldShowCheckSigned && (
             <button

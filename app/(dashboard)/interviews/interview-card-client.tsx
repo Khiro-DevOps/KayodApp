@@ -1,12 +1,9 @@
 "use client";
 
 import { Interview } from "@/lib/types";
-import { updateInterviewPreference } from "./actions";
-import { useState, useCallback, useEffect } from "react";
+import { confirmInterviewDone, updateInterviewPreference } from "./actions";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
-import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
-import { createClient } from "@/lib/supabase/client";
 
 interface InterviewCardClientProps {
   interview: Interview;
@@ -14,8 +11,6 @@ interface InterviewCardClientProps {
   past?: boolean;
   showTypeSelection?: boolean;
 }
-
-type NotesStep = "idle" | "notepad" | "done";
 
 export function InterviewCardClient({
   interview,
@@ -25,20 +20,10 @@ export function InterviewCardClient({
 }: InterviewCardClientProps) {
   const router = useRouter();
   const [isSelecting, setIsSelecting] = useState(false);
-  const [showRoom, setShowRoom] = useState(false);
-  const [notesStep, setNotesStep] = useState<NotesStep>("idle");
-  const [saving, setSaving] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
   const [isCompletedLocally, setIsCompletedLocally] = useState(interview.status === "completed");
+  const [confirming, setConfirming] = useState(false);
+  const [confirmed, setConfirmed] = useState(interview.status === "completed");
   const [completeError, setCompleteError] = useState<string | null>(null);
-
-  // Notepad fields
-  const [score, setScore] = useState<number | "">("");
-  const [strengths, setStrengths] = useState("");
-  const [concerns, setConcerns] = useState("");
-  const [cultureFit, setCultureFit] = useState("");
-  const [recommendation, setRecommendation] = useState("");
-  const [generalNotes, setGeneralNotes] = useState("");
 
   useEffect(() => {
     if (past) return;
@@ -55,6 +40,7 @@ export function InterviewCardClient({
 
   const app = interview.applications as unknown as {
     id?: string;
+    status?: string;
     profiles?: { first_name: string; last_name: string; email: string };
     job_postings?: { title: string };
   };
@@ -89,15 +75,17 @@ export function InterviewCardClient({
   // - interview window has started (ongoing or expired — i.e. not future)
   const canCompleteInterview =
     isHR &&
+    !past &&
     !isCompletedLocally &&
     interview.status !== "cancelled" &&
     interview.status !== "completed" &&
     (isOngoing || isExpired);
 
-  const roomName =
-    interview.video_room_name ??
-    interview.video_room_url?.split("/").pop() ??
-    `kayod-interview-${interview.id}`;
+  const needsConfirmation =
+    isHR &&
+    past &&
+    app?.status === "interview_scheduled" &&
+    !confirmed;
 
   const statusColors: Record<string, string> = {
     scheduled: "bg-blue-50 text-blue-700",
@@ -123,292 +111,27 @@ export function InterviewCardClient({
     await updateInterviewPreference(formData);
   };
 
-  async function completeInterviewOnce() {
-    if (isCompletedLocally) return true;
-
-    const response = await fetch(`/api/interviews/${interview.id}/complete`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({ error: "Failed to complete interview" }));
-      throw new Error(payload?.error || "Failed to complete interview");
-    }
-
-    setIsCompletedLocally(true);
-    router.refresh();
-    return true;
-  }
-
-  // ── Save notepad + put applicant on hold ─────────────────────────────────
-  async function handleSaveNotepad() {
-    setSaving(true);
+  const handleConfirmInterview = async () => {
+    setConfirming(true);
     setCompleteError(null);
-    const supabase = createClient();
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      await supabase.from("interview_notes").upsert({
-        interview_id: interview.id,
-        application_id: app.id,
-        created_by: userData.user?.id,
-        interview_score: score === "" ? null : Number(score),
-        strengths: strengths || null,
-        concerns: concerns || null,
-        culture_fit: cultureFit || null,
-        recommendation: recommendation || null,
-        general_notes: generalNotes || null,
-      }, { onConflict: "interview_id" });
-
-      if (app.id) {
-        const { data: appData } = await supabase
-          .from("applications")
-          .select("candidate_id, job_postings(title)")
-          .eq("id", app.id)
-          .single();
-
-        if (appData?.candidate_id) {
-          await supabase.from("notifications").insert({
-            recipient_id: appData.candidate_id,
-            type: "under_review",
-            title: "📋 Your interview has been reviewed",
-            body: `Your interview for ${(appData.job_postings as any)?.title ?? "the position"} is under review. We'll be in touch soon.`,
-            action_url: `/applications`,
-            is_read: false,
-          });
-        }
+      const result = await confirmInterviewDone(interview.id);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to confirm interview");
       }
 
-      // Set done BEFORE refresh so state isn't wiped
-      setNotesStep("done");
+      setConfirmed(true);
+      setIsCompletedLocally(true);
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error finalizing interview";
+      const message = error instanceof Error ? error.message : "Failed to confirm interview";
       setCompleteError(message);
-      console.error("Error finalizing interview:", error);
+      console.error("Failed to confirm interview:", error);
     } finally {
-      setSaving(false);
-    }
-  }
-
-  // ── Applicant leave ──────────────────────────────────────────────────────
-  const handleApplicantLeave = useCallback(() => {
-    router.push("/interviews/thank-you");
-  }, [router]);
-
-  // ── Complete interview from card ─────────────────────────────────────────
-  const handleCompleteFromCard = async () => {
-    setIsCompleting(true);
-    setCompleteError(null);
-    try {
-      await completeInterviewOnce();
-      setShowRoom(false);
-      setNotesStep("notepad"); // show notepad first, refresh happens after save
-        router.refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to complete interview";
-      setCompleteError(message);
-      console.error("Failed to complete interview:", error);
-    } finally {
-      setIsCompleting(false);
+      setConfirming(false);
     }
   };
-
-  // Complete and optionally advance to offer stage
-  async function completeAndMoveToOffer() {
-    if (isCompletedLocally) return true;
-    setIsCompleting(true);
-    setCompleteError(null);
-    try {
-      const response = await fetch(`/api/interviews/${interview.id}/complete`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moveToOffer: true }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({ error: "Failed to complete interview" }));
-        throw new Error(payload?.error || "Failed to complete interview");
-      }
-
-      setIsCompletedLocally(true);
-      setShowRoom(false);
-      setNotesStep("notepad");
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to complete interview";
-      setCompleteError(message);
-      console.error("Failed to complete interview and move to offer:", error);
-      return false;
-    } finally {
-      setIsCompleting(false);
-    }
-  }
-
-  // ── Fullscreen Jitsi — HR ────────────────────────────────────────────────
-  if (showRoom && isHR) {
-    return (
-      <div className="space-y-3">
-        <HRJitsiRoom
-          roomName={roomName}
-          displayName="HR Interviewer"
-          interviewId={interview.id}
-          onClose={() => setShowRoom(false)}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => void handleCompleteFromCard()}
-            disabled={isCompleting}
-            className="w-full rounded-xl bg-green-600 hover:bg-green-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
-          >
-            {isCompleting ? "Completing..." : "End Interview & Write Notes"}
-          </button>
-          <button
-            onClick={() => void completeAndMoveToOffer()}
-            disabled={isCompleting}
-            className="w-full rounded-xl bg-orange-600 hover:bg-orange-700 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
-          >
-            {isCompleting ? "Completing..." : "End Interview & Move to Offer"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Fullscreen Jitsi — Applicant ─────────────────────────────────────────
-  if (showRoom && !isHR) {
-    return (
-      <ApplicantJitsiRoom
-        roomName={roomName}
-        userName="Applicant"
-        onLeave={handleApplicantLeave}
-      />
-    );
-  }
-
-  // ── Notepad screen ───────────────────────────────────────────────────────
-  if (notesStep === "notepad" && isHR) {
-    return (
-      <div className="rounded-2xl bg-surface border border-border p-5 space-y-4">
-        {/* Header */}
-        <div>
-          <h3 className="text-sm font-bold text-text-primary">
-            📝 Interview Notepad
-          </h3>
-          <p className="text-xs text-text-secondary mt-0.5">
-            {candidateName} · {jobTitle}
-          </p>
-          <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-2">
-            The applicant will be placed <strong>on hold</strong> for comparison with other candidates. You can send a Job Offer from the Review Board later.
-          </p>
-        </div>
-
-        {/* Score */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">
-            Interview Score (0–100)
-          </label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={score}
-            onChange={(e) => setScore(e.target.value === "" ? "" : Number(e.target.value))}
-            placeholder="e.g. 82"
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-
-        {/* Strengths */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">Strengths</label>
-          <textarea
-            rows={2}
-            value={strengths}
-            onChange={(e) => setStrengths(e.target.value)}
-            placeholder="What stood out positively about this candidate?"
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          />
-        </div>
-
-        {/* Concerns */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">Concerns</label>
-          <textarea
-            rows={2}
-            value={concerns}
-            onChange={(e) => setConcerns(e.target.value)}
-            placeholder="Any red flags or areas of concern?"
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          />
-        </div>
-
-        {/* Culture Fit */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">Culture Fit</label>
-          <textarea
-            rows={2}
-            value={cultureFit}
-            onChange={(e) => setCultureFit(e.target.value)}
-            placeholder="How well do they align with the team and company culture?"
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          />
-        </div>
-
-        {/* Recommendation */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">Recommendation</label>
-          <select
-            value={recommendation}
-            onChange={(e) => setRecommendation(e.target.value)}
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">Select a recommendation...</option>
-            <option value="strongly_recommend">⭐⭐⭐ Strongly Recommend</option>
-            <option value="recommend">⭐⭐ Recommend</option>
-            <option value="neutral">⭐ Neutral</option>
-            <option value="do_not_recommend">❌ Do Not Recommend</option>
-          </select>
-        </div>
-
-        {/* General Notes */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-text-secondary">General Notes</label>
-          <textarea
-            rows={3}
-            value={generalNotes}
-            onChange={(e) => setGeneralNotes(e.target.value)}
-            placeholder="Anything else worth noting about this interview..."
-            className="w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          />
-        </div>
-
-        {completeError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {completeError}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => setNotesStep("idle")}
-            className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void handleSaveNotepad()}
-            disabled={saving}
-            className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Save & Put on Hold"}
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // ── Type selection ───────────────────────────────────────────────────────
   if (isSelecting && showTypeSelection && !past) {
@@ -492,19 +215,12 @@ export function InterviewCardClient({
         </span>
       </div>
 
-      {/* Notepad saved confirmation */}
-      {notesStep === "done" && (
-        <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
-          📋 Notes saved. Applicant is on hold — visit the <strong>Review Board</strong> to compare and finalize decisions.
-        </div>
-      )}
-
       {/* Join button */}
       {canJoinRoom && (
         <button
           onClick={() => {
             if (isExpired) return;
-            setShowRoom(true);
+            router.push(`/interviews/${interview.id}/room`);
           }}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
         >
@@ -515,26 +231,31 @@ export function InterviewCardClient({
         </button>
       )}
 
-      {/* End Interview — HR only, visible when ongoing or expired */}
+      {needsConfirmation && (
+        <button
+          onClick={() => void handleConfirmInterview()}
+          disabled={confirming}
+          className="mt-3 w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+        >
+          {confirming ? "Confirming..." : "Confirm Interview"}
+        </button>
+      )}
+
+      {confirmed && past && interview.status !== "cancelled" && (
+        <div className="mt-3 rounded-xl bg-green-50 border border-green-200 py-2 text-center text-sm font-medium text-green-700">
+          ✓ Interview confirmed — applicant moved to Interviewed
+        </div>
+      )}
+
+      {/* Confirm Interview — HR only, visible when ongoing or expired */}
       {canCompleteInterview && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="mt-3">
           <button
-            onClick={() => void handleCompleteFromCard()}
-            disabled={isCompleting}
-            className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void handleConfirmInterview()}
+            disabled={confirming}
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isCompleting
-              ? "Completing..."
-              : canJoinRoom
-              ? "End Interview & Write Notes"
-              : "Mark Complete & Write Notes"}
-          </button>
-          <button
-            onClick={() => void completeAndMoveToOffer()}
-            disabled={isCompleting}
-            className="w-full rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isCompleting ? "Completing..." : "Mark Complete & Move to Offer"}
+            {confirming ? "Confirming..." : "Confirm Interview"}
           </button>
         </div>
       )}

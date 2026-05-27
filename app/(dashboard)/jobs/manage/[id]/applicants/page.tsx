@@ -66,13 +66,13 @@ export default async function ApplicantsPage({
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  const { data: job } = await supabase
+  const { data: job, error: jobError } = await supabase
     .from("job_postings")
     .select("id, title")
     .eq("id", id)
     .single();
 
-  if (!job) redirect("/jobs/manage");
+  if (jobError || !job) redirect("/jobs/manage");
 
   const { data: rawApplications } = await supabase
     .from("applications")

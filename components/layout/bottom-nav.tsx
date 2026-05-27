@@ -175,6 +175,7 @@ export default function BottomNav({
   initialUnreadCount = 0,
 }: BottomNavProps) {
   const pathname = usePathname();
+  const isMeetingRoom = typeof pathname === "string" && pathname.includes("/interviews/") && pathname.includes("/room");
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
 
   const navItems =
@@ -210,7 +211,7 @@ export default function BottomNav({
     void refreshUnreadCount();
 
     const channel = supabase
-      .channel(`notifications-${userId}`)
+      .channel(`notifications-${userId}-${Math.random().toString(36).slice(2,8)}`)
       .on(
         "postgres_changes",
         {
@@ -230,6 +231,8 @@ export default function BottomNav({
       void supabase.removeChannel(channel);
     };
   }, [role, userId]);
+
+  if (isMeetingRoom) return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200">

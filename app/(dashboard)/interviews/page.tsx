@@ -24,23 +24,47 @@ export default async function InterviewsPage() {
   const isHR = isHRRole(role);
 
   let interviews: Interview[] = [];
+  let needsScheduling: {
+    id: string;
+    status: string;
+    profiles: { first_name: string | null; last_name: string | null; email: string | null } | null;
+    job_postings: { title: string | null } | null;
+  }[] = [];
 
   const now = new Date();
 
   if (isHR) {
-    const { data, error } = await supabase
-      .from("interviews")
-      .select(`
-        *,
-        applications (
+    const [{ data, error }, { data: applicationIdsData }] = await Promise.all([
+      supabase
+        .from("interviews")
+        .select(`
           *,
-          profiles!applications_candidate_id_fkey ( first_name, last_name, email ),
-          job_postings ( title )
-        )
-      `)
-      .order("scheduled_at", { ascending: true });
+          applications (
+            *,
+            profiles!applications_candidate_id_fkey ( first_name, last_name, email ),
+            job_postings ( title )
+          )
+        `)
+        .order("scheduled_at", { ascending: true }),
+      supabase.from("interviews").select("application_id"),
+    ]);
 
     interviews = (data as Interview[]) ?? [];
+
+    const interviewApplicationIds = new Set((applicationIdsData ?? []).map((row) => row.application_id).filter(Boolean));
+
+    const { data: applicationsData } = await supabase
+      .from("applications")
+      .select(`
+        id,
+        status,
+        profiles!applications_candidate_id_fkey ( first_name, last_name, email ),
+        job_postings ( title )
+      `)
+      .in("status", ["shortlisted", "under_review"])
+      .order("submitted_at", { ascending: true });
+
+    needsScheduling = (applicationsData ?? []).filter((application) => !interviewApplicationIds.has(application.id)) as unknown as typeof needsScheduling;
   } else {
     const { data, error } = await supabase
       .from("interviews")
@@ -86,7 +110,7 @@ export default async function InterviewsPage() {
   return (
     <div className="flex gap-6">
       {/* Today's Interviews Sidebar */}
-      <div className="w-80 shrink-0">
+      <div className="hidden w-80 shrink-0 md:block">
         <div className="sticky top-4 space-y-4">
           <div className="rounded-2xl bg-surface border border-border p-4">
             <h2 className="text-sm font-semibold text-text-primary mb-3">
@@ -147,10 +171,49 @@ export default async function InterviewsPage() {
                   href="/interviews/schedule"
                   className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
                 >
-                  Schedule
+                  + Schedule Interview
                 </Link>
               )}
             </div>
+
+            {isHR && (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                  Needs Scheduling ({needsScheduling.length})
+                </h2>
+                {needsScheduling.length === 0 ? (
+                  <EmptyState message="No shortlisted applicants need scheduling" />
+                ) : (
+                  <div className="space-y-3">
+                    {needsScheduling.map((application) => {
+                      const name = application.profiles
+                        ? `${application.profiles.first_name ?? ""} ${application.profiles.last_name ?? ""}`.trim() || "Candidate"
+                        : "Candidate";
+                      const title = application.job_postings?.title ?? "Position";
+
+                      return (
+                        <div key={application.id} className="rounded-2xl border border-border bg-surface p-4">
+                          <p className="text-sm font-semibold text-text-primary">{name}</p>
+                          <p className="text-xs text-text-secondary">{title}</p>
+                          <Link
+                            href={`/interviews/schedule?applicationId=${application.id}`}
+                            className="mt-3 inline-flex rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90"
+                          >
+                            Schedule →
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {isHR && (
+              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                Scheduled Interviews
+              </h2>
+            )}
 
             {/* Calendar View for HR */}
             {isHR && (

@@ -1,10 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useCallback } from "react";
 import type { ApplicationStatus, Interview } from "@/lib/types";
 import { isActiveInterview } from "@/lib/interviews";
-import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
 
 interface StatusTrackerProps {
   status: ApplicationStatus;
@@ -29,20 +27,9 @@ const statusStages = [
 
 export default function StatusTracker({ status, interviews, applicationId, offerRouteId, activeOffer }: StatusTrackerProps) {
   const router = useRouter();
-  const [activeRoom, setActiveRoom] = useState<{
-    roomName: string;
-    userName: string;
-    interviewId: string;
-  } | null>(null);
-
-  const handleApplicantLeave = useCallback(() => {
-    window.location.href = "/interviews/thank-you";
-  }, []);
   const normalizedStatus = String(status || "").toLowerCase();
   const displayStatus = normalizedStatus === "negotiating" ? "offer_sent" : normalizedStatus;
   const currentStageIndex = statusStages.findIndex((s) => s.key === displayStatus);
-  const interviewedStageIndex = statusStages.findIndex((s) => s.key === "interviewed");
-  const shouldCollapseScheduledInterviewStage = interviewedStageIndex !== -1 && currentStageIndex >= interviewedStageIndex;
   const subStatusLabel = normalizedStatus === "negotiating" ? "Negotiating" : null;
   const normalizedOfferStatus = String(activeOffer?.status ?? "").toLowerCase();
   const hasResolvedOffer = Boolean(offerRouteId || activeOffer?.id);
@@ -67,26 +54,12 @@ export default function StatusTracker({ status, interviews, applicationId, offer
     router.push(path);
   };
 
-  if (activeRoom) {
-    return (
-      <ApplicantJitsiRoom
-        roomName={activeRoom.roomName}
-        userName={activeRoom.userName}
-        onLeave={handleApplicantLeave}
-      />
-    );
-  }
-
   return (
     <div className="rounded-2xl border border-border bg-surface p-6">
       <h3 className="text-sm font-semibold text-text-primary mb-6">Application Pipeline</h3>
 
       <div className="space-y-4">
         {statusStages.map((stage, index) => {
-          if (stage.key === "interview_scheduled" && shouldCollapseScheduledInterviewStage) {
-            return null;
-          }
-
           const isCompleted = index < currentStageIndex;
           const isCurrent = index === currentStageIndex;
 
@@ -200,8 +173,6 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                         const endTime = new Date(scheduledDate.getTime() + (interview.duration_minutes ?? 60) * 60000);
                         const isOngoing = now >= new Date(scheduledDate.getTime() - 15 * 60000) && now < endTime;
                         const canJoin = isOngoing && interview.status !== "cancelled" && interview.status !== "completed";
-                        const roomName = interview.video_room_url?.split("/").pop() || interview.video_room_name || "interview-room";
-
                         return (
                           <div key={interview.id} className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-2 text-blue-800">
                             <p className="font-medium">📅 {scheduledDate.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
@@ -212,9 +183,7 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                               <div className="mt-2">
                                 {canJoin ? (
                                   <button
-                                    onClick={() =>
-                                      setActiveRoom({ roomName, userName: "Applicant", interviewId: interview.id })
-                                    }
+                                    onClick={() => router.push(`/interviews?id=${interview.id}`)}
                                     className="mt-2 w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
                                   >
                                     Join Meeting

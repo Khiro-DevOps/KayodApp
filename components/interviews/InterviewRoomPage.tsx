@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
-import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
+import InterviewRoom from "@/app/(dashboard)/interviews/[id]/room/interview-room";
 
 interface Interview {
   id: string;
@@ -111,15 +110,13 @@ export default function InterviewRoomPage({ interviewId }: Props) {
   }, [router]);
 
   if (activeRoom) {
-    return isHR ? (
-      <HRJitsiRoom
-        roomName={activeRoom.name}
-        displayName={activeRoom.user}
+    return (
+      <InterviewRoom
+        roomId={activeRoom.name}
         interviewId={interviewId}
-        onClose={handleHRLeave}
+        initialHrNotes={null}
+        isHR={isHR}
       />
-    ) : (
-      <ApplicantJitsiRoom roomName={activeRoom.name} userName={activeRoom.user} onLeave={handleApplicantLeave} />
     );
   }
 

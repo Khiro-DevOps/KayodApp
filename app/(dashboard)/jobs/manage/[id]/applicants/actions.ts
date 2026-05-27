@@ -6,18 +6,12 @@ import type { InterviewType } from "@/lib/types";
 import { createDocusealSubmission } from "@/lib/docuseal";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
-const JAAS_APP_ID = process.env.JAAS_APP_ID ?? process.env.NEXT_PUBLIC_JAAS_APP_ID;
-const JAAS_DOMAIN = "8x8.vc";
-
-function createJitsiRoom(applicationId: string) {
-  if (!JAAS_APP_ID) {
-    throw new Error("JaaS app ID is not configured");
-  }
-
+function createWebrtcRoom(applicationId: string) {
   const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
 
   return {
-    url: `https://${JAAS_DOMAIN}/${JAAS_APP_ID}/${roomName}`,
+    // Local application path for joining (used in notifications). The real join uses the room name for signaling.
+    url: `/interviews/${roomName}/room`,
     name: roomName,
   };
 }
@@ -177,7 +171,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
     let meetingRoomName: string | null = null;
 
     if (interviewType === "online") {
-      const room = createJitsiRoom(applicationId);
+      const room = createWebrtcRoom(applicationId);
       meetingLink = room.url;
       meetingRoomName = room.name;
     }
@@ -214,7 +208,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
           location_notes: null,
           video_room_url: payload.meeting_link,
           video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "jitsi" : null,
+          video_provider: interviewType === "online" ? "webrtc" : null,
           interviewer_notes: notes?.trim() || null,
           updated_at: new Date().toISOString(),
         })
@@ -260,7 +254,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
           location_notes: null,
           video_room_url: payload.meeting_link,
           video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "jitsi" : null,
+          video_provider: interviewType === "online" ? "webrtc" : null,
           interviewer_notes: notes?.trim() || null,
         })
         .select("id, interview_type, scheduled_at")

@@ -1,10 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Interview } from "@/lib/types";
-import ApplicantJitsiRoom from "@/components/interviews/ApplicantJitsiRoom";
-import HRJitsiRoom from "@/components/interviews/HRJitsiRoom";
 
 interface InterviewTimelineProps {
   interviews: Interview[];
@@ -22,38 +19,6 @@ const statusConfig: Record<string, { label: string; color: string; icon: string 
 
 export default function InterviewTimeline({ interviews, isRecruiter }: InterviewTimelineProps) {
   const router = useRouter();
-  const [activeRoom, setActiveRoom] = useState<{
-    roomName: string;
-    userName: string;
-    interviewId: string;
-  } | null>(null);
-
-  const handleHRLeave = useCallback(() => {
-    setActiveRoom(null);
-  }, []);
-
-  const handleApplicantLeave = useCallback(() => {
-    router.push("/interviews/thank-you");
-  }, [router]);
-
-  // Fullscreen Jitsi takeover
-  if (activeRoom) {
-    return isRecruiter ? (
-      <HRJitsiRoom
-        roomName={activeRoom.roomName}
-        displayName={activeRoom.userName}
-        interviewId={activeRoom.interviewId}
-        onClose={handleHRLeave}
-      />
-    ) : (
-      <ApplicantJitsiRoom
-        roomName={activeRoom.roomName}
-        userName={activeRoom.userName}
-        onLeave={handleApplicantLeave}
-      />
-    );
-  }
-
   if (!interviews.length) return null;
 
   return (
@@ -73,8 +38,6 @@ export default function InterviewTimeline({ interviews, isRecruiter }: Interview
           const endTime = new Date(scheduledDate.getTime() + (interview.duration_minutes ?? 60) * 60000);
           const isOngoing = now >= new Date(scheduledDate.getTime() - 15 * 60000) && now < endTime;
           const canJoin = isOngoing && interview.status !== "cancelled" && interview.status !== "completed";
-          const roomName = interview.video_room_url?.split("/").pop() || interview.video_room_name || "interview-room";
-
           return (
             <div key={interview.id} className="relative pb-6 last:pb-0">
               {index < interviews.length - 1 && (
@@ -135,13 +98,7 @@ export default function InterviewTimeline({ interviews, isRecruiter }: Interview
                           <p className="text-text-secondary font-medium mb-2">Join Video Call</p>
                           {canJoin ? (
                             <button
-                              onClick={() =>
-                                setActiveRoom({
-                                  roomName,
-                                  userName: isRecruiter ? "HR Interviewer" : "Applicant",
-                                  interviewId: interview.id,
-                                })
-                              }
+                              onClick={() => router.push(`/interviews?id=${interview.id}`)}
                               className="w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
                             >
                               Join Meeting

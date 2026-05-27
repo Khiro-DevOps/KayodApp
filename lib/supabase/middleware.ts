@@ -16,9 +16,17 @@ export async function updateSession(request: NextRequest) {
   });
 
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("[Middleware] Missing Supabase credentials");
+      return supabaseResponse;
+    }
+
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           getAll() {
@@ -44,8 +52,10 @@ export async function updateSession(request: NextRequest) {
       error: authError,
     } = await supabase.auth.getUser();
 
-    if (authError && process.env.NODE_ENV === "development") {
-      console.error("[Middleware] Auth error:", authError);
+    if (authError) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[Middleware] Auth error:", authError.message);
+      }
     }
 
     const pathname = request.nextUrl.pathname;

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import BottomNav from "@/components/layout/bottom-nav";
+import DashboardShell from "@/components/layout/dashboard-shell";
 import type { UserRole } from "@/lib/types";
 import { effectiveRole } from "@/lib/roles";
 
@@ -23,10 +23,5 @@ export default async function DashboardLayout({
     role = effectiveRole(profile?.role, authRole);
   }
 
-  return (
-    <div className="flex flex-col min-h-screen">
-      <main className="flex-1 pb-20">{children}</main>
-      <BottomNav role={role} />
-    </div>
-  );
+  return <DashboardShell role={role} userId={user?.id ?? null}>{children}</DashboardShell>;
 }

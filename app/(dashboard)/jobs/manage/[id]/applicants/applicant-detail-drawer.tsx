@@ -29,6 +29,16 @@ interface MatchScoreBreakdown {
   computed_at: string | null;
 }
 
+interface InterviewNotes {
+  interview_score: number | null;
+  strengths: string | null;
+  concerns: string | null;
+  culture_fit: string | null;
+  recommendation: string | null;
+  general_notes: string | null;
+  created_at: string | null;
+}
+
 interface ApplicantDetailDrawerProps {
   application: Application;
   jobOffer?: {
@@ -80,6 +90,7 @@ export default function ApplicantDetailDrawer({
   const [matchScoreDetails, setMatchScoreDetails] = useState<MatchScoreBreakdown | null>(null);
   const [loadingMatchScore, setLoadingMatchScore] = useState(false);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
+  const [interviewNotes, setInterviewNotes] = useState<InterviewNotes | null>(null);
 
   const candidate = application?.profiles as any;
   const resume = (Array.isArray(application?.resumes)
@@ -194,6 +205,7 @@ export default function ApplicantDetailDrawer({
       setResumeError(null);
       setMatchScoreDetails(null);
       setLoadingMatchScore(false);
+      setInterviewNotes(null);
     }
   }, [isOpen]);
 
@@ -303,6 +315,39 @@ export default function ApplicantDetailDrawer({
       active = false;
     };
   }, [isOpen, application.candidate_id, jobId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let active = true;
+
+    async function fetchInterviewNotes() {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("interview_notes")
+        .select("interview_score, strengths, concerns, culture_fit, recommendation, general_notes, created_at")
+        .eq("application_id", application.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (error) {
+        console.error("Failed to load interview notes:", error);
+        setInterviewNotes(null);
+        return;
+      }
+
+      setInterviewNotes((data as InterviewNotes | null) ?? null);
+    }
+
+    void fetchInterviewNotes();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, application.id]);
 
   // Close resume modal on Escape
   useEffect(() => {
@@ -442,6 +487,56 @@ export default function ApplicantDetailDrawer({
                 <p className="text-xs text-red-500">
                   {resumeError ?? "Could not load resume link."}
                 </p>
+              )}
+            </div>
+          )}
+
+          {interviewNotes && (
+            <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-text-primary">Interview Notes</h3>
+              {interviewNotes.interview_score !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">Score</span>
+                  <span className={`text-sm font-bold ${
+                    interviewNotes.interview_score >= 75
+                      ? "text-green-600"
+                      : interviewNotes.interview_score >= 50
+                        ? "text-amber-600"
+                        : "text-red-600"
+                  }`}>{interviewNotes.interview_score}/100</span>
+                </div>
+              )}
+              {interviewNotes.recommendation && (
+                <div>
+                  <span className="text-xs text-text-secondary">Recommendation</span>
+                  <p className="text-sm text-text-primary capitalize mt-0.5">
+                    {interviewNotes.recommendation.replace(/_/g, " ")}
+                  </p>
+                </div>
+              )}
+              {interviewNotes.strengths && (
+                <div>
+                  <span className="text-xs text-text-secondary">Strengths</span>
+                  <p className="text-sm text-text-primary mt-0.5">{interviewNotes.strengths}</p>
+                </div>
+              )}
+              {interviewNotes.concerns && (
+                <div>
+                  <span className="text-xs text-text-secondary">Concerns</span>
+                  <p className="text-sm text-text-primary mt-0.5">{interviewNotes.concerns}</p>
+                </div>
+              )}
+              {interviewNotes.culture_fit && (
+                <div>
+                  <span className="text-xs text-text-secondary">Culture Fit</span>
+                  <p className="text-sm text-text-primary mt-0.5">{interviewNotes.culture_fit}</p>
+                </div>
+              )}
+              {interviewNotes.general_notes && (
+                <div>
+                  <span className="text-xs text-text-secondary">General Notes</span>
+                  <p className="text-sm text-text-primary mt-0.5 whitespace-pre-wrap">{interviewNotes.general_notes}</p>
+                </div>
               )}
             </div>
           )}
