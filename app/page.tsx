@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { Mail, Cpu, FileText, Clock } from "lucide-react";
 import FeatureCard from "../components/landing/FeatureCard";
 import PricingCard from "../components/landing/PricingCard";
@@ -15,6 +16,43 @@ const features = [
 ];
 
 export default function Home() {
+  const pricingSectionRef = useRef<HTMLElement | null>(null);
+  const pricingHighlightTimeoutRef = useRef<number | null>(null);
+  const pricingResetTimeoutRef = useRef<number | null>(null);
+  const [pricingHighlight, setPricingHighlight] = useState(false);
+
+  const handleHiringClick = () => {
+    pricingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    if (pricingHighlightTimeoutRef.current) {
+      window.clearTimeout(pricingHighlightTimeoutRef.current);
+    }
+
+    if (pricingResetTimeoutRef.current) {
+      window.clearTimeout(pricingResetTimeoutRef.current);
+    }
+
+    pricingHighlightTimeoutRef.current = window.setTimeout(() => {
+      setPricingHighlight(true);
+    }, 700);
+
+    pricingResetTimeoutRef.current = window.setTimeout(() => {
+      setPricingHighlight(false);
+    }, 1900);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pricingHighlightTimeoutRef.current) {
+        window.clearTimeout(pricingHighlightTimeoutRef.current);
+      }
+
+      if (pricingResetTimeoutRef.current) {
+        window.clearTimeout(pricingResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_#f0fdf4_0%,_#ffffff_48%,_#f8fafc_100%)] text-slate-900">
       <header className="w-full border-b border-gray-100">
@@ -34,7 +72,13 @@ export default function Home() {
           <p className="text-slate-600 max-w-2xl mx-auto mb-6">AI screening, simple contract signing, and a mobile-first experience that connects employers and candidates seamlessly.</p>
 
           <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
-            <Link href="/register" className="inline-flex h-12 items-center justify-center rounded-lg bg-emerald-600 px-5 text-white font-medium hover:bg-emerald-700">I'm hiring</Link>
+            <button
+              type="button"
+              onClick={handleHiringClick}
+              className="inline-flex h-12 items-center justify-center rounded-lg bg-emerald-600 px-5 text-white font-medium transition-colors hover:bg-emerald-700"
+            >
+              I&apos;m hiring
+            </button>
             <Link href="/apply/jobs" className="inline-flex h-12 items-center justify-center rounded-lg border border-gray-200 px-5 text-slate-700 bg-white hover:bg-gray-50">Find a job</Link>
           </div>
         </section>
@@ -50,16 +94,34 @@ export default function Home() {
         </section>
 
         {/* Pricing */}
-        <section className="mt-12">
-          <h2 className="text-xl font-semibold mb-4 text-center">Pricing</h2>
+        <section
+          ref={pricingSectionRef}
+          id="pricing"
+          className="mt-12 scroll-mt-24 sm:scroll-mt-28"
+        >
+          <h2
+            className={`text-xl font-semibold mb-4 text-center transition-all duration-300 ${
+              pricingHighlight ? "text-emerald-700 drop-shadow-sm" : "text-slate-900"
+            }`}
+          >
+            Choose Your Plan
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {SUBSCRIPTION_TIERS.map((tier) => (
-              <PricingCard
+              <div
                 key={tier.plan}
-                tier={tier}
-                href={`/register?plan=${encodeURIComponent(tier.plan)}`}
-                ctaLabel="Get started"
-              />
+                className={`rounded-2xl transition-all duration-300 ${
+                  pricingHighlight
+                    ? "-translate-y-1 ring-2 ring-emerald-400/50 shadow-[0_16px_50px_rgba(16,185,129,0.14)]"
+                    : ""
+                }`}
+              >
+                <PricingCard
+                  tier={tier}
+                  href={`/register?plan=${encodeURIComponent(tier.plan)}`}
+                  ctaLabel="Get started"
+                />
+              </div>
             ))}
           </div>
         </section>

@@ -77,8 +77,8 @@ export async function updateSession(request: NextRequest) {
     // If user is authenticated and trying to access auth pages, redirect to dashboard
     // Note: keep `/` public so the landing page remains visible even for authenticated users.
     if (user && (pathname === "/login" || pathname === "/register")) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      const url = new URL("/dashboard", request.url);
+      url.search = "";
       return NextResponse.redirect(url);
     }
 

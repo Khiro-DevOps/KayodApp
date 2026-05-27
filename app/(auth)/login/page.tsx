@@ -8,7 +8,9 @@ import { login } from "../actions";
 export default function LoginPage() {
   return (
     <Suspense>
-      <LoginForm />
+      <div className="mx-auto w-full max-w-[420px]">
+        <LoginForm />
+      </div>
     </Suspense>
   );
 }
