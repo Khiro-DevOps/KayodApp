@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, Suspense, type ChangeEvent } from "react";
 import { register } from "../actions";
+import PricingCard from "@/components/landing/PricingCard";
+import {
+  SUBSCRIPTION_TIERS,
+  getSubscriptionTier,
+  isSubscriptionPlan,
+  type SubscriptionPlan,
+} from "@/lib/subscription-tiers";
 
 function formatPhilippinesPhone(value: string) {
   const digits = value.replace(/\D/g, "");
@@ -37,8 +44,11 @@ export default function RegisterPage() {
 function RegisterForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const initialPlan = isSubscriptionPlan(searchParams.get("plan")) ? searchParams.get("plan") : "starter";
   const [role, setRole] = useState<"candidate" | "hr_manager">("candidate");
   const [phone, setPhone] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(initialPlan ?? "starter");
+  const selectedTier = getSubscriptionTier(selectedPlan);
 
   return (
     <div className="space-y-6">
@@ -227,15 +237,15 @@ function RegisterForm() {
             Enter 11 digits (e.g. 09123456789) and it will format to +63 912 345 6789.
           </p>
         </div>
-        {/* Company Name - Only for HR */}
+        {/* Tenant Name - Only for HR */}
           {role === "hr_manager" && (
             <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-              <label htmlFor="company_name" className="text-sm font-medium text-text-primary">
-                Company Name
+              <label htmlFor="tenant_name" className="text-sm font-medium text-text-primary">
+                Tenant Name
               </label>
               <input
-                id="company_name"
-                name="company_name"
+                id="tenant_name"
+                name="tenant_name"
                 type="text"
                 required={role === "hr_manager"}
                 placeholder="e.g. Acme Corp"
@@ -243,6 +253,33 @@ function RegisterForm() {
               />
             </div>
           )}
+
+        {role === "hr_manager" && (
+          <div className="space-y-3 rounded-3xl border border-border bg-surface/70 p-4">
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Choose a subscription plan</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                The selected tier is prefilled from the landing page and can be changed here.
+              </p>
+            </div>
+            <input type="hidden" name="plan" value={selectedPlan} />
+            <div className="grid gap-3 md:grid-cols-3">
+              {SUBSCRIPTION_TIERS.map((tier) => (
+                <PricingCard
+                  key={tier.plan}
+                  tier={tier}
+                  selected={selectedPlan === tier.plan}
+                  onSelect={setSelectedPlan}
+                  ctaLabel={selectedPlan === tier.plan ? "Selected" : "Select plan"}
+                />
+              ))}
+            </div>
+            <div className="rounded-2xl bg-white px-4 py-3 text-sm text-text-secondary shadow-sm">
+              <span className="font-medium text-text-primary">Current selection:</span>{" "}
+              {selectedTier.name} - {selectedTier.price}
+            </div>
+          </div>
+        )}
         {/* Email */}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium text-text-primary">

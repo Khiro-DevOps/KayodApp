@@ -35,10 +35,10 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     .single();
 
   if (creatorProfileError) {
-    console.warn("[sendHydratedOffer] Failed to resolve company name:", creatorProfileError);
+    console.warn("[sendHydratedOffer] Failed to resolve tenant name:", creatorProfileError);
   }
 
-  const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+  const tenantName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
 
   // Retire any existing active offers so a replacement can be created safely.
   const { error: archiveError } = await admin
@@ -77,7 +77,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       job_metadata: {
-        company_name: companyName,
+        company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
       },
@@ -237,7 +237,7 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
     .eq("id", job.created_by)
     .single();
 
-  const companyName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+  const tenantName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
 
   const { data: offer, error: offerError } = await admin
     .from("job_offers")
@@ -254,7 +254,7 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       job_metadata: {
-        company_name: companyName,
+        company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
         // include any selected benefits if present in job.offer_letter_settings

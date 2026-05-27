@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
 
 export async function login(
   _prevState: { error: string | null; success: boolean },
@@ -62,20 +63,27 @@ export async function register(formData: FormData) {
   const address = formData.get("address") as string;
   const city = formData.get("city") as string;
   const country = formData.get("country") as string;
-  const companyName = formData.get("company_name") as string;
+  const tenantName = formData.get("tenant_name") as string;
+  const rawPlan = formData.get("plan") as string | null;
+  const plan: SubscriptionPlan = isSubscriptionPlan(rawPlan) ? rawPlan : "starter";
+  const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   let tenantId = null;
 
-  // 2. If HR, create the Tenant (Company) first
-  if (role === "hr_manager" && companyName) {
+  // 2. If HR, create the tenant record first
+  if (role === "hr_manager" && tenantName) {
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
-      .insert({ name: companyName })
+      .insert({
+        name: tenantName,
+        plan,
+        plan_expires_at: planExpiresAt,
+      })
       .select("id")
       .single();
 
     if (tenantError) {
-      return redirect(`/register?error=${encodeURIComponent("Failed to create company record.")}`);
+      return redirect(`/register?error=${encodeURIComponent("Failed to create tenant record.")}`);
     }
     tenantId = tenant.id;
   }

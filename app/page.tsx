@@ -5,6 +5,7 @@ import { Mail, Cpu, FileText, Clock } from "lucide-react";
 import FeatureCard from "../components/landing/FeatureCard";
 import PricingCard from "../components/landing/PricingCard";
 import FooterLanding from "../components/FooterLanding";
+import { SUBSCRIPTION_TIERS } from "@/lib/subscription-tiers";
 
 const features = [
   { title: "AI Screening", desc: "Automated resume scoring and match suggestions.", icon: Cpu },
@@ -13,30 +14,9 @@ const features = [
   { title: "Time Tracking", desc: "Clock in/out with geofencing and attendance logs.", icon: Clock },
 ];
 
-const pricing = [
-  {
-    key: "starter",
-    name: "Starter",
-    price: "PHP 999/mo",
-    bullets: ["5 listings", "50 applicants/mo", "Pipeline & DocuSeal"],
-  },
-  {
-    key: "professional",
-    name: "Professional",
-    price: "PHP 2,499/mo",
-    bullets: ["20 listings", "300 applicants/mo", "AI scoring & analytics"],
-  },
-  {
-    key: "enterprise",
-    name: "Enterprise",
-    price: "PHP 5,999/mo",
-    bullets: ["Unlimited listings", "Priority support", "Custom templates"],
-  },
-];
-
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_#f0fdf4_0%,_#ffffff_48%,_#f8fafc_100%)] text-slate-900">
       <header className="w-full border-b border-gray-100">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
           <Link href="/" className="text-2xl font-semibold">Kayod</Link>
@@ -73,8 +53,13 @@ export default function Home() {
         <section className="mt-12">
           <h2 className="text-xl font-semibold mb-4 text-center">Pricing</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {pricing.map((p) => (
-              <PricingCard key={p.key} planKey={p.key} name={p.name} price={p.price} bullets={p.bullets} />
+            {SUBSCRIPTION_TIERS.map((tier) => (
+              <PricingCard
+                key={tier.plan}
+                tier={tier}
+                href={`/register?plan=${encodeURIComponent(tier.plan)}`}
+                ctaLabel="Get started"
+              />
             ))}
           </div>
         </section>
