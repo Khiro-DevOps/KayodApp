@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       .select("id, application_id, status")
       .eq("id", externalId)
       .maybeSingle();
+    console.log('[DocuSeal Webhook] job_offers lookup result', { jobOffer, jobOfferError });
 
     // Fall back to signed_documents (legacy flow — externalId = signed_documents.id)
     const { data: signedDocument, error: signedDocumentError } = !jobOffer
@@ -79,11 +80,12 @@ export async function POST(request: NextRequest) {
           .eq("id", externalId)
           .maybeSingle()
       : { data: null, error: null };
+    console.log('[DocuSeal Webhook] signed_documents lookup result', { signedDocument, signedDocumentError });
 
     // If signed_documents found, also look up the linked job_offer
     let linkedJobOffer = jobOffer;
     if (signedDocument && !linkedJobOffer) {
-      const { data: linkedOffer } = await supabase
+      const { data: linkedOffer, error: linkedOfferError } = await supabase
         .from("job_offers")
         .select("id, application_id, status")
         .eq("application_id", signedDocument.application_id)
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
       linkedJobOffer = linkedOffer;
+      console.log('[DocuSeal Webhook] linked job_offers lookup for signed_document', { linkedOffer, linkedOfferError });
     }
 
     if (jobOfferError && signedDocumentError) {
@@ -147,15 +150,14 @@ export async function POST(request: NextRequest) {
           signed_at: payload.data?.completed_at || new Date().toISOString(),
           ...(completedPdfUrl ? { pdf_file_path: completedPdfUrl } : {}),
         };
-        applicationUpdates = { status: "hired" };
-        
         const now = new Date().toISOString();
         // Update job_offers (modern flow)
         if (linkedJobOffer) {
-          await supabase
+          const { data: jobOfferUpdateData, error: jobOfferUpdateError } = await supabase
             .from("job_offers")
             .update({ status: "SIGNED", updated_at: now })
             .eq("id", linkedJobOffer.id);
+          console.log('[DocuSeal Webhook] job_offers update result', { jobOfferUpdateData, jobOfferUpdateError });
         }
         
         console.log(
@@ -222,10 +224,12 @@ export async function POST(request: NextRequest) {
 
     // Update the signed document record.
     if (signedDocument && newStatus && Object.keys(updates).length > 0) {
-      const { error: updateError } = await supabase
+      const { data: signedUpdateData, error: updateError } = await supabase
         .from("signed_documents")
         .update(updates)
         .eq("id", signedDocument.id);
+
+      console.log('[DocuSeal Webhook] signed_documents update result', { signedUpdateData, updateError });
 
       if (updateError) {
         console.error(
@@ -238,10 +242,12 @@ export async function POST(request: NextRequest) {
       }
 
       if (applicationUpdates) {
-        const { error: applicationUpdateError } = await supabase
+        const { data: appUpdateData, error: applicationUpdateError } = await supabase
           .from("applications")
           .update(applicationUpdates)
           .eq("id", application.id);
+
+        console.log('[DocuSeal Webhook] applications update result', { appUpdateData, applicationUpdateError });
 
         if (applicationUpdateError) {
           console.error(
@@ -253,13 +259,13 @@ export async function POST(request: NextRequest) {
       // Create notification for candidate
       try {
         const notificationTitle = {
-          signed: "Offer Accepted ✅",
+          signed: "Offer Signed ✅",
           declined: "Offer Declined",
           expired: "Offer Expired",
         }[newStatus] || "Offer Update";
 
         const notificationBody = {
-          signed: "Congratulations! Your offer has been accepted. We look forward to welcoming you!",
+          signed: "Your offer has been signed. We will follow up with onboarding instructions.",
           declined: payload.data?.decline_reason
             ? `Your offer has been declined. Reason: ${payload.data.decline_reason}`
             : "Your offer has been declined.",

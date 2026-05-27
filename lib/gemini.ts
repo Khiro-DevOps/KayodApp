@@ -834,6 +834,36 @@ ${jdSection}
   return { extracted, resume: validateResumeOutput(parsed) };
 }
 
+// ─── CONTRACT BODY GENERATOR (Gemini) ───────────────────────────────────────
+export async function generateContractBody(input: {
+  job_title: string;
+  location?: string;
+  salary?: string | number;
+}): Promise<string> {
+  // If OpenRouter key not configured, return empty to fall back to static templates
+  if (!process.env.OPENROUTER_API_KEY) {
+    return "";
+  }
+
+  const systemPrompt = `You are an expert HR legal consultant. Generate clean HTML body content for an employment contract. Dynamically tailor the terms, standard operational duties, and performance expectations based on the target position title: {{job_title}}, the location: {{location}}, and the salary: {{salary}}. Keep the wrapper elements intact so merge tags can append safely.`;
+
+  const userMessage = `
+Job Title: ${input.job_title}
+Location: ${input.location ?? "(not provided)"}
+Salary: ${input.salary ?? "(not provided)"}
+
+Please return a concise HTML fragment (no full document) suitable for inclusion inside a contract 'terms' section. Use plain HTML paragraphs and lists only. Do not include <html>, <head>, or <body> wrappers.
+  `.trim();
+
+  try {
+    const raw = await callOpenRouter(systemPrompt, userMessage, 0.2);
+    return raw.trim();
+  } catch (error) {
+    console.error("generateContractBody failed:", error);
+    return "";
+  }
+}
+
 // ─── TAILORING PASS ───────────────────────────────────────────────────────────
 
 export async function tailorResume(

@@ -1,0 +1,12 @@
+{
+  "event_type": "submission.completed",
+  "data": {
+    "external_id": "6dc79f1f-bc84-4c85-8842-b799f628a7b3",
+    "submission": {
+      "url": "https://docuseal.com/s/testsubmission",
+      "combined_document_url": "https://example.com/signed_contract.pdf",
+      "id": 99999
+    },
+    "completed_at": "2026-05-28T12:00:00Z"
+  }
+}

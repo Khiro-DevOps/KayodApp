@@ -36,6 +36,8 @@ type DocusealFormWebhookPayload = {
   };
 };
 
+import { generateContractBody } from "@/lib/gemini";
+
 function getDocusealBaseUrl() {
   return (process.env.DOCUSEAL_BASE_URL?.trim() || "https://api.docuseal.com").replace(/\/$/, "");
 }
@@ -293,16 +295,41 @@ export function buildOfferLetterHtml(
   settings?: OfferLetterSettings
 ): string {
   const rawIntro = settings?.introMessage || DEFAULT_OFFER_INTRO;
-  // Escape HTML first, then inject DocuSeal field tags for dynamic prefilling
-  const escapedIntro = escapeHtml(rawIntro)
-    .replace(
-      /\{\{job_title\}\}/g,
-      `<text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:280px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-    )
-    .replace(
-      /\{\{company_name\}\}/g,
-      `<text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-    );
+
+  // Helper: replace common merge-tag styles ({{job_title}} and [JOB_TITLE])
+  function applyMergeTags(text: string) {
+    return text
+      .replace(/\{\{job_title\}\}/gi, "[JOB_TITLE]")
+      .replace(/\{\{company_name\}\}/gi, "[COMPANY_NAME]")
+      // Normalize other common placeholders to bracket form
+      .replace(/\{\{location\}\}/gi, "[LOCATION]")
+      .replace(/\{\{salary\}\}/gi, "[SALARY]")
+      // Uppercase bracket form to ensure case-insensitive handling
+      .replace(/\[job_title\]/gi, "[JOB_TITLE]")
+      .replace(/\[company_name\]/gi, "[COMPANY_NAME]")
+      .replace(/\[location\]/gi, "[LOCATION]")
+      .replace(/\[salary\]/gi, "[SALARY]");
+  }
+
+  // Convert merge tags into DocuSeal inline form fields after escaping
+  function injectFieldTags(escaped: string) {
+    return escaped
+      .replace(/\[JOB_TITLE\]/g,
+        `<text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:280px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+      )
+      .replace(/\[COMPANY_NAME\]/g,
+        `<text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+      )
+      .replace(/\[LOCATION\]/g,
+        `<text-field name="location" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+      )
+      .replace(/\[SALARY\]/g,
+        `<text-field name="salary" role="Candidate" readonly="true" style="display:inline-block;width:220px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
+      );
+  }
+
+  // Escape HTML first, normalize placeholders, then inject DocuSeal field tags
+  const escapedIntro = injectFieldTags(escapeHtml(applyMergeTags(rawIntro)));
   const additionalTerms = settings?.additionalTerms || "";
   const hasCountersignature = settings?.requireCountersignature ?? false;
 
@@ -479,7 +506,7 @@ export function buildOfferLetterHtml(
       ${additionalTerms ? `
       <div class="terms-section">
         <div class="terms-title">Additional Terms & Conditions</div>
-        <div class="terms-content">${escapeHtml(additionalTerms)}</div>
+        <div class="terms-content">${injectFieldTags(escapeHtml(applyMergeTags(additionalTerms)))}</div>
       </div>
       ` : ""}
 
@@ -502,26 +529,43 @@ export function buildOfferLetterHtml(
           </div>
       </div>
 
-      <div class="closing">${escapeHtml(DEFAULT_OFFER_CLOSING)}</div>
+      <div class="closing">${injectFieldTags(escapeHtml(applyMergeTags(DEFAULT_OFFER_CLOSING)))}</div>
     </div>
   </div>
 </body>
 </html>
   `.trim();
-        <div class="company-logo-wrap">
-          <image-field name="company_logo_url" role="Candidate" style="width: 220px; height: 72px; object-fit: contain; display: block; margin: 0 auto 16px;"></image-field>
-        </div>
 }
 
 /**
  * Create a DocuSeal template for job offer letters
  */
+
 export async function createJobOfferTemplate(
   job: JobOfferInput,
   tenant: TenantInfo,
   settings?: OfferLetterSettings
 ): Promise<string> {
-  const html = buildOfferLetterHtml(job, tenant, settings);
+  // If no additionalTerms provided, request a short AI-generated terms block
+  let aiTerms = "";
+  try {
+    if (!settings?.additionalTerms) {
+      aiTerms = await generateContractBody({
+        job_title: job.jobTitle,
+        location: job.location ?? "",
+        salary: job.salary_min ?? job.salary_max ?? "",
+      });
+    }
+  } catch (e) {
+    console.warn("AI contract generation failed, falling back to static terms", e);
+  }
+
+  const mergedSettings = {
+    ...(settings ?? {}),
+    additionalTerms: settings?.additionalTerms || aiTerms || settings?.additionalTerms || "",
+  } as OfferLetterSettings;
+
+  const html = buildOfferLetterHtml(job, tenant, mergedSettings);
   const signingDeadlineDays = settings?.signingDeadlineDays ?? 7;
   const requireCountersignature = settings?.requireCountersignature ?? false;
 

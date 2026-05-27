@@ -10,7 +10,7 @@ function getAppBaseUrl() {
   return configuredUrl.replace(/\/$/, "");
 }
 
-export function getCompanyLogoFallbackUrl() {
+export async function getCompanyLogoFallbackUrl() {
   return `${getAppBaseUrl()}${COMPANY_LOGO_PLACEHOLDER_PATH}`;
 }
 

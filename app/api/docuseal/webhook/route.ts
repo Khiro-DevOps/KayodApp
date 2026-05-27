@@ -194,7 +194,7 @@ export async function POST(request: Request) {
       ? await admin
           .from("job_offers")
           .update({
-            status: "HIRED",
+            status: "SIGNED",
             latest_docuseal_url: jobOffer.latest_docuseal_url ?? payload.data?.submission?.url ?? null,
             updated_at: new Date().toISOString(),
           })
@@ -208,7 +208,7 @@ export async function POST(request: Request) {
     const { error: updateApplicationError } = await admin
       .from("applications")
       .update({
-        status: "hired",
+        status: "Offer Signed",
         updated_at: new Date().toISOString(),
       })
       .eq("id", applicationId);
