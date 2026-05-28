@@ -11,14 +11,15 @@ export interface PipelineStage {
 }
 
 /**
- * Strict linear pipeline: New → Screening → Interview → Offer → Hired
+ * Strict linear pipeline: New → Screening → Interview → Offer → Pre-employment → Hired
  */
 export const PIPELINE_STAGES: PipelineStage[] = [
   { key: "new", label: "New", statuses: ["submitted", "draft"], position: 0 },
   { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"], position: 1 },
   { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"], position: 2 },
-  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent"], position: 3 },
-  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"], position: 4 },
+  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent", "offer_accepted"], position: 3 },
+  { key: "pre_employment", label: "Pre-employment", statuses: ["pre_employment"], position: 4 },
+  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"], position: 5 },
 ];
 
 /**
@@ -104,6 +105,7 @@ export enum PipelineAction {
   MOVE_TO_SCREENING = "move_to_screening",
   MOVE_TO_INTERVIEW = "move_to_interview", // Requires interview scheduling
   MOVE_TO_OFFER = "move_to_offer", // Requires sending offer
+  MOVE_TO_PRE_EMPLOYMENT = "move_to_pre_employment", // Requires signed offer
   MOVE_TO_HIRED = "move_to_hired", // Requires confirming hire
 }
 
@@ -120,7 +122,9 @@ export function getNextAction(currentStatus: ApplicationStatus): PipelineAction 
     case "interview":
       return PipelineAction.MOVE_TO_INTERVIEW;
     case "offer":
-      return PipelineAction.MOVE_TO_OFFER;
+      return PipelineAction.MOVE_TO_PRE_EMPLOYMENT;
+    case "pre_employment":
+      return PipelineAction.MOVE_TO_HIRED;
     case "hired":
       return PipelineAction.MOVE_TO_HIRED;
     default:
@@ -145,6 +149,8 @@ export function getTransitionRequirements(targetStageKey: string): TransitionReq
       return { requiresInterviewScheduling: true };
     case "offer":
       return { requiresOfferCreation: true, requiresOfferSending: true };
+    case "pre_employment":
+      return { requiresSignedOffer: true };
     case "hired":
       return { requiresSignedOffer: true, requiresHireConfirmation: true };
     default:

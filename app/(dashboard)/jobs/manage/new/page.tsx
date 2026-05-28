@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import NewJobForm from "./new-job-form-client";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import JobForm from "@/components/job-form";
+import { createJob } from "../../actions";
+import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 
 export default async function NewJobPage() {
   const supabase = await createClient();
@@ -22,5 +24,14 @@ export default async function NewJobPage() {
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  return <NewJobForm />;
+  return (
+    <JobForm
+      action={createJob}
+      title="Post New Job"
+      submitLabel="Create Job"
+      backHref="/jobs/manage"
+      initialDocuments={DEFAULT_REQUIRED_DOCUMENTS}
+      showOfferLetterSettings
+    />
+  );
 }

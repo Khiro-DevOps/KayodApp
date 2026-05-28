@@ -115,8 +115,26 @@ export async function POST(_request: NextRequest, ctx: any) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (normalizedApplicationStatus === "hire_confirmed" || normalizedOfferStatus === "hired") {
+    if (normalizedApplicationStatus === "hired" || normalizedApplicationStatus === "hire_confirmed" || normalizedOfferStatus === "hired") {
       return NextResponse.json({ success: true, alreadyConfirmed: true, employeeId: application.candidate_id });
+    }
+
+    if (normalizedApplicationStatus === "pre_employment") {
+      const { data: applicantDocuments, error: docsError } = await admin
+        .from("applicant_documents")
+        .select("hr_verified, job_required_documents!inner(is_required)")
+        .eq("application_id", applicationId);
+
+      if (docsError) {
+        return NextResponse.json({ error: docsError.message }, { status: 500 });
+      }
+
+      const requiredDocuments = (applicantDocuments ?? []).filter((document: any) => document.job_required_documents?.is_required !== false);
+      const allRequiredVerified = requiredDocuments.length === 0 || requiredDocuments.every((document: any) => document.hr_verified);
+
+      if (!allRequiredVerified) {
+        return NextResponse.json({ error: "All required documents must be verified before confirming hire" }, { status: 409 });
+      }
     }
 
     // Check if offer status allows confirmation
@@ -176,7 +194,32 @@ export async function POST(_request: NextRequest, ctx: any) {
     const jobTitle = getJobTitle(application);
     const startDate = typeof offer.job_metadata?.start_date === "string" ? offer.job_metadata.start_date : null;
 
-    const [{ error: offerUpdateError }, { error: applicationUpdateError }, { error: profileUpdateError }, { error: notificationError }] = await Promise.all([
+    const normalizeEmploymentType = (value: unknown) => {
+      const normalized = String(value ?? "").trim().toLowerCase();
+      if (normalized === "full-time" || normalized === "full_time") return "full_time";
+      if (normalized === "part-time" || normalized === "part_time") return "part_time";
+      if (normalized === "internship" || normalized === "intern") return "intern";
+      if (normalized === "contract") return "contract";
+      return "full_time";
+    };
+
+    const normalizePayFrequency = (value: unknown) => {
+      const normalized = String(value ?? "").trim().toLowerCase();
+      if (["weekly", "bi_weekly", "semi_monthly", "monthly"].includes(normalized)) {
+        return normalized;
+      }
+      return "monthly";
+    };
+
+    const baseSalaryValue = Number(
+      typeof offer.job_metadata?.salary_amount === "number"
+        ? offer.job_metadata.salary_amount
+        : typeof offer.job_metadata?.salary === "number"
+          ? offer.job_metadata.salary
+          : jobPosting?.salary_min ?? jobPosting?.salary_max ?? 0
+    ) || 0;
+
+    const [{ error: offerUpdateError }, { error: applicationUpdateError }, { error: profileUpdateError }, { error: employeeInsertError }, { error: notificationError }] = await Promise.all([
       admin
         .from("job_offers")
         .update({
@@ -187,7 +230,7 @@ export async function POST(_request: NextRequest, ctx: any) {
       admin
         .from("applications")
         .update({
-          status: "hire_confirmed",
+          status: "hired",
           updated_at: now,
         })
         .eq("id", applicationId),
@@ -198,6 +241,21 @@ export async function POST(_request: NextRequest, ctx: any) {
           updated_at: now,
         })
         .eq("id", application.candidate_id),
+      admin
+        .from("employees")
+        .upsert({
+          profile_id: application.candidate_id,
+          application_id: applicationId,
+          department_id: null,
+          reports_to: null,
+          job_title: jobTitle,
+          employment_type: normalizeEmploymentType(offer.job_metadata?.employment_type),
+          employment_status: "active",
+          start_date: startDate ?? new Date().toISOString().split("T")[0],
+          base_salary: baseSalaryValue,
+          pay_frequency: normalizePayFrequency(offer.job_metadata?.pay_frequency),
+          currency: typeof offer.job_metadata?.salary_currency === "string" ? offer.job_metadata.salary_currency : "PHP",
+        }, { onConflict: "profile_id" }),
       admin
         .from("notifications")
         .insert({
@@ -221,6 +279,10 @@ export async function POST(_request: NextRequest, ctx: any) {
 
     if (profileUpdateError) {
       return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
+    }
+
+    if (employeeInsertError) {
+      return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
     }
 
     if (notificationError) {

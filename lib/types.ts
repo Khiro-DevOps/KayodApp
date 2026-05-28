@@ -14,6 +14,10 @@ export type ApplicationStatus =
   | "interviewed"
   | "negotiating"
   | "offer_sent"
+  | "offer_accepted"
+  | "offer_declined"
+  | "offer_expired"
+  | "pre_employment"
   | "hired"
   | "hire_confirmed"
   | "rejected"
@@ -67,6 +71,7 @@ export type NotificationType =
   | "offer_declined"
   | "offer_negotiation_submitted"
   | "offer_negotiation_responded"
+  | "hire_confirmed"
   | "leave_status_changed"
   | "payroll_processed"
   | "schedule_published"
@@ -167,6 +172,34 @@ export interface JobPosting {
   updated_at: string;
   departments?: Department;
   creator?: Profile;
+}
+
+export type PreEmpSubmissionType = "digital" | "in_person";
+
+export interface JobRequiredDocument {
+  id: string;
+  job_posting_id: string;
+  name: string;
+  is_required: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ApplicantDocument {
+  id: string;
+  application_id: string;
+  applicant_id: string;
+  document_id: string;
+  file_url: string | null;
+  submission_type: PreEmpSubmissionType | null;
+  submitted_at: string | null;
+  hr_verified: boolean;
+  hr_verified_at: string | null;
+  hr_verified_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at?: string;
+  document?: JobRequiredDocument;
 }
 
 export interface JobListing {
@@ -419,6 +452,10 @@ export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
   interviewed:          "bg-cyan-100 text-cyan-700",
   negotiating:          "bg-purple-100 text-purple-700",
   offer_sent:           "bg-orange-100 text-orange-700",
+  offer_accepted:       "bg-emerald-100 text-emerald-700",
+  offer_declined:       "bg-red-100 text-red-700",
+  offer_expired:        "bg-amber-100 text-amber-700",
+  pre_employment:       "bg-sky-100 text-sky-700",
   hired:                "bg-green-100 text-green-700",
   hire_confirmed:       "bg-emerald-100 text-emerald-700",
   rejected:             "bg-red-100 text-red-700",

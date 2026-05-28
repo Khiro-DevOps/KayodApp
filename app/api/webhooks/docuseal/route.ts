@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
           signed_at: payload.data?.completed_at || new Date().toISOString(),
           ...(completedPdfUrl ? { pdf_file_path: completedPdfUrl } : {}),
         };
+        applicationUpdates = { status: "pre_employment" };
         const now = new Date().toISOString();
         // Update job_offers (modern flow)
         if (linkedJobOffer) {
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
         }[newStatus] || "Offer Update";
 
         const notificationBody = {
-          signed: "Your offer has been signed. We will follow up with onboarding instructions.",
+          signed: "Your offer has been signed. Please submit your pre-employment requirements.",
           declined: payload.data?.decline_reason
             ? `Your offer has been declined. Reason: ${payload.data.decline_reason}`
             : "Your offer has been declined.",

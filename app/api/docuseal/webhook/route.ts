@@ -208,7 +208,7 @@ export async function POST(request: Request) {
     const { error: updateApplicationError } = await admin
       .from("applications")
       .update({
-        status: "Offer Signed",
+        status: "pre_employment",
         updated_at: new Date().toISOString(),
       })
       .eq("id", applicationId);
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
         recipientId: application.candidate_id,
         type: "offer_accepted",
         title: "Offer Signed",
-        body: "Your signed contract has been received. We will be in touch with onboarding details.",
+        body: "Your signed contract has been received. Please submit your pre-employment requirements.",
         actionUrl: `/applications/${applicationId}`,
       });
     }

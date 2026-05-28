@@ -82,6 +82,7 @@ const STAGES: StageDefinition[] = [
   { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"], color: "#eab308" },
   { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"], color: "#a855f7" },
   { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent"], color: "#f97316" },
+  { key: "pre_employment", label: "Pre-employment", statuses: ["offer_accepted", "pre_employment"], color: "#0ea5e9" },
   { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"], color: "#16a34a" },
 ];
 
@@ -116,7 +117,7 @@ function getOfferDeliveryState(jobOffer?: JobOfferRow): "signed" | "sent" | "not
 
 type QuickAction = {
   label: string;
-  action: "screen" | "interview" | "view_interview" | "send_offer" | "view_offer" | "confirm_hire" | null;
+  action: "screen" | "interview" | "view_interview" | "send_offer" | "view_offer" | "documents" | "confirm_hire" | null;
   color: string;
 };
 
@@ -147,8 +148,8 @@ interface ConfirmSheetAppState {
 }
 
 function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickAction | null {
-  if (hasSignedContract && app.status !== "hire_confirmed") {
-    return { label: "Confirm hire ✓", action: "confirm_hire", color: "#16a34a" };
+  if (app.status === "pre_employment" || (hasSignedContract && !["hired", "hire_confirmed"].includes(app.status))) {
+    return { label: "Review docs", action: "documents", color: "#0ea5e9" };
   }
 
   switch (app.status) {
@@ -167,6 +168,8 @@ function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickA
     case "offer_sent":
       // Offer stage should be read-only for quick actions in the pipeline view
       return null;
+    case "pre_employment":
+      return { label: "Review docs", action: "documents", color: "#0ea5e9" };
     case "hired":
       return { label: "Confirm hire ✓", action: "confirm_hire", color: "#16a34a" };
     case "hire_confirmed":
@@ -229,10 +232,10 @@ export default function ApplicantsHubClient({
   const [activeTab, setActiveTab] = useState(() => {
     const hasSignedPendingConfirmation = applications.some((app) => {
       const offer = initialJobOffers[app.id];
-      return SIGNED_STATUSES.has(String(offer?.status ?? "").trim().toUpperCase()) && app.status !== "hire_confirmed";
+      return SIGNED_STATUSES.has(String(offer?.status ?? "").trim().toUpperCase()) && !["hired", "hire_confirmed"].includes(app.status);
     });
 
-    return hasSignedPendingConfirmation ? "hired" : "new";
+    return hasSignedPendingConfirmation ? "pre_employment" : "new";
   });
   const [showClosed, setShowClosed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -492,18 +495,6 @@ export default function ApplicantsHubClient({
   }, [jobId, triggerMatchScoreRecompute]);
 
   const stageCounts = STAGES.reduce((accumulator, stage) => {
-    if (stage.key === "hired") {
-      const hiredByStatus = applicationRows.filter((applicationRow) => stage.statuses.includes(applicationRow.status)).length;
-      const signedNotConfirmed = applicationRows.filter((applicationRow) => {
-        if (["hired", "hire_confirmed"].includes(applicationRow.status)) return false;
-        const jobOffer = jobOffers[applicationRow.id];
-        return SIGNED_STATUSES.has(String(jobOffer?.status ?? "").trim().toUpperCase());
-      }).length;
-
-      accumulator[stage.key] = hiredByStatus + signedNotConfirmed;
-      return accumulator;
-    }
-
     accumulator[stage.key] = applicationRows.filter((applicationRow) => stage.statuses.includes(applicationRow.status)).length;
     return accumulator;
   }, {} as Record<string, number>);
@@ -520,7 +511,7 @@ export default function ApplicantsHubClient({
 
     if (activeTab === "hired" && !showClosed) {
       const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
-      const matchesStage = isHiredStatus || isSignedOffer;
+      const matchesStage = isHiredStatus;
       const candidate = app.profiles;
       const searchTarget = `${candidate?.first_name ?? ""} ${candidate?.last_name ?? ""} ${candidate?.email ?? ""}`.toLowerCase();
       const matchesSearch = !searchQuery || searchTarget.includes(searchQuery.toLowerCase());
@@ -544,7 +535,7 @@ export default function ApplicantsHubClient({
 
       if (stageKey === "hired") {
         const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
-        return isHiredStatus || isSignedOffer;
+        return isHiredStatus;
       }
 
       const matchesStage = stage.statuses.includes(app.status);
@@ -609,6 +600,11 @@ export default function ApplicantsHubClient({
           setSelectedApplication(app);
           setDrawerInitialTab("view_offer");
           setIsDrawerOpen(true);
+          return;
+        }
+
+        case "documents": {
+          router.push(`/jobs/manage/${jobId}/applicants/${app.id}/documents`);
           return;
         }
 

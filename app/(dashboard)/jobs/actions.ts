@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createJobOfferTemplate, type OfferLetterSettings } from "@/lib/docuseal";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { saveJobRequiredDocuments } from "@/lib/pre-employment-actions";
 
 async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>, id: string}): Promise<boolean> {
   const authRole =
@@ -70,6 +71,7 @@ export async function createJob(formData: FormData) {
   const counterOfferAllowed = formData.get("counter_offer_allowed") === "on";
   const offerNotes = formData.get("offer_notes") as string;
   const requirementsToProceed = formData.get("requirements_to_proceed") as string;
+  const requiredDocumentsJson = formData.get("required_documents_json");
 
   // Process skills
   const skills = skillsRaw ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -134,6 +136,10 @@ export async function createJob(formData: FormData) {
     })
     .select("id")
     .single();
+
+  if (jobData?.id) {
+    await saveJobRequiredDocuments(jobData.id, requiredDocumentsJson);
+  }
 
   if (error) redirect(`/jobs/manage/new?error=${encodeURIComponent(error.message)}`);
   if (!jobData?.id) redirect(`/jobs/manage/new?error=${encodeURIComponent("Failed to create job")}`);
@@ -219,6 +225,7 @@ export async function updateJob(formData: FormData) {
   const industry = formData.get("industry") as string;
   const job_category = formData.get("job_category") as string;
   const is_published = formData.get("is_published") === "true";
+  const requiredDocumentsJson = formData.get("required_documents_json");
 
   const skills = skillsRaw
     ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean)
@@ -253,6 +260,8 @@ export async function updateJob(formData: FormData) {
     console.error("Update job error:", error);
     redirect(`/jobs/manage/${jobId}?error=${encodeURIComponent(error.message)}`);
   }
+
+  await saveJobRequiredDocuments(jobId, requiredDocumentsJson);
 
   revalidatePath("/jobs");
   revalidatePath(`/jobs/manage/${jobId}`);
