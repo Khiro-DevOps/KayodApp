@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { createClient } from "../../../../../../../lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "../../../../../../../components/ui/page-container";
@@ -255,7 +257,7 @@ export default async function ApplicantDetailPage({
               {/* Offer stage — shown once the application reaches offer territory */}
               {(isNegotiating || isUnderReviewForOffer || isOfferSent) && (
                 <Link
-                  href={`/jobs/manage/${id}/applicants/${appId}/offer`}
+                  href={`/job-offer/${appId}`}
                   className={`block rounded-xl px-4 py-3 text-center text-sm font-medium transition-colors ${offerButtonTone}`}
                 >
                   {offerButtonLabel}

@@ -30,15 +30,19 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
   const { data: creatorProfile, error: creatorProfileError } = await supabase
     .from("profiles")
-    .select("tenants(id, name)")
+    .select("tenant_id")
     .eq("id", job.created_by)
     .single();
 
   if (creatorProfileError) {
-    console.warn("[sendHydratedOffer] Failed to resolve tenant name:", creatorProfileError);
+    console.warn("[sendHydratedOffer] Failed to resolve tenant id:", creatorProfileError);
   }
 
-  const tenantName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+  const { data: creatorTenant } = creatorProfile?.tenant_id
+    ? await supabase.from("tenants").select("name").eq("id", creatorProfile.tenant_id).single()
+    : { data: null };
+
+  const tenantName = creatorTenant?.name ?? null;
 
   // Retire any existing active offers so a replacement can be created safely.
   const { error: archiveError } = await admin
@@ -65,7 +69,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     .from("job_offers")
     .insert({
       application_id: applicationId,
-      job_id: jobId,
+      job_posting_id: jobId,
       status: "DRAFT", 
       version_id: 1,
       is_active: true,
@@ -108,12 +112,17 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   const linkedSignedDocumentId = linkedApplication?.contract_offer_id ?? null;
 
   if (linkedSignedDocumentId) {
-    await admin
+    const { error: offerUpdateError } = await admin
       .from("job_offers")
       .update({ status: "SENT", updated_at: new Date().toISOString() })
       .eq("id", offer.id);
 
+    if (offerUpdateError) {
+      throw new Error(`DocuSeal submission was created, but the job offer status could not be updated: ${offerUpdateError.message}`);
+    }
+
     revalidatePath(`/jobs/manage/${jobId}`);
+    revalidatePath(`/jobs/manage/${jobId}/applicants`);
     revalidatePath(`/job-offer/${applicationId}`);
     revalidatePath(`/job-offer/${offer.id}`);
     revalidatePath(`/offer-signing`);
@@ -160,7 +169,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
   // Update signed_documents, mark job_offer as SENT, then update applications.
   try {
-    await admin
+    const { error: signedDocumentUpdateError } = await admin
       .from("signed_documents")
       .update({
         docuseal_submission_url: docusealUrl,
@@ -171,15 +180,27 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       })
       .eq("id", signedDocId);
 
-    await admin
+    if (signedDocumentUpdateError) {
+      throw new Error(`DocuSeal submission was created, but the signed document record could not be updated: ${signedDocumentUpdateError.message}`);
+    }
+
+    const { error: jobOfferUpdateError } = await admin
       .from("job_offers")
       .update({ status: "SENT", updated_at: new Date().toISOString() })
       .eq("id", offer.id);
 
-    await admin
+    if (jobOfferUpdateError) {
+      throw new Error(`DocuSeal submission was created, but the job offer status could not be updated: ${jobOfferUpdateError.message}`);
+    }
+
+    const { error: applicationUpdateError } = await admin
       .from("applications")
       .update({ status: "offer_sent", contract_offer_id: signedDocId, updated_at: new Date().toISOString() })
       .eq("id", applicationId);
+
+    if (applicationUpdateError) {
+      throw new Error(`DocuSeal submission was created, but the application status could not be updated: ${applicationUpdateError.message}`);
+    }
   } catch (err) {
     console.error("sendHydratedOffer: failed to finalize offer, rolling back", err);
     // Rollback both signed_documents and job_offers to avoid partial state
@@ -198,6 +219,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
   // Revalidate to update the UI on Review Board
   revalidatePath(`/jobs/manage/${jobId}`);
+  revalidatePath(`/jobs/manage/${jobId}/applicants`);
   revalidatePath(`/job-offer/${applicationId}`);
   revalidatePath(`/job-offer/${offer.id}`);
   revalidatePath(`/offer-signing`);
@@ -212,42 +234,64 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
 // Create a hydrated draft offer (DRAFT) but do not send to DocuSeal.
 export async function createHydratedOfferDraft(jobId: string, applicationId: string) {
-  const supabase = await createClient();
-  const admin = getAdminClient();
+  try {
+    const supabase = await createClient();
+    const admin = getAdminClient();
 
-  const { data: job, error: jobError } = await supabase
-    .from("job_postings")
-    .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
-    .eq("id", jobId)
-    .single();
+    const { data: job, error: jobError } = await supabase
+      .from("job_postings")
+      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .eq("id", jobId)
+      .single();
 
-  if (jobError || !job) {
-    console.error("Job fetch error:", jobError);
-    throw new Error("Failed to fetch job blueprint");
-  }
+    if (jobError || !job) {
+      console.error("Job fetch error:", jobError);
+      return { success: false, error: `Failed to fetch job blueprint: ${jobError?.message ?? "unknown error"}` };
+    }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error("Must be logged in to create an offer draft");
-  }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { success: false, error: "Must be logged in to create an offer draft" };
+    }
 
-  const { data: creatorProfile } = await supabase
-    .from("profiles")
-    .select("tenants(id, name)")
-    .eq("id", job.created_by)
-    .single();
+    const { data: creatorProfile, error: creatorProfileError } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", job.created_by)
+      .single();
 
-  const tenantName = (creatorProfile?.tenants as { name?: string | null } | null)?.name ?? null;
+    if (creatorProfileError) {
+      console.warn("[createHydratedOfferDraft] Failed to resolve tenant id:", creatorProfileError);
+    }
 
-  const { data: offer, error: offerError } = await admin
-    .from("job_offers")
-    .insert({
+    const { data: creatorTenant } = creatorProfile?.tenant_id
+      ? await supabase.from("tenants").select("name").eq("id", creatorProfile.tenant_id).single()
+      : { data: null };
+
+    const tenantName = creatorTenant?.name ?? null;
+
+    const { data: existingOffers, error: existingOfferError } = await admin
+      .from("job_offers")
+      .select("id, version_id, created_by")
+      .eq("application_id", applicationId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (existingOfferError) {
+      console.error("Offer draft lookup error:", existingOfferError);
+      return { success: false, error: `Failed to look up existing offer draft: ${existingOfferError.message}` };
+    }
+
+    const existingOffer = existingOffers?.[0] ?? null;
+    const draftPayload = {
       application_id: applicationId,
-      job_id: jobId,
+      job_posting_id: jobId,
       status: "DRAFT",
-      version_id: 1,
+      version_id: (existingOffer?.version_id ?? 0) + 1,
       is_active: true,
-      created_by: user.id,
+      created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
       work_setup: job.work_setup || "Remote",
@@ -260,20 +304,31 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
         // include any selected benefits if present in job.offer_letter_settings
         benefits: job.offer_letter_settings?.selectedBenefits ?? null,
       },
-    })
-    .select()
-    .single();
+    };
 
-  if (offerError) {
-    console.error("Offer draft creation error:", offerError);
-    throw new Error(`Failed to generate offer draft: ${offerError.message}`);
+    const offerQuery = existingOffer
+      ? admin.from("job_offers").update(draftPayload).eq("id", existingOffer.id)
+      : admin.from("job_offers").insert(draftPayload);
+
+    const { data: offer, error: offerError } = await offerQuery.select().single();
+
+    if (offerError || !offer) {
+      console.error("Offer draft creation error:", offerError);
+      return { success: false, error: `Failed to generate offer draft: ${offerError?.message ?? "unknown error"}` };
+    }
+
+    return { success: true, offer };
+  } catch (error) {
+    console.error("createHydratedOfferDraft error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create offer draft",
+    };
   }
-
-  return { success: true, offer };
 }
 
 // Update fields on an existing draft offer. Accepts a partial updates object.
-export async function updateOfferDraft(offerId: string, updates: Record<string, any>) {
+export async function updateOfferDraft(offerId: string, updates: Record<string, unknown>) {
   const admin = getAdminClient();
 
   const { data, error } = await admin
@@ -343,6 +398,10 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
       .from("applications")
       .update({ status: "offer_sent", contract_offer_id: signedDocId, updated_at: new Date().toISOString() })
       .eq("id", applicationId);
+
+    revalidatePath(`/jobs/manage/${jobId}/applicants`);
+    revalidatePath(`/jobs/manage/${jobId}/applicants/${applicationId}`);
+    revalidatePath(`/job-offer/${applicationId}`);
   } catch (err) {
     console.error("sendDraftOffer: failed to finalize offer", err);
     throw new Error("Failed to finalize offer creation; no changes were applied. Please try again.");

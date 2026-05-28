@@ -2,11 +2,22 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import type { ApplicationStatus } from "@/lib/types";
+import type { ApplicationStatus, Profile } from "@/lib/types";
 
 function toSingle<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+type ApplicantProfile = Pick<Profile, "first_name" | "last_name">;
+
+type ApplicationWithApplicantProfile = {
+  profiles: ApplicantProfile | ApplicantProfile[] | null;
+};
+
+function getApplicantName(application: ApplicationWithApplicantProfile | null | undefined) {
+  const profile = toSingle(application?.profiles);
+  return `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
 }
 
 /**
@@ -66,8 +77,8 @@ export async function moveToScreening(applicationId: string): Promise<PipelineTr
       return { success: false, error: `Failed to update status: ${updateError.message}` };
     }
 
-    const profile = toSingle(application.profiles as any);
-    const applicantName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+    const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
+    const applicantName = getApplicantName(typedApplication);
 
     // Revalidate cache
     revalidatePath("/jobs/manage");
@@ -141,8 +152,8 @@ export async function moveToInterview(applicationId: string): Promise<PipelineTr
         return { success: false, error: `Failed to update status: ${updateError.message}` };
       }
 
-      const profile = toSingle(application.profiles as any);
-      const applicantName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+      const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
+      const applicantName = getApplicantName(typedApplication);
 
       revalidatePath("/jobs/manage");
       revalidatePath("/applications");
@@ -161,7 +172,7 @@ export async function moveToInterview(applicationId: string): Promise<PipelineTr
       error: "Interview scheduling required",
       requiresModal: true,
       nextAction: "schedule_interview",
-      applicantName: `${toSingle(application.profiles as any)?.first_name || ""} ${toSingle(application.profiles as any)?.last_name || ""}`.trim(),
+      applicantName: getApplicantName(application as (typeof application & ApplicationWithApplicantProfile) | null),
     };
   } catch (error) {
     return {
@@ -208,8 +219,8 @@ export async function confirmInterviewScheduled(applicationId: string): Promise<
       return { success: false, error: `Failed to update status: ${updateError.message}` };
     }
 
-    const profile = toSingle(application.profiles as any);
-    const applicantName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+    const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
+    const applicantName = getApplicantName(typedApplication);
 
     revalidatePath("/jobs/manage");
     revalidatePath("/applications");
@@ -284,8 +295,8 @@ export async function moveToOffer(applicationId: string): Promise<PipelineTransi
           return { success: false, error: `Failed to update status: ${updateError.message}` };
         }
 
-        const profile = toSingle(application.profiles as any);
-        const applicantName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+        const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
+        const applicantName = getApplicantName(typedApplication);
 
         revalidatePath("/jobs/manage");
         revalidatePath("/applications");
@@ -304,7 +315,7 @@ export async function moveToOffer(applicationId: string): Promise<PipelineTransi
       error: "Offer creation and sending required",
       requiresModal: true,
       nextAction: "send_offer",
-      applicantName: `${toSingle(application.profiles as any)?.first_name || ""} ${toSingle(application.profiles as any)?.last_name || ""}`.trim(),
+      applicantName: getApplicantName(application as (typeof application & ApplicationWithApplicantProfile) | null),
     };
   } catch (error) {
     return {
@@ -350,7 +361,8 @@ export async function confirmOfferSent(applicationId: string): Promise<PipelineT
       return { success: false, error: `Failed to update status: ${updateError.message}` };
     }
 
-    const applicantName = `${toSingle(application.profiles as any)?.first_name || ""} ${toSingle(application.profiles as any)?.last_name || ""}`.trim();
+    const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
+    const applicantName = getApplicantName(typedApplication);
 
     revalidatePath("/jobs/manage");
     revalidatePath("/applications");
@@ -420,7 +432,7 @@ export async function moveToHired(applicationId: string): Promise<PipelineTransi
         error: "Offer must be signed before confirming hire",
         requiresModal: true,
         nextAction: "confirm_hire",
-        applicantName: `${toSingle(application.profiles as any)?.first_name || ""} ${toSingle(application.profiles as any)?.last_name || ""}`.trim(),
+        applicantName: getApplicantName(application as (typeof application & ApplicationWithApplicantProfile) | null),
       };
     }
 
@@ -430,7 +442,7 @@ export async function moveToHired(applicationId: string): Promise<PipelineTransi
       error: "Hire confirmation required",
       requiresModal: true,
       nextAction: "confirm_hire",
-      applicantName: `${toSingle(application.profiles as any)?.first_name || ""} ${toSingle(application.profiles as any)?.last_name || ""}`.trim(),
+      applicantName: getApplicantName(application as (typeof application & ApplicationWithApplicantProfile) | null),
     };
   } catch (error) {
     return {

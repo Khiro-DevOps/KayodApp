@@ -24,6 +24,13 @@ export async function sendOfferWithDocuSeal(
     const supabase = await createClient();
     const admin = getAdminClient();
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error("Must be logged in to send an offer");
+    }
+
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
       .select("id, title, docuseal_template_id, created_by")
@@ -77,10 +84,16 @@ export async function sendOfferWithDocuSeal(
       companyLogoUrl,
     });
 
-    await admin
+    const { error: updateError } = await admin
       .from("job_offers")
       .update({ latest_docuseal_url: submission.signingUrl, updated_at: new Date().toISOString() })
       .eq("id", offerId);
+
+    if (updateError) {
+      throw new Error(`DocuSeal submission was created, but the job offer record could not be updated: ${updateError.message}`);
+    }
+
+    revalidatePath(`/jobs/manage/${jobId}/applicants`);
 
     return {
       success: true,

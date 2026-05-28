@@ -5,11 +5,20 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Application } from "@/lib/types";
+import type { Application, Profile, Resume } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
 import { moveToScreening, confirmInterviewScheduled } from "./pipeline-actions";
 import { getCurrentStage } from "@/lib/pipeline";
+
+type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email" | "phone" | "city" | "country">;
+
+type ResumeSummary = Pick<Resume, "id" | "title" | "pdf_url" | "created_at">;
+
+type ApplicantApplication = Omit<Application, "profiles" | "resumes"> & {
+  profiles: CandidateProfile | null;
+  resumes: ResumeSummary | ResumeSummary[] | null;
+};
 
 interface NegotiationLog {
   id: string;
@@ -40,7 +49,7 @@ interface InterviewNotes {
 }
 
 interface ApplicantDetailDrawerProps {
-  application: Application;
+  application: ApplicantApplication;
   jobOffer?: {
     status?: string | null;
   };
@@ -50,6 +59,7 @@ interface ApplicantDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onScheduled?: () => void;
+  onSendOffer?: () => void;
 }
 
 const outcomeConfig: Record<string, { label: string; color: string }> = {
@@ -69,6 +79,7 @@ export default function ApplicantDetailDrawer({
   isOpen,
   onClose,
   onScheduled,
+  onSendOffer,
 }: ApplicantDetailDrawerProps) {
   const router = useRouter();
   const [showScheduleForm, setShowScheduleForm] = useState(false);
@@ -92,14 +103,15 @@ export default function ApplicantDetailDrawer({
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [interviewNotes, setInterviewNotes] = useState<InterviewNotes | null>(null);
 
-  const candidate = application?.profiles as any;
-  const resume = (Array.isArray(application?.resumes)
+  const candidate = application?.profiles;
+  const resume = Array.isArray(application?.resumes)
     ? application.resumes[0]
-    : application?.resumes) as any;
+    : application?.resumes;
   const currentStage = getCurrentStage(application?.status);
   const normalizedAppStatus = String(application?.status ?? "").toLowerCase();
   const normalizedOfferStatus = String(jobOffer?.status ?? "").toUpperCase();
   const isOfferStage = ["offer_sent", "negotiating"].includes(normalizedAppStatus);
+  const isOfferSentApplication = normalizedAppStatus === "offer_sent";
   const offerHasBeenSent = [
     "SENT",
     "NEGOTIATION_PENDING",
@@ -111,13 +123,17 @@ export default function ApplicantDetailDrawer({
     "DECLINED",
     "EXPIRED",
   ].includes(normalizedOfferStatus);
-  const shouldShowOfferNotSent = isOfferStage && !!jobOffer && !offerHasBeenSent;
+  const shouldShowOfferNotSent = !isOfferSentApplication && isOfferStage && !!jobOffer && !offerHasBeenSent;
 
-  const displayStatus = shouldShowOfferNotSent
+  const displayStatus = isOfferSentApplication
+    ? "OFFER SENT"
+    : shouldShowOfferNotSent
     ? "Offer"
     : currentStage?.label ?? application?.status.replace(/_/g, " ").toUpperCase();
 
-  const statusTone = shouldShowOfferNotSent
+  const statusTone = isOfferSentApplication
+    ? "bg-emerald-50 text-emerald-700"
+    : shouldShowOfferNotSent
     ? "bg-amber-50 text-amber-700"
     : currentStage?.key === "new"
     ? "bg-blue-50 text-blue-700"
@@ -141,19 +157,19 @@ export default function ApplicantDetailDrawer({
     { label: "Work Setup", value: matchScoreDetails?.score_setup ?? 0, weight: "10%" },
   ];
   const drawerPrimaryAction = (() => {
+    if (isOfferSentApplication || initialTab === "view_offer" || ["negotiating", "offer_sent"].includes(normalizedAppStatus) || offerHasBeenSent) {
+      return {
+        label: "Open Offer Page",
+        color: "bg-orange-600 text-white",
+        onClick: () => router.push(`/job-offer/${application.id}`),
+      };
+    }
+
     if (initialTab === "send_offer" || shouldShowOfferNotSent) {
       return {
         label: "Send Offer",
         color: "bg-orange-600 text-white",
-        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/offer`),
-      };
-    }
-
-    if (initialTab === "view_offer" || ["negotiating", "offer_sent"].includes(normalizedAppStatus) || offerHasBeenSent) {
-      return {
-        label: "Open Offer Page",
-        color: "bg-orange-600 text-white",
-        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/offer`),
+        onClick: () => onSendOffer?.(),
       };
     }
 

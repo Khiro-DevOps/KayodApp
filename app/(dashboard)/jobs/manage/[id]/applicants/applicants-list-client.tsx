@@ -8,28 +8,15 @@ import ApplicantDetailDrawer from "./applicant-detail-drawer";
 import HireConfirmBottomSheet from "@/components/hr/HireConfirmBottomSheet";
 import { createClient } from "@/lib/supabase/client";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
-import type { ApplicationStatus, Interview } from "@/lib/types";
+import type { ApplicationStatus, Interview, Profile, Resume } from "@/lib/types";
 import { getCurrentStage } from "@/lib/pipeline";
 import { moveToScreening, moveToInterview, moveToHired } from "./pipeline-actions";
 import { createHydratedOfferDraft } from "@/app/(auth)/actions/offer-actions";
 import OfferReviewModal from "./offer-review-modal";
 
-interface CandidateProfile {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string | null;
-  city?: string | null;
-  country?: string | null;
-}
+type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email" | "phone" | "city" | "country">;
 
-interface ResumeRow {
-  id: string;
-  title: string | null;
-  pdf_url: string | null;
-  created_at: string;
-}
+type ResumeRow = Pick<Resume, "id" | "title" | "pdf_url" | "created_at">;
 
 interface ApplicationRow {
   id: string;
@@ -43,6 +30,39 @@ interface ApplicationRow {
   resume_id: string | null;
   profiles: CandidateProfile | null;
   resumes: ResumeRow | ResumeRow[] | null;
+}
+
+type OfferDraftRow = {
+  id: string;
+  application_id: string;
+  salary: number | null;
+  start_date: string | null;
+  work_setup: string | null;
+  department: string | null;
+  probation_days: number | null;
+  job_metadata: Record<string, unknown> | null;
+  latest_docuseal_url: string | null;
+  status: string;
+  updated_at: string | null;
+};
+
+type RealtimeEventPayload = {
+  eventType: "INSERT" | "UPDATE" | "DELETE";
+  new: unknown;
+  old: unknown;
+};
+
+function isRealtimeEventPayload(payload: unknown): payload is RealtimeEventPayload {
+  if (typeof payload !== "object" || payload === null) {
+    return false;
+  }
+
+  const eventType = (payload as { eventType?: unknown }).eventType;
+  return eventType === "INSERT" || eventType === "UPDATE" || eventType === "DELETE";
+}
+
+function hasStringProperty<K extends string>(value: unknown, key: K): value is Record<K, string> {
+  return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)[key] === "string";
 }
 
 interface JobOfferRow {
@@ -243,7 +263,7 @@ export default function ApplicantsHubClient({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [drawerInitialTab, setDrawerInitialTab] = useState<string | null>(null);
   const [confirmSheetApp, setConfirmSheetApp] = useState<ConfirmSheetAppState | null>(null);
-  const [offerDraft, setOfferDraft] = useState<any | null>(null);
+  const [offerDraft, setOfferDraft] = useState<OfferDraftRow | null>(null);
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const applicationIdsRef = useRef<Set<string>>(new Set(applications.map((app) => app.id)));
   const recomputeInFlightRef = useRef<Set<string>>(new Set());
@@ -319,10 +339,14 @@ export default function ApplicantsHubClient({
               table: "applications",
               filter: `job_posting_id=eq.${jobId}`,
             },
-            (payload: any) => {
+            (payload: unknown) => {
+              if (!isRealtimeEventPayload(payload)) {
+                return;
+              }
+
               if (payload.eventType === "DELETE") {
-                const deletedId = String((payload.old as { id?: string } | null)?.id ?? "");
-                if (!deletedId) return;
+                if (!hasStringProperty(payload.old, "id")) return;
+                const deletedId = payload.old.id;
 
                 if (isMounted) {
                   setApplicationRows((prev) => prev.filter((app) => app.id !== deletedId));
@@ -330,8 +354,8 @@ export default function ApplicantsHubClient({
                 return;
               }
 
-              const changed = payload.new as Partial<ApplicationRow> | null;
-              if (!changed?.id) return;
+              if (!hasStringProperty(payload.new, "id")) return;
+              const changed = payload.new as Partial<ApplicationRow> & { id: string };
 
               if (payload.eventType === "UPDATE" && changed.match_score === null) {
                 void triggerMatchScoreRecompute(changed.id);
@@ -357,11 +381,14 @@ export default function ApplicantsHubClient({
               table: "interviews",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload: any) => {
+            (payload: unknown) => {
+              if (!isRealtimeEventPayload(payload)) {
+                return;
+              }
+
               if (payload.eventType === "DELETE") {
-                const deleted = payload.old as { application_id?: string } | null;
-                if (!deleted?.application_id) return;
-                const deletedId = deleted.application_id;
+                if (!hasStringProperty(payload.old, "application_id")) return;
+                const deletedId = payload.old.application_id;
                 if (!applicationIdsRef.current.has(deletedId)) return;
 
                 if (isMounted) {
@@ -374,8 +401,8 @@ export default function ApplicantsHubClient({
                 return;
               }
 
-              const changed = payload.new as Interview | null;
-              if (!changed?.application_id) return;
+              if (!hasStringProperty(payload.new, "application_id")) return;
+              const changed = payload.new as Interview & { application_id: string };
               const changedId = changed.application_id;
               if (!applicationIdsRef.current.has(changedId)) return;
 
@@ -396,11 +423,14 @@ export default function ApplicantsHubClient({
               table: "job_offers",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload: any) => {
+            (payload: unknown) => {
+              if (!isRealtimeEventPayload(payload)) {
+                return;
+              }
+
               if (payload.eventType === "DELETE") {
-                const deleted = payload.old as { application_id?: string } | null;
-                if (!deleted?.application_id) return;
-                const deletedId = deleted.application_id;
+                if (!hasStringProperty(payload.old, "application_id")) return;
+                const deletedId = payload.old.application_id;
 
                 if (isMounted) {
                   setJobOffers((prev) => {
@@ -413,8 +443,8 @@ export default function ApplicantsHubClient({
                 return;
               }
 
-              const changed = payload.new as JobOfferRow | null;
-              if (!changed?.application_id) return;
+              if (!hasStringProperty(payload.new, "application_id")) return;
+              const changed = payload.new as JobOfferRow & { application_id: string };
               const changedId = changed.application_id;
 
               if (isMounted) {
@@ -433,11 +463,14 @@ export default function ApplicantsHubClient({
               table: "signed_documents",
               filter: `application_id=in.(${Array.from(applicationIdsRef.current).join(",")})`,
             },
-            (payload: any) => {
+            (payload: unknown) => {
+              if (!isRealtimeEventPayload(payload)) {
+                return;
+              }
+
               if (payload.eventType === "DELETE") {
-                const deleted = payload.old as { application_id?: string } | null;
-                if (!deleted?.application_id) return;
-                const deletedId = deleted.application_id;
+                if (!hasStringProperty(payload.old, "application_id")) return;
+                const deletedId = payload.old.application_id;
 
                 if (isMounted) {
                   setSignedDocuments((prev) => {
@@ -450,8 +483,8 @@ export default function ApplicantsHubClient({
                 return;
               }
 
-              const changed = payload.new as SignedDocumentRow | null;
-              if (!changed?.application_id) return;
+              if (!hasStringProperty(payload.new, "application_id")) return;
+              const changed = payload.new as SignedDocumentRow & { application_id: string };
               const changedId = changed.application_id;
 
               if (isMounted) {
@@ -584,7 +617,7 @@ export default function ApplicantsHubClient({
           try {
             const result = await createHydratedOfferDraft(jobId, app.id);
             if (!result?.success) {
-              toast.error("Failed to create offer draft");
+              toast.error(result?.error || "Failed to create offer draft");
               return;
             }
 
@@ -826,7 +859,7 @@ export default function ApplicantsHubClient({
       {selectedApplication && (
         <ApplicantDetailDrawer
           {...({
-            application: selectedApplication as any,
+            application: selectedApplication,
             jobOffer: jobOffers[selectedApplication.id],
             jobId,
             initialTab: drawerInitialTab,
@@ -836,7 +869,8 @@ export default function ApplicantsHubClient({
             isOpen: isDrawerOpen,
             onClose: handleCloseDrawer,
             onScheduled: () => router.refresh(),
-          } as any)}
+            onSendOffer: () => void handleQuickAction(selectedApplication as ApplicationRow, "send_offer"),
+          })}
         />
       )}
 
@@ -867,9 +901,18 @@ export default function ApplicantsHubClient({
           jobId={jobId}
           applicationId={offerDraft.application_id}
           offer={offerDraft}
-          onSent={() => {
-            setIsOfferModalOpen(false);
-            setOfferDraft(null);
+          onSent={(offerId) => {
+            setJobOffers((current) => ({
+              ...current,
+              [offerDraft.application_id]: {
+                ...(current[offerDraft.application_id] ?? offerDraft),
+                id: offerId,
+                application_id: offerDraft.application_id,
+                status: "SENT",
+                latest_docuseal_url: offerDraft.latest_docuseal_url ?? current[offerDraft.application_id]?.latest_docuseal_url ?? null,
+                updated_at: new Date().toISOString(),
+              },
+            }));
             router.refresh();
           }}
         />
@@ -901,14 +944,18 @@ function ApplicantCardComponent({
   const fullName = getApplicantName(candidate);
   const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
   const jobOfferBadge = getJobOfferBadge(jobOffer);
+  const isOfferSentApplication = app.status === "offer_sent";
   const hasSignedContract = jobOfferBadge?.isSigned ?? false;
   const offerDeliveryState = getOfferDeliveryState(jobOffer);
   const currentStage = getCurrentStage(app.status);
   const isOfferStage = app.status === "negotiating" || app.status === "offer_sent";
   const shouldShowCheckSigned = !hasSignedContract && isOfferStage && offerDeliveryState === "sent";
-  const shouldShowSendOffer = !hasSignedContract && isOfferStage && offerDeliveryState !== "sent";
+  const shouldShowSendOffer = !hasSignedContract && isOfferStage && !isOfferSentApplication && offerDeliveryState !== "sent";
   const quickAction = getQuickAction(app, hasSignedContract);
-  const displayStatus = currentStage?.label ?? app.status.replace(/_/g, " ").toUpperCase();
+  const displayStatus = isOfferSentApplication ? "OFFER SENT" : currentStage?.label ?? app.status.replace(/_/g, " ").toUpperCase();
+  const offerBadgeLabel = isOfferSentApplication ? "✓ Offer sent" : jobOfferBadge?.label ?? null;
+  const offerBadgeColor = isOfferSentApplication ? "#16a34a" : jobOfferBadge?.color ?? null;
+  const offerBadgeUpdatedAt = jobOfferBadge?.updatedAt ?? null;
   const now = new Date();
   const scheduledAt = interview ? new Date(interview.scheduled_at) : null;
   const diffMinutes = scheduledAt ? (scheduledAt.getTime() - now.getTime()) / 60000 : null;
@@ -1000,11 +1047,11 @@ function ApplicantCardComponent({
         )}
 
         {/* Job Offer Badge */}
-        {isOfferStage && jobOfferBadge && (
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: jobOfferBadge.color }}>
-            <span className="font-medium">{jobOfferBadge.label}</span>
+        {isOfferStage && offerBadgeLabel && (
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: offerBadgeColor ?? undefined }}>
+            <span className="font-medium">{offerBadgeLabel}</span>
             <span className="text-gray-400">
-              {jobOfferBadge.updatedAt ? new Date(jobOfferBadge.updatedAt).toLocaleDateString() : ""}
+              {offerBadgeUpdatedAt ? new Date(offerBadgeUpdatedAt).toLocaleDateString() : ""}
             </span>
           </div>
         )}
@@ -1089,10 +1136,14 @@ function ApplicantCardComponent({
                 void onQuickAction("send_offer");
               }}
               type="button"
-              style={{ background: "#ea580c", color: "#fff" }}
-              className="w-full rounded-xl py-2 text-xs font-semibold transition-opacity hover:opacity-90"
+              style={{
+                background: "linear-gradient(135deg, #ea580c 0%, #fb923c 100%)",
+                color: "#fff",
+                boxShadow: "0 10px 24px rgba(234, 88, 12, 0.24)",
+              }}
+              className="w-full rounded-xl py-3 text-sm font-semibold tracking-wide transition-transform transition-shadow hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
             >
-              Send Offer
+              Send Offer to DocuSeal
             </button>
           )}
 

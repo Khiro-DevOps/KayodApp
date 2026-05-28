@@ -26,7 +26,9 @@ export const PIPELINE_STAGES: PipelineStage[] = [
  * Get the current stage of an applicant
  */
 export function getCurrentStage(status: ApplicationStatus): PipelineStage | null {
-  return PIPELINE_STAGES.find((stage) => stage.statuses.includes(status)) || null;
+  // Normalize status to a trimmed string to avoid mismatches from unexpected casing/whitespace
+  const normalized = String(status ?? "").trim();
+  return PIPELINE_STAGES.find((stage) => stage.statuses.includes(normalized as ApplicationStatus)) || null;
 }
 
 /**
@@ -72,11 +74,12 @@ export function validateStageProgression(
     return { valid: false, reason: `Invalid target stage: ${targetStageKey}` };
   }
 
-  // Check if moving forward (must be next stage, no skipping)
-  if (targetStage.position !== currentStage.position + 1) {
+  // Enforce monotonic forward progression: target must be strictly later than current.
+  // This prevents accidental fallbacks to earlier stages when an application is already advanced.
+  if (targetStage.position <= currentStage.position) {
     return {
       valid: false,
-      reason: `Can only move to the next stage (${currentStage.label} → ${targetStage.label}). Cannot skip stages or move backwards.`,
+      reason: `Invalid transition: cannot move from ${currentStage.label} (pos ${currentStage.position}) to ${targetStage.label} (pos ${targetStage.position}). Backward or same-stage moves are not allowed.`,
     };
   }
 
@@ -122,9 +125,9 @@ export function getNextAction(currentStatus: ApplicationStatus): PipelineAction 
     case "interview":
       return PipelineAction.MOVE_TO_INTERVIEW;
     case "offer":
-      return PipelineAction.MOVE_TO_PRE_EMPLOYMENT;
+      return PipelineAction.MOVE_TO_OFFER;
     case "pre_employment":
-      return PipelineAction.MOVE_TO_HIRED;
+      return PipelineAction.MOVE_TO_PRE_EMPLOYMENT;
     case "hired":
       return PipelineAction.MOVE_TO_HIRED;
     default:
