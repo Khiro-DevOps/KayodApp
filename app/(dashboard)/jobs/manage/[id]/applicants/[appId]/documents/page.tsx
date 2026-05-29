@@ -183,7 +183,7 @@ export default async function ApplicantDocumentsPage({
             <p className="text-xs text-text-secondary">Set the deadline, instruction note, and required checklist for this applicant.</p>
           </div>
 
-          <form action={moveApplicantToPreEmployment} className="space-y-4">
+          <form action={async (formData: FormData) => { await moveApplicantToPreEmployment(formData); }} className="space-y-4">
             <input type="hidden" name="application_id" value={application.id} />
             <input type="hidden" name="job_posting_id" value={jobId} />
 
@@ -278,7 +278,7 @@ export default async function ApplicantDocumentsPage({
 
                   {!verified && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <form action={reviewApplicantDocument} className="flex flex-wrap items-center gap-2">
+                      <form action={async (formData: FormData) => { await reviewApplicantDocument(formData); }} className="flex flex-wrap items-center gap-2">
                         <input type="hidden" name="application_id" value={application.id} />
                         <input type="hidden" name="document_id" value={requiredDocument.id} />
                         <input type="hidden" name="action" value="approve" />
@@ -287,7 +287,7 @@ export default async function ApplicantDocumentsPage({
                         </button>
                       </form>
 
-                      <form action={reviewApplicantDocument} className="flex flex-1 flex-wrap items-center gap-2">
+                      <form action={async (formData: FormData) => { await reviewApplicantDocument(formData); }} className="flex flex-1 flex-wrap items-center gap-2">
                         <input type="hidden" name="application_id" value={application.id} />
                         <input type="hidden" name="document_id" value={requiredDocument.id} />
                         <input type="hidden" name="action" value="request_resubmission" />
@@ -302,7 +302,7 @@ export default async function ApplicantDocumentsPage({
                         </button>
                       </form>
 
-                      <form action={reviewApplicantDocument}>
+                      <form action={async (formData: FormData) => { await reviewApplicantDocument(formData); }}>
                         <input type="hidden" name="application_id" value={application.id} />
                         <input type="hidden" name="document_id" value={requiredDocument.id} />
                         <input type="hidden" name="action" value="mark_received_in_person" />

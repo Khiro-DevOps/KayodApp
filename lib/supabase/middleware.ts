@@ -5,7 +5,8 @@ import { NextResponse, type NextRequest } from "next/server";
 const publicRoutes = ["/", "/login", "/register", "/auth/callback"];
 
 // Route prefixes that don't require authentication
-const publicPrefixes = ["/api/webhooks"];
+// Include `/register` so subroutes like `/register/applicant` are public
+const publicPrefixes = ["/api/webhooks", "/register"];
 
 // In development, also allow dev routes to bypass auth
 const devPrefixes = process.env.NODE_ENV === "development" ? ["/api/dev", "/dev"] : [];

@@ -203,9 +203,11 @@ export default async function ApplicantsPage({
             .from("job_offers")
             .update({ status: "SIGNED", updated_at: new Date().toISOString() })
             .eq("id", jobOffer.id),
+          // When an offer is signed via DocuSeal, move the application into pre_employment
+          // so the HR Kanban and candidate timeline reflect the onboarding milestone.
           admin
             .from("applications")
-            .update({ status: "hired", updated_at: new Date().toISOString() })
+            .update({ status: "pre_employment", updated_at: new Date().toISOString() })
             .eq("id", jobOffer.application_id),
         ]);
 
@@ -223,15 +225,7 @@ export default async function ApplicantsPage({
       return accumulator;
     }, {});
 
-  const updatedApplicationIds = reconciledOffers
-    .filter((jobOffer) => SIGNED_STATUSES.has(String(jobOffer.status ?? "").toUpperCase()))
-    .map((jobOffer) => jobOffer.application_id);
-
-  const updatedApplications = applications.map((application) =>
-    updatedApplicationIds.includes(application.id)
-      ? { ...application, status: "hired" as const }
-      : application
-  );
+  const updatedApplications = applications;
 
   return (
     <PageContainer>

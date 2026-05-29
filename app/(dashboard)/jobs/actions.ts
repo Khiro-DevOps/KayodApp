@@ -124,7 +124,7 @@ export async function createJob(formData: FormData) {
       description,
       requirements: requirements || null,
       work_setup: work_setup || "onsite",
-      employment_type: employment_type || "full-time",
+      employment_type: employment_type || "full_time",
       location: location || null,
       salary_min: salaryMin,
       salary_max: salaryMax,
@@ -166,7 +166,7 @@ export async function createJob(formData: FormData) {
         {
           jobTitle: title,
           department: ph_department || job_category || undefined,
-          employmentType: employment_type || "full-time",
+          employmentType: employment_type || "full_time",
           location: location || undefined,
           jobDescription: description,
           salary_min: salaryMin || undefined,

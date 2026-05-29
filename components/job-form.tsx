@@ -15,9 +15,9 @@ const WORK_SETUP_OPTIONS = [
 ];
 
 const EMPLOYMENT_TYPE_OPTIONS = [
-  { value: "full-time", label: "Full Time" },
-  { value: "part-time", label: "Part Time" },
-  { value: "internship", label: "Internship" },
+  { value: "full_time", label: "Full Time" },
+  { value: "part_time", label: "Part Time" },
+  { value: "intern", label: "Internship" },
 ];
 
 const EMPLOYMENT_STATUS_OPTIONS = [

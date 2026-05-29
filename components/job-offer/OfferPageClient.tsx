@@ -14,8 +14,10 @@ interface OfferSummary {
 
 interface OfferPageClientProps {
   token: string;
+  applicationId: string;
   offer: OfferSummary;
   isAlreadySigned: boolean;
+  applicationStatus?: string | null;
   companyName: string;
   candidateEmail: string;
   candidateFirstName: string;
@@ -236,8 +238,10 @@ function Footer({ hrEmail }: { hrEmail?: string | null }) {
 
 export default function OfferPageClient({
   token,
+  applicationId,
   offer,
   isAlreadySigned,
+  applicationStatus,
   companyName,
   candidateEmail,
   candidateFirstName,
@@ -263,6 +267,7 @@ export default function OfferPageClient({
   const [resolvedEmbedSrc, setResolvedEmbedSrc] = useState(embedSrc?.trim() || null);
   const [embedLoadError, setEmbedLoadError] = useState(docusealEmbedError?.trim() || null);
   const [isResolvingEmbedSrc, setIsResolvingEmbedSrc] = useState(false);
+  const normalizedApplicationStatus = String(applicationStatus ?? "").trim().toLowerCase();
   const normalizedStatus = offer.status.toLowerCase();
   const isSignedStatus = ["signed", "accepted", "hired"].includes(normalizedStatus);
   const [hasSigned, setHasSigned] = useState(isAlreadySigned || isSignedStatus);
@@ -331,6 +336,86 @@ export default function OfferPageClient({
   const canSign = Boolean(resolvedEmbedSrc) && !hasSigned;
   const showSignedBanner = hasSigned;
   const salaryText = formatSalaryRange(salaryMin, salaryMax, currency);
+
+  if (normalizedApplicationStatus === "pre_employment") {
+    return (
+      <div className="w-full">
+        <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
+          <div className="space-y-6">
+            <section className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 p-6 shadow-sm sm:p-8">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Signature recorded</p>
+                  <h1 className="mt-2 text-2xl font-semibold text-text-primary sm:text-3xl">
+                    Thank you! Your signature has been recorded.
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm text-text-secondary sm:text-base">
+                    Next, please complete your onboarding documents below.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-4 sm:grid-cols-3">
+              {[
+                {
+                  title: "Document submission",
+                  body: "Upload the remaining pre-employment requirements at your own pace.",
+                },
+                {
+                  title: "Background verification",
+                  body: "HR will review the submitted documents once they arrive.",
+                },
+                {
+                  title: "Onboarding confirmation",
+                  body: "Complete the final checklist before your first day.",
+                },
+              ].map((item) => (
+                <div key={item.title} className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <h2 className="text-sm font-semibold text-text-primary">{item.title}</h2>
+                  <p className="mt-2 text-sm text-text-secondary">{item.body}</p>
+                </div>
+              ))}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+              <h2 className="text-base font-semibold text-text-primary">What happens next</h2>
+              <div className="mt-4 space-y-3 text-sm text-text-secondary">
+                <p>• Your signed offer is recorded and the HR team can now review the onboarding checklist.</p>
+                <p>• Any required documents can be uploaded from the pre-employment document page.</p>
+                <p>• You can return here anytime to check the status of your onboarding journey.</p>
+              </div>
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/apply/applications/${encodeURIComponent(applicationId)}/documents`)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                >
+                  Open onboarding documents
+                </button>
+                {signedPdfUrl && (
+                  <a
+                    href={signedPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm font-semibold text-text-primary transition-colors hover:bg-surface"
+                  >
+                    Review signed contract
+                  </a>
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

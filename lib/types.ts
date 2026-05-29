@@ -80,10 +80,10 @@ export type NotificationType =
 export type WorkSetup = "onsite" | "remote" | "hybrid" | "wfh";
 
 export type EmploymentType =
-  | "full-time"
-  | "part-time"
+  | "full_time"
+  | "part_time"
   | "contract"
-  | "internship";
+  | "intern";
 
 export type EmploymentStatus =
   | "active"

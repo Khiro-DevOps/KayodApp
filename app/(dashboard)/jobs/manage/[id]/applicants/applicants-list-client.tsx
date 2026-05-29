@@ -22,9 +22,10 @@ interface ApplicationRow {
   id: string;
   job_posting_id: string;
   candidate_id: string;
-  status: ApplicationStatus;
+  status: string;
   match_score: number | null;
   submitted_at: string;
+  updated_at: string;
   cover_letter: string | null;
   hr_notes?: string | null;
   resume_id: string | null;
@@ -93,20 +94,20 @@ interface SignedDocumentRow {
 interface StageDefinition {
   key: string;
   label: string;
-  statuses: ApplicationStatus[];
+  statuses: string[];
   color: string;
 }
 
 const STAGES: StageDefinition[] = [
-  { key: "new", label: "New", statuses: ["submitted", "draft"], color: "#3b82f6" },
-  { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"], color: "#eab308" },
-  { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"], color: "#a855f7" },
-  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent"], color: "#f97316" },
-  { key: "pre_employment", label: "Pre-employment", statuses: ["offer_accepted", "pre_employment"], color: "#0ea5e9" },
-  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"], color: "#16a34a" },
+  { key: "new", label: "New", statuses: ["submitted", "draft"] as ApplicationStatus[], color: "#3b82f6" },
+  { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"] as ApplicationStatus[], color: "#eab308" },
+  { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"] as ApplicationStatus[], color: "#a855f7" },
+  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent", "offer_accepted"] as ApplicationStatus[], color: "#f97316" },
+  { key: "pre_employment", label: "Pre-employment", statuses: ["pre_employment"] as ApplicationStatus[], color: "#0ea5e9" },
+  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"] as ApplicationStatus[], color: "#16a34a" },
 ];
 
-const CLOSED_STATUSES: ApplicationStatus[] = ["rejected", "withdrawn"];
+const CLOSED_STATUSES = ["rejected", "withdrawn"] as string[];
 const SIGNED_STATUSES = new Set(["SIGNED", "HIRED", "ACCEPTED", "HIRE_CONFIRMED"]);
 const OFFER_SENT_STATUSES = new Set([
   "SENT",
@@ -539,9 +540,6 @@ export default function ApplicantsHubClient({
     : STAGES.find((stage) => stage.key === activeTab)?.statuses ?? [];
 
   const filteredApps = applicationRows.filter((app) => {
-    const jobOffer = jobOffers[app.id];
-    const isSignedOffer = SIGNED_STATUSES.has(String(jobOffer?.status ?? "").trim().toUpperCase());
-
     if (activeTab === "hired" && !showClosed) {
       const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
       const matchesStage = isHiredStatus;
@@ -563,9 +561,6 @@ export default function ApplicantsHubClient({
     const stage = STAGES.find((s) => s.key === stageKey);
     if (!stage) return [];
     return applicationRows.filter((app) => {
-      const jobOffer = jobOffers[app.id];
-      const isSignedOffer = SIGNED_STATUSES.has(String(jobOffer?.status ?? "").trim().toUpperCase());
-
       if (stageKey === "hired") {
         const isHiredStatus = ["hired", "hire_confirmed"].includes(app.status);
         return isHiredStatus;
@@ -942,12 +937,12 @@ function ApplicantCardComponent({
   isMobile: boolean;
 }) {
   const fullName = getApplicantName(candidate);
-  const statusColorClass = APPLICATION_STATUS_COLORS[app.status] ?? "bg-blue-50 text-blue-600";
+  const statusColorClass = (APPLICATION_STATUS_COLORS as Record<string, string>)[app.status] ?? "bg-blue-50 text-blue-600";
   const jobOfferBadge = getJobOfferBadge(jobOffer);
   const isOfferSentApplication = app.status === "offer_sent";
   const hasSignedContract = jobOfferBadge?.isSigned ?? false;
   const offerDeliveryState = getOfferDeliveryState(jobOffer);
-  const currentStage = getCurrentStage(app.status);
+  const currentStage = getCurrentStage(app.status as ApplicationStatus);
   const isOfferStage = app.status === "negotiating" || app.status === "offer_sent";
   const shouldShowCheckSigned = !hasSignedContract && isOfferStage && offerDeliveryState === "sent";
   const shouldShowSendOffer = !hasSignedContract && isOfferStage && !isOfferSentApplication && offerDeliveryState !== "sent";

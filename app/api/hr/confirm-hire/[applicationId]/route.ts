@@ -26,6 +26,8 @@ type JobOfferRow = {
       id?: string;
       title?: string | null;
       created_by?: string | null;
+      salary_min?: number | null;
+      salary_max?: number | null;
     } | null;
   } | null;
 };

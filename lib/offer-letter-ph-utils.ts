@@ -254,7 +254,7 @@ export function mapOfferLetterPhToJobPosting(
     currency: "PHP",
 
     // Employment type mapping
-    employment_type: data.employmentTerms?.employmentStatus === "regular" ? "full-time" : "contract",
+    employment_type: data.employmentTerms?.employmentStatus === "regular" ? "full_time" : "contract",
 
     // Store full settings as JSONB
     offer_letter_settings: formatOfferLetterPhForDocuSeal(data),

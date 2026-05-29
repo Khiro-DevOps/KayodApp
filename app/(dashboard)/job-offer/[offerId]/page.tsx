@@ -923,8 +923,10 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   return (
     <OfferPageClient
       token={offer.id}
+      applicationId={application.id}
       offer={{ status: isCompletedSigning ? "signed" : offer.status }}
       isAlreadySigned={isAlreadySigned || isCompletedSigning}
+      applicationStatus={application.status}
       companyName={companyNameOrNull ?? "Hiring Company"}
       candidateFirstName={candidateFirstName}
       candidateEmail={candidateEmail}

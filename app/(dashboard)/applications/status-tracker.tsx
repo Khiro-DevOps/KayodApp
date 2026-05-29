@@ -22,6 +22,7 @@ const statusStages = [
   { key: "interview_scheduled", label: "Interview Scheduled", icon: "📅" },
   { key: "interviewed", label: "Interviewed", icon: "💬" },
   { key: "offer_sent", label: "Offer Sent", icon: "🎉" },
+  { key: "pre_employment", label: "Pre-employment", icon: "🧭" },
   { key: "hired", label: "Hired", icon: "✅" },
 ];
 
@@ -157,6 +158,27 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                   </div>
                 )}
 
+                {stage.key === "pre_employment" && isCurrent && (
+                  <div className="mt-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-800">
+                    <p className="font-medium text-sky-900">Signature recorded</p>
+                    <p className="mt-1 text-sm text-sky-700">
+                      You are in pre-employment. Open your documents page to complete the remaining onboarding requirements.
+                    </p>
+                    {applicationId && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/apply/applications/${encodeURIComponent(applicationId)}/documents`)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+                        >
+                          Open documents
+                          <span aria-hidden="true">↗</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {isCompleted && (
                   <p className="text-xs text-green-700 mt-1">✓ Completed</p>
                 )}
@@ -246,6 +268,8 @@ export default function StatusTracker({ status, interviews, applicationId, offer
             "Your offer is now in negotiation. Please review the offer details above and respond when ready."}
           {status === "offer_sent" &&
             "Excellent! We're pleased to extend you a job offer. Check your email for details."}
+          {status === "pre_employment" &&
+            "Signature recorded. Open your documents page to continue onboarding."}
           {status === "hired" &&
             "Welcome to the team! We're excited to have you on board. Check your email for next steps."}
           {status === "rejected" &&

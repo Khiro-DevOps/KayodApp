@@ -369,14 +369,13 @@ Create `/public/manifest.json`:
   "short_name": "Kayod",
   "start_url": "/login",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#1D9E75",
+  "background_color": "#faf8ff",
+  "theme_color": "#7C7AAC",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
-}
-```
+}```
 
 Reference in `app/layout.tsx` metadata export.
 

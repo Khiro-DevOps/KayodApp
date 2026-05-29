@@ -48,7 +48,10 @@ function formatPhilippinesPhone(value: string) {
   return `+63 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
 }
 
-export async function register(formData: FormData) {
+export async function register(
+  _prevState: { error: string | null; success: boolean },
+  formData: FormData
+) {
   const supabase = await createClient();
 
   // 1. Extract form data

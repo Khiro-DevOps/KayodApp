@@ -99,9 +99,9 @@ export async function generatePayslips(formData: FormData) {
     // For hourly/part-time: pay based on hours punched
     // For salaried/full-time: pay full base_salary regardless of hours
     const isHourly =
-      emp.employment_type === "part-time" ||
+      emp.employment_type === "part_time" ||
       emp.employment_type === "contract" ||
-      emp.employment_type === "internship";
+      emp.employment_type === "intern";
 
     // Derive hourly rate from monthly salary (÷ 173.33 = PH standard monthly hours)
     const hourlyRate = baseSalary / 173.33;

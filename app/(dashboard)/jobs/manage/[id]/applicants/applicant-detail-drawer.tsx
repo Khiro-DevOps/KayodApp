@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Application, Profile, Resume } from "@/lib/types";
+import type { Application, Profile, Resume, ApplicationStatus } from "@/lib/types";
 import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
 import { moveToScreening, confirmInterviewScheduled } from "./pipeline-actions";
@@ -15,9 +15,12 @@ type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email
 
 type ResumeSummary = Pick<Resume, "id" | "title" | "pdf_url" | "created_at">;
 
-type ApplicantApplication = Omit<Application, "profiles" | "resumes"> & {
+type ApplicantApplication = Omit<Application, "profiles" | "resumes" | "resume_id" | "status" | "hr_notes"> & {
+  status: string;
+  hr_notes?: string | null;
   profiles: CandidateProfile | null;
   resumes: ResumeSummary | ResumeSummary[] | null;
+  resume_id: string | null;
 };
 
 interface NegotiationLog {
@@ -104,12 +107,13 @@ export default function ApplicantDetailDrawer({
   const [interviewNotes, setInterviewNotes] = useState<InterviewNotes | null>(null);
 
   const candidate = application?.profiles;
-  const resume = Array.isArray(application?.resumes)
+  const resume = (Array.isArray(application?.resumes)
     ? application.resumes[0]
-    : application?.resumes;
-  const currentStage = getCurrentStage(application?.status);
+    : application?.resumes) as ResumeSummary | null;
+  const currentStage = getCurrentStage(application?.status as ApplicationStatus);
   const normalizedAppStatus = String(application?.status ?? "").toLowerCase();
   const normalizedOfferStatus = String(jobOffer?.status ?? "").toUpperCase();
+  const isPreEmployment = normalizedAppStatus === "pre_employment";
   const isOfferStage = ["offer_sent", "negotiating"].includes(normalizedAppStatus);
   const isOfferSentApplication = normalizedAppStatus === "offer_sent";
   const offerHasBeenSent = [
@@ -202,6 +206,14 @@ export default function ApplicantDetailDrawer({
           toast.success(`✓ ${result.applicantName} moved to Screening`);
           router.refresh();
         },
+      };
+    }
+
+    if (isPreEmployment) {
+      return {
+        label: "Review onboarding docs",
+        color: "bg-sky-600 text-white",
+        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/documents`),
       };
     }
 
@@ -491,7 +503,7 @@ export default function ApplicantDetailDrawer({
                     onClick={() => setShowResumeModal(true)}
                     className="text-primary hover:underline text-sm font-medium"
                   >
-                    {resume.title || resume.name || "View Resume"}
+                    {resume?.title ?? "View Resume"}
                   </button>
                   <span
                     onClick={() => setIsScoreModalOpen(true)}
@@ -567,6 +579,53 @@ export default function ApplicantDetailDrawer({
               Status: {shouldShowOfferNotSent ? "OFFER NOT SENT" : application?.status.replace(/_/g, " ").toUpperCase()}
             </p>
           </div>
+
+          {isPreEmployment && (
+            <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-sky-900">Onboarding checklist</h3>
+                  <p className="mt-1 text-xs text-sky-700">
+                    The signed offer has moved this applicant into pre-employment.
+                  </p>
+                </div>
+                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                  Ready
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  "Document submission checklist",
+                  "Background verification review",
+                  "Onboarding confirmation",
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-3 rounded-xl border border-sky-100 bg-white px-3 py-2 text-sm text-sky-900">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-[11px] font-bold text-sky-700">
+                      ✓
+                    </span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/documents`)}
+                  className="inline-flex flex-1 items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700"
+                >
+                  Open onboarding review
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex flex-1 items-center justify-center rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-50"
+                >
+                  Send reminder
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Negotiation Log Section */}
           {false && (
@@ -694,7 +753,7 @@ export default function ApplicantDetailDrawer({
             <div className="w-full max-w-4xl rounded-2xl border border-border bg-surface shadow-xl">
               <div className="flex items-center justify-between border-b border-border px-5 py-3">
                 <h3 className="text-base font-semibold text-text-primary">
-                  {resume.title || "Resume Preview"}
+                  {resume?.title ?? "Resume Preview"}
                 </h3>
                 <button
                   onClick={() => setShowResumeModal(false)}
@@ -709,7 +768,7 @@ export default function ApplicantDetailDrawer({
                 <iframe
                   src={signedResumeUrl}
                   className="w-full h-[80vh]"
-                  title="Resume Preview"
+                  title={resume?.title ?? "Resume Preview"}
                 />
                 <div className="mt-4 flex justify-end gap-2">
                   <a

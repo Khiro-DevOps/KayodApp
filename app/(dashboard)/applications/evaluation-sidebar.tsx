@@ -67,7 +67,7 @@ export default function EvaluationSidebar({
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
   const [salary, setSalary] = useState<number | "">(job?.salary_min || "");
   const [currency, setCurrency] = useState(job?.currency || "PHP");
-  const [employmentType, setEmploymentType] = useState<EmploymentType>((job?.employment_type as EmploymentType) || "full-time");
+  const [employmentType, setEmploymentType] = useState<EmploymentType>((job?.employment_type as EmploymentType) || "full_time");
   const [startDate, setStartDate] = useState("");
   const [workArrangement, setWorkArrangement] = useState<WorkSetup>("hybrid");
   const [expiryDays, setExpiryDays] = useState(7);
@@ -635,8 +635,8 @@ export default function EvaluationSidebar({
                   onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
                   className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  <option value="full-time">Full-time</option>
-                  <option value="part-time">Part-time</option>
+                  <option value="full_time">Full-time</option>
+                  <option value="part_time">Part-time</option>
                   <option value="contract">Contract</option>
                 </select>
               </div>
