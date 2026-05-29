@@ -406,7 +406,7 @@ In root layout or `ClientLayout`:
 - `position: fixed; bottom: 0; width: 100%`
 - `padding-bottom: env(safe-area-inset-bottom)`
 - All tap targets ≥44×44px
-- Active tab uses brand color (`#1D9E75`)
+  - Active tab uses brand color (`#7C7AAC`)
 - All `/apply` and `/employee` pages have `padding-bottom: ~5rem` to clear the nav
 
 ---
@@ -436,20 +436,371 @@ In root layout or `ClientLayout`:
 ---
 
 ## Sprint 4 — Employee portal UI
-**~3–4 days. After Sprint 2. Parallel to Sprint 3.**
+## Sprint 2 — PWA foundation
+
+
+
+**~2–3 days. Start after Sprint 0.**
+
+
+
+
+---
+
+
+
+## Sprint 1.8 — Global Design Token Integration & Shell Handoff
+
+
+
+**~1–2 days. Start before mobile app sprints.**
+
+
+
+---
+
+
+
+### Task 1.8.1 — Global Theme Sync (Zero Risk)
+
+
+
+Update Tailwind configuration and global styles to apply the custom Slate Lavender `#7C7AAC` primary brand scheme and `#C8BCF8` secondary highlights. This allows the changes to instantly cascade across all pre-existing interactive elements automatically.
+
+
+
+Update `tailwind.config.js` brand definitions:
+
+
+
+```javascript
+
+colors: {
+
+  primary: {
+
+    DEFAULT: '#7C7AAC',
+
+    dark: '#4A4880',
+
+    darker: '#2A2650'
+
+  },
+
+  secondary: '#C8BCF8',
+
+  border: '#E0D9FC'
+
+}
+
+
+
+```
+
+
+
+Update CSS custom properties in `app/globals.css`:
+
+
+
+```css
+
+:root {
+
+  --color-primary: #7C7AAC;
+
+  --color-primary-dark: #4A4880;
+
+  --color-navbar: #2A2650;
+
+  --color-secondary: #C8BCF8;
+
+  --color-surface: #F8F6FF;
+
+  --color-card-border: #E0D9FC;
+
+}
+
+
+
+```
+
+
+
+---
+
+
+
+### Task 1.8.2 — Desktop Layout Shell Swap (Low Risk)
+
+
+
+Replace pure presentation components inside the HR desktop portal by copying layout-only JSX structures directly out of the Google Stitch inspector workspace.
+
+
+
+**Target Component Files:**
+
+
+
+* `components/ui/header.tsx`
+
+* `components/ui/sidebar.tsx`
+
+* `components/ui/page-container.tsx`
+
+
+
+**Constraint Instructions for Agent:**
+
+"Replace the JSX markup and Tailwind classes only. Keep all existing link href destinations, user role verification logic, isHRRole() utility checks, and platform navigation states exactly as they are."
+
+
+
+---
+
+
+
+### Task 1.8.3 — Core HR Data Component Refactor (Medium Risk)
+
+
+
+Update mixed component files containing inline application business logic. Isolate visual structural wrappers without disturbing data mapping states or server routines.
+
+
+
+**Target Interaction Files:**
+
+
+
+* `applicants-list-client.tsx`
+
+* `applicant-detail-drawer.tsx`
+
+* `interview-scheduling-form.tsx`
+
+* `offer-review-modal.tsx`
+
+
+
+**Constraint Instructions for Agent:**
+
+"Update only the parent JSX wireframe and Tailwind utility classes inside this view container. Do not modify, rephrase, or erase local state arrays, component props passing signatures, event handlers, or data reconciliation logic. Never touch actions.ts server routines or backend data fetching parameters."
+
+
+
+---
+
+
+
+## Sprint 2 — PWA foundation
+
+
+
+**~2–3 days. Start after Sprint 1.8.**
+
+
+
+---
+
+
+
+### Task 2.1 — manifest.json
+
+
+
+Create `/public/manifest.json`:
+
+
+
+```json
+
+{
+
+  "name": "Kayod",
+
+  "short_name": "Kayod",
+
+  "start_url": "/login",
+
+  "display": "standalone",
+
+  "background_color": "#faf8ff",
+
+  "theme_color": "#7C7AAC",
+
+  "icons": [
+
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+
+  ]
+
+}
+
+
+
+```
+
+
+
+Reference in `app/layout.tsx` metadata export.
+
+
+
+---
+
+
+
+### Task 2.2 — Meta tags
+
+
+
+Add to `app/layout.tsx`:
+
+
+
+```html
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+<meta name="apple-mobile-web-app-capable" content="yes" />
+
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+
+
+```
+
+
+
+---
+
+
+
+### Task 2.3 — Conditional bottom navigation
+
+
+
+In root layout or `ClientLayout`:
+
+
+
+* `pathname.startsWith('/apply')` → render `<ApplicantBottomNav>`
+
+* `pathname.startsWith('/employee')` → render `<EmployeeBottomNav>`
+
+* All other routes → nothing
+
+
+
+**ApplicantBottomNav tabs:** Home · Jobs · Track · Resume AI · Profile
+
+**EmployeeBottomNav tabs:** Home · Schedule · Payslips · Updates · Profile
+
+
+
+**Requirements:**
+
+
+
+* `position: fixed; bottom: 0; width: 100%`
+
+* `padding-bottom: env(safe-area-inset-bottom)`
+
+* All tap targets ≥44×44px
+
+* Active tab uses background container color `#C8BCF8` with primary icon indicator lines matching `#7C7AAC`
+
+* All `/apply` and `/employee` pages have `padding-bottom: ~5rem` to clear the nav
+
+
+
+---
+
+
+
+### Task 2.4 — 390px viewport audit
+
+
+
+* Test every `/apply/*` and `/employee/*` page at 390px
+
+* Fix any `overflow-x` / horizontal scroll
+
+* Confirm no interactive element is smaller than 44×44px
+
+
+
+---
+
+
+
+## Sprint 3 — Applicant portal UI
+
+
+
+**~4–5 days. After Sprint 2.**
+
+
 
 | Route | Page | Notes |
-|-------|------|-------|
-| `/employee/dashboard` | Home | Stats, recent attendance, shortcuts |
-| `/employee/schedule` | Schedule tab | Calendar + clock in/out placeholder |
-| `/employee/schedule?tab=leaves` | Leave requests | File and track leaves — tab in same page |
-| `/employee/payslips` | Payslips | Monthly cards, download PDF |
-| `/employee/announcements` | Announcements | Pinned posts at top |
-| `/employee/profile` | Profile + settings | Home address input — REQUIRED before Sprint 5 |
+
+| --- | --- | --- |
+
+| `/apply/dashboard` | Home / analytics | Stats cards: applications sent, interviews, offers. Containers use pure white surfaces with 1px border (#E0D9FC). |
+
+| `/apply/jobs` | Job listings | Match score badge per card. Filter: role, location, setup. One-tap apply. Badges use anti-washout tokens (dark text on 12% opacity soft slate tint). |
+
+| `/apply/applications` | Application tracker | Pipeline card list with status pills using dark text on 10-15% low-opacity semantic background fills (Success: Teal, Warning: Amber, Error: Red). |
+
+| `/apply/applications/[id]` | Application detail | Status timeline. Interview info nested here. Step indicators use 8px utility rounded profile. |
+
+| `/apply/applications/[id]/offer` | Offer letter | Full-screen DocuSeal embed |
+
+| `/apply/applications/[id]/documents` | Pre-employment documents | Submission page — see Sprint 1.5. Input boundaries use 4px soft corner radius. |
+
+| `/apply/resume` | AI resume generator | Claude API for generation. Primary execution buttons use solid #7C7AAC background with white text. |
+
+| `/apply/profile` | Profile + settings | Preferred work setup, logout. Setup toggle cards match design system utility inputs. |
+
+
+
+---
+
+
+
+## Sprint 4 — Employee portal UI
+
+
+
+**~3–4 days. After Sprint 2. Parallel to Sprint 3.**
+
+
+
+| Route | Page | Notes |
+
+| --- | --- | --- |
+
+| `/employee/dashboard` | Home | Stats, recent attendance, shortcuts. Primary actions utilize #7C7AAC base branding. |
+
+| `/employee/schedule` | Schedule tab | Calendar + clock in/out placeholder. Active dates highlighted via Light Pastel Violet (#C8BCF8). |
+
+| `/employee/schedule?tab=leaves` | Leave requests | File and track leaves — tab in same page. Status tags follow anti-washout rule (dark font on tint). |
+
+| `/employee/payslips` | Payslips | Monthly cards, download PDF. Framed within 12px rounded-lg card containers. |
+
+| `/employee/announcements` | Announcements | Pinned posts at top. Feature banners utilize structural outline accents to separate layouts. |
+
+| `/employee/profile` | Profile + settings | Home address input — REQUIRED before Sprint 5. Inputs use 4px utility profile and text-text-secondary placeholders. |
+
+
 
 **Address input in `/employee/profile` must be complete before Sprint 5 starts.**
 
 ---
+
 
 ## Sprint 5 — Geofencing & time in/out
 **~3–4 days. After Sprint 4 (needs employee Profile page).**
@@ -533,7 +884,7 @@ Map shows:
 Define as CSS custom properties (extend Tailwind theme):
 
 ```css
---color-brand:         #1D9E75
+--color-brand:         #7C7AAC
 --color-brand-light:   #E1F5EE
 --color-text-primary:  #111827
 --color-text-secondary: #6B7280

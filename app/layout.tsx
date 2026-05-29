@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
+import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 
-const inter = Inter({
+const inter = DM_Sans({
   variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const poppins = Poppins({
+const poppins = Plus_Jakarta_Sans({
   variable: "--font-poppins",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   subsets: ["latin"],
 });
 

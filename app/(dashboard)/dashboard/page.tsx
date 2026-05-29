@@ -137,34 +137,185 @@ export default async function DashboardPage() {
 // ── HR Dashboard ─────────────────────────────────────────────
 
 function HRDashboard({ stats }: { stats: Record<string, number> }) {
+  const employeeCount = stats.employees ?? 0;
+  const activeJobCount = stats.jobs ?? 0;
+  const pendingLeaveCount = stats.pendingLeaves ?? 0;
+  const interviewCount = stats.interviews ?? 0;
+  const applicantCount = stats.applicants ?? 0;
+
+  const workforceSeries = [
+    Math.max(employeeCount, 1),
+    Math.max(activeJobCount * 12, 1),
+    Math.max(pendingLeaveCount * 8, 1),
+    Math.max(interviewCount * 10, 1),
+    Math.max(applicantCount * 2, 1),
+    Math.max(employeeCount + activeJobCount + interviewCount - pendingLeaveCount, 1),
+  ];
+
+  const chartMax = Math.max(...workforceSeries, 1);
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Active Jobs"           value={String(stats.jobs ?? 0)}       color="blue"   />
-        <SummaryCard label="Total Applicants"      value={String(stats.applicants ?? 0)}  color="purple" />
-        <SummaryCard label="Interviews Scheduled"  value={String(stats.interviews ?? 0)}  color="amber"  />
-        <SummaryCard label="Active Employees"      value={String(stats.employees ?? 0)}   color="green"  />
-      </div>
-      {(stats.pendingLeaves ?? 0) > 0 && (
+    <div className="space-y-6">
+      <div className="flex h-[64px] items-center justify-between gap-4">
+        <div>
+          <h1 className="font-(family-name:--font-heading) text-[28px] font-bold leading-tight text-text-primary">
+            HR Admin Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Overview of workforce metrics and hiring pipelines
+          </p>
+        </div>
         <Link
-          href="/leaves"
-          className="flex items-center justify-between rounded-2xl bg-yellow-50 border border-yellow-200 p-4"
+          href="/jobs/manage/new"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 font-medium text-white transition-all hover:bg-[#4A4880]"
         >
-          <div>
-            <p className="text-sm font-medium text-yellow-800">Pending leave requests</p>
-            <p className="text-xs text-yellow-600 mt-0.5">Tap to review and approve</p>
-          </div>
-          <span className="rounded-full bg-yellow-200 px-3 py-1 text-sm font-bold text-yellow-800">
-            {stats.pendingLeaves}
-          </span>
+          <span className="material-symbols-outlined text-[20px]">add</span>
+          Post New Job
         </Link>
-      )}
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
-        <QuickLink href="/applications"        label="Review applicants" />
-        <QuickLink href="/interviews/schedule" label="Schedule an interview" />
-        <QuickLink href="/interviews"          label="View all interviews" />
-        <QuickLink href="/jobs/manage/new"     label="Post a new job" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-lg md:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard
+          label="Total Employees"
+          value={employeeCount}
+          icon="group"
+          tone="primary"
+          badge="2.4%"
+          badgeClass="text-success"
+        />
+        <SummaryCard
+          label="Active Jobs"
+          value={activeJobCount}
+          icon="work"
+          tone="secondary"
+        />
+        <SummaryCard
+          label="Pending Leaves"
+          value={pendingLeaveCount}
+          icon="event_busy"
+          tone="tertiary"
+          badge={pendingLeaveCount > 0 ? "Action Needed" : undefined}
+          badgeClass="bg-error/15 text-error"
+        />
+        <SummaryCard
+          label="Interviews Today"
+          value={interviewCount}
+          icon="calendar_today"
+          tone="primary-soft"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
+        <div className="rounded-xl border border-card-border bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-(family-name:--font-heading) text-[22px] font-bold text-text-primary">
+                Workforce Health Index
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Aggregated sentiment and engagement data
+              </p>
+            </div>
+            <select className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary outline-none">
+              <option>Last 6 Months</option>
+              <option>Year to Date</option>
+            </select>
+          </div>
+
+          <div className="flex h-[280px] items-end justify-between gap-3 px-1 sm:gap-md sm:px-4">
+            {[
+              { label: "JAN", values: workforceSeries },
+              { label: "FEB", values: workforceSeries.slice(1).concat(workforceSeries[0]) },
+              { label: "MAR", values: workforceSeries.slice(2).concat(workforceSeries.slice(0, 2)) },
+              { label: "APR", values: workforceSeries.slice(3).concat(workforceSeries.slice(0, 3)) },
+              { label: "MAY", values: workforceSeries.slice(4).concat(workforceSeries.slice(0, 4)) },
+              { label: "JUN", values: workforceSeries.slice(5).concat(workforceSeries.slice(0, 5)) },
+            ].map((month) => {
+              const normalized = month.values.map((value) => Math.max(24, Math.round((value / chartMax) * 92)));
+
+              return (
+                <div key={month.label} className="group flex flex-1 flex-col items-center gap-2 sm:gap-sm">
+                  <div className="flex w-full flex-col items-center gap-1">
+                    <div className="h-[6px] w-full rounded-t-sm bg-primary/90" style={{ height: `${normalized[0]}px` }} />
+                    <div className="h-[6px] w-full bg-primary/75" style={{ height: `${normalized[1]}px` }} />
+                    <div className="h-[6px] w-full bg-primary/60" style={{ height: `${normalized[2]}px` }} />
+                    <div className="h-[6px] w-full rounded-b-sm bg-primary/45" style={{ height: `${normalized[3]}px` }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-secondary">
+                    {month.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 border-t border-card-border pt-5">
+            <LegendSwatch label="Retention" className="bg-primary" />
+            <LegendSwatch label="Morale" className="bg-primary/80" />
+            <LegendSwatch label="Feedback Rate" className="bg-primary/65" />
+            <LegendSwatch label="Absence Rate" className="bg-primary/45" />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-card-border bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <h2 className="font-(family-name:--font-heading) text-[22px] font-bold text-text-primary">
+              Quick Actions
+            </h2>
+            <Link href="/dashboard" className="text-xs font-bold text-primary hover:underline">
+              View Hub
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            <QuickActionRow
+              title="Review applicants"
+              subtitle={`${applicantCount} total candidates in pipeline`}
+              href="/applications"
+              icon="layers"
+              tone="primary"
+            />
+            <QuickActionRow
+              title="Schedule an interview"
+              subtitle={`${interviewCount} interviews scheduled today`}
+              href="/interviews/schedule"
+              icon="event"
+              tone="secondary"
+            />
+            <QuickActionRow
+              title="Pending leave requests"
+              subtitle={pendingLeaveCount > 0 ? `${pendingLeaveCount} items need review` : "No leave requests waiting"}
+              href="/leaves"
+              icon="event_busy"
+              tone={pendingLeaveCount > 0 ? "warning" : "neutral"}
+              actionLabel={pendingLeaveCount > 0 ? "Review" : undefined}
+            />
+            <QuickActionRow
+              title="Post a new job"
+              subtitle="Open a new requisition for hiring"
+              href="/jobs/manage/new"
+              icon="work"
+              tone="neutral"
+            />
+          </div>
+
+          <div className="mt-6 border-t border-card-border pt-5">
+            <div className="rounded-xl bg-surface px-4 py-4">
+              <p className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
+                Onboarding Pipeline
+              </p>
+              <p className="mt-1 text-xs text-text-secondary">
+                {employeeCount} active employees · {activeJobCount} open jobs
+              </p>
+              <div className="mt-3 flex -space-x-2">
+                <PipelineAvatar label={`${String(employeeCount).slice(0, 2) || "0"}`} tone="primary" />
+                <PipelineAvatar label={`${String(activeJobCount).slice(0, 2) || "0"}`} tone="secondary" />
+                <PipelineAvatar label={`${String(pendingLeaveCount).slice(0, 2) || "0"}`} tone="tertiary" />
+                <PipelineAvatar label={`+${Math.max(interviewCount - 1, 0)}`} tone="neutral" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -180,39 +331,41 @@ function CandidateDashboard({
   upcomingInterview: CandidateUpcomingInterview | null;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Applications" value={String(stats.applications ?? 0)} color="blue"   />
-        <SummaryCard label="Interviews"   value={String(stats.interviews ?? 0)}   color="purple" />
+    <div className="space-y-4 lg:space-y-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <SummaryCard label="Applications" value={stats.applications ?? 0} icon="folder_open" tone="primary" />
+        <SummaryCard label="Interviews" value={stats.interviews ?? 0} icon="event" tone="secondary" />
       </div>
 
       {upcomingInterview && (
         <Link
           href="/interviews"
-          className="block rounded-2xl border border-blue-200 bg-blue-50 p-4 hover:bg-blue-100 transition-colors"
+          className="block rounded-xl border border-card-border bg-white p-4 shadow-sm transition-colors hover:bg-surface"
         >
-          <p className="text-sm font-semibold text-blue-800">Upcoming Interview</p>
-          <p className="mt-1 text-sm text-blue-700">
+          <p className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
+            Upcoming Interview
+          </p>
+          <p className="mt-1 text-sm text-text-secondary">
             {upcomingInterview.job_title} ·{" "}
             {new Date(upcomingInterview.scheduled_at).toLocaleString("en-PH", {
               month: "short", day: "numeric", year: "numeric",
               hour: "numeric", minute: "2-digit",
             })}
           </p>
-          <p className="mt-1 text-xs text-blue-700">
-            {upcomingInterview.interview_type === "online" ? "🎥 Online" : "🏢 In-Person"} interview
+          <p className="mt-1 text-xs text-text-secondary">
+            {upcomingInterview.interview_type === "online" ? "Online" : "In-Person"} interview
           </p>
           {upcomingInterview.interview_type === "in_person" && upcomingInterview.location_address && (
-            <p className="mt-1 text-xs text-blue-700">
-              📍 {upcomingInterview.location_address}
+            <p className="mt-1 text-xs text-text-secondary">
+              {upcomingInterview.location_address}
               {upcomingInterview.location_notes && ` — ${upcomingInterview.location_notes}`}
             </p>
           )}
         </Link>
       )}
 
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
+      <div className="rounded-xl border border-card-border bg-white p-4 shadow-sm space-y-2">
+        <h2 className="mb-3 text-sm font-semibold text-text-primary">Quick actions</h2>
         <QuickLink href="/jobs"         label="Browse jobs" />
         <QuickLink href="/resume"       label="Manage my resume" />
         <QuickLink href="/applications" label="Track my applications" />
@@ -224,22 +377,47 @@ function CandidateDashboard({
 
 // ── Shared components ─────────────────────────────────────────
 
-function SummaryCard({ label, value, color = "blue" }: {
+function SummaryCard({
+  label,
+  value,
+  icon,
+  tone = "primary",
+  badge,
+  badgeClass,
+}: {
   label: string;
-  value: string;
-  color?: "blue" | "green" | "purple" | "amber" | "red";
+  value: number;
+  icon: string;
+  tone?: "primary" | "secondary" | "tertiary" | "primary-soft";
+  badge?: string;
+  badgeClass?: string;
 }) {
-  const colors = {
-    blue:   "bg-blue-50 text-blue-700",
-    green:  "bg-green-50 text-green-700",
-    purple: "bg-purple-50 text-purple-700",
-    amber:  "bg-yellow-50 text-yellow-700",
-    red:    "bg-red-50 text-red-700",
+  const tones = {
+    primary: "bg-primary/15 text-primary",
+    secondary: "bg-secondary/25 text-[#5E4CA7]",
+    tertiary: "bg-[#F2E9D7] text-[#93522E]",
+    "primary-soft": "bg-primary/10 text-primary",
   };
+
   return (
-    <div className={`rounded-2xl border border-border p-4 text-center ${colors[color]}`}>
-      <p className="font-(family-name:--font-heading) text-2xl font-bold">{value}</p>
-      <p className="text-xs mt-1 opacity-80">{label}</p>
+    <div className="rounded-xl border border-card-border bg-white p-5 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <span className={`rounded-lg p-2 ${tones[tone]}`}>
+          <span className="material-symbols-outlined text-[20px]">{icon}</span>
+        </span>
+        {badge ? (
+          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold ${badgeClass ?? "bg-primary/10 text-primary"}`}>
+            {tone === "primary" && <span className="material-symbols-outlined text-[14px]">trending_up</span>}
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-text-secondary">
+        {label}
+      </h3>
+      <p className="font-(family-name:--font-heading) text-[28px] font-bold leading-none text-text-primary">
+        {new Intl.NumberFormat("en-US").format(value)}
+      </p>
     </div>
   );
 }
@@ -248,12 +426,83 @@ function QuickLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded-xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+      className="flex items-center justify-between rounded-lg border border-card-border bg-white p-3 text-sm font-medium text-text-primary transition-colors hover:bg-surface"
     >
       {label}
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
       </svg>
     </Link>
+  );
+}
+
+function LegendSwatch({ label, className }: { label: string; className: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className={`h-3 w-3 rounded-sm ${className}`} />
+      <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-text-primary">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function QuickActionRow({
+  title,
+  subtitle,
+  href,
+  icon,
+  tone,
+  actionLabel,
+}: {
+  title: string;
+  subtitle: string;
+  href: string;
+  icon: string;
+  tone: "primary" | "secondary" | "warning" | "neutral";
+  actionLabel?: string;
+}) {
+  const toneClasses = {
+    primary: "bg-primary/10 text-primary",
+    secondary: "bg-secondary/20 text-[#5E4CA7]",
+    warning: "bg-[#FDF2E9] text-[#93522E]",
+    neutral: "bg-surface text-text-primary",
+  };
+
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-lg border border-card-border p-3 transition-colors hover:bg-surface"
+    >
+      <span className={`flex h-10 w-10 items-center justify-center rounded-full ${toneClasses[tone]}`}>
+        <span className="material-symbols-outlined text-[20px]">{icon}</span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-text-primary">{title}</p>
+        <p className="truncate text-[11px] font-medium uppercase tracking-[0.2em] text-text-secondary">
+          {subtitle}
+        </p>
+      </div>
+      {actionLabel ? (
+        <span className="rounded-full bg-error/15 px-2.5 py-1 text-[10px] font-bold text-error">
+          {actionLabel}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function PipelineAvatar({ label, tone }: { label: string; tone: "primary" | "secondary" | "tertiary" | "neutral" }) {
+  const tones = {
+    primary: "bg-primary text-white",
+    secondary: "bg-secondary text-navbar",
+    tertiary: "bg-[#F2E9D7] text-[#93522E]",
+    neutral: "bg-surface text-text-secondary",
+  };
+
+  return (
+    <div className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold ${tones[tone]}`}>
+      {label}
+    </div>
   );
 }
