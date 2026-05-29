@@ -221,31 +221,60 @@ export async function POST(_request: NextRequest, ctx: any) {
           : jobPosting?.salary_min ?? jobPosting?.salary_max ?? 0
     ) || 0;
 
-    const [{ error: offerUpdateError }, { error: applicationUpdateError }, { error: profileUpdateError }, { error: employeeInsertError }, { error: notificationError }] = await Promise.all([
-      admin
-        .from("job_offers")
-        .update({
-          status: "HIRED",
-          updated_at: now,
-        })
-        .eq("id", offer.id),
-      admin
-        .from("applications")
-        .update({
-          status: "hired",
-          updated_at: now,
-        })
-        .eq("id", applicationId),
-      admin
-        .from("profiles")
-        .update({
-          role: "employee",
-          updated_at: now,
-        })
-        .eq("id", application.candidate_id),
-      admin
-        .from("employees")
-        .upsert({
+    // Perform critical updates sequentially to avoid partial state.
+    // Supabase JS doesn't expose DB transactions here, so apply updates
+    // in order and attempt simple compensating rollbacks on failure.
+
+    const results: { step: string; error?: string | null }[] = [];
+
+    // 1) Update job_offers -> HIRED
+    const { error: offerUpdateError } = await admin
+      .from("job_offers")
+      .update({ status: "HIRED", updated_at: now })
+      .eq("id", offer.id);
+    results.push({ step: "offer_update", error: offerUpdateError?.message ?? null });
+    if (offerUpdateError) {
+      return NextResponse.json({ error: offerUpdateError.message }, { status: 500 });
+    }
+
+    // 2) Update applications -> hired
+    const { error: applicationUpdateError } = await admin
+      .from("applications")
+      .update({ status: "hired", updated_at: now })
+      .eq("id", applicationId);
+    results.push({ step: "application_update", error: applicationUpdateError?.message ?? null });
+    if (applicationUpdateError) {
+      // Attempt to rollback offer status to previous value
+      try {
+        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+      } catch (rollbackErr) {
+        console.warn("[Confirm Hire] failed to rollback offer status", rollbackErr);
+      }
+      return NextResponse.json({ error: applicationUpdateError.message }, { status: 500 });
+    }
+
+    // 3) Update profile role -> employee
+    const { error: profileUpdateError } = await admin
+      .from("profiles")
+      .update({ role: "employee", updated_at: now })
+      .eq("id", application.candidate_id);
+    results.push({ step: "profile_update", error: profileUpdateError?.message ?? null });
+    if (profileUpdateError) {
+      // Attempt rollbacks for previous steps
+      try {
+        await admin.from("applications").update({ status: application.status, updated_at: application.updated_at }).eq("id", applicationId);
+        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+      } catch (rollbackErr) {
+        console.warn("[Confirm Hire] failed to rollback after profile update failure", rollbackErr);
+      }
+      return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
+    }
+
+    // 4) Upsert employees record
+    const { error: employeeInsertError } = await admin
+      .from("employees")
+      .upsert(
+        {
           profile_id: application.candidate_id,
           application_id: applicationId,
           department_id: null,
@@ -257,38 +286,37 @@ export async function POST(_request: NextRequest, ctx: any) {
           base_salary: baseSalaryValue,
           pay_frequency: normalizePayFrequency(offer.job_metadata?.pay_frequency),
           currency: typeof offer.job_metadata?.salary_currency === "string" ? offer.job_metadata.salary_currency : "PHP",
-        }, { onConflict: "profile_id" }),
-      admin
-        .from("notifications")
-        .insert({
-          recipient_id: application.candidate_id,
-          type: "hire_confirmed",
-          title: "Your application has been confirmed!",
-          body: startDate
-            ? `Congratulations! ${jobTitle} has confirmed your hire. Your start date is ${startDate}.`
-            : `Congratulations! ${jobTitle} has confirmed your hire.`,
-          action_url: "/dashboard",
-        }),
-    ]);
-
-    if (offerUpdateError) {
-      return NextResponse.json({ error: offerUpdateError.message }, { status: 500 });
-    }
-
-    if (applicationUpdateError) {
-      return NextResponse.json({ error: applicationUpdateError.message }, { status: 500 });
-    }
-
-    if (profileUpdateError) {
-      return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
-    }
-
+        },
+        { onConflict: "profile_id" }
+      );
+    results.push({ step: "employee_upsert", error: employeeInsertError?.message ?? null });
     if (employeeInsertError) {
+      // Try rolling back profile and application/offer changes
+      try {
+        await admin.from("profiles").update({ role: application.profiles?.role ?? null, updated_at: application.updated_at }).eq("id", application.candidate_id);
+        await admin.from("applications").update({ status: application.status, updated_at: application.updated_at }).eq("id", applicationId);
+        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+      } catch (rollbackErr) {
+        console.warn("[Confirm Hire] failed to rollback after employee upsert failure", rollbackErr);
+      }
       return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
     }
 
+    // 5) Insert notification (non-critical)
+    const { error: notificationError } = await admin
+      .from("notifications")
+      .insert({
+        recipient_id: application.candidate_id,
+        type: "hire_confirmed",
+        title: "Your application has been confirmed!",
+        body: startDate
+          ? `Congratulations! ${jobTitle} has confirmed your hire. Your start date is ${startDate}.`
+          : `Congratulations! ${jobTitle} has confirmed your hire.`,
+        action_url: "/dashboard",
+      });
+    results.push({ step: "notification_insert", error: notificationError?.message ?? null });
     if (notificationError) {
-      return NextResponse.json({ error: notificationError.message }, { status: 500 });
+      console.warn("[Confirm Hire] failed to insert notification", notificationError.message);
     }
 
     return NextResponse.json({ success: true, employeeId: application.candidate_id });

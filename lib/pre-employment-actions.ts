@@ -246,8 +246,18 @@ export async function reviewApplicantDocument(formData: FormData) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath(`/jobs/manage`);
-  revalidatePath(`/jobs/manage/${applicationId}/documents`);
+  // Revalidate the job applicants listing and the specific documents page.
+  // If we have the job posting id, use the job-scoped paths; otherwise fall back
+  // to the generic jobs manage path.
+  const { data: applicationRow } = await admin.from("applications").select("job_posting_id").eq("id", applicationId).maybeSingle();
+  const jobPostingId = applicationRow?.job_posting_id ?? null;
+
+  if (jobPostingId) {
+    revalidatePath(`/jobs/manage/${jobPostingId}/applicants`);
+    revalidatePath(`/jobs/manage/${jobPostingId}/applicants/${applicationId}/documents`);
+  } else {
+    revalidatePath(`/jobs/manage`);
+  }
   revalidatePath(`/apply/applications/${applicationId}/documents`);
 
   return { success: true };
@@ -278,6 +288,11 @@ export async function submitApplicantDocument(formData: FormData) {
 
   if (!application || application.candidate_id !== user.id) {
     return { success: false, error: "Unauthorized" };
+  }
+
+  // Only allow uploads when the application is in pre_employment state
+  if (String(application.status ?? "").toLowerCase() !== "pre_employment") {
+    return { success: false, error: "Uploads are only allowed during pre-employment" };
   }
 
   const normalizedName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
