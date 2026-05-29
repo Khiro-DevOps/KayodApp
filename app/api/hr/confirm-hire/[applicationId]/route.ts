@@ -293,7 +293,9 @@ export async function POST(_request: NextRequest, ctx: any) {
     if (employeeInsertError) {
       // Try rolling back profile and application/offer changes
       try {
-        await admin.from("profiles").update({ role: application.profiles?.role ?? null, updated_at: application.updated_at }).eq("id", application.candidate_id);
+        // We didn't previously fetch the candidate's prior role reliably in the
+        // initial query; restore to null to avoid applying an incorrect role.
+        await admin.from("profiles").update({ role: null, updated_at: application.updated_at }).eq("id", application.candidate_id);
         await admin.from("applications").update({ status: application.status, updated_at: application.updated_at }).eq("id", applicationId);
         await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
       } catch (rollbackErr) {
