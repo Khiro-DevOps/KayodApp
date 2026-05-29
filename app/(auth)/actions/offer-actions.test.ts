@@ -6,7 +6,14 @@ type FailureMode =
 
 type MockRow = Record<string, unknown>;
 
-type TableName = "applications" | "contract_templates" | "job_offers" | "job_postings" | "signed_documents";
+type TableName =
+  | "applications"
+  | "contract_templates"
+  | "job_offers"
+  | "job_postings"
+  | "signed_documents"
+  | "profiles"
+  | "tenants";
 
 function createMockDatabase() {
   const tables: Record<TableName, MockRow[]> = {
@@ -15,6 +22,8 @@ function createMockDatabase() {
     job_offers: [],
     job_postings: [],
     signed_documents: [],
+    profiles: [],
+    tenants: [],
   };
 
   const counters: Record<Exclude<TableName, "applications" | "job_postings">, number> = {
@@ -56,7 +65,9 @@ function createMockDatabase() {
   }
 
   function applyFilters(tableName: TableName, filters: Array<{ kind: "eq" | "in"; column: string; value: unknown }>) {
-    return tables[tableName].filter((row) => matches(row, filters));
+    const table = tables[tableName];
+    if (!Array.isArray(table)) return [];
+    return table.filter((row) => matches(row, filters));
   }
 
   function nextId(tableName: Exclude<TableName, "applications" | "job_postings">) {
@@ -152,6 +163,11 @@ function createMockDatabase() {
             nextRow.id = nextId("signed_documents");
           } else if (this.tableName === "contract_templates") {
             nextRow.id = nextId("contract_templates");
+          }
+
+          // Maintain backward-compatible alias used in older tests
+          if (this.tableName === "job_offers" && (nextRow as any).job_posting_id && !(nextRow as any).job_id) {
+            (nextRow as any).job_id = (nextRow as any).job_posting_id;
           }
 
           tables[this.tableName].push(nextRow);
@@ -253,7 +269,7 @@ describe("sendHydratedOffer", () => {
           work_setup: "Remote",
           salary_min: 65000,
           offer_letter_settings: null,
-          docuseal_template_id: null,
+          docuseal_template_id: "template-1",
           created_by: "user-1",
         },
       ],
