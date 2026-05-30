@@ -6,7 +6,8 @@ const publicRoutes = ["/", "/login", "/register", "/auth/callback"];
 
 // Route prefixes that don't require authentication
 // Include `/register` so subroutes like `/register/applicant` are public
-const publicPrefixes = ["/api/webhooks", "/register"];
+// Also allow `/api/register` so client-side registration POSTs are not redirected to /login
+const publicPrefixes = ["/api/webhooks", "/register", "/api/register"];
 
 // In development, also allow dev routes to bypass auth
 const devPrefixes = process.env.NODE_ENV === "development" ? ["/api/dev", "/dev"] : [];

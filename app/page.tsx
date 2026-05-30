@@ -12,8 +12,8 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { SUBSCRIPTION_TIERS } from "@/lib/subscription-tiers";
 import { SmoothScrollButton } from "@/components/smooth-scroll-button";
+import BookDemoModal from "@/components/landing/BookDemoModal";
 
 const features: Array<{
   title: string;
@@ -75,12 +75,20 @@ export default function Home() {
             Kayod
           </Link>
           <nav className="ml-6 hidden items-center gap-6 md:flex">
-            <a className="text-[15px] text-white/80 transition-colors hover:text-white" href="#features">
+            <SmoothScrollButton
+              targetId="features"
+              offset={72}
+              className="text-[15px] text-white/80 transition-colors hover:text-white"
+            >
               Features
-            </a>
-            <a className="text-[15px] text-white/80 transition-colors hover:text-white" href="#pricing">
+            </SmoothScrollButton>
+            <SmoothScrollButton
+              targetId="pricing"
+              offset={72}
+              className="text-[15px] text-white/80 transition-colors hover:text-white"
+            >
               Pricing
-            </a>
+            </SmoothScrollButton>
           </nav>
         </div>
 
@@ -120,7 +128,7 @@ export default function Home() {
               <div className="flex flex-col items-center gap-3 pt-2 sm:flex-row lg:items-start">
                 <SmoothScrollButton
                   targetId="pricing"
-                  offset={52}
+                  offset={72}
                   className="rounded-[8px] bg-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
                 >
                   I&apos;m hiring
@@ -311,7 +319,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="features" className="bg-white px-6 py-20">
+        <section id="features" className="scroll-mt-20 bg-white px-6 py-20 lg:scroll-mt-24">
           <div className="mx-auto max-w-6xl">
             <div className="max-w-2xl">
               <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Capabilities</span>
@@ -346,63 +354,62 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="pricing" className="bg-[#FAF8FF] px-6 pt-8 pb-16">
+        <section id="pricing" className="scroll-mt-20 bg-[#FAF8FF] px-6 py-10 lg:scroll-mt-24 lg:py-12">
           <div className="mx-auto max-w-6xl">
-            <div className="text-center">
-              <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Pricing</span>
-              <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1A1B21]">
-                Choose the plan that fits your team
-              </h2>
-              <p className="mx-auto mt-3 max-w-2xl text-[15px] leading-[22px] text-[#484551]">
-                Clear tiers, simple limits, and a direct path from landing page to registration.
-              </p>
-            </div>
+            <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-12">
+              <div className="max-w-xl text-center lg:pt-0 lg:text-left">
+                <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Pricing</span>
+                <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-[#1A1B21] sm:text-[32px]">
+                  Enterprise pricing for teams that need everything
+                </h2>
+                <p className="mx-auto mt-3 max-w-2xl text-[15px] leading-[22px] text-[#484551] lg:mx-0">
+                  Custom pricing for organizations that want the full hiring and employee experience in one platform.
+                </p>
+              </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-3 lg:items-stretch">
-              {SUBSCRIPTION_TIERS.map((tier) => (
-                <article
-                  key={tier.plan}
-                  className={`flex h-full flex-col rounded-[12px] border bg-white p-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] ${
-                    tier.highlighted ? "border-[#332477] ring-2 ring-[#332477]/10" : "border-[#E8E6F8]"
-                  }`}
-                >
-                  {tier.highlighted ? (
-                    <span className="inline-flex rounded-full bg-[#DFDCFF] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
-                      Recommended
-                    </span>
-                  ) : null}
+              <div className="flex justify-center lg:justify-end">
+                <article className="flex w-full max-w-[540px] flex-col rounded-[12px] border border-[#332477] bg-white p-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] ring-2 ring-[#332477]/10 sm:p-5">
+                  <div className="flex flex-col gap-3 sm:gap-4">
+                    <div>
+                      <span className="inline-flex rounded-full bg-[#DFDCFF] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
+                        Enterprise
+                      </span>
+                      <h3 className="mt-3 font-[family-name:var(--font-poppins)] text-[18px] font-semibold text-[#1A1B21] sm:mt-4 sm:text-[20px]">
+                        Kayod Enterprise
+                      </h3>
+                      <p className="mt-1 text-[13px] text-[#484551] sm:text-[14px]">
+                        Unlimited listings · Unlimited applicants · Full AI suite
+                      </p>
+                      <p className="mt-3 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-[#1A1B21] sm:mt-4 sm:text-[32px]">
+                        Custom pricing
+                      </p>
+                    </div>
 
-                  <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-[#1A1B21]">
-                    {tier.name}
-                  </h3>
-                  <p className="mt-1 text-[14px] text-[#484551]">{tier.limits}</p>
-                  <p className="mt-4 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1A1B21]">
-                    {tier.price}
-                  </p>
+                    <ul className="grid gap-2.5 text-[13px] leading-[18px] text-[#1A1B21] sm:grid-cols-2 sm:gap-3 sm:text-[14px] sm:leading-[20px]">
+                      {[
+                        "Pipeline",
+                        "DocuSeal",
+                        "Applicant portal",
+                        "AI scoring",
+                        "AI resume parsing",
+                        "Analytics",
+                        "Priority support",
+                        "Custom contract templates",
+                        "Employee portal",
+                      ].map((feature) => (
+                        <li key={feature} className="flex items-start gap-2.5 sm:gap-3">
+                          <span className="mt-1 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#DFDCFF] text-[#332477]">
+                            <BadgeCheck className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
 
-                  <ul className="mt-4 space-y-3 text-[14px] leading-[20px] text-[#1A1B21]">
-                    {tier.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-3">
-                        <span className="mt-1 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#DFDCFF] text-[#332477]">
-                          <BadgeCheck className="h-3.5 w-3.5" />
-                        </span>
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <Link
-                    href={`/register?plan=${encodeURIComponent(tier.plan)}`}
-                    className={`mt-6 inline-flex w-full items-center justify-center rounded-[8px] px-4 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold transition-all active:scale-95 ${
-                      tier.highlighted
-                        ? "bg-[#332477] text-white hover:bg-[#4A3D8F]"
-                        : "border border-[#332477] text-[#332477] hover:bg-[#332477]/5"
-                    }`}
-                  >
-                    Get started
-                  </Link>
+                    <BookDemoModal />
+                  </div>
                 </article>
-              ))}
+              </div>
             </div>
           </div>
         </section>
