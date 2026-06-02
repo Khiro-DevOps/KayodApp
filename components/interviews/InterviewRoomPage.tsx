@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import InterviewRoom from "@/app/(dashboard)/interviews/[id]/room/interview-room";
+import InterviewRoom from "@/app/(dashboard)/hr/interviews/[id]/room/interview-room";
 
 interface Interview {
   id: string;

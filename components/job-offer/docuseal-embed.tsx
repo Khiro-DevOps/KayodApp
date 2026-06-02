@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { DocusealForm, type DocusealFormCompleteData } from "@docuseal/react";
 import { toast } from "sonner";
-import { processDocuSealCompletion } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { processDocuSealCompletion } from "@/app/(dashboard)/hr/offers/actions";
 
 interface Props {
   latest_docuseal_url: string;

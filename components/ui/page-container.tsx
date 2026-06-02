@@ -9,7 +9,7 @@ import { effectiveRole, isHRRole, roleLabel } from "@/lib/roles";
 import type { UserRole } from "@/lib/types";
 import DashboardHeader from "@/components/ui/dashboard-header";
 import PwaShell from "@/components/layout/pwa-shell";
-import DashboardLayout from "@/app/(hr)/layout";
+import DashboardLayout from "@/app/(dashboard)/hr/layout";
 
 import type { ReactNode } from "react";
 
@@ -22,16 +22,20 @@ type NavItem = {
 };
 
 const hrNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: "dashboard", exact: true },
-  { label: "Employees", href: "/employees", icon: "group" },
-  { label: "Applicants", href: "/applications", icon: "layers" },
-  { label: "Manage Jobs", href: "/jobs/manage", icon: "work" },
-  { label: "Payroll", href: "/payroll", icon: "payments" },
-  { label: "Reports", href: "/reports", icon: "assessment" },
+  { label: "Dashboard", href: "/hr", icon: "dashboard", exact: true },
+  { label: "Applicants", href: "/hr/applicants", icon: "layers" },
+  { label: "Manage Jobs", href: "/hr/jobs", icon: "work" },
+  { label: "Interviews", href: "/hr/interviews", icon: "event" },
+  { label: "Offers", href: "/hr/offers", icon: "description" },
+  { label: "Employees", href: "/hr/employees", icon: "group" },
+  { label: "Payroll", href: "/hr/payroll", icon: "payments" },
+  { label: "Reports", href: "/hr/reports", icon: "assessment" },
 ];
 
 function isHrDesktopRoute(pathname: string) {
   return (
+    pathname === "/hr" ||
+    pathname.startsWith("/hr/") ||
     pathname === "/dashboard" ||
     pathname.startsWith("/applications") ||
     pathname.startsWith("/employees") ||
@@ -39,7 +43,6 @@ function isHrDesktopRoute(pathname: string) {
     pathname.startsWith("/jobs/manage") ||
     pathname.startsWith("/payroll") ||
     pathname.startsWith("/reports") ||
-    pathname.startsWith("/hr") ||
     pathname.startsWith("/leaves") ||
     pathname.startsWith("/notifications") ||
     pathname.startsWith("/offer-signing")
@@ -116,7 +119,7 @@ export default function PageContainer({ children }: { children: ReactNode }) {
             .from("companies")
             .select("name")
             .eq("id", nextTenantId)
-            .maybeSingle<{ name?: string | null }>();
+            .maybeSingle() as unknown as { data: { name?: string | null } | null; error: any };
 
           nextCompanyName = company?.name?.trim() || nextCompanyName;
         }

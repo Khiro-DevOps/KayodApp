@@ -9,7 +9,7 @@
 
 import React, { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createJob } from "@/app/(dashboard)/jobs/actions";
+import { createJob } from "@/app/(dashboard)/hr/jobs/actions";
 import OfferLetterPhAccordion from "@/components/offer-letter-ph/offer-letter-ph-accordion";
 import type { OfferLetterPhType } from "@/lib/schemas/offer-letter-ph";
 import { flattenOfferLetterPhToFormData } from "@/lib/offer-letter-ph-utils";

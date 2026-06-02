@@ -2,7 +2,7 @@
 
 import type { JobOffer } from "@/lib/types";
 import { useState } from "react";
-import { revokeOffer } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { revokeOffer } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
 import NegotiationResponsePanel from "./negotiation-response-panel";
 import { Download, ChevronDown, ChevronUp } from "lucide-react";

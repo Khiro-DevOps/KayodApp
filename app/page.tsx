@@ -20,27 +20,27 @@ const features: Array<{
   description: string;
   icon: LucideIcon;
 }> = [
-  {
-    title: "AI Screening",
-    description: "Rank applicants faster with intelligent matching, scoring, and shortlisting.",
-    icon: Sparkles,
-  },
-  {
-    title: "Contract Signing",
-    description: "Move from offer to signed contract with a clean, guided digital flow.",
-    icon: FileText,
-  },
-  {
-    title: "Mobile Portal",
-    description: "Keep hiring and employee workflows accessible on mobile and PWA surfaces.",
-    icon: Smartphone,
-  },
-  {
-    title: "Time Tracking",
-    description: "Bring scheduling, attendance, and payroll signals into one system.",
-    icon: CalendarClock,
-  },
-];
+    {
+      title: "AI Screening",
+      description: "Rank applicants faster with intelligent matching, scoring, and shortlisting.",
+      icon: Sparkles,
+    },
+    {
+      title: "Contract Signing",
+      description: "Move from offer to signed contract with a clean, guided digital flow.",
+      icon: FileText,
+    },
+    {
+      title: "Mobile Portal",
+      description: "Keep hiring and employee workflows accessible on mobile and PWA surfaces.",
+      icon: Smartphone,
+    },
+    {
+      title: "Time Tracking",
+      description: "Bring scheduling, attendance, and payroll signals into one system.",
+      icon: CalendarClock,
+    },
+  ];
 
 const metrics = [
   { label: "Applicants Reviewed", value: "4.8k" },
@@ -354,10 +354,11 @@ export default function Home() {
           </div>
         </section>
 
+        {/* FIXED PRICING SECTION */}
         <section id="pricing" className="scroll-mt-20 bg-[#FAF8FF] px-6 py-10 lg:scroll-mt-24 lg:py-12">
           <div className="mx-auto max-w-6xl">
-            <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-12">
-              <div className="max-w-xl text-center lg:pt-0 lg:text-left">
+            <div className="grid items-center gap-8 lg:grid-cols-[4.5fr_5.5fr] lg:gap-12">
+              <div className="w-full text-center lg:text-left">
                 <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Pricing</span>
                 <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-[#1A1B21] sm:text-[32px]">
                   Enterprise pricing for teams that need everything
@@ -367,7 +368,7 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="flex justify-center lg:justify-end">
+              <div className="flex w-full justify-center lg:justify-end">
                 <article className="flex w-full max-w-[540px] flex-col rounded-[12px] border border-[#332477] bg-white p-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] ring-2 ring-[#332477]/10 sm:p-5">
                   <div className="flex flex-col gap-3 sm:gap-4">
                     <div>

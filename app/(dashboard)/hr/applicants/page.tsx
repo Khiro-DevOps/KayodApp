@@ -1,0 +1,1 @@
+export { default } from "@/app/(dashboard)/hr/applicants/hr-applications-page";

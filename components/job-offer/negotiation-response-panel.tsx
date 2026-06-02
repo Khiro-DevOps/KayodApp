@@ -2,7 +2,7 @@
 
 import type { JobOffer, NegotiationRequest } from "@/lib/types";
 import { useState, useEffect } from "react";
-import { respondToNegotiation } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { respondToNegotiation } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 

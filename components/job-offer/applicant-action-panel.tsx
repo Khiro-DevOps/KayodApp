@@ -2,7 +2,7 @@
 
 import type { JobOffer } from "@/lib/types";
 import { useState } from "react";
-import { acceptOffer, declineOffer } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { acceptOffer, declineOffer } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
 import NegotiationForm from "./negotiation-form";
 import DocuSealEmbed from "./docuseal-embed";

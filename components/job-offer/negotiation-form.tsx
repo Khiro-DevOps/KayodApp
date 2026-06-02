@@ -2,7 +2,7 @@
 
 import type { JobOfferTerms, NegotiationItem } from "@/lib/types";
 import { useState } from "react";
-import { submitNegotiation } from "@/app/(dashboard)/job-offers/job-offer-actions";
+import { submitNegotiation } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 

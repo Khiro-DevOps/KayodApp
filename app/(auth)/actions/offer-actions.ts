@@ -3,7 +3,7 @@
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { sendOfferWithDocuSeal } from "../../(dashboard)/jobs/manage/[id]/applicants/[appId]/offer/send-with-docuseal-actions";
+import { sendOfferWithDocuSeal } from "../../(dashboard)/hr/jobs/[id]/applicants/[appId]/offer/send-with-docuseal-actions";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
 export async function sendHydratedOffer(jobId: string, applicationId: string) {

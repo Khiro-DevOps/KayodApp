@@ -50,7 +50,7 @@ export default function DashboardPage() {
           .from("profiles")
           .select("role, tenant_id, first_name, last_name, email, avatar_url")
           .eq("id", user.id)
-          .maybeSingle<DashboardProfile>();
+          .maybeSingle() as unknown as { data: DashboardProfile | null; error: any };
 
         if (!isMounted) {
           return;

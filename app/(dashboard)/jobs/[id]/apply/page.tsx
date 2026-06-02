@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { JobPosting, Resume } from "@/lib/types";
 import Link from "next/link";
-import { submitApplication } from "@/app/(dashboard)/applications/actions";
+import { submitApplication } from "@/app/(dashboard)/hr/applicants/actions";
 import ApplyFormClient from "./apply-form-client";
 
 export default async function ApplyPage({

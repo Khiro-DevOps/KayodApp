@@ -30,6 +30,8 @@ function createMockDatabase() {
     contract_templates: 0,
     job_offers: 0,
     signed_documents: 0,
+    profiles: 0,
+    tenants: 0,
   };
 
   const failures = new Map<string, FailureMode>();
@@ -76,8 +78,8 @@ function createMockDatabase() {
       tableName === "job_offers"
         ? "offer"
         : tableName === "signed_documents"
-        ? "signed-doc"
-        : "template";
+          ? "signed-doc"
+          : "template";
     return `${prefix}-${counters[tableName]}`;
   }
 
@@ -88,7 +90,7 @@ function createMockDatabase() {
 
     private filters: Array<{ kind: "eq" | "in"; column: string; value: unknown }> = [];
 
-    constructor(private readonly tableName: TableName) {}
+    constructor(private readonly tableName: TableName) { }
 
     select() {
       this.operation = this.operation === "insert" ? "insert" : "select";
