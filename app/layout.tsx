@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
+import { LayoutProvider } from "@/context/LayoutContext";
 
 const inter = DM_Sans({
   variable: "--font-inter",
@@ -39,7 +40,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+        <LayoutProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </LayoutProvider>
       </body>
     </html>
   );

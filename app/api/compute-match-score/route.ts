@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const GEMINI_MODEL = "google/gemini-2.0-flash-001";
+const GEMINI_MODEL = "google/gemini-2.0-flash";
 
 type ApplicationRow = {
   id: string;

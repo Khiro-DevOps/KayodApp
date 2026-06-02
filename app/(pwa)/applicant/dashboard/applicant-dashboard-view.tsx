@@ -121,26 +121,7 @@ export default function ApplicantDashboardView({
   }, [identity.userId]);
 
   return (
-    <div className="min-h-screen bg-[#fcf8ff] px-6 py-6 text-[#171542] lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6">
-        <div className="flex items-start justify-between gap-4 pt-2">
-          <div>
-            <h1 className="font-[family-name:var(--font-poppins)] text-[22px] font-semibold leading-8 text-on-background">
-              Applicant Dashboard
-            </h1>
-            <p className="mt-1 text-[14px] leading-[22px] text-outline">
-              {isLoading ? "Loading your application activity..." : `Welcome back, ${displayName}`}
-            </p>
-          </div>
-
-          <Link
-            href="/jobs"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#7C7AAC] px-5 py-3 font-medium text-white transition-colors hover:bg-[#4A4880]"
-          >
-            <span className="material-symbols-outlined text-[20px]">search</span>
-            Browse Jobs
-          </Link>
-        </div>
+    <div className="max-w-6xl mx-auto px-4 pt-4 space-y-8">
 
         {error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -196,9 +177,7 @@ export default function ApplicantDashboardView({
             <ActivityCard />
           </div>
 
-          <QuickActionsCard />
         </section>
-      </div>
     </div>
   );
 }

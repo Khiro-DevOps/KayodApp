@@ -229,35 +229,33 @@ export default function BottomNav({
   if (isMeetingRoom) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200">
-      <div className="mx-auto max-w-[480px] flex items-center justify-around h-16">
-        {navItems.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 text-xs transition-colors ${
-                isActive
-                  ? "text-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <span className="relative flex items-center justify-center">
-                {item.icon}
-                {item.showBadge && unreadCount > 0 && (
-                  <span className="absolute -right-2 -top-1 min-w-5 rounded-full border border-gray-300 bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-gray-900">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </span>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </div>
+    <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 shadow-lg border-t border-border bg-surface flex justify-around items-center px-4 py-3 rounded-t-xl">
+      {navItems.map((item) => {
+        const isActive =
+          pathname === item.href ||
+          (item.href !== "/dashboard" && pathname.startsWith(item.href));
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex flex-col items-center justify-center gap-1 text-center transition-all ${
+              isActive
+                ? "text-primary"
+                : "text-on-surface-variant hover:bg-surface-container-high"
+            }`}
+          >
+            <span className="relative flex items-center justify-center">
+              {item.icon}
+              {item.showBadge && unreadCount > 0 && (
+                <span className="absolute -right-2 -top-1 min-w-5 rounded-full border border-border bg-error px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </span>
+            <span className="text-[10px] font-label-caps">{item.label}</span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

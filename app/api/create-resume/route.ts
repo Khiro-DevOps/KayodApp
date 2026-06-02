@@ -305,7 +305,7 @@ export async function POST(request: Request) {
       if (process.env.OPENROUTER_API_KEY) {
         console.log("Triggering AI synthesis via OpenRouter...");
         aiGeneratedSections = await generateResumeSections(body);
-        usedModel = "google/gemini-2.0-flash-001";
+        usedModel = "google/gemini-2.0-flash";
       } else {
         console.warn("No OPENROUTER_API_KEY found, skipping AI enhancement.");
       }

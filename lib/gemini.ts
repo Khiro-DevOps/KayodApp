@@ -99,7 +99,7 @@ const requestQueue = new RequestQueue();
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Fixed the model string to the correct OpenRouter model ID
-const MODEL = "google/gemini-2.0-flash-001"; 
+export const GEMINI_MODEL = "google/gemini-2.5-flash-lite"; 
 
 async function callOpenRouter(
   systemPrompt: string,
@@ -117,7 +117,7 @@ async function callOpenRouter(
         "X-Title": "Resume Generator",
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: GEMINI_MODEL,
         temperature,
         max_tokens: 800,
         messages: [
@@ -418,7 +418,7 @@ function resolveMatchLevel(score: number): JobFitAnalysisOutput["match_level"] {
 function resolveCardColorHex(level: JobFitAnalysisOutput["match_level"]): string {
   if (level === "High") return "#16A34A";
   if (level === "Medium") return "#F59E0B";
-  return "#9CA3AF";
+  return "#7C7AAC"; // Stitch Primary Brand Accent for Low/Fallback
 }
 
 function toPromptText(value: string | Record<string, unknown>): string {
@@ -571,11 +571,7 @@ ${toPromptText(input.jobRequirements)}
 
     return normalizeJobFitOutput(parsed, input.fallbackScore);
   } catch (error) {
-    if (error instanceof OpenRouterError) {
-      console.error(`Job fit analysis failed - ${error.message}`);
-    } else {
-      console.error("Job fit analysis error:", error);
-    }
+    console.error("OpenRouter API error caught inside analyzeJobFit:", error);
     return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 }

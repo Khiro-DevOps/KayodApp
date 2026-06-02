@@ -27,13 +27,17 @@ module.exports = {
         "on-surface": "#171542",
         "surface-container-low": "#f6f2ff",
         "primary-fixed-dim": "#c4c1f8",
-        "secondary": "#61578c",
-        "primary": "#595787",
+        "secondary": "#C8BCF8",
+        "primary": {
+          DEFAULT: "#7C7AAC",
+          dark: "#4A4880",
+          darker: "#2A2650"
+        },
         "error-container": "#ffdad6",
         "on-tertiary-container": "#fffbff",
         "tertiary-fixed": "#e4dfff",
         "tertiary-fixed-dim": "#c7c1f5",
-        "surface": "#fcf8ff",
+        "surface": "#F8F6FF",
         "on-error": "#ffffff",
         "surface-tint": "#5b5989",
         "on-secondary-container": "#574d81",
@@ -49,12 +53,13 @@ module.exports = {
         "on-secondary-fixed": "#1d1244",
         "tertiary-container": "#746f9e",
         "primary-container": "#7170a1",
-        "kayod-deep": "#2A2650"
+        "border": "#E0D9FC"
       },
       borderRadius: {
         "DEFAULT": "4px",
         "lg": "8px",
         "xl": "12px",
+        "rounded-card": "24px",
         "full": "9999px"
       },
       spacing: {
@@ -66,7 +71,9 @@ module.exports = {
         "sm": "8px",
         "unit": "4px",
         "gutter": "16px",
-        "card-padding": "20px"
+        "card-padding": "20px",
+        "space-stack-gap": "16px",
+        "card-internal-padding": "20px"
       },
       fontFamily: {
         "label-caps": ["DM Sans"],
@@ -82,7 +89,8 @@ module.exports = {
         "h3": ["14px", { "lineHeight": "20px", "fontWeight": "500" }],
         "body": ["14px", { "lineHeight": "22.4px", "fontWeight": "400" }],
         "h2": ["17px", { "lineHeight": "24px", "fontWeight": "500" }],
-        "badge": ["11px", { "lineHeight": "1", "fontWeight": "500" }]
+        "badge": ["11px", { "lineHeight": "1", "fontWeight": "500" }],
+        "h1-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "700" }]
       }
     },
   },

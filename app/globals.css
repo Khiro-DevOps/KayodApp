@@ -3,12 +3,10 @@
 
 @theme inline {
   /* Colors (canonical tokens) */
-  --color-primary: #595787;
+  --color-primary: #7C7AAC;
   --color-primary-dark: #4A4880;
   --color-navbar: #2A2650;
-  --color-secondary: #61578c;
-  --color-secondary-container: #cdc1fe;
-  --color-tertiary: #5b5784;
+  --color-secondary: #C8BCF8;
   --color-on-primary: #ffffff;
   --color-on-background: #171542;
   --color-on-surface: #171542;
@@ -23,7 +21,7 @@
   --color-surface-variant: #e3dfff;
   --color-surface-bright: #fcf8ff;
   --color-surface-dim: #d9d6ff;
-  --color-surface: #fcf8ff;
+  --color-surface: #F8F6FF;
   --color-card-border: #E0D9FC;
   --color-background: #fcf8ff;
   --color-text-primary: #171542;
@@ -69,6 +67,11 @@
   --spacing-unit: 4px;
   --spacing-gutter: 16px;
   --spacing-card-padding: 20px;
+  --spacing-space-stack-gap: 16px;
+  --spacing-card-internal-padding: 20px;
+
+  /* Custom Border Radius */
+  --radius-rounded-card: 24px;
 
   /* Custom Fonts */
   --font-label-caps: 'DM Sans', sans-serif;
@@ -102,6 +105,11 @@
 
   --text-badge: 11px;
   --text-badge--line-height: 1;
+  --text-badge--font-weight: 500;
+
+  --text-h1-mobile: 20px;
+  --text-h1-mobile--line-height: 28px;
+  --text-h1-mobile--font-weight: 700;
 }
 
 body {
