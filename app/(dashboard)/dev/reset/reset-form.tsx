@@ -16,12 +16,10 @@ const STAGES = [
 
 export default function ResetForm() {
   const router = useRouter()
-  const [applicationId, setApplicationId] = useState(
-    // Pre-fill with your test application ID
-    "bfe45863-3fc7-40f7-9917-041e4d53b276"
-  )
+  const [applicationId, setApplicationId] = useState("bfe45863-3fc7-40f7-9917-041e4d53b276")
   const [stage, setStage] = useState("offer_sent")
   const [loading, setLoading] = useState(false)
+  const [promoting, setPromoting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,6 +45,30 @@ export default function ResetForm() {
     }
   }
 
+  async function handlePromoteToEmployee() {
+    setPromoting(true)
+    setResult(null)
+    setError(null)
+
+    try {
+      const res = await fetch("/api/dev/promote-to-employee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId }),
+      })
+      const data = await res.json() as { message?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? "Promotion failed")
+      setResult(data.message ?? "Successfully converted applicant to full employee")
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Promotion failed")
+    } finally {
+      setPromoting(false)
+    }
+  }
+
+  const isBtnDisabled = loading || promoting || !applicationId
+
   return (
     <div
       style={{
@@ -60,16 +82,16 @@ export default function ResetForm() {
     >
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-          🛠 Dev: Reset Application Stage
+          🛠 Dev: Application Control Matrix
         </h1>
         <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
           Only visible in development mode
         </p>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>
-          Application ID
+          Target Application ID
         </label>
         <input
           value={applicationId}
@@ -88,17 +110,19 @@ export default function ResetForm() {
         />
       </div>
 
+      <hr style={{ border: "none", borderTop: "1px dashed #e8e8e4", margin: "20px 0" }} />
+
       <div style={{ marginBottom: 20 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>
-          Reset to stage
-        </label>
+        <h3 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 10px 0", color: "#111" }}>
+          Option A: Modify Status Stage
+        </h3>
         <select
           value={stage}
           onChange={(e) => setStage(e.target.value)}
           style={{
             display: "block",
             width: "100%",
-            marginTop: 6,
+            marginBottom: 10,
             padding: "10px 12px",
             borderRadius: 10,
             border: "1px solid #e8e8e4",
@@ -111,25 +135,52 @@ export default function ResetForm() {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => void handleReset()}
+          disabled={isBtnDisabled}
+          style={{
+            width: "100%",
+            padding: "10px 0",
+            background: loading ? "#e8e8e4" : "#4648d4",
+            color: loading ? "#aaa" : "#fff",
+            border: "none",
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isBtnDisabled ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Updating Stage..." : "Apply Selected Stage"}
+        </button>
       </div>
 
-      <button
-        onClick={() => void handleReset()}
-        disabled={loading || !applicationId}
-        style={{
-          width: "100%",
-          padding: "12px 0",
-          background: loading ? "#e8e8e4" : "#ef4444",
-          color: loading ? "#aaa" : "#fff",
-          border: "none",
-          borderRadius: 10,
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: loading ? "not-allowed" : "pointer",
-        }}
-      >
-        {loading ? "Resetting..." : "Reset Application"}
-      </button>
+      <hr style={{ border: "none", borderTop: "1px dashed #e8e8e4", margin: "20px 0" }} />
+
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 4px 0", color: "#111" }}>
+          Option B: Complete Onboarding Forcefully
+        </h3>
+        <p style={{ fontSize: 12, color: "#666", margin: "0 0 12px 0", lineHeight: "16px" }}>
+          Bypasses interview pipelines, signs contracts, creates an active record in the employee tables, and sets up dashboard metrics.
+        </p>
+        <button
+          onClick={() => void handlePromoteToEmployee()}
+          disabled={isBtnDisabled}
+          style={{
+            width: "100%",
+            padding: "12px 0",
+            background: promoting ? "#e8e8e4" : "#10b981",
+            color: promoting ? "#aaa" : "#fff",
+            border: "none",
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isBtnDisabled ? "not-allowed" : "pointer",
+          }}
+        >
+          {promoting ? "Converting Team Member..." : "⚡ Force Transition to Active Employee"}
+        </button>
+      </div>
 
       {result && (
         <div
@@ -162,28 +213,6 @@ export default function ResetForm() {
           ✗ {error}
         </div>
       )}
-
-      <div
-        style={{
-          marginTop: 20,
-          padding: "12px 14px",
-          borderRadius: 10,
-          background: "#fafaf8",
-          border: "1px solid #e8e8e4",
-          fontSize: 12,
-          color: "#888",
-        }}
-      >
-        <strong>Quick test flow:</strong>
-        <br />
-        1. Reset to "Offer sent" → candidate signs
-        <br />
-        2. Watch webhook fire in Next.js terminal
-        <br />
-        3. Reset to "Offer signed" → HR confirms in hub
-        <br />
-        4. Verify candidate becomes employee
-      </div>
     </div>
   )
 }
