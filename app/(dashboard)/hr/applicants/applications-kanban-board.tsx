@@ -277,7 +277,7 @@ function getPrimaryActionLabel(stageKey: PipelineStageKey): string {
     case "interview":
       return "Schedule Room/Interview";
     case "offer":
-      return "View Offer";
+      return "Send Offer";
     case "rejected":
       return "Review Candidate";
     default:
@@ -838,7 +838,12 @@ export default function ApplicationsKanbanBoard({
       return;
     }
 
-    if (stageKey === "screening" || stageKey === "offer" || stageKey === "rejected") {
+    if (stageKey === "offer") {
+      router.push(`/job-offer/${encodeURIComponent(application.id)}`);
+      return;
+    }
+
+    if (stageKey === "screening" || stageKey === "rejected") {
       setSelectedApplicationId(application.id);
     }
   };

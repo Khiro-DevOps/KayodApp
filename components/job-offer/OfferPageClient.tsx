@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
 import SigningModal from "@/components/job-offer/SigningModal";
-import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 
 interface OfferSummary {
   status: string;
@@ -267,6 +266,8 @@ export default function OfferPageClient({
   const [resolvedEmbedSrc, setResolvedEmbedSrc] = useState(embedSrc?.trim() || null);
   const [embedLoadError, setEmbedLoadError] = useState(docusealEmbedError?.trim() || null);
   const [isResolvingEmbedSrc, setIsResolvingEmbedSrc] = useState(false);
+  const [isPreparingSigningSession, setIsPreparingSigningSession] = useState(false);
+  const [signingSessionError, setSigningSessionError] = useState<string | null>(null);
   const normalizedApplicationStatus = String(applicationStatus ?? "").trim().toLowerCase();
   const normalizedStatus = offer.status.toLowerCase();
   const isSignedStatus = ["signed", "accepted", "hired"].includes(normalizedStatus);
@@ -297,17 +298,61 @@ export default function OfferPageClient({
     setEmbedLoadError(docusealEmbedError?.trim() || null);
   }, [docusealEmbedError, embedSrc]);
 
-  const handleRetryDocusealEmbed = async () => {
+  const fetchEmbedSrc = async () => {
     setIsResolvingEmbedSrc(true);
+    setSigningSessionError(null);
+
     try {
-      const nextEmbedSrc = await getOrCreateDocusealEmbedSrc(token);
-      setResolvedEmbedSrc(nextEmbedSrc);
+      const response = await fetch(`/api/job-offers/${encodeURIComponent(token)}/embed-src`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Failed to resolve embed source (${response.status}): ${body || response.statusText}`);
+      }
+
+      const data = (await response.json()) as { embedSrc?: string | null; error?: string };
+      if (!data?.embedSrc) {
+        throw new Error(data?.error || "Embed source not available");
+      }
+
+      setResolvedEmbedSrc(data.embedSrc);
       setEmbedLoadError(null);
+      return data.embedSrc;
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load signing form. Please try refreshing the page.";
       console.error("[OfferPageClient] Failed to resolve DocuSeal embed source", error);
-      setEmbedLoadError(error instanceof Error ? error.message : "Unable to load signing form. Please try refreshing the page.");
+      setEmbedLoadError(message);
+      setSigningSessionError(message);
+      throw error;
     } finally {
       setIsResolvingEmbedSrc(false);
+    }
+  };
+
+  const handleRetryDocusealEmbed = async () => {
+    await fetchEmbedSrc();
+  };
+
+  const handlePrepareSigningSession = async () => {
+    if (resolvedEmbedSrc) {
+      setSigningOpen(true);
+      return;
+    }
+
+    setIsPreparingSigningSession(true);
+    setSigningSessionError(null);
+
+    try {
+      const embed = await fetchEmbedSrc();
+      if (embed) {
+        setSigningOpen(true);
+      }
+    } catch {
+      // Errors are handled in fetchEmbedSrc
+    } finally {
+      setIsPreparingSigningSession(false);
     }
   };
 
@@ -445,7 +490,14 @@ export default function OfferPageClient({
             </div>
           </section>
 
-          <NegotiationPanel token={token} status={status} signSectionRef={signSectionRef} />
+          <NegotiationPanel
+            token={token}
+            status={status}
+            signSectionRef={signSectionRef}
+            onAccept={handlePrepareSigningSession}
+            isPreparingSigningSession={isPreparingSigningSession}
+            acceptError={signingSessionError}
+          />
 
           <section ref={signSectionRef} className="rounded-2xl border border-border bg-surface shadow-sm">
             <div className="p-5">
@@ -523,8 +575,24 @@ export default function OfferPageClient({
                   </span>
                 </div>
               ) : (
-                <div className="rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
-                  The signing session has not been generated yet.
+                <div className="space-y-3 rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
+                  <p>The signing session has not been generated yet.</p>
+                  {isResolvingEmbedSrc || isPreparingSigningSession ? (
+                    <p className="text-sm text-text-primary">Preparing signing session...</p>
+                  ) : null}
+                  {(embedLoadError || signingSessionError) && (
+                    <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      <p>{signingSessionError || embedLoadError}</p>
+                      <button
+                        type="button"
+                        onClick={handleRetryDocusealEmbed}
+                        disabled={isResolvingEmbedSrc || isPreparingSigningSession}
+                        className="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        Retry signing session
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

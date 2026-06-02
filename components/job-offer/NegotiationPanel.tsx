@@ -9,6 +9,9 @@ interface NegotiationPanelProps {
   token: string;
   status: string;
   signSectionRef: RefObject<HTMLDivElement | null>;
+  onAccept?: () => Promise<void>;
+  isPreparingSigningSession?: boolean;
+  acceptError?: string | null;
 }
 
 type Intent = NegotiationIntent | "accept";
@@ -89,7 +92,7 @@ function Confirmation({ intent }: { intent: Intent }) {
   );
 }
 
-export default function NegotiationPanel({ token, status, signSectionRef }: NegotiationPanelProps) {
+export default function NegotiationPanel({ token, status, signSectionRef, onAccept, isPreparingSigningSession, acceptError }: NegotiationPanelProps) {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [counterSalary, setCounterSalary] = useState("");
   const [counterNote, setCounterNote] = useState("");
@@ -186,6 +189,7 @@ export default function NegotiationPanel({ token, status, signSectionRef }: Nego
               ariaLabel="Accept this offer as-is"
               onClick={() => {
                 setIntent("accept");
+                void onAccept?.();
               }}
             />
             <IntentButton
@@ -266,8 +270,13 @@ export default function NegotiationPanel({ token, status, signSectionRef }: Nego
         )}
 
         {intent === "accept" && !submitted && !disabled && (
-          <div className="rounded-md bg-slate-50 p-4 text-sm text-text-secondary">
-            Review the contract below. When you are ready, open the signing ceremony.
+          <div className="space-y-3 rounded-md bg-slate-50 p-4 text-sm text-text-secondary">
+            <p>Review the contract below. When you are ready, open the signing ceremony.</p>
+            {isPreparingSigningSession ? (
+              <p className="text-sm text-text-primary">Preparing your signing session...</p>
+            ) : acceptError ? (
+              <p className="text-sm text-red-600">{acceptError}</p>
+            ) : null}
           </div>
         )}
 
