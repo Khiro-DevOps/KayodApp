@@ -73,6 +73,34 @@ const outcomeConfig: Record<string, { label: string; color: string }> = {
   follow_up_needed: { label: "📅 Follow-up Needed",   color: "bg-blue-50 text-blue-700 border-blue-200"  },
 };
 
+function getMatchScoreBadge(score: number | null) {
+  if (score === null) {
+    return {
+      label: "Calculating...",
+      className: "bg-gray-100 text-gray-500",
+    };
+  }
+
+  if (score >= 75) {
+    return {
+      label: `${Math.round(score)}% match`,
+      className: "bg-green-50 text-green-700",
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      label: `${Math.round(score)}% match`,
+      className: "bg-amber-50 text-amber-700",
+    };
+  }
+
+  return {
+    label: `${Math.round(score)}% match`,
+    className: "bg-red-50 text-red-700",
+  };
+}
+
 export default function ApplicantDetailDrawer({
   application,
   jobOffer,
@@ -153,6 +181,8 @@ export default function ApplicantDetailDrawer({
 
   const canReschedule =
     String(application?.status ?? "").toUpperCase() !== "COMPLETED" && !isCompletedLocked;
+  const resolvedMatchScore = matchScoreDetails?.score_total ?? application?.match_score ?? null;
+  const matchScoreBadge = getMatchScoreBadge(resolvedMatchScore);
   const breakdownRows = [
     { label: "Skills", value: matchScoreDetails?.score_skills ?? 0, weight: "40%" },
     { label: "Title", value: matchScoreDetails?.score_title ?? 0, weight: "25%" },
@@ -451,9 +481,11 @@ export default function ApplicantDetailDrawer({
               <h2 className="text-lg font-bold text-text-primary">
                 {candidate?.first_name} {candidate?.last_name}
               </h2>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${matchScoreBadge.className}`}>
+                {matchScoreBadge.label}
+              </span>
             </div>
             <p className="text-sm text-text-secondary mt-1">{candidate?.email}</p>
-            {/* Inline Match Breakdown removed — use the modal to view detailed breakdown */}
           </div>
           <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -505,11 +537,13 @@ export default function ApplicantDetailDrawer({
                   >
                     {resume?.title ?? "View Resume"}
                   </button>
-                  <span
+                  <button
+                    type="button"
                     onClick={() => setIsScoreModalOpen(true)}
-                    className={`ml-auto rounded px-2 py-1 text-xs font-bold cursor-pointer ${matchScorePill.className}`}>
-                    {matchScorePill.label}
-                  </span>
+                    className={`ml-auto rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${matchScoreBadge.className}`}
+                  >
+                    {matchScoreBadge.label}
+                  </button>
                 </div>
               ) : (
                 <p className="text-xs text-red-500">
@@ -518,6 +552,79 @@ export default function ApplicantDetailDrawer({
               )}
             </div>
           )}
+
+          <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-text-primary">Match Score</h3>
+              <button
+                type="button"
+                onClick={() => setIsScoreModalOpen(true)}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                View breakdown
+              </button>
+            </div>
+
+            {loadingMatchScore ? (
+              <p className="text-sm text-text-secondary">Loading score breakdown...</p>
+            ) : matchScoreDetails || resolvedMatchScore !== null ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">Total score</span>
+                  <span className="font-semibold text-text-primary">{resolvedMatchScore !== null ? `${Math.round(resolvedMatchScore)}%` : "N/A"}</span>
+                </div>
+
+                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className={`h-full rounded-full ${resolvedMatchScore !== null && resolvedMatchScore >= 75 ? "bg-green-500" : resolvedMatchScore !== null && resolvedMatchScore >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${resolvedMatchScore ?? 0}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {breakdownRows.map((row) => {
+                    const value = Math.max(0, Math.min(100, row.value));
+                    return (
+                      <div key={row.label} className="rounded-xl border border-border bg-white p-3">
+                        <p className="text-xs uppercase tracking-[0.06em] text-text-secondary">{row.label}</p>
+                        <p className="mt-1 text-base font-semibold text-text-primary">{value}%</p>
+                        <p className="mt-1 text-[11px] text-text-secondary">{row.weight} weight</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {matchScoreDetails?.reasons && matchScoreDetails.reasons.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.06em] text-text-secondary">Reasons</p>
+                    <ul className="space-y-1 text-sm text-text-primary">
+                      {matchScoreDetails.reasons.map((reason) => (
+                        <li key={reason} className="rounded-lg bg-white px-3 py-2 text-sm text-text-secondary">
+                          {reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!matchScoreDetails && (
+                  <p className="text-xs text-text-secondary">
+                    Breakdown details are not available yet.
+                  </p>
+                )}
+
+                {matchScoreDetails?.computed_at && (
+                  <p className="text-[11px] text-text-secondary">
+                    Computed {new Date(matchScoreDetails.computed_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-text-secondary">
+                Match score has not been computed yet.
+              </p>
+            )}
+          </div>
 
           {interviewNotes && (
             <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">

@@ -10,9 +10,16 @@ interface DashboardShellProps {
   role: UserRole;
   userId?: string | null;
   initialUnreadCount?: number;
+  layoutName?: string;
 }
 
-export default function DashboardShell({ children, role, userId = null, initialUnreadCount = 0 }: DashboardShellProps) {
+export default function DashboardShell({
+  children,
+  role,
+  userId = null,
+  initialUnreadCount = 0,
+  layoutName,
+}: DashboardShellProps) {
   const pathname = usePathname();
   const isMeetingRoom = typeof pathname === "string" && pathname.includes("/interviews/") && pathname.includes("/room");
 
@@ -21,7 +28,7 @@ export default function DashboardShell({ children, role, userId = null, initialU
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen" data-layout={layoutName ?? "pwa"}>
       <main className="flex-1 pb-20">{children}</main>
       <BottomNav role={role} userId={userId} initialUnreadCount={initialUnreadCount} />
     </div>

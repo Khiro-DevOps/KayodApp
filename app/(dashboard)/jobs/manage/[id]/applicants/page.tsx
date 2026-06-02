@@ -3,7 +3,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ApplicantsHubClient from "./applicants-list-client";
-import type { Interview, Profile } from "@/lib/types";
+import type { Interview, JobListing, JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 
@@ -59,26 +59,46 @@ export default async function ApplicantsPage({
   const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, tenant_id")
     .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .single<Pick<Profile, "role" | "tenant_id">>();
 
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  const { data: job, error: jobError } = await supabase
+  const { data: currentJob, error: currentJobError } = await supabase
     .from("job_postings")
     .select("id, title")
     .eq("id", id)
-    .single();
+    .maybeSingle<JobPosting>();
 
-  if (jobError || !job) redirect("/jobs/manage");
+  const legacyJob = currentJob
+    ? null
+    : (await supabase
+        .from("job_listings")
+        .select("id, title")
+        .eq("id", id)
+        .maybeSingle<JobListing>()).data;
+
+  if (currentJobError) {
+    console.error("Current job fetch error:", currentJobError);
+  }
+
+  const job = currentJob ?? legacyJob;
+
+  if (!job) redirect("/jobs/manage");
+
+  const isLegacyJob = !currentJob;
+  const jobTitle = job.title;
+
+  const applicationField = isLegacyJob ? "job_listing_id" : "job_posting_id";
 
   const { data: rawApplications } = await supabase
     .from("applications")
     .select(`
       id,
       job_posting_id,
+      job_listing_id,
       candidate_id,
       status,
       match_score,
@@ -88,7 +108,7 @@ export default async function ApplicantsPage({
       profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
       resumes (id, title, pdf_url, created_at)
     `)
-    .eq("job_posting_id", id)
+    .eq(applicationField, id)
     .order("match_score", { ascending: false, nullsFirst: false })
     .order("submitted_at", { ascending: false });
 
@@ -243,7 +263,7 @@ export default async function ApplicantsPage({
             <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary truncate">
               Applicants
             </h1>
-            <p className="text-xs text-text-secondary truncate">{job.title}</p>
+            <p className="text-xs text-text-secondary truncate">{jobTitle}</p>
           </div>
         </div>
 

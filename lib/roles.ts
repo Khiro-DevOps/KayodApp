@@ -4,7 +4,9 @@ const ROLE_MAP: Record<string, UserRole | null> = {
   candidate: "candidate",
   job_seeker: "candidate",
   employee: "employee",
+  hr: "hr_manager",
   hr_manager: "hr_manager",
+  employer: "hr_manager",
   admin: "admin",
 };
 

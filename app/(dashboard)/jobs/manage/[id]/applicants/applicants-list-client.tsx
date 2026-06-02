@@ -236,6 +236,34 @@ function getResumeTitle(resumes: ResumeRow | ResumeRow[] | null) {
   return resume?.title ?? "Resume";
 }
 
+function getMatchScoreBadge(score: number | null) {
+  if (score === null) {
+    return {
+      label: "Calculating...",
+      className: "bg-gray-100 text-gray-500",
+    };
+  }
+
+  if (score >= 75) {
+    return {
+      label: `${Math.round(score)}% match`,
+      className: "bg-green-50 text-green-700",
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      label: `${Math.round(score)}% match`,
+      className: "bg-amber-50 text-amber-700",
+    };
+  }
+
+  return {
+    label: `${Math.round(score)}% match`,
+    className: "bg-red-50 text-red-700",
+  };
+}
+
 export default function ApplicantsHubClient({
   jobId,
   jobTitle,
@@ -955,6 +983,7 @@ function ApplicantCardComponent({
   const scheduledAt = interview ? new Date(interview.scheduled_at) : null;
   const diffMinutes = scheduledAt ? (scheduledAt.getTime() - now.getTime()) / 60000 : null;
   const showJoinRoom = diffMinutes !== null && diffMinutes <= 15 && diffMinutes >= -60;
+  const matchScoreBadge = getMatchScoreBadge(app.match_score !== null ? Number(app.match_score) : null);
 
   return (
     <div
@@ -987,21 +1016,9 @@ function ApplicantCardComponent({
 
           {/* Score and Status - Right aligned */}
           <div className="flex shrink-0 items-center gap-2">
-            {app.match_score !== null ? (
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap ${
-                app.match_score >= 75
-                  ? "bg-green-50 text-green-600"
-                  : app.match_score >= 50
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-red-50 text-red-600"
-              }`}>
-                {app.match_score}%
-              </span>
-            ) : (
-              <span className="rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap bg-gray-100 text-gray-400">
-                Calculating...
-              </span>
-            )}
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${matchScoreBadge.className}`}>
+              {matchScoreBadge.label}
+            </span>
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusColorClass}`}>
               {displayStatus}
             </span>

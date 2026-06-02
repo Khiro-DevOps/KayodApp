@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const firstName = toStringValue(formData.get("firstName"));
     const lastName = toStringValue(formData.get("lastName"));
     const adminFullName = toStringValue(formData.get("adminFullName")) || [firstName, lastName].filter(Boolean).join(" ").trim();
-    const companyName = toStringValue(formData.get("companyName"));
+    const companyName = toStringValue(formData.get("companyName")) || toStringValue(formData.get("tenant_name"));
     const email = toStringValue(formData.get("workEmail")) || toStringValue(formData.get("email"));
     const password = toStringValue(formData.get("password"));
     const confirmPassword = toStringValue(formData.get("confirmPassword"));
@@ -66,6 +66,13 @@ export async function POST(request: Request) {
     const jobTitle = toStringValue(formData.get("jobTitle"));
     const industry = toStringValue(formData.get("industry"));
     const teamSize = toStringValue(formData.get("companySize")) || toStringValue(formData.get("teamSize"));
+    const workSetup = toStringValue(formData.get("work_setup"));
+    const phone = toStringValue(formData.get("phone"));
+    const dateOfBirth = toStringValue(formData.get("date_of_birth"));
+    const ageValue = toStringValue(formData.get("age"));
+    const address = toStringValue(formData.get("address"));
+    const city = toStringValue(formData.get("city"));
+    const country = toStringValue(formData.get("country"));
     const monthlyHiringVolume = toStringValue(formData.get("monthlyHiringVolume"));
     const problemToSolve = toStringValue(formData.get("problemToSolve"));
     const rawPlan = toStringValue(formData.get("plan"));
@@ -170,6 +177,13 @@ export async function POST(request: Request) {
         company_size: teamSize,
         monthly_hiring_volume: monthlyHiringVolume,
         problem_to_solve: problemToSolve,
+        work_setup: workSetup,
+        phone,
+        date_of_birth: dateOfBirth,
+        age: ageValue,
+        address,
+        city,
+        country,
       },
     });
 
@@ -194,8 +208,15 @@ export async function POST(request: Request) {
         email,
         first_name: deriveFirstName(firstName, adminFullName),
         last_name: deriveLastName(lastName, adminFullName),
-        phone: toStringValue(formData.get("phone")),
+        phone,
+        date_of_birth: dateOfBirth,
+        age: ageValue ? Number(ageValue) : null,
+        address,
+        city,
+        country,
+        work_setup: workSetup || null,
         role: "hr_manager",
+        tenant_id: tenantRow.id,
         tenant_name: companyName,
       },
       {

@@ -1,9 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import ApplicationsClient from "./applications-client";
+
 import PageContainer from "@/components/ui/page-container";
-import type { Profile, Interview } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import type { Interview, Profile } from "@/lib/types";
+
+import ApplicationsClient from "./applications-client";
+import ApplicationsKanbanBoard, { type ApplicationHubCard } from "./applications-kanban-board";
+import HRApplicationsPage from "./hr-applications-page";
 
 type CandidateApplicationListItem = {
   id: string;
@@ -27,6 +31,10 @@ type CandidateInterviewListItem = {
   interviewer_notes: string | null;
 };
 
+type TenantJobIdRow = {
+  id: string;
+};
+
 export default async function ApplicationsPage() {
   const supabase = await createClient();
 
@@ -43,12 +51,12 @@ export default async function ApplicationsPage() {
   const role = effectiveRole(profile?.role, authRole);
   const isHR = isHRRole(role);
 
-  // HR manager routes to the dedicated management area.
+  // HR manager sees the dedicated Applications Hub.
   if (isHR) {
-    redirect("/jobs/manage");
+    redirect("/hr/applicants");
   }
 
-  // Job Seeker view - show their own applications
+  // Job seeker view - show their own applications
   const { data: applications } = await supabase
     .from("applications")
     .select(`
