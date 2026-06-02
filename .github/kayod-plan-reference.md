@@ -1,10 +1,12 @@
 # Kayod — Full Sprint Plan Reference
+
 > This file is referenced by `.github/copilot-instructions.md`.
 > Copilot should read this before starting any task.
 
 ---
 
 ## Sprint 0 — Bug fixes & blockers
+
 **Ship this before anything else. ~2 days.**
 
 > **Note:** The invisible confirm/submit buttons on the HR interviews page have been removed from this sprint.
@@ -13,33 +15,39 @@
 ---
 
 ### Task 0.1 — Match score not displayed on HR applicant views
+
 **Priority:** CRITICAL
 
 **Problem:** Match score is computed but does not appear on:
-- The HR applicant list card
-- The HR applicant detail page
+
+* The HR applicant list card
+* The HR applicant detail page
 
 **Fix steps:**
+
 1. Check the Supabase query for the applicant list — confirm `match_score` (or `match_scores` table join) is included in the SELECT
 2. Add a score badge to the applicant list card component: `"{score}% match"`
 3. Add a score section to the applicant detail page showing total score + sub-scores per factor
 4. If score is null: show `"Calculating..."` gray badge and trigger recomputation
 
 **Color coding (applies everywhere scores appear):**
-- ≥75% → green badge
-- 50–74% → amber badge
-- <50% → red badge
-- null → gray "Calculating..." badge
+
+* ≥75% → green badge
+* 50–74% → amber badge
+* <50% → red badge
+* null → gray "Calculating..." badge
 
 **Acceptance criteria:**
-- Score badge visible on applicant list card (HR)
-- Score breakdown visible on applicant detail page (HR)
-- Score badge visible on job listing cards (Applicant side — `/apply/jobs`)
-- Color coding matches the spec above
+
+* Score badge visible on applicant list card (HR)
+* Score breakdown visible on applicant detail page (HR)
+* Score badge visible on job listing cards (Applicant side — `/apply/jobs`)
+* Color coding matches the spec above
 
 ---
 
 ### Task 0.2 — Match score algorithm replacement
+
 **Priority:** CRITICAL
 
 **Problem:** Current algorithm is inaccurate. Replace with the weighted hybrid formula.
@@ -47,7 +55,7 @@
 **Formula:**
 
 | Factor | Weight | Method |
-|--------|--------|--------|
+| --- | --- | --- |
 | Required skills overlap | 40% | TF-IDF keyword overlap first. If overlap confidence < 80%, call Claude API for semantic resolution. Cache result per job_id+applicant_id. |
 | Job title / role similarity | 25% | Claude API — compare job title text to resume headline and experience titles |
 | Years of experience | 15% | Numeric delta: `job.min_experience` vs `resume.total_years_experience`. Full score if within range, decays linearly outside. |
@@ -57,21 +65,27 @@
 **Output:** Integer 0–100
 
 **Implementation requirements:**
-- Run as a Next.js API route (`/api/compute-match-score`) or Supabase Edge Function — never block the UI
-- New `match_scores` table schema:
-  ```sql
-  id              uuid primary key
-  applicant_id    uuid references profiles(id)
-  job_id          uuid references jobs(id)
-  score_total     int (0-100)
-  score_skills    int
-  score_title     int
-  score_experience int
-  score_education  int
-  score_setup     int
-  reasons         text[]   -- audit log: why the score is high/low
-  computed_at     timestamptz
-  ```
+
+* Run as a Next.js API route (`/api/compute-match-score`) or Supabase Edge Function — never block the UI
+* New `match_scores` table schema:
+```sql
+id               uuid primary key
+applicant_id     uuid references profiles(id)
+job_id           uuid references jobs(id)
+score_total      int (0-100)
+score_skills     int
+score_title      int
+score_experience int
+score_education  int
+score_setup      int
+reasons          text[]   -- audit log: why the score is high/low
+computed_at      timestamptz
+
+```
+
+
+
+```
 - Cache Claude API results — same job+applicant pair should never re-call Claude on page load
 - Trigger recomputation when: applicant updates resume, HR edits job requirements
 
@@ -128,52 +142,60 @@ room_id         uuid        -- Supabase Realtime channel identifier
 hr_notes        text        -- floating notepad content
 webrtc_started_at  timestamptz
 webrtc_ended_at    timestamptz
+
 ```
 
 **Acceptance criteria:**
-- HR and applicant can connect in the same browser (two tabs as test)
-- Video and audio stream both directions
-- Floating notepad saves to Supabase and persists on page reload
-- Mobile layout works at 390px without horizontal scroll
-- End call button disconnects both peers and closes streams
+
+* HR and applicant can connect in the same browser (two tabs as test)
+* Video and audio stream both directions
+* Floating notepad saves to Supabase and persists on page reload
+* Mobile layout works at 390px without horizontal scroll
+* End call button disconnects both peers and closes streams
 
 ---
 
 ## Sprint 1 — Landing page, subscription & tenant onboarding
+
 **~4–5 days. Can run parallel to Sprint 0.**
 
 ---
 
 ### Task 1.1 — Public landing page `/`
+
 **No auth required to view.**
 
 **Sections:**
+
 1. **Hero:** Headline, subheadline. Two CTAs: "I'm hiring" → `/register` and "Find a job" → `/apply/jobs`
 2. **Features:** 3–4 cards with icons. AI screening, contract signing, mobile portal, time tracking.
 3. **Pricing:** 3-column table. Each plan has "Get started" → `/register?plan={tier}`
 4. **Footer:** `/login`, `/register`, support placeholder
 
 **Acceptance criteria:**
-- Page renders without auth
-- Both CTAs navigate to correct routes
-- Plan param is passed correctly to `/register`
-- Mobile-responsive at 390px
+
+* Page renders without auth
+* Both CTAs navigate to correct routes
+* Plan param is passed correctly to `/register`
+* Mobile-responsive at 390px
 
 ---
 
 ### Task 1.2 — Subscription tiers
 
 | Tier | Simulated price | Limits | Features |
-|------|----------------|--------|----------|
+| --- | --- | --- | --- |
 | Starter | PHP 999/mo | 5 listings, 50 applicants/mo | Pipeline, DocuSeal, applicant portal |
 | Growth | PHP 2,499/mo | 20 listings, 300 applicants/mo | + AI scoring, AI resume parsing, analytics |
 | Enterprise | PHP 5,999/mo | Unlimited | + priority support, custom contract templates, employee portal |
 
 **Schema addition to `companies` table:**
+
 ```sql
 logo_url        text        -- Supabase Storage: /company-logos/{id}
 plan            enum: starter | growth | enterprise
 plan_expires_at timestamptz
+
 ```
 
 ---
@@ -183,45 +205,53 @@ plan_expires_at timestamptz
 **4-step form:**
 
 **Step 1 — Company info:**
-- Company name (required)
-- Company logo upload (PNG/JPG ≤2MB) → Supabase Storage `/company-logos/{uuid}` → show preview
-- HR admin full name, email, password, confirm password
+
+* Company name (required)
+* Company logo upload (PNG/JPG ≤2MB) → Supabase Storage `/company-logos/{uuid}` → show preview
+* HR admin full name, email, password, confirm password
 
 **Step 2 — Plan selector:**
-- Show pricing table, highlight pre-selected plan from `?plan=` param
+
+* Show pricing table, highlight pre-selected plan from `?plan=` param
 
 **Step 3 — Simulated payment:**
-- Card number (any 16 digits), expiry MM/YY, CVV, cardholder name
-- "Pay now" → 1.5s loading state → always succeeds
-- On success: write `plan` and `plan_expires_at = now() + 30 days` to Supabase
-- No real payment gateway called
+
+* Card number (any 16 digits), expiry MM/YY, CVV, cardholder name
+* "Pay now" → 1.5s loading state → always succeeds
+* On success: write `plan` and `plan_expires_at = now() + 30 days` to Supabase
+* No real payment gateway called
 
 **Step 4 — Success screen:**
-- Confirm company name and plan
-- Redirect to `/dashboard` after 3 seconds
+
+* Confirm company name and plan
+* Redirect to `/dashboard` after 3 seconds
 
 **Acceptance criteria:**
-- Full flow works start to finish
-- Logo uploads to Supabase Storage and URL is saved to `companies.logo_url`
-- Plan and expiry are written to DB correctly
-- Redirect to `/dashboard` after success
+
+* Full flow works start to finish
+* Logo uploads to Supabase Storage and URL is saved to `companies.logo_url`
+* Plan and expiry are written to DB correctly
+* Redirect to `/dashboard` after success
 
 ---
 
 ### Task 1.4 — Company logo → DocuSeal contract
 
 **When generating an offer letter:**
+
 1. Fetch `companies.logo_url` for the current tenant
 2. Include it as `company_logo_url` variable in the DocuSeal API create-document payload
 3. DocuSeal template must have an image field mapped to this variable
 
 **Acceptance criteria:**
-- Generated contract PDF shows the company logo
-- No logo breakage when `logo_url` is null (show placeholder or skip gracefully)
+
+* Generated contract PDF shows the company logo
+* No logo breakage when `logo_url` is null (show placeholder or skip gracefully)
 
 ---
 
 ## Sprint 1.5 — Pre-employment requirements submission
+
 **~3–4 days. After Task 1.3 (offer letter flow must be complete). Before Sprint 4 (employee portal).**
 
 > Triggers after the applicant accepts the offer letter (DocuSeal signed). Sits between the offer stage and the employee portal. Applicants submit required documents digitally or walk in personally. HR reviews, verifies, and confirms — which auto-converts the account to an employee.
@@ -234,6 +264,7 @@ Add `pre_employment` as a new stage in the application pipeline, inserted after 
 
 ```
 applied → screening → interview → offer_sent → offer_accepted → pre_employment → hired
+
 ```
 
 ---
@@ -241,15 +272,18 @@ applied → screening → interview → offer_sent → offer_accepted → pre_em
 ### DB schema
 
 New `job_required_documents` table (HR sets per job posting):
+
 ```sql
 id          uuid primary key
 job_id      uuid references jobs(id)
 name        text        -- e.g. "NBI Clearance", "Transcript of Records"
 is_required boolean default true
 created_at  timestamptz
+
 ```
 
 New `applicant_documents` table:
+
 ```sql
 id              uuid primary key
 application_id  uuid references applications(id)
@@ -262,12 +296,15 @@ hr_verified     boolean default false
 hr_verified_at  timestamptz nullable
 hr_verified_by  uuid references profiles(id)
 notes           text nullable  -- HR can leave a note per document (e.g. "blurry, resubmit")
+
 ```
 
 Additions to `applications` table:
+
 ```sql
 doc_deadline        timestamptz nullable   -- set by HR when moving to pre_employment
 doc_submission_note text nullable          -- HR instructions shown to applicant
+
 ```
 
 ---
@@ -275,19 +312,23 @@ doc_submission_note text nullable          -- HR instructions shown to applicant
 ### HR side — job posting
 
 On the job creation / edit page, add a **Required Documents** section:
-- HR adds document names (free text) with an `is_required` toggle
-- Default list suggested (but editable): NBI Clearance, BIR Form 2316, SSS ID, PhilHealth ID, Pag-IBIG ID, Birth Certificate, Transcript of Records
-- Documents saved to `job_required_documents` on job save
+
+* HR adds document names (free text) with an `is_required` toggle
+* Default list suggested (but editable): NBI Clearance, BIR Form 2316, SSS ID, PhilHealth ID, Pag-IBIG ID, Birth Certificate, Transcript of Records
+* Documents saved to `job_required_documents` on job save
 
 ---
 
 ### HR side — moving applicant to pre-employment
 
 When HR clicks "Move to Pre-employment" on the applicant detail page:
+
 1. Show a modal with:
-   - Submission deadline date picker (default: 7 days from today)
-   - Optional instruction note for the applicant
-   - Preview of the document checklist from the job posting (editable per applicant)
+* Submission deadline date picker (default: 7 days from today)
+* Optional instruction note for the applicant
+* Preview of the document checklist from the job posting (editable per applicant)
+
+
 2. On confirm: set `applications.stage = pre_employment`, write `doc_deadline`, `doc_submission_note`, insert rows into `applicant_documents` (one per required doc, all unverified)
 3. Applicant receives an in-app notification (and email if applicable)
 
@@ -298,27 +339,35 @@ When HR clicks "Move to Pre-employment" on the applicant detail page:
 Route: `/dashboard/applicants/[id]/documents`
 
 Layout:
-- Header: applicant name, job title, deadline (red if past due), progress bar (e.g. `3 / 5 verified`)
-- Document checklist: one row per required document
-  - Document name
-  - Submission type pill: `Digital` / `In Person` / `Pending`
-  - For digital: thumbnail/filename link → opens file in new tab
-  - For in-person: gray "Not yet received" state
-  - HR actions per row:
-    - **Digital:** "Approve" or "Request resubmission" (opens a note input)
-    - **In-person:** Checkbox — "Mark as received in person" → sets `submission_type = in_person`, `hr_verified = true`
-  - Verified rows show a green checkmark + verified timestamp
-- If deadline has passed and not all docs are verified: show an amber warning banner — `"Deadline passed. Some documents are still incomplete."` — HR still decides manually, no auto-action
-- Bottom: **"Confirm Hire" button** — only enabled when all `is_required` documents are `hr_verified = true`
 
-**"Confirm Hire" flow:**
+* Header: applicant name, job title, deadline (red if past due), progress bar (e.g. `3 / 5 verified`)
+* Document checklist: one row per required document
+* Document name
+* Submission type pill: `Digital` / `In Person` / `Pending`
+* For digital: thumbnail/filename link → opens file in new tab
+* For in-person: gray "Not yet received" state
+* HR actions per row:
+* **Digital:** "Approve" or "Request resubmission" (opens a note input)
+* **In-person:** Checkbox — "Mark as received in person" → sets `submission_type = in_person`, `hr_verified = true`
+
+
+* Verified rows show a green checkmark + verified timestamp
+
+
+* If deadline has passed and not all docs are verified: show an amber warning banner — `"Deadline passed. Some documents are still incomplete."` — HR still decides manually, no auto-action
+* Bottom: **"Confirm Hire" button** — only enabled when all `is_required` documents are `hr_verified = true`
+
+**"Confirm Hire" flow (The Entry Gate to Employee Portal):**
+
 1. HR clicks "Confirm Hire" → confirmation modal: `"This will convert [Name] to an employee. This cannot be undone."`
 2. On confirm:
-   - `applications.stage = hired`
-   - `profiles.role = employee`
-   - Insert row into `employees` table (if separate) or populate employee-specific fields
-   - Applicant is redirected to `/employee/dashboard` on next login
-   - HR sees a success toast: `"[Name] has been converted to an employee."`
+* `applications.stage = hired`
+* `profiles.role = employee`
+* Populate employee-specific routing parameters.
+* User session remains intact; global layout checks switch context dynamically from applicant views to employee dashboard structures on the next reload or page transition.
+* HR sees a success toast: `"[Name] has been converted to an employee."`
+
+
 
 ---
 
@@ -329,552 +378,395 @@ Route: `/apply/applications/[id]/documents`
 Accessible only when `application.stage = pre_employment`.
 
 Layout:
-- Header: `"Submit your pre-employment requirements"` + deadline countdown (e.g. `"5 days left"`, red if ≤2 days)
-- HR instruction note (if set), shown in a callout box
-- Document list: one card per required document
-  - Document name + `Required` or `Optional` tag
-  - Status: `Pending` / `Submitted` / `Verified` / `Resubmission needed`
-  - If `Resubmission needed`: show HR's note in red, re-upload button
-  - Upload button → file picker (PDF, JPG, PNG ≤10MB) → uploads to Supabase Storage → sets `submission_type = digital`, `submitted_at = now()`
-  - "I will submit in person" toggle per document → sets `submission_type = in_person` (pending HR tick)
-- Progress indicator at top: `"2 of 5 submitted"`
-- Each document saves individually on upload — no submit-all button
+
+* Header: `"Submit your pre-employment requirements"` + deadline countdown (e.g. `"5 days left"`, red if ≤2 days)
+* HR instruction note (if set), shown in a callout box
+* Document list: one card per required document
+* Document name + `Required` or `Optional` tag
+* Status: `Pending` / `Submitted` / `Verified` / `Resubmission needed`
+* If `Resubmission needed`: show HR's note in red, re-upload button
+* Upload button → file picker (PDF, JPG, PNG ≤10MB) → uploads to Supabase Storage → sets `submission_type = digital`, `submitted_at = now()`
+* "I will submit in person" toggle per document → sets `submission_type = in_person` (pending HR tick)
+
+
+* Progress indicator at top: `"2 of 5 submitted"`
+* Each document saves individually on upload — no submit-all button
 
 ---
 
 ### Acceptance criteria
-- HR can add required documents to a job posting
-- Moving an applicant to pre-employment generates the correct document checklist
-- Applicant can upload files digitally; files appear in Supabase Storage at the correct path
-- Applicant can mark a document as "I will submit in person"
-- HR can tick in-person documents as received
-- HR can approve or request resubmission on digital uploads
-- "Confirm Hire" is disabled until all required documents are `hr_verified = true`
-- Confirming hire flips `profiles.role` to `employee` and redirects the user to `/employee/dashboard` on next login
-- Deadline warning banner appears on HR side when deadline has passed with incomplete docs — no auto-rejection, HR retains full control
+
+* HR can add required documents to a job posting
+* Moving an applicant to pre-employment generates the correct document checklist
+* Applicant can upload files digitally; files appear in Supabase Storage at the correct path
+* Applicant can mark a document as "I will submit in person"
+* HR can tick in-person documents as received
+* HR can approve or request resubmission on digital uploads
+* "Confirm Hire" is disabled until all required documents are `hr_verified = true`
+* Confirming hire flips `profiles.role` to `employee` and redirects the user to `/employee/dashboard` on next login
+* Deadline warning banner appears on HR side when deadline has passed with incomplete docs — no auto-rejection, HR retains full control
 
 ---
-
-## Sprint 2 — PWA foundation
-**~2–3 days. Start after Sprint 0.**
-
----
-
-### Task 2.1 — manifest.json
-
-Create `/public/manifest.json`:
-```json
-{
-  "name": "Kayod",
-  "short_name": "Kayod",
-  "start_url": "/login",
-  "display": "standalone",
-  "background_color": "#faf8ff",
-  "theme_color": "#7C7AAC",
-  "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
-}```
-
-Reference in `app/layout.tsx` metadata export.
-
----
-
-### Task 2.2 — Meta tags
-
-Add to `app/layout.tsx`:
-```html
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="default" />
-```
-
----
-
-### Task 2.3 — Conditional bottom navigation
-
-In root layout or `ClientLayout`:
-- `pathname.startsWith('/apply')` → render `<ApplicantBottomNav>`
-- `pathname.startsWith('/employee')` → render `<EmployeeBottomNav>`
-- All other routes → nothing
-
-**ApplicantBottomNav tabs:** Home · Jobs · Track · Resume AI · Profile
-**EmployeeBottomNav tabs:** Home · Schedule · Payslips · Updates · Profile
-
-**Requirements:**
-- `position: fixed; bottom: 0; width: 100%`
-- `padding-bottom: env(safe-area-inset-bottom)`
-- All tap targets ≥44×44px
-  - Active tab uses brand color (`#7C7AAC`)
-- All `/apply` and `/employee` pages have `padding-bottom: ~5rem` to clear the nav
-
----
-
-### Task 2.4 — 390px viewport audit
-
-- Test every `/apply/*` and `/employee/*` page at 390px
-- Fix any `overflow-x` / horizontal scroll
-- Confirm no interactive element is smaller than 44×44px
-
----
-
-## Sprint 3 — Applicant portal UI
-**~4–5 days. After Sprint 2.**
-
-| Route | Page | Notes |
-|-------|------|-------|
-| `/apply/dashboard` | Home / analytics | Stats cards: applications sent, interviews, offers |
-| `/apply/jobs` | Job listings | Match score badge per card. Filter: role, location, setup. One-tap apply. |
-| `/apply/applications` | Application tracker | Pipeline card list with status pills |
-| `/apply/applications/[id]` | Application detail | Status timeline. Interview info nested here. |
-| `/apply/applications/[id]/offer` | Offer letter | Full-screen DocuSeal embed |
-| `/apply/applications/[id]/documents` | Pre-employment documents | Submission page — see Sprint 1.5 |
-| `/apply/resume` | AI resume generator | Claude API for generation |
-| `/apply/profile` | Profile + settings | Preferred work setup, logout |
-
----
-
-## Sprint 4 — Employee portal UI
-## Sprint 2 — PWA foundation
-
-
-
-**~2–3 days. Start after Sprint 0.**
-
-
-
-
----
-
-
 
 ## Sprint 1.8 — Global Design Token Integration & Shell Handoff
 
-
-
 **~1–2 days. Start before mobile app sprints.**
 
-
-
 ---
-
-
 
 ### Task 1.8.1 — Global Theme Sync (Zero Risk)
 
-
-
 Update Tailwind configuration and global styles to apply the custom Slate Lavender `#7C7AAC` primary brand scheme and `#C8BCF8` secondary highlights. This allows the changes to instantly cascade across all pre-existing interactive elements automatically.
-
-
 
 Update `tailwind.config.js` brand definitions:
 
-
-
 ```javascript
-
 colors: {
-
   primary: {
-
     DEFAULT: '#7C7AAC',
-
     dark: '#4A4880',
-
     darker: '#2A2650'
-
   },
-
   secondary: '#C8BCF8',
-
   border: '#E0D9FC'
-
 }
 
-
-
 ```
-
-
 
 Update CSS custom properties in `app/globals.css`:
 
-
-
 ```css
-
 :root {
-
   --color-primary: #7C7AAC;
-
   --color-primary-dark: #4A4880;
-
   --color-navbar: #2A2650;
-
   --color-secondary: #C8BCF8;
-
   --color-surface: #F8F6FF;
-
   --color-card-border: #E0D9FC;
-
 }
-
-
 
 ```
 
-
-
 ---
-
-
 
 ### Task 1.8.2 — Desktop Layout Shell Swap (Low Risk)
 
-
-
 Replace pure presentation components inside the HR desktop portal by copying layout-only JSX structures directly out of the Google Stitch inspector workspace.
-
-
 
 **Target Component Files:**
 
-
-
 * `components/ui/header.tsx`
-
 * `components/ui/sidebar.tsx`
-
 * `components/ui/page-container.tsx`
 
-
-
 **Constraint Instructions for Agent:**
-
 "Replace the JSX markup and Tailwind classes only. Keep all existing link href destinations, user role verification logic, isHRRole() utility checks, and platform navigation states exactly as they are."
 
-
-
 ---
-
-
 
 ### Task 1.8.3 — Core HR Data Component Refactor (Medium Risk)
 
-
-
 Update mixed component files containing inline application business logic. Isolate visual structural wrappers without disturbing data mapping states or server routines.
-
-
 
 **Target Interaction Files:**
 
-
-
 * `applicants-list-client.tsx`
-
 * `applicant-detail-drawer.tsx`
-
 * `interview-scheduling-form.tsx`
-
 * `offer-review-modal.tsx`
 
-
-
 **Constraint Instructions for Agent:**
-
 "Update only the parent JSX wireframe and Tailwind utility classes inside this view container. Do not modify, rephrase, or erase local state arrays, component props passing signatures, event handlers, or data reconciliation logic. Never touch actions.ts server routines or backend data fetching parameters."
 
-
-
 ---
-
-
 
 ## Sprint 2 — PWA foundation
 
-
-
 **~2–3 days. Start after Sprint 1.8.**
 
-
-
 ---
-
-
 
 ### Task 2.1 — manifest.json
 
-
-
 Create `/public/manifest.json`:
 
-
-
 ```json
-
 {
-
   "name": "Kayod",
-
   "short_name": "Kayod",
-
   "start_url": "/login",
-
   "display": "standalone",
-
   "background_color": "#faf8ff",
-
   "theme_color": "#7C7AAC",
-
   "icons": [
-
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-
   ]
-
 }
 
-
-
 ```
-
-
 
 Reference in `app/layout.tsx` metadata export.
 
-
-
 ---
-
-
 
 ### Task 2.2 — Meta tags
 
-
-
 Add to `app/layout.tsx`:
 
-
-
 ```html
-
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-
 <meta name="apple-mobile-web-app-capable" content="yes" />
-
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-
-
 
 ```
 
-
-
 ---
-
-
 
 ### Task 2.3 — Conditional bottom navigation
 
-
-
 In root layout or `ClientLayout`:
 
-
-
 * `pathname.startsWith('/apply')` → render `<ApplicantBottomNav>`
-
 * `pathname.startsWith('/employee')` → render `<EmployeeBottomNav>`
-
 * All other routes → nothing
 
-
-
 **ApplicantBottomNav tabs:** Home · Jobs · Track · Resume AI · Profile
-
 **EmployeeBottomNav tabs:** Home · Schedule · Payslips · Updates · Profile
-
-
 
 **Requirements:**
 
-
-
 * `position: fixed; bottom: 0; width: 100%`
-
 * `padding-bottom: env(safe-area-inset-bottom)`
-
 * All tap targets ≥44×44px
-
 * Active tab uses background container color `#C8BCF8` with primary icon indicator lines matching `#7C7AAC`
-
 * All `/apply` and `/employee` pages have `padding-bottom: ~5rem` to clear the nav
 
-
-
 ---
-
-
 
 ### Task 2.4 — 390px viewport audit
 
-
-
 * Test every `/apply/*` and `/employee/*` page at 390px
-
 * Fix any `overflow-x` / horizontal scroll
-
 * Confirm no interactive element is smaller than 44×44px
 
-
-
 ---
-
-
 
 ## Sprint 3 — Applicant portal UI
 
-
-
 **~4–5 days. After Sprint 2.**
 
-
-
 | Route | Page | Notes |
-
 | --- | --- | --- |
-
 | `/apply/dashboard` | Home / analytics | Stats cards: applications sent, interviews, offers. Containers use pure white surfaces with 1px border (#E0D9FC). |
-
 | `/apply/jobs` | Job listings | Match score badge per card. Filter: role, location, setup. One-tap apply. Badges use anti-washout tokens (dark text on 12% opacity soft slate tint). |
-
 | `/apply/applications` | Application tracker | Pipeline card list with status pills using dark text on 10-15% low-opacity semantic background fills (Success: Teal, Warning: Amber, Error: Red). |
-
 | `/apply/applications/[id]` | Application detail | Status timeline. Interview info nested here. Step indicators use 8px utility rounded profile. |
-
 | `/apply/applications/[id]/offer` | Offer letter | Full-screen DocuSeal embed |
-
 | `/apply/applications/[id]/documents` | Pre-employment documents | Submission page — see Sprint 1.5. Input boundaries use 4px soft corner radius. |
-
 | `/apply/resume` | AI resume generator | Claude API for generation. Primary execution buttons use solid #7C7AAC background with white text. |
-
 | `/apply/profile` | Profile + settings | Preferred work setup, logout. Setup toggle cards match design system utility inputs. |
 
+---
+
+## Sprint 4 — Employee Portal Infrastructure & UI Layout
+
+**~4–5 days. After Sprint 2. Detailed to reflect multi-portal interactive bridges (Reference: image_a6fed8.jpg).**
+
+> This sprint builds out the structural foundation of the Employee space (`/employee/*`). It interfaces directly with the shared security gates (Red Bridge) and structural components requested by design token configurations.
+
+### Task 4.1 — Route Middleware & Account Lifecycle Guard (The Red Bridge)
+
+**Priority:** CRITICAL
+
+**Problem:** Employee endpoints must reject deactivated users instantly, blocking their layout shell access in real time.
+
+**Implementation Steps:**
+
+1. Update Next.js application middleware or global layout routing parameters.
+2. For all incoming requests to `/employee/*`, retrieve the current user session and check `profiles.role` and `profiles.is_active`.
+3. **The Red Bridge Gate:** If `profiles.is_active` evaluates to `false`, terminate the active routing state, purge local web application route tokens, and forcefully eject the user to `/login?reason=deactivated`.
+4. Ensure real-time broadcast compliance: Subscribe to changes on `profiles` inside the client shell base layout. If an active HR manager flips the status toggle, trigger an immediate user logout payload on the worker end.
+
+**Acceptance Criteria:**
+
+* Logged-in accounts with `role='employee'` can hit `/employee/*` layouts safely.
+* Changing `profiles.is_active` to `false` in the database immediately halts subsequent routing actions and redirects to the public entry gateway.
+
+---
+
+### Task 4.2 — `/employee/dashboard` (Account & Profile Core Hub)
+
+**Priority:** HIGH
+
+**Layout Specifications:**
+
+* **Header Block:** Greeting text with employee full name, standard typography sizing metrics, and an inline status indicator reflecting profile metadata components.
+* **Metric Widgets (Reads Profile Data):** A horizontal grid featuring today's attendance checklist state, current approved leave summaries, and fast access action shortcuts.
+* **Visual Rules:** Containers use standard pure white surfaces bounded by structural `1px` border lines (`#E0D9FC`). Primary user interactors leverage solid `#7C7AAC` base fills.
+
+---
+
+### Task 4.3 — `/employee/profile` (Profile Page — Address Write Architecture)
+
+**Priority:** HIGH
+
+**Layout Specifications:**
+
+* **Form Inputs:** Contains human-readable text input for the employee's residential street location. Form boundary fields implement a defined `4px` corner asset scale.
+* **The Address Write Engine:** On submission, the address data array is written directly to the persistence layer. This update triggers the automatic Nominatim background geocoding execution block specified in Task 5.2.
+* **Interactions:** Save execution items switch to active spinner animations with disabled properties enabled to shield asynchronous payload transfers from multi-tap corruption.
+
+---
+
+### Task 4.4 — `/employee/schedule` (Integrated Schedule & Leave Tracker)
+
+**Priority:** MEDIUM
+
+**Layout Specifications:**
+
+* **Tab Switch Component:** Two-stage tab selector managing layout modes safely:
+* **Tab A: My Schedule Grid:** Calendar view pulling chronological historical data directly from targeted user attendance models alongside active approved leave spans.
+* **Tab B: Leave Tracker (Filing Engine):** Multi-state summary interface displaying ongoing time-off requests.
+
+
+* **Anti-Washout Status Indicators:** State metadata badges enforce low-opacity background tint fills paired with deep text tones to avoid high-contrast readability degradation:
+* `Pending`: Dark Amber on soft low-opacity Amber fill.
+* `Approved`: Dark Teal on soft low-opacity Teal fill.
+* `Rejected`: Dark Red on soft low-opacity Red fill.
+
 
 
 ---
 
+### Task 4.5 — `/employee/payslips` & `/employee/announcements`
 
+**Priority:** LOW
 
-## Sprint 4 — Employee portal UI
+**Layout Specifications:**
 
+* **Payslip Cards:** Grouped billing components framed using standardized structural `12px` layout boundaries. Download interactive pathways trigger client PDF generation.
+* **Announcements Feed:** Pinned administrative cards anchored at layout focus centers, implementing distinct line accents to break background surface grids.
 
+---
 
-**~3–4 days. After Sprint 2. Parallel to Sprint 3.**
+## Sprint 5 — Geofencing & Real-Time Time Management
 
+**~3–4 days. Runs immediately following Sprint 4 completion (Requires data hooks from Employee Profile form).**
 
+```
+ [HR Portal: Work Zone Configuration] (Purple Bridge Write)
+                  │
+                  ▼
+   [Employee Profile: Lat / Lng Coordinates] 
+                  │
+                  ▼
+ [Clock-In Geofence Validation Layer] ◄─── Checks [HR Leave Approvals] (Orange Bridge Gate)
+                  │
+                  ▼
+ [Real-Time Attendance Grid Submission] (Green Bridge Write)
 
-| Route | Page | Notes |
+```
 
+---
+
+### Task 5.1 — Database Structure Expansion
+
+Execute structural mutations against the production persistence container to safely track geofence boundaries and structural employee attendance fields.
+
+```sql
+-- Append configurations to the base profiles structure safely
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS work_address text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS work_lat float8;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS work_lng float8;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS work_radius_m int4 DEFAULT 100;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS work_setup text DEFAULT 'on_site';
+
+-- Instantiate production attendance tracking log architecture
+CREATE TABLE IF NOT EXISTS attendance (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id    uuid REFERENCES profiles(id) ON DELETE CASCADE,
+    clock_in       timestamptz NOT NULL,
+    clock_out      timestamptz,
+    clock_in_lat   float8 NOT NULL,
+    clock_in_lng   float8 NOT NULL,
+    clock_out_lat  float8,
+    clock_out_lng  float8,
+    within_zone    boolean DEFAULT true,
+    hr_override    boolean DEFAULT false,
+    created_at     timestamptz DEFAULT now()
+);
+
+-- Enable Realtime replication streams for immediate telemetry rendering
+ALTER PUBLICATION supabase_realtime ADD TABLE attendance;
+
+```
+
+---
+
+### Task 5.2 — Address Resolution Pipeline
+
+* **Trigger Mechanics:** Hook directly into the submission lifecycle of the `/employee/profile` address field.
+* **Resolution Target:** Direct an asynchronous payload out to Nominatim:
+`[https://nominatim.openstreetmap.org/search?q=](https://nominatim.openstreetmap.org/search?q=){address}&format=json&limit=1`
+* **Data Write Lifecycle:** Extract coordinate pairs and store them directly inside `work_lat` and `work_lng`. Never rerun resolutions during checking intervals to prevent excessive API utilization.
+* **Exception Workflows:** If parameters return invalid, render visible inline error states asking for more descriptive regional keys.
+
+---
+
+### Task 5.3 — Distance Calculations Engine
+
+Implement a robust spatial check utility within `lib/haversine.ts` to calculate distances between coordinates using the Haversine formula:
+
+$$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)}\right)$$
+
+Where $\phi$ represents latitude, $\lambda$ represents longitude, and $R$ is the Earth's radius ($6,371,000\text{ meters}$). Returns an integer length evaluation in meters.
+
+---
+
+### Task 5.4 — Clock-In View State Logic Matrix
+
+**Priority:** CRITICAL
+
+The component state configuration evaluates across multiple dependencies prior to rendering interactive surfaces:
+
+1. **The Leave Gate (Orange Bridge):** Interrogate the database to check for approved leaves matching the current date. If confirmed, hide the clock-in module entirely and render a message: `"Clock-in disabled: You are currently on approved leave"`.
+2. **The Layout Profile Evaluation (Purple Bridge):** Read HR parameters (`work_setup`, `work_radius_m`, `work_lat`, `work_lng`). If configured as a remote worker, bypass location checking layers entirely and enable immediate standard recording submissions.
+3. **The Location Access Pipeline:** For on-site and hybrid workers, trigger browser position requests via `navigator.geolocation.getCurrentPosition()`.
+
+| Dynamic State Match | Core Trigger Event | Interface Layout Action |
 | --- | --- | --- |
-
-| `/employee/dashboard` | Home | Stats, recent attendance, shortcuts. Primary actions utilize #7C7AAC base branding. |
-
-| `/employee/schedule` | Schedule tab | Calendar + clock in/out placeholder. Active dates highlighted via Light Pastel Violet (#C8BCF8). |
-
-| `/employee/schedule?tab=leaves` | Leave requests | File and track leaves — tab in same page. Status tags follow anti-washout rule (dark font on tint). |
-
-| `/employee/payslips` | Payslips | Monthly cards, download PDF. Framed within 12px rounded-lg card containers. |
-
-| `/employee/announcements` | Announcements | Pinned posts at top. Feature banners utilize structural outline accents to separate layouts. |
-
-| `/employee/profile` | Profile + settings | Home address input — REQUIRED before Sprint 5. Inputs use 4px utility profile and text-text-secondary placeholders. |
-
-
-
-**Address input in `/employee/profile` must be complete before Sprint 5 starts.**
+| **Initializing Check** | Component mount lifecycle | Action controls display loading spinners. |
+| **Zone Compliance Secured** | Coordinates match: Calculated Range $\le$ `work_radius_m` | Render green indicator light. Enable action input. Trigger direct writes to table structures on click. |
+| **Boundary Violation Tracked** | Coordinates mismatch: Calculated Range $>$ `work_radius_m` | Render red hazard warning indicator. Lock execution inputs. Render inline mapping portal feedback. |
+| **System Access Blocked** | Client platform location permission denied | Display context panels explaining how to change permission parameters in OS settings. |
 
 ---
 
+### Task 5.5 — Outside-Zone Map Feedback Component
 
-## Sprint 5 — Geofencing & time in/out
-**~3–4 days. After Sprint 4 (needs employee Profile page).**
+* **Dependencies:** Wrap implementation inside asynchronous dynamic modules (`dynamic(() => import(...), { ssr: false })`) to eliminate compilation failures during server rendering.
+* **Component Presentation:** Render a map view centered on the employee's registered work coordinate location (`work_lat`, `work_lng`).
+* **Visual Metrics:**
+* Render an overlaid boundary radius circle component using parameters from `work_radius_m`.
+* Set stroke profiles to green if compliance rules match, changing to clear red markers if the calculated range exceeds limits.
+* Map a live marker icon pointing directly to the current mobile location of the worker.
 
----
 
-### Task 5.1 — DB schema
-
-Add to `profiles` (or new `employee_settings` table):
-```sql
-work_address    text        -- human-readable, entered by employee
-work_lat        float8      -- geocoded by Nominatim on address save
-work_lng        float8      -- geocoded by Nominatim on address save
-work_radius_m   int4 default 100
-work_setup      enum: on_site | hybrid | remote  default on_site
-```
-
-New `attendance` table:
-```sql
-id              uuid primary key
-employee_id     uuid references profiles(id)
-clock_in        timestamptz
-clock_out       timestamptz nullable
-clock_in_lat    float8
-clock_in_lng    float8
-clock_out_lat   float8 nullable
-clock_out_lng   float8 nullable
-within_zone     boolean   -- computed at clock-in, false = flagged
-```
 
 ---
 
-### Task 5.2 — Address geocoding
+### Task 5.6 — Real-Time HR Telemetry Intake (The Green Bridge View)
 
-- Call Nominatim ONLY when employee saves/updates address in Profile:
-  `https://nominatim.openstreetmap.org/search?q={address}&format=json&limit=1`
-- Store `lat` and `lng` to DB — never re-geocode on clock-in
-- If geocoding returns no result: show error asking for more specific address
-
----
-
-### Task 5.3 — Haversine utility
-
-Create `lib/haversine.ts` — returns distance in meters between two lat/lng points.
-Used in clock-in check: `if distance > work_radius_m → block clock-in`.
-
----
-
-### Task 5.4 — Clock-in UI states
-
-| State | Trigger | UI |
-|-------|---------|-----|
-| Not yet requested | First tap of Clock In | Call `navigator.geolocation.getCurrentPosition()`, show loading |
-| Inside zone (on-site/hybrid) | Granted + distance ≤ radius | Green indicator, Clock In active, record attendance |
-| Outside zone (on-site/hybrid) | Granted + distance > radius | Red indicator, button disabled, show Leaflet map |
-| Permission denied | Browser geo blocked | Explain, link to browser/OS location settings |
-| Remote employee | `work_setup = 'remote'` | Skip all geo logic, plain Clock In button |
-
----
-
-### Task 5.5 — Leaflet map (outside-zone feedback)
-
-Install: `npm install react-leaflet leaflet`
-Wrap in `dynamic(() => import(...), { ssr: false })` for Next.js.
-
-Map shows:
-- Center: `work_lat`, `work_lng` (registered address)
-- Circle overlay: radius = `work_radius_m`. Green stroke = inside, red = outside.
-- Marker: employee's current live GPS position
-- Only visible when employee is OUTSIDE the zone
+* **Route:** `/dashboard/employees/attendance`
+* **Component Architecture:** Build out the structural data grid for management tracking.
+* **Real-Time Synchronizations:** Establish long-lived event listeners targeting the database table through Supabase Realtime client connections.
+* **Telemetry Intake:** Append incoming entries directly to the data grid array context without requiring browser refreshes. Flag rows with a red warning badge if `within_zone` fields contain `false`. Provide inline administrative buttons allowing management to apply manual `hr_override` clearances.
 
 ---
 
 ## Sprint 6 — Design system & visual pass
+
 **~5–7 days. LAST sprint. Do not start until all other sprints are done.**
 
 ---
@@ -895,6 +787,7 @@ Define as CSS custom properties (extend Tailwind theme):
 --radius-md:           10px
 --radius-lg:           16px
 --shadow-card:         0 1px 3px rgba(0,0,0,0.08)
+
 ```
 
 ---
@@ -902,21 +795,23 @@ Define as CSS custom properties (extend Tailwind theme):
 ### Task 6.2 — Component standardization pass
 
 Standardize (do not rewrite from scratch — refactor to use tokens):
-- `StatusPill` — pipeline stage → label + color
-- `ScoreBadge` — match score with green/amber/red/gray
-- `JobCard` — used in `/apply/jobs` and HR job management
-- `ApplicationCard` — used in `/apply/applications`
-- `StatCard` — both dashboard pages
-- `BottomSheet` — mobile modal, slides up, drag handle
-- `PageHeader` — title + back button for inner pages
-- `EmptyState` — illustration + message
-- `SkeletonLoader` — placeholder while fetching
+
+* `StatusPill` — pipeline stage → label + color
+* `ScoreBadge` — match score with green/amber/red/gray
+* `JobCard` — used in `/apply/jobs` and HR job management
+* `ApplicationCard` — used in `/apply/applications`
+* `StatCard` — both dashboard pages
+* `BottomSheet` — mobile modal, slides up, drag handle
+* `PageHeader` — title + back button for inner pages
+* `EmptyState` — illustration + message
+* `SkeletonLoader` — placeholder while fetching
 
 ---
 
 ### Task 6.3 — Visual sweep order
 
 Apply in this order:
+
 1. HR portal (`/dashboard`, `/jobs/manage`, `/applicants`, `/interviews`, `/employees`)
 2. Applicant portal (all `/apply/*` routes)
 3. Employee portal (all `/employee/*` routes)
@@ -927,11 +822,11 @@ Per page: consistent padding, correct type scale, brand color on interactive ele
 
 ### Task 6.4 — Microinteractions
 
-- Button loading state: spinner + disabled on all form submits
-- Toast notifications for all CRUD success/error
-- Page transitions: CSS fade-in on route change
-- Form validation: inline error messages, red border on invalid field
-- Optimistic UI updates where Supabase latency is noticeable
+* Button loading state: spinner + disabled on all form submits
+* Toast notifications for all CRUD success/error
+* Page transitions: CSS fade-in on route change
+* Form validation: inline error messages, red border on invalid field
+* Optimistic UI updates where Supabase latency is noticeable
 
 ---
 
@@ -943,4 +838,4 @@ Per page: consistent padding, correct type scale, brand color on interactive ele
 
 ---
 
-*Kayod Architecture Plan v2.1 — May 2026*
+*Kayod Architecture Plan v2.2 — May 2026*

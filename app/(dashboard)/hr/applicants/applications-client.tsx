@@ -74,7 +74,7 @@ function ApplicationsList({
           return (
             <Link
               key={app.id}
-              href={`/applications/${app.id}`}
+              href={`/applicant/applications/${app.id}`}
               className="block group transition-all duration-200"
             >
               <div className="rounded-2xl bg-surface border border-border p-4 space-y-3 group-hover:border-primary/50 group-hover:shadow-md transition-all">
@@ -88,13 +88,12 @@ function ApplicationsList({
                   <div className="flex items-center gap-2 shrink-0">
                     {app.match_score !== null && (
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                          app.match_score >= 70
-                            ? "bg-green-50 text-success"
-                            : app.match_score >= 40
-                              ? "bg-yellow-50 text-warning"
-                              : "bg-gray-100 text-text-secondary"
-                        }`}
+                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${app.match_score >= 70
+                          ? "bg-green-50 text-success"
+                          : app.match_score >= 40
+                            ? "bg-yellow-50 text-warning"
+                            : "bg-gray-100 text-text-secondary"
+                          }`}
                       >
                         {app.match_score}%
                       </span>
@@ -243,8 +242,12 @@ export function ApplicationsHubClient({
   }, [localJobs, hasActiveJobs, selectedJobId]);
 
   return (
-    <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden bg-[#fcf8ff] text-[#171542]">
-      <div className="mb-[32px] space-y-1">
+    /* 
+      Root Container: overflow-x-auto allows the scrollbar to appear 
+      when children exceed the viewport width.
+    */
+    <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-x-auto overflow-y-hidden bg-[#fcf8ff] text-[#171542] custom-scrollbar px-1">
+      <div className="mb-[32px] space-y-1 mt-1">
         <h1 className="font-[family-name:var(--font-heading)] text-[28px] font-semibold tracking-tight text-on-background">
           Application Hub
         </h1>
@@ -252,7 +255,7 @@ export function ApplicationsHubClient({
       </div>
 
       <div className="mb-[20px] items-center flex w-full flex-col gap-[16px] md:flex-row md:justify-between px-1">
-        <div 
+        <div
           className="flex min-w-0 flex-1 items-center gap-[8px] overflow-x-auto max-w-full custom-scrollbar pb-1 cursor-grab active:cursor-grabbing select-none"
           onMouseDown={(e) => {
             const el = e.currentTarget;
@@ -260,7 +263,7 @@ export function ApplicationsHubClient({
             let startX = e.pageX - el.offsetLeft;
             let scrollLeft = el.scrollLeft;
             let moved = false;
-            
+
             const onMouseMove = (e: MouseEvent) => {
               if (!isDown) return;
               const x = e.pageX - el.offsetLeft;
@@ -268,7 +271,7 @@ export function ApplicationsHubClient({
               if (Math.abs(walk) > 5) moved = true;
               el.scrollLeft = scrollLeft - walk;
             };
-            
+
             const onMouseUp = () => {
               isDown = false;
               if (moved) {
@@ -281,7 +284,7 @@ export function ApplicationsHubClient({
               window.removeEventListener('mousemove', onMouseMove);
               window.removeEventListener('mouseup', onMouseUp);
             };
-            
+
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
           }}
@@ -291,11 +294,10 @@ export function ApplicationsHubClient({
               key={job.id}
               onClick={() => setSelectedJobId(job.id)}
               data-job-id={job.id}
-              className={`flex-shrink-0 whitespace-nowrap rounded-full px-[20px] py-[8px] text-[14px] font-medium transition-all duration-200 border-2 ${
-                job.id === selectedJobId 
-                  ? "bg-[#7c7aac] text-white border-[#7c7aac] shadow-md transform scale-105" 
-                  : "bg-white text-secondary border-[#E0D9FC] hover:border-[#7c7aac] hover:text-[#4a4880]"
-              }`}
+              className={`flex-shrink-0 whitespace-nowrap rounded-full px-[20px] py-[8px] text-[14px] font-medium transition-all duration-200 border-2 ${job.id === selectedJobId
+                ? "bg-[#7c7aac] text-white border-[#7c7aac] shadow-md transform scale-105"
+                : "bg-white text-secondary border-[#E0D9FC] hover:border-[#7c7aac] hover:text-[#4a4880]"
+                }`}
             >
               {job.title}
             </button>
@@ -310,13 +312,18 @@ export function ApplicationsHubClient({
         </div>
       </div>
 
-      <section className="min-h-[480px] flex-1 min-h-0">
+      {/* 
+        CHANGED: Replaced w-[1400px] with min-w-[1400px].
+        This strictly prevents flexbox from shrinking the container, 
+        forcing it to overflow the parent and trigger the horizontal scrollbar.
+      */}
+      <div className="flex-1 min-h-0 min-w-[1400px] pb-6">
         <ApplicationsKanbanBoard
           applications={selectedApplications}
           currentCompanyId={currentCompanyId}
           tenantJobIds={activeJobs.map((job) => job.id)}
         />
-      </section>
+      </div>
     </div>
   );
 }

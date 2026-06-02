@@ -3,11 +3,27 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { effectiveRole, isHRRole } from "@/lib/roles";
-import type { Profile, Application } from "@/lib/types";
-import ApplicationDetailView from "./application-detail-view";
+import type { Profile } from "@/lib/types";
+import Link from "next/link";
+import { updateApplicationStatus, moveToApplied } from "../hr-applications-actions";
+import HRApplicantCard from "../hr-applicant-card";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function deriveDisplayName(candidate: {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+} | null | undefined): string {
+  const firstName = normalizeName(candidate?.first_name);
+  const lastName = normalizeName(candidate?.last_name);
+  const fullName = `${firstName} ${lastName}`.trim();
+  if (fullName) return fullName;
+
+  const emailHandle = normalizeName((candidate?.email ?? "").split("@")[0]).replace(/[._-]+/g, " ").trim();
+  return emailHandle || "Unknown Applicant";
 }
 
 function deriveNamesFromUser(user: {
@@ -40,19 +56,7 @@ function deriveNamesFromUser(user: {
   };
 }
 
-function isActiveSignedDocumentStatus(status: string | null | undefined): boolean {
-  if (!status) return false;
-  return ["sent", "pending", "negotiating"].includes(String(status).toLowerCase());
-}
-
-function isActiveJobOfferStatus(status: string | null | undefined): boolean {
-  if (!status) return false;
-  return ["draft", "sent", "negotiating", "pending_review", "pending", "negotiation_pending"].includes(
-    String(status).toLowerCase()
-  );
-}
-
-export default async function ApplicationDetailPage({
+export default async function HRApplicantDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -65,264 +69,130 @@ export default async function ApplicationDetailPage({
 
   const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .from("profiles").select("role").eq("id", user.id).single<Pick<Profile, "role">>();
 
   const role = effectiveRole(profile?.role, authRole);
-  const isHR = isHRRole(role);
+  if (!isHRRole(role)) redirect("/dashboard");
 
-  // Fetch application with all related data
-  const { data: application } = await supabase
+  // Note: We are using the Job Split View here as requested by the user for the detail route.
+  
+  // Get all job postings
+  const { data: jobs } = await supabase
+    .from("job_postings")
+    .select("id, title, is_published, employment_type")
+    .order("created_at", { ascending: false });
+
+  // Get all applications
+  const { data: applications } = await supabase
     .from("applications")
     .select(`
-      id,
+      id, status, match_score, submitted_at, cover_letter, candidate_id,
       job_posting_id,
-      contract_offer_id,
-      candidate_id,
-      resume_id,
-      status,
-      cover_letter,
-      match_score,
-      hr_notes,
-      hr_offered_modes,
-      hr_office_address,
-      selected_mode,
-      selected_mode_set_at,
-      submitted_at,
-      updated_at,
-      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
-      resumes ( id, title, pdf_url, content_text ),
-      job_postings ( id, title, location, description, salary_min, salary_max, currency, employment_type )
+      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone ),
+      resumes ( title, content_text ),
+      job_postings ( title )
     `)
-    .eq("id", id)
-    .single<Application>();
+    .order("submitted_at", { ascending: false });
 
-  if (!application) {
-    redirect("/hr/applicants");
-  }
-
-  // Repair candidate profile names from auth metadata when stale/missing.
+  // Repair names
   try {
     const admin = getAdminClient();
-    const candidateId = application.candidate_id;
-    const candidateProfile = (application.profiles ?? {}) as {
-      first_name?: string | null;
-      last_name?: string | null;
-    };
+    const apps = (applications ?? []) as any[];
+    const uniqueCandidateIds = Array.from(new Set(apps.map((app) => app.candidate_id).filter(Boolean)));
 
-    const { data: authData } = await admin.auth.admin.getUserById(candidateId);
-    const authUser = authData?.user;
+    for (const candidateId of uniqueCandidateIds) {
+      const { data: authData } = await admin.auth.admin.getUserById(candidateId);
+      const authUser = authData?.user;
+      if (!authUser) continue;
 
-    if (authUser) {
       const { firstName, lastName } = deriveNamesFromUser(authUser);
-      const currentFirst = normalizeName(candidateProfile.first_name);
-      const currentLast = normalizeName(candidateProfile.last_name);
+      if (!firstName && !lastName) continue;
 
-      if ((firstName || lastName) && (currentFirst !== firstName || currentLast !== lastName)) {
+      let needsUpdate = false;
+      for (const app of apps) {
+        if (app.candidate_id !== candidateId) continue;
+        const p = app.profiles ?? {};
+        if (normalizeName(p.first_name) !== firstName || normalizeName(p.last_name) !== lastName) {
+          needsUpdate = true;
+          app.profiles = { ...p, first_name: firstName, last_name: lastName };
+        }
+      }
+
+      if (needsUpdate) {
         await admin
           .from("profiles")
           .update({ first_name: firstName, last_name: lastName })
           .eq("id", candidateId);
-
-        (application.profiles as { first_name?: string; last_name?: string }).first_name = firstName;
-        (application.profiles as { first_name?: string; last_name?: string }).last_name = lastName;
       }
     }
   } catch {
-    // Non-blocking: keep page working even if admin sync is unavailable.
+    // Non-blocking
   }
 
-  // Access control: HR can view any application, candidates can only view their own
-  if (!isHR && application.candidate_id !== user.id) {
-    redirect("/hr/applicants");
-  }
-
-  // ── Generate signed resume URL server-side (private bucket requires server auth) ──
-  // Fetch interviews for this application
-  const { data: interviews, error: interviewError } = await supabase
-  .from("interviews")
-  .select(`
-    id,
-    application_id,
-    scheduled_by,
-    status,
-    interview_type,
-    available_modes,
-    location_details,
-    applicant_selection,
-    scheduled_at,
-    duration_minutes,
-    timezone,
-    location_address,
-    location_notes,
-    video_room_url,
-    video_room_name,
-    video_provider,
-    room_not_before,
-    room_expires_at,
-    interviewer_notes,
-    interview_score,
-    created_at,
-    updated_at,
-    profiles ( first_name, last_name, email )
-  `)
-  .eq("application_id", id)
-  .order("scheduled_at", { ascending: false }) as any;
-
-  const { data: contractTemplates } = await supabase
-    .from("contract_templates")
-    .select("id, template_name, docuseal_template_id")
-    .eq("job_posting_id", application.job_posting_id)
-    .order("created_at", { ascending: false });
-
-  const { data: jobOffer } = await supabase
-    .from("job_offer_applications")
-    .select("id")
-    .eq("application_id", application.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const admin = getAdminClient();
-
-  const { data: latestJobOffer } = await admin
-    .from("job_offers")
-    .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
-    .eq("application_id", application.id)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: latestJobOfferFallback } = latestJobOffer
-    ? { data: null }
-    : await admin
-        .from("job_offers")
-        .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
-        .eq("application_id", application.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-  const { data: latestJobOfferTemplate } = latestJobOffer?.contract_template_id
-    ? await admin
-        .from("contract_templates")
-        .select("id, template_name, docuseal_template_id")
-        .eq("id", latestJobOffer.contract_template_id)
-        .maybeSingle()
-    : { data: null };
-
-  const offerSelect = `
-          id,
-          status,
-          signing_method,
-          docuseal_submission_url,
-          contract_template_id,
-          signed_at,
-          contract_templates (
-            id,
-            template_name,
-            docuseal_template_id
-          )
-        `;
-
-  const { data: activeSignedDocumentById } = application.contract_offer_id
-    ? await admin
-        .from("signed_documents")
-        .select(offerSelect)
-        .eq("id", application.contract_offer_id)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: latestSignedDocumentByApplication } = activeSignedDocumentById
-    ? { data: null }
-    : await admin
-        .from("signed_documents")
-        .select(offerSelect)
-        .eq("application_id", application.id)
-        .in("status", ["sent", "pending"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-  const activeContractOffer = latestJobOffer
-    ? {
-        id: latestJobOffer.id,
-        status: String(latestJobOffer.status ?? "draft").toLowerCase(),
-        signing_method: "digital",
-        signed_at: null,
-        docuseal_submission_url: latestJobOffer.latest_docuseal_url ?? null,
-        contract_templates: latestJobOffer.contract_template_id && contractTemplates?.length ? [contractTemplates[0]] : [],
-      }
-    : latestJobOfferFallback
-      ? {
-          id: latestJobOfferFallback.id,
-          status: String(latestJobOfferFallback.status ?? "draft").toLowerCase(),
-          signing_method: "digital",
-          signed_at: null,
-          docuseal_submission_url: latestJobOfferFallback.latest_docuseal_url ?? null,
-          contract_templates: latestJobOfferFallback.contract_template_id && contractTemplates?.length ? [contractTemplates[0]] : [],
-        }
-      : isActiveSignedDocumentStatus(activeSignedDocumentById?.status)
-        ? activeSignedDocumentById
-        : latestSignedDocumentByApplication;
-
-  const resolvedActiveContractOffer = activeContractOffer
-    ? activeContractOffer
-    : latestJobOffer || latestJobOfferFallback
-      ? {
-          id: (latestJobOffer ?? latestJobOfferFallback)!.id,
-          status: String((latestJobOffer ?? latestJobOfferFallback)!.status || "sent").toLowerCase(),
-          signing_method: "digital",
-          signed_at: null,
-          docuseal_submission_url: (latestJobOffer ?? latestJobOfferFallback)!.latest_docuseal_url ?? null,
-          contract_template_id: (latestJobOffer ?? latestJobOfferFallback)!.contract_template_id ?? "",
-          contract_templates: latestJobOfferTemplate
-            ? [latestJobOfferTemplate]
-            : [],
-        }
-      : null;
-
-  console.log("[ApplicationDetailPage] Contract offer lookup:", {
-    applicationId: application.id,
-    contractOfferId: application.contract_offer_id ?? null,
-    resolvedOfferId: resolvedActiveContractOffer?.id ?? null,
-    resolvedStatus: resolvedActiveContractOffer?.status ?? null,
-    fallbackJobOfferId: latestJobOffer?.id ?? latestJobOfferFallback?.id ?? null,
+  // Group applications by job
+  const appsByJob: Record<string, any[]> = {};
+  (applications ?? []).forEach((app) => {
+    const jid = app.job_posting_id;
+    if (!appsByJob[jid]) appsByJob[jid] = [];
+    appsByJob[jid]!.push(app);
   });
 
-  const normalizedActiveContractOffer = resolvedActiveContractOffer
-    ? {
-        ...resolvedActiveContractOffer,
-        contract_templates: Array.isArray(resolvedActiveContractOffer.contract_templates)
-          ? resolvedActiveContractOffer.contract_templates
-          : resolvedActiveContractOffer.contract_templates
-            ? [resolvedActiveContractOffer.contract_templates]
-            : null,
-      }
-    : null;
-
-  const offerRouteId =
-    normalizedActiveContractOffer?.id ??
-    latestJobOffer?.id ??
-    jobOffer?.id ??
-    null;
+  const totalApps = applications?.length ?? 0;
+  const newApps = applications?.filter((a) => a.status === "submitted").length ?? 0;
 
   return (
     <PageContainer>
-      <ApplicationDetailView
-        application={application}
-        interviews={interviews ?? []}
-        userRole={role}
-        isCurrentUser={!isHR}
-        contractTemplates={contractTemplates ?? []}
-        activeContractOffer={normalizedActiveContractOffer}
-        offerId={jobOffer?.id ?? null}
-        offerRouteId={offerRouteId}
-      />
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+            Applicants List
+          </h1>
+          <div className="flex gap-2">
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+              {totalApps} total
+            </span>
+            {newApps > 0 && (
+              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+                {newApps} new
+              </span>
+            )}
+          </div>
+        </div>
+
+        {(jobs ?? []).map((job) => {
+          const jobApps = appsByJob[job.id] ?? [];
+          if (jobApps.length === 0) return null;
+
+          return (
+            <section key={job.id} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-text-primary">{job.title}</h2>
+                  <p className="text-xs text-text-secondary capitalize">
+                    {job.employment_type.replace("_", " ")} · {jobApps.length} applicant{jobApps.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              </div>
+
+              {jobApps.map((app) => {
+                const candidate = app.profiles;
+                const resume = app.resumes;
+                const fullName = deriveDisplayName(candidate);
+
+                return (
+                  <HRApplicantCard
+                    key={app.id}
+                    app={app}
+                    candidate={candidate}
+                    resume={resume}
+                    fullName={fullName}
+                  />
+                );
+              })}
+            </section>
+          );
+        })}
+      </div>
     </PageContainer>
   );
-  
 }
