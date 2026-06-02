@@ -174,18 +174,18 @@ export function InterviewCalendar({ interviews }: Props) {
       {/* Quick Schedule Modal */}
       {modalOpen && selectedDate && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4"
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl bg-white border border-border p-5 space-y-4 shadow-xl"
+            className="w-full max-w-md rounded-2xl bg-surface border border-outline-variant p-6 space-y-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-text-primary">Schedule Interview</p>
-                <p className="text-xs text-text-secondary mt-0.5">
+                <p className="font-h2 text-h2 font-semibold text-on-surface">Schedule Interview</p>
+                <p className="text-xs text-on-surface-variant mt-1">
                   {selectedDate.toLocaleDateString("en-PH", {
                     weekday: "long", month: "long", day: "numeric", year: "numeric",
                   })}
@@ -193,7 +193,7 @@ export function InterviewCalendar({ interviews }: Props) {
               </div>
               <button
                 onClick={() => setModalOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary hover:bg-gray-100"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant text-on-surface-variant hover:bg-surface-container transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                   <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -207,30 +207,41 @@ export function InterviewCalendar({ interviews }: Props) {
               const count = interviewDates[key] ?? 0;
               if (count === 0) return null;
               return (
-                <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-                  <p className="text-xs text-amber-800">
-                    ⚠️ There {count === 1 ? "is" : "are"} already <strong>{count}</strong> interview{count > 1 ? "s" : ""} on this day.
+                <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-xs text-amber-800 leading-5">
+                    There {count === 1 ? "is" : "are"} already <strong>{count}</strong> interview{count > 1 ? "s" : ""} on this day.
                   </p>
                 </div>
               );
             })()}
 
-            <p className="text-xs text-text-secondary">
-              The date will be pre-filled. You&apos;ll choose the time and applicant on the next page.
-            </p>
+            <div className="flex items-start gap-2.5 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-primary shrink-0 mt-0.5">
+                <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clipRule="evenodd" />
+              </svg>
+              <p className="text-xs text-primary leading-5">
+                The date will be pre-filled. You&apos;ll choose the time and applicant on the next page.
+              </p>
+            </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setModalOpen(false)}
-                className="flex-1 rounded-xl border border-border py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+                className="flex-1 rounded-xl border border-outline-variant bg-surface py-2.5 text-h3 font-medium text-on-surface hover:bg-surface-container transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleScheduleFromModal}
-                className="flex-1 rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-h3 font-semibold text-on-primary hover:bg-primary-dark transition-colors"
               >
-                Continue →
+                Continue
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+                </svg>
               </button>
             </div>
           </div>

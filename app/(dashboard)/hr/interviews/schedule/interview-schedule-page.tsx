@@ -58,7 +58,7 @@ export default function InterviewSchedulePage() {
   }, [applicationIdParam]);
 
   return (
-    <div className="max-w-lg mx-auto space-y-5">
+    <div className="w-full max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-3">
         <Link href="/hr/interviews" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
