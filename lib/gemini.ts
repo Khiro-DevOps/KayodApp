@@ -46,8 +46,8 @@ class RequestQueue {
 
     return new Promise<string>((resolve, reject) => {
       this.queue.push(request);
-      this.processQueue().then(() => {}).catch(err => console.error("Queue start error:", err));
-      
+      this.processQueue().then(() => { }).catch(err => console.error("Queue start error:", err));
+
       // Execute this request with retry logic
       this.executeWithBackoff(request)
         .then(resolve)
@@ -99,7 +99,7 @@ const requestQueue = new RequestQueue();
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Fixed the model string to the correct OpenRouter model ID
-const MODEL = "google/gemini-2.0-flash-001"; 
+const MODEL = "google/gemini-2.5-flash-lite";
 
 async function callOpenRouter(
   systemPrompt: string,
@@ -131,7 +131,7 @@ async function callOpenRouter(
       const err = await response.text();
       const isRateLimited = response.status === 429;
       const isTransient = isTransientError(response.status);
-      
+
       if (isRateLimited) {
         // Extract retry-after if available
         const retryAfter = response.headers.get("retry-after");
@@ -144,7 +144,7 @@ async function callOpenRouter(
           `API rate limited. Please try again in ${retryAfterSeconds || 60} seconds.`
         );
       }
-      
+
       if (isTransient) {
         // Server-side transient error (502, 503, 504, etc.)
         throw new OpenRouterError(
@@ -155,7 +155,7 @@ async function callOpenRouter(
           `OpenRouter server temporarily unavailable (${response.status}). Retrying...`
         );
       }
-      
+
       // Permanent error (4xx client errors, etc.)
       throw new OpenRouterError(
         response.status,
@@ -391,12 +391,12 @@ function parseJSONResponse<T>(raw: string): T | null {
     // Robust parsing: extracts JSON block even if Claude wraps it in conversational text
     const startIndex = raw.indexOf('{');
     const endIndex = raw.lastIndexOf('}');
-    
+
     if (startIndex === -1 || endIndex === -1) {
       console.warn("Could not find JSON object bounds in the AI response.");
       return null;
     }
-    
+
     const cleanJson = raw.slice(startIndex, endIndex + 1);
     return JSON.parse(cleanJson) as T;
   } catch (error) {
@@ -446,8 +446,8 @@ function toJobData(jobRequirements: string | Record<string, unknown>) {
     requirements: typeof data.requirements === "string" ? data.requirements : null,
     required_skills: Array.isArray(data.required_skills)
       ? (data.required_skills as unknown[]).filter(
-          (skill): skill is string => typeof skill === "string" && skill.trim() !== ""
-        )
+        (skill): skill is string => typeof skill === "string" && skill.trim() !== ""
+      )
       : [],
   };
 }
@@ -472,8 +472,8 @@ function normalizeJobFitOutput(raw: unknown, fallbackScore?: number): JobFitAnal
 
   const topReasons = Array.isArray(r.top_reasons)
     ? (r.top_reasons as unknown[])
-        .filter((reason): reason is string => typeof reason === "string" && reason.trim() !== "")
-        .slice(0, 2)
+      .filter((reason): reason is string => typeof reason === "string" && reason.trim() !== "")
+      .slice(0, 2)
     : [];
 
   while (topReasons.length < 2) {
@@ -608,8 +608,8 @@ function validateResumeOutput(raw: unknown): ResumeOutput {
       const e = entry as Record<string, unknown>;
       const bullets = Array.isArray(e.bullets)
         ? (e.bullets as unknown[]).filter(
-            (b): b is string => typeof b === "string" && b.trim() !== ""
-          )
+          (b): b is string => typeof b === "string" && b.trim() !== ""
+        )
         : [];
       experience.push({
         title: typeof e.title === "string" ? e.title.trim() : "Unknown Title",
@@ -766,8 +766,8 @@ Extract the resume content as instructed. Remember: ignore all file metadata.
   if (!extracted || !extracted.name) {
     throw new Error(
       `Document extraction failed — the model may have returned metadata instead of content.\n` +
-        `Check that your PDF/DOCX reader returns the text layer, not the Info dictionary.\n` +
-        `Raw output:\n${extractionRaw.slice(0, 400)}`
+      `Check that your PDF/DOCX reader returns the text layer, not the Info dictionary.\n` +
+      `Raw output:\n${extractionRaw.slice(0, 400)}`
     );
   }
 

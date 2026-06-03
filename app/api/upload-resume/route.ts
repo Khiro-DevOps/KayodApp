@@ -107,7 +107,7 @@ export async function POST(request: Request) {
     aiResult = await generateResumeFromDocument(extractedRawText, file.name);
   } catch (err) {
     console.error("AI Extraction failed:", err);
-    
+
     // Handle rate limiting specifically
     if (err instanceof OpenRouterError) {
       if (err.isRateLimited) {
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-    
+
     // Generic parsing errors
     return NextResponse.json(
       {
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       generated_content: { ai_sections: enhancedData },
       content_text: enhancedData.professionalSummary,
       pdf_url: publicUrl,
-      gemini_model: "claude-3.7-sonnet", 
+      gemini_model: "google/gemini-2.5-flash",
     })
     .select()
     .single();

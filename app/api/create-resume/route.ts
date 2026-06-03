@@ -117,9 +117,9 @@ function generateATSFriendlyResume(data: ResumeInput) {
     .filter(Boolean);
   const certificationsArray = data.certifications
     ? data.certifications
-        .split(",")
-        .map((c) => c.trim())
-        .filter(Boolean)
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean)
     : [];
 
   return `
@@ -173,15 +173,15 @@ ${generated.certifications.length > 0 ? `\nCERTIFICATIONS\n${generated.certifica
 // FIXED: Adjusted to correctly parse object fields into HTML
 function generateResumeHTML(data: ResumeInput, ai?: ResumeOutput): string {
   const summary = ai?.professionalSummary ?? data.summary;
-  
+
   const experience = ai
     ? ai.experience.map((e) => `<strong>${e.title}</strong> | ${e.company} | ${e.dateRange}<br/>` + e.bullets.map((b) => `• ${b}`).join("<br/>")).join("<br/><br/>")
     : data.experience.replace(/\n/g, "<br>");
-    
+
   const education = ai
     ? ai.education.map((e) => `<strong>${e.degree}</strong> — ${e.institution} (${e.graduationYear})` + (e.honors ? `<br/><em>${e.honors}</em>` : "")).join("<br/><br/>")
     : data.education.replace(/\n/g, "<br>");
-    
+
   const skillsArray = ai?.skills ?? data.skills.split(",").map(s => s.trim()).filter(Boolean);
   const certificationsArray = ai?.certifications ?? (data.certifications
     ? data.certifications.split(",").map(c => c.trim()).filter(Boolean)
@@ -305,7 +305,7 @@ export async function POST(request: Request) {
       if (process.env.OPENROUTER_API_KEY) {
         console.log("Triggering AI synthesis via OpenRouter...");
         aiGeneratedSections = await generateResumeSections(body);
-        usedModel = "google/gemini-2.0-flash-001";
+        usedModel = "google/gemini-2.5-flash-lite";
       } else {
         console.warn("No OPENROUTER_API_KEY found, skipping AI enhancement.");
       }
