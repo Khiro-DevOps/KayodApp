@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
 
 export async function submitApplication(formData: FormData) {
   const supabase = await createClient();
@@ -77,20 +78,9 @@ if (job.closes_at && new Date(job.closes_at) < new Date()) {
   }
 
   try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    const response = await fetch(new URL("/api/compute-match-score", siteUrl), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ application_id: createdApplication.id }),
-    });
-
-    if (!response.ok) {
-      console.warn("Match score recompute request failed:", await response.text());
-    }
+    await computeAndStoreMatchScore(createdApplication.id);
   } catch (recomputeError) {
-    console.warn("Match score recompute request failed:", recomputeError);
+    console.warn("Match score computation failed:", recomputeError);
   }
 
   revalidatePath("/applications");

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import { assignShift } from "./hr-schedules-actions";
+import ClockInModule from "@/components/employee/ClockInModule";
+import { getEmployeeWorkLocation } from "@/lib/actions/getWorkLocation";
 
 function getWeekDates(weekStart: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => {
@@ -37,7 +39,7 @@ export default async function SchedulesPage() {
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
-    .from("profiles").select("role").eq("id", user.id).single<Pick<Profile, "role">>();
+    .from("profiles").select("role, work_setup").eq("id", user.id).single<Pick<Profile, "role" | "work_setup">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
 
@@ -69,7 +71,6 @@ export default async function SchedulesPage() {
   const scheduleMap: Record<string, Record<number, string>> = {};
   (schedules ?? []).forEach((s) => {
     if (!scheduleMap[s.employee_id]) scheduleMap[s.employee_id] = {};
-    // Simplified: store shift for week
     scheduleMap[s.employee_id][0] = s.shift;
   });
 
@@ -94,12 +95,28 @@ export default async function SchedulesPage() {
     const mySchedules = (schedules ?? []).filter((s) => s.employee_id === emp.id);
     const myLeaves = leaveMap[emp.id] ?? new Set();
 
+    const workLoc = await getEmployeeWorkLocation(emp.id, user.id);
+    const todayStr = new Date().toISOString().split("T")[0];
+    const isTodayOnLeave = myLeaves.has(todayStr);
+
     return (
       <PageContainer>
         <div className="space-y-5">
           <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-            My schedule
+            My schedule & attendance
           </h1>
+
+          <ClockInModule
+            isOnLeave={isTodayOnLeave}
+            profile={{
+              work_setup: profile?.work_setup ?? "onsite",
+              work_radius_m: workLoc.radius_meters,
+              work_lat: workLoc.latitude,
+              work_lng: workLoc.longitude,
+              location_name: workLoc.name,
+            }}
+          />
+
           <WeekHeader weekDates={weekDates} />
           <div className="space-y-2">
             {weekDates.map((date, i) => {

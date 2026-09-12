@@ -6,6 +6,7 @@ import type { Profile } from "@/lib/types";
 
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { RoleSidebar, pwaAppFrame, pwaShellBackground } from "@/components/layout/pwa-shell";
 
 export default async function ApplicantLayout({
   children,
@@ -56,17 +57,23 @@ export default async function ApplicantLayout({
   ]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <Header 
-        userName={userName} 
-        notificationCount={5} 
-        applicationsCount={applicationsCount ?? 0}
-        interviewsPendingCount={interviewsCount ?? 0}
-      />
-      <main className="flex-1 pb-24 md:pb-8">
-        {children}
-      </main>
-      <BottomNav />
+    <div className={pwaShellBackground}>
+      <div className={pwaAppFrame}>
+        <RoleSidebar variant="applicant" />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header 
+            userName={userName} 
+            notificationCount={5} 
+            applicationsCount={applicationsCount ?? 0}
+            interviewsPendingCount={interviewsCount ?? 0}
+          />
+          <main className="flex-1 bg-[#f7f6fc] pb-24 md:pb-6">
+            {children}
+          </main>
+          <BottomNav />
+        </div>
+      </div>
     </div>
   );
 }

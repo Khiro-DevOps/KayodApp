@@ -17,8 +17,7 @@ export default function BottomNav() {
   ];
 
   return (
-    // Removed md:hidden so it's globally forced visible across all desktop frames
-    <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-outline-variant flex justify-around items-center px-4 h-16 z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+    <nav className="fixed inset-x-0 bottom-0 z-50 mx-auto flex h-16 w-full max-w-[480px] items-center justify-around border-t border-[#e6e4f0] bg-[#f7f6fc]/95 px-3 backdrop-blur-sm shadow-[0_-6px_16px_rgba(39,36,84,0.08)] md:hidden">
       {navItems.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
 
@@ -26,18 +25,17 @@ export default function BottomNav() {
           <Link
             key={item.name}
             href={item.href}
-            className={`flex flex-col items-center justify-center w-full h-full transition-transform active:scale-90 duration-200 ${isActive ? 'text-primary font-bold' : 'text-[#474651] hover:text-primary'
-              }`}
+            className={`flex min-h-[44px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[10px] font-medium transition-all duration-200 ${isActive ? 'bg-[#e9e5ff] text-[#2d2b68]' : 'text-[#5d5a75] hover:text-[#2d2b68]'}`}
           >
             <span
-              className="material-symbols-outlined text-[24px]"
+              className="material-symbols-outlined text-[22px]"
               style={{
                 fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"
               }}
             >
               {item.icon}
             </span>
-            <span className="text-[10px] mt-0.5 uppercase tracking-widest font-semibold">
+            <span className="uppercase tracking-[0.08em]">
               {item.name}
             </span>
           </Link>

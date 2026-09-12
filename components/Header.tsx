@@ -70,31 +70,30 @@ export default function Header({
   // --- VARIANT A: THE DEEP HERO DASHBOARD HEADER (Dark Indigo Set) ---
   if (isDashboard) {
     return (
-      <header className="bg-[#1a146b] pt-10 pb-28 md:pb-36 px-4 md:px-8 sticky top-0 z-30 transition-all duration-300" id="top-header">
-        <div className="max-w-6xl mx-auto flex justify-between items-start">
+      <header className="sticky top-0 z-30 border-b border-[#e6e4f0] bg-[#2d2b68] px-4 pb-4 pt-5 text-white shadow-[0_8px_20px_rgba(39,36,84,0.18)]" id="top-header">
+        <div className="mx-auto flex max-w-[480px] items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-white/70 font-body text-body">Hello,</p>
-            <h1 className="text-white font-h1 text-h1-mobile md:text-h1 tracking-tight">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#cfcaf8]">Hello,</p>
+            <h1 className="text-[22px] font-semibold leading-8 text-white">
               {userName}.
             </h1>
-            <p className="text-white/60 font-body text-body-sm">Find your next opportunity</p>
+            <p className="text-[13px] leading-[20px] text-[#ece9ff]">Find your next opportunity</p>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NotificationButton />
             <UserAvatar />
           </div>
         </div>
 
-        {/* Metric Cards Overlay */}
-        <div className="max-w-6xl mx-auto mt-8 grid grid-cols-2 gap-4">
-          <div className="bg-white/10 backdrop-blur-md rounded-rounded-card p-card-padding border border-white/20 text-white">
-            <p className="font-h1 text-h1 leading-none">{applicationsCount}</p>
-            <p className="font-body text-body-sm opacity-80 mt-1">Applications</p>
+        <div className="mx-auto mt-4 grid max-w-[480px] grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/15 bg-white/10 p-3 text-white backdrop-blur-sm">
+            <p className="text-[22px] font-semibold leading-none">{applicationsCount}</p>
+            <p className="mt-1 text-[12px] text-[#ece9ff]">Applications</p>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-rounded-card p-card-padding border border-white/20 text-white">
-            <p className="font-h1 text-h1 leading-none">{interviewsPendingCount}</p>
-            <p className="font-body text-body-sm opacity-80 mt-1">Interview pending</p>
+          <div className="rounded-2xl border border-white/15 bg-white/10 p-3 text-white backdrop-blur-sm">
+            <p className="text-[22px] font-semibold leading-none">{interviewsPendingCount}</p>
+            <p className="mt-1 text-[12px] text-[#ece9ff]">Interview pending</p>
           </div>
         </div>
       </header>
@@ -103,18 +102,15 @@ export default function Header({
 
   // --- VARIANT B: STANDARD SUB-PAGE NAVBAR (Dark Indigo Set) ---
   return (
-    <header className="bg-[#1a146b] py-4 px-4 md:px-8 sticky top-0 z-30 transition-all duration-300 shadow-sm border-b border-[#2a2394]" id="top-header">
-      <div className="max-w-6xl mx-auto flex justify-between items-center">
-
-        {/* Simplified Page Title Display */}
+    <header className="sticky top-0 z-30 border-b border-[#e6e4f0] bg-[#2d2b68] px-4 py-4 text-white shadow-[0_8px_20px_rgba(39,36,84,0.18)]" id="top-header">
+      <div className="mx-auto flex max-w-[480px] items-center justify-between gap-3">
         <div>
-          <h1 className="text-white font-h2 text-h2 tracking-tight">
+          <h1 className="text-[18px] font-semibold tracking-tight text-white">
             {getPageTitle(pathname)}
           </h1>
         </div>
 
-        {/* Action Elements Layer */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <NotificationButton />
           <UserAvatar />
         </div>

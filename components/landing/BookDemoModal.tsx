@@ -29,6 +29,7 @@ type BookDemoFormState = {
 
 type RegistrationResponse = {
   success: boolean;
+  error?: string;
   userId?: string;
   tenantId?: string;
   workspaceSlug?: string;

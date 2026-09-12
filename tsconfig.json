@@ -35,6 +35,7 @@
   ],
   "exclude": [
     "node_modules",
-    "kayod-repo-mirror.git"
+    "kayod-repo-mirror.git",
+    "Kayod"
   ]
 }

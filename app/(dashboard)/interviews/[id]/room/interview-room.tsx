@@ -34,7 +34,6 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const autosaveRef = useRef<number | null>(null);
   const offerSentRef = useRef(false);
   const startedRef = useRef(false);
-  const mediaAcquiredRef = useRef(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -123,13 +122,11 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   };
 
   useEffect(() => {
-    if (mediaAcquiredRef.current) return;
-    mediaAcquiredRef.current = true;
-
     const supabase = ensureSupabase();
     let active = true;
 
     const sendJoinSignal = async () => {
+      if (!active) return;
       await channelRef.current?.send({
         type: "broadcast",
         event: "join",
@@ -138,12 +135,14 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     };
 
     const createAndSendOffer = async () => {
-      if (!pcRef.current || !channelRef.current || offerSentRef.current) return;
+      if (!active || !pcRef.current || !channelRef.current || offerSentRef.current) return;
 
       offerSentRef.current = true;
 
       const offer = await pcRef.current.createOffer();
+      if (!active) return;
       await pcRef.current.setLocalDescription(offer);
+      if (!active) return;
 
       await channelRef.current.send({
         type: "broadcast",
@@ -160,17 +159,24 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     const setup = async () => {
       try {
         const iceResponse = await fetch("/api/turn-credentials");
+        if (!active) return;
         if (!iceResponse.ok) {
           throw new Error("Failed to load ICE servers");
         }
 
         const iceConfig = (await iceResponse.json()) as RTCConfiguration;
-        
+        if (!active) return;
+
         // Gracefully acquire media devices with fallback strategy
         const mediaResult = await acquireMediaStream({
           preferVideo: true,
           preferAudio: true,
         });
+
+        if (!active) {
+          if (mediaResult?.stream) stopStream(mediaResult.stream);
+          return;
+        }
 
         if (!mediaResult) {
           const error = new Error("No media devices available");
@@ -181,18 +187,12 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         }
 
         const stream = mediaResult.stream;
-        
-        if (!active) {
-          stopStream(stream);
-          return;
-        }
 
         // Update state with actual device availability
         setHasVideo(mediaResult.hasVideo);
         setHasAudio(mediaResult.hasAudio);
 
         localStreamRef.current = stream;
-
         setLocalPreview(stream);
 
         const pc = new RTCPeerConnection(iceConfig);
@@ -208,41 +208,50 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         channelRef.current = channel;
 
         channel.on("broadcast", { event: "join" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (!isHR || offerSentRef.current || payload?.role !== "applicant") return;
-          await createAndSendOffer().catch(() => setConnectionState("failed"));
+          await createAndSendOffer().catch(() => {
+            if (active) setConnectionState("failed");
+          });
         });
 
         channel.on("broadcast", { event: "offer" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (isHR || !pcRef.current) return;
 
           try {
             await pcRef.current.setRemoteDescription(payload.sdp);
+            if (!active) return;
             const answer = await pcRef.current.createAnswer();
+            if (!active) return;
             await pcRef.current.setLocalDescription(answer);
+            if (!active) return;
             await channel.send({
               type: "broadcast",
               event: "answer",
               payload: { sdp: answer },
             });
           } catch {
-            setConnectionState("failed");
+            if (active) setConnectionState("failed");
           }
         });
 
         channel.on("broadcast", { event: "answer" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (!isHR || !pcRef.current) return;
 
           try {
             await pcRef.current.setRemoteDescription(payload.sdp);
           } catch {
-            setConnectionState("failed");
+            if (active) setConnectionState("failed");
           }
         });
 
         channel.on("broadcast", { event: "ice-candidate" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           try {
             await pcRef.current?.addIceCandidate(payload.candidate);
@@ -252,7 +261,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         });
 
         pc.onicecandidate = ({ candidate }) => {
-          if (!candidate || !channelRef.current) return;
+          if (!active || !candidate || !channelRef.current) return;
 
           void channelRef.current.send({
             type: "broadcast",
@@ -262,6 +271,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         };
 
         pc.ontrack = ({ streams }) => {
+          if (!active) return;
           const remoteStream = streams[0];
 
           if (remoteVideoRef.current) {
@@ -270,11 +280,12 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
               console.error("Browser blocked remote video autoplay stream:", error);
             });
           }
-          
+
           setHasRemoteStream(true);
         };
 
         pc.onconnectionstatechange = () => {
+          if (!active) return;
           const state = pc.connectionState;
           if (state === "connected") {
             clearJoinPing();
@@ -299,7 +310,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           if (!isHR) {
             clearJoinPing();
             joinPingRef.current = window.setInterval(() => {
-              if (pcRef.current?.connectionState === "connected") {
+              if (!active || pcRef.current?.connectionState === "connected") {
                 clearJoinPing();
                 return;
               }
@@ -315,8 +326,9 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         });
 
       } catch (error) {
+        if (!active) return;
         console.error("Failed to initialize interview room:", error);
-        
+
         // Parse device-specific errors
         if (error instanceof Error && (
           error.name === "NotFoundError" ||
@@ -329,7 +341,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         } else {
           setDeviceError("Failed to initialize interview. Please check your connection and try again.");
         }
-        
+
         setConnectionState("failed");
       }
     };
@@ -338,6 +350,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
 
     return () => {
       active = false;
+      offerSentRef.current = false;
       clearJoinPing();
 
       if (autosaveRef.current) {
@@ -362,7 +375,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         channelRef.current = null;
       }
     };
-  }, []);
+  }, [interviewId, isHR, roomId]);
 
   useEffect(() => {
     if (!isHR) return;

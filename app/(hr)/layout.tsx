@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { label: "Employees", href: "/hr/employees", icon: "group" },
   { label: "Applicants", href: "/hr/applicants", icon: "layers", badge: "12" },
   { label: "Manage Jobs", href: "/hr/jobs/manage", icon: "work" },
+  { label: "Interviews", href: "/hr/interviews", icon: "video_camera_front" },
   { label: "Payroll", href: "/hr/payroll", icon: "payments" },
   { label: "Reports", href: "/hr/analytics", icon: "assessment" },
 ];
@@ -31,7 +32,7 @@ export default function DashboardLayout({
   const pathname = usePathname() ?? "";
   const [companyName, setCompanyName] = useState("Company");
   const [displayName, setDisplayName] = useState("Admin User");
-  const [displayRole, setDisplayRole] = useState("HR Manager");
+  const displayRole = "HR Manager"; // Standardized to "HR Manager" everywhere
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -41,7 +42,12 @@ export default function DashboardLayout({
     }
 
     const unPrefixed = item.href.replace("/hr/", "/");
-    return pathname === item.href || pathname.startsWith(`${item.href}/`) || pathname === unPrefixed || pathname.startsWith(`${unPrefixed}/`);
+    return (
+      pathname === item.href ||
+      pathname.startsWith(`${item.href}/`) ||
+      pathname === unPrefixed ||
+      pathname.startsWith(`${unPrefixed}/`)
+    );
   };
 
   useEffect(() => {
@@ -55,30 +61,34 @@ export default function DashboardLayout({
 
         const supabase = createClient();
 
-        const { data: profile } = await supabase
+        const { data: profile } = await (supabase
           .from("profiles")
           .select("first_name, last_name, avatar_url, tenant_name, tenant_id, role")
           .eq("id", user.id)
-          .maybeSingle<{
-            first_name?: string | null;
-            last_name?: string | null;
-            avatar_url?: string | null;
-            tenant_name?: string | null;
-            tenant_id?: string | null;
-            role?: string | null;
-          }>();
+          .maybeSingle() as Promise<{
+            data: {
+              first_name?: string | null;
+              last_name?: string | null;
+              avatar_url?: string | null;
+              tenant_name?: string | null;
+              tenant_id?: string | null;
+              role?: string | null;
+            } | null;
+          }>);
 
         if (!isMounted || !profile) return;
 
-        const nextName = [profile.first_name ?? "", profile.last_name ?? ""].filter(Boolean).join(" ") || "Admin User";
+        const nextName =
+          [profile.first_name ?? "", profile.last_name ?? ""].filter(Boolean).join(" ") ||
+          "Admin User";
         let nextCompanyName = profile.tenant_name?.trim() || "Company";
 
         if ((!nextCompanyName || nextCompanyName === "Company") && profile.tenant_id) {
-          const { data: company } = await supabase
+          const { data: company } = await (supabase
             .from("companies")
             .select("name")
             .eq("id", profile.tenant_id)
-            .maybeSingle<{ name?: string | null }>();
+            .maybeSingle() as Promise<{ data: { name?: string | null } | null }>);
 
           if (company?.name) {
             nextCompanyName = company.name.trim();
@@ -87,7 +97,6 @@ export default function DashboardLayout({
 
         setCompanyName(nextCompanyName || "Company");
         setDisplayName(nextName);
-        setDisplayRole(profile.role ? profile.role.replace("hr_manager", "HR Manager") : "HR Manager");
         setAvatarUrl(profile.avatar_url ?? null);
       } catch (err) {
         // swallow
@@ -115,72 +124,105 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#fcf8ff] text-[#171542]">
+    <div className="min-h-screen bg-surface-bg text-text-main">
       {/* Top Navigation Bar */}
-      <header className="fixed top-0 left-0 w-full h-[56px] bg-kayod-deep flex items-center justify-between px-xxl z-50 no-shadow">
-        <div className="flex items-center gap-xl">
-          <span className="font-h1 text-h1 font-bold text-white tracking-tight">Kayod</span>
-          <div className="h-6 w-[1px] bg-white/20"></div>
-          <span className="font-h3 text-h3 text-white/80">{companyName}</span>
+      <header className="fixed top-0 left-0 w-full h-[56px] bg-brand-navy flex items-center justify-between px-6 z-50 no-shadow">
+        <div className="flex items-center gap-3">
+          <Link href="/hr" className="font-bold text-xl text-white tracking-tight hover:opacity-90 transition-opacity">
+            Kayod
+          </Link>
+          <div className="h-4 w-[1px] bg-white/20 mx-1"></div>
+          <div className="bg-brand-navy-light text-white/90 px-3 py-1 rounded-md text-xs font-medium border border-white/10 flex items-center gap-1.5">
+            <span>{companyName}</span>
+            <span className="material-symbols-outlined text-[14px] text-white/60">expand_more</span>
+          </div>
         </div>
-        <div className="flex-1 max-w-xl mx-xxl hidden md:block">
-          <div className="relative group"></div>
+
+        {/* Global Search Bar */}
+        <div className="flex-1 max-w-md mx-8 hidden md:block relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/50 text-[18px]">
+            search
+          </span>
+          <input
+            type="text"
+            placeholder="Search anything..."
+            className="w-full bg-brand-navy-light text-white placeholder-white/50 text-xs rounded-lg pl-9 pr-4 py-2 border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 transition-all"
+          />
         </div>
-        <div className="flex items-center gap-md">
-          <button className="p-2 text-white/80 hover:bg-white/10 rounded-full relative transition-colors">
-            <span className="material-symbols-outlined">notifications</span>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="p-2 text-white/80 hover:bg-white/10 rounded-full relative transition-colors"
+            title="Notifications"
+          >
+            <span className="material-symbols-outlined text-[20px]">notifications</span>
             <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
           </button>
-          <button className="p-2 text-white/80 hover:bg-white/10 rounded-full transition-colors">
-            <span className="material-symbols-outlined">help</span>
+          <button
+            type="button"
+            className="p-2 text-white/80 hover:bg-white/10 rounded-full transition-colors"
+            title="Help"
+          >
+            <span className="material-symbols-outlined text-[20px]">help</span>
           </button>
-          <button className="p-2 text-white/80 hover:bg-white/10 rounded-full transition-colors">
-            <span className="material-symbols-outlined">settings</span>
-          </button>
-          
-          <div 
-            className="relative flex items-center gap-sm ml-sm pl-md border-l border-white/20 cursor-pointer"
+          <Link
+            href="/hr/profile"
+            className="p-2 text-white/80 hover:bg-white/10 rounded-full transition-colors"
+            title="Settings"
+          >
+            <span className="material-symbols-outlined text-[20px]">settings</span>
+          </Link>
+
+          <div
+            className="relative flex items-center gap-2.5 ml-2 pl-4 border-l border-white/20 cursor-pointer"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           >
-            <div className="text-right mr-sm hidden lg:block">
-              <p className="font-h3 text-h3 text-white leading-tight">{displayName}</p>
-              <p className="text-[11px] text-white/60 font-medium uppercase tracking-wider">{displayRole}</p>
+            <div className="text-right mr-1 hidden lg:block">
+              <p className="text-xs font-semibold text-white leading-tight">{displayName}</p>
+              <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider">{displayRole}</p>
             </div>
-            <img 
-              alt="HR Admin" 
-              className="w-9 h-9 rounded-full object-cover border-2 border-white/10" 
-              src={avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuCEJTQOVYbNbVbttcEjj07d7oPkn5VL1_jhJaXakwYzP3LelWCwmnZAkXq01hyJ1_MP1vc-OLcoXIrSp-x098UsYiz8mPw_OVj-GvH6XPGc0r4NVoeb3udjSBpSP529ub6TjokpbBC_LU1h_rkAP-HDDzCVH5h4xhwn88jbykv1ubJF0wi2rSwa6-HeeHaIZ1VY3t7u6Okz0YSwXU-QRKL8k6VKRloesItQ2qqjHbrP2Zm-WnUG3XlcKF8BGXGraexDeCF0UjH2TUo8"} 
-            />
+            {avatarUrl ? (
+              <img
+                alt={displayName}
+                className="w-8 h-8 rounded-full object-cover border border-white/20"
+                src={avatarUrl}
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-brand-navy-light text-white border border-white/20 flex items-center justify-center text-xs font-semibold">
+                {displayName.trim().split(/\s+/).filter(Boolean).map(n => n[0]).join("").slice(0, 2).toUpperCase() || "HR"}
+              </div>
+            )}
 
             {/* Dropdown Modal Menu */}
             {isDropdownOpen && (
               <div className="absolute right-0 top-full pt-2 w-56 z-50">
-                <div className="rounded-xl border border-outline-variant bg-white p-1.5 shadow-xl text-[#171542]">
-                  <div className="px-3 py-2 border-b border-outline-variant mb-1">
-                    <p className="text-[11px] font-medium text-outline uppercase tracking-wider">Account</p>
-                    <p className="text-[13px] font-semibold text-on-surface truncate">{displayName}</p>
+                <div className="rounded-xl border border-border bg-card-bg p-1.5 shadow-xl text-text-main">
+                  <div className="px-3 py-2 border-b border-border mb-1">
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{displayRole}</p>
+                    <p className="text-[13px] font-semibold text-text-main truncate">{displayName}</p>
                   </div>
                   <div className="space-y-0.5">
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-container text-on-surface transition-colors text-left"
+                    <Link
+                      href="/hr/profile"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-bg text-text-main transition-colors text-left"
                     >
-                      <span className="material-symbols-outlined text-[18px] text-outline">person</span>
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">person</span>
                       My Profile
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-container text-on-surface transition-colors text-left"
+                    </Link>
+                    <Link
+                      href="/hr/profile"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-bg text-text-main transition-colors text-left"
                     >
-                      <span className="material-symbols-outlined text-[18px] text-outline">domain</span>
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">domain</span>
                       Workspace Settings
-                    </button>
+                    </Link>
                   </div>
-                  <div className="my-1 border-t border-outline-variant" />
+                  <div className="my-1 border-t border-border" />
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold rounded-lg hover:bg-error-container text-error transition-colors text-left"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold rounded-lg hover:bg-error-bg text-error transition-colors text-left"
                   >
                     <span className="material-symbols-outlined text-[18px]">logout</span>
                     Log Out
@@ -193,8 +235,8 @@ export default function DashboardLayout({
       </header>
 
       {/* Side Navigation Bar */}
-      <aside className="fixed left-0 top-[56px] w-[220px] h-[calc(100vh-56px)] bg-surface border-r border-outline-variant flex flex-col z-40">
-        <nav className="flex-1 py-md">
+      <aside className="fixed left-0 top-[56px] w-[220px] h-[calc(100vh-56px)] bg-card-bg border-r border-border flex flex-col z-40">
+        <nav className="flex-1 py-3 space-y-0.5">
           {navItems.map((item) => {
             const active = isActive(item);
 
@@ -203,10 +245,17 @@ export default function DashboardLayout({
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="bg-primary text-on-primary rounded-lg mx-2 my-1 flex items-center gap-sm px-4 py-3 transition-all scale-[0.98]"
+                  className="bg-primary-light text-primary-dark font-semibold rounded-lg mx-2 my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                  <span className="font-body text-body font-medium">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge ? (
+                    <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </Link>
               );
             }
@@ -215,14 +264,16 @@ export default function DashboardLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-secondary hover:bg-surface-container-high transition-colors rounded-lg mx-2 my-1 flex items-center justify-between px-4 py-3 group"
+                className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg mx-2 my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
               >
-                <div className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                  <span className="font-body text-body">{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
                 </div>
                 {item.badge ? (
-                  <span className="bg-primary-container text-on-primary-container text-[10px] px-1.5 py-0.5 rounded font-bold">
+                  <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
                     {item.badge}
                   </span>
                 ) : null}
@@ -230,21 +281,30 @@ export default function DashboardLayout({
             );
           })}
         </nav>
-        <div className="p-md mt-auto border-t border-outline-variant">
+
+        {/* Pinned Bottom Items: Support & Settings */}
+        <div className="p-2 border-t border-border space-y-0.5">
           <Link
             href="/support"
-            className="text-secondary hover:bg-surface-container-high transition-colors rounded-lg flex items-center gap-sm px-4 py-3"
+            className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]">contact_support</span>
-            <span className="font-body text-body">Support</span>
+            <span>Support</span>
+          </Link>
+          <Link
+            href="/hr/profile"
+            className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">settings</span>
+            <span>Settings</span>
           </Link>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="ml-[220px] pt-[56px] min-h-screen bg-background p-xxl">
+      <main className="ml-[220px] pt-[56px] min-h-screen bg-surface-bg">
         {children}
       </main>
     </div>
   );
-}
+}

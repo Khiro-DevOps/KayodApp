@@ -26,10 +26,14 @@ function createMockDatabase() {
     tenants: [],
   };
 
-  const counters: Record<Exclude<TableName, "applications" | "job_postings">, number> = {
+  const counters: Record<TableName, number> = {
+    applications: 0,
     contract_templates: 0,
     job_offers: 0,
+    job_postings: 0,
     signed_documents: 0,
+    profiles: 0,
+    tenants: 0,
   };
 
   const failures = new Map<string, FailureMode>();

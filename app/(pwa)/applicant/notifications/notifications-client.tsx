@@ -6,25 +6,25 @@ import { markNotificationRead, markAllNotificationsRead } from "./actions";
 
 const typeConfig: Record<string, { icon: string; bg: string }> = {
   // Existing
-  apply:                      { icon: "📄", bg: "bg-blue-50"   },
-  shortlist:                  { icon: "⭐", bg: "bg-yellow-50" },
-  interview:                  { icon: "📅", bg: "bg-purple-50" },
-  hire:                       { icon: "🎉", bg: "bg-green-50"  },
+  apply:                      { icon: "📄", bg: "bg-primary-light"   },
+  shortlist:                  { icon: "⭐", bg: "bg-warning-bg" },
+  interview:                  { icon: "📅", bg: "bg-primary-light" },
+  hire:                       { icon: "🎉", bg: "bg-success-bg"  },
 
   // New — post-interview flow
-  interview_scheduled:        { icon: "📅", bg: "bg-purple-50" },
-  interview_rescheduled:      { icon: "🔄", bg: "bg-orange-50" },
-  interview_completed:        { icon: "✅", bg: "bg-gray-50"   },
-  application_status_changed: { icon: "🔔", bg: "bg-blue-50"   },
-  under_review:               { icon: "🔍", bg: "bg-amber-50"  },
-  negotiating:                { icon: "📞", bg: "bg-purple-50" },
-  offer_sent:                 { icon: "📨", bg: "bg-green-50"  },
-  offer_letter:               { icon: "📨", bg: "bg-green-50"  },
-  offer_accepted:             { icon: "🎉", bg: "bg-green-50"  },
-  offer_declined:             { icon: "❌", bg: "bg-red-50"    },
-  offer_expiring:             { icon: "⏰", bg: "bg-amber-50"  },
-  offer_expired:              { icon: "⏰", bg: "bg-gray-50"   },
-  rejected:                   { icon: "❌", bg: "bg-red-50"    },
+  interview_scheduled:        { icon: "📅", bg: "bg-primary-light" },
+  interview_rescheduled:      { icon: "🔄", bg: "bg-warning-bg" },
+  interview_completed:        { icon: "✅", bg: "bg-surface-bg"   },
+  application_status_changed: { icon: "🔔", bg: "bg-primary-light"   },
+  under_review:               { icon: "🔍", bg: "bg-warning-bg"  },
+  negotiating:                { icon: "📞", bg: "bg-primary-light" },
+  offer_sent:                 { icon: "📨", bg: "bg-success-bg"  },
+  offer_letter:               { icon: "📨", bg: "bg-success-bg"  },
+  offer_accepted:             { icon: "🎉", bg: "bg-success-bg"  },
+  offer_declined:             { icon: "❌", bg: "bg-error-bg"    },
+  offer_expiring:             { icon: "⏰", bg: "bg-warning-bg"  },
+  offer_expired:              { icon: "⏰", bg: "bg-surface-bg"   },
+  rejected:                   { icon: "❌", bg: "bg-error-bg"    },
 };
 
 function timeAgo(dateString: string): string {
@@ -64,8 +64,8 @@ export default function NotificationsClient({
 
   if (notifications.length === 0) {
     return (
-      <div className="rounded-2xl border border-border bg-surface p-8 text-center">
-        <p className="text-sm text-text-secondary">No notifications yet.</p>
+      <div className="rounded-xl border border-border bg-card-bg p-8 text-center shadow-xs">
+        <p className="text-sm text-text-muted">No notifications yet.</p>
       </div>
     );
   }
@@ -78,7 +78,7 @@ export default function NotificationsClient({
         <form action={markAllNotificationsRead} className="flex justify-end">
           <button
             type="submit"
-            className="text-xs font-medium text-primary hover:underline"
+            className="text-xs font-medium text-primary hover:text-primary-hover hover:underline transition-colors"
           >
             Mark all as read
           </button>
@@ -86,7 +86,7 @@ export default function NotificationsClient({
       )}
 
       {notifications.map((notif) => {
-        const config = typeConfig[notif.type] ?? { icon: "🔔", bg: "bg-blue-50" };
+        const config = typeConfig[notif.type] ?? { icon: "🔔", bg: "bg-primary-light" };
         const isUnread = !notif.is_read;
         const actionUrl = resolveActionUrl(notif);
 
@@ -116,10 +116,10 @@ export default function NotificationsClient({
             key={notif.id}
             type="button"
             onClick={() => void handleClick()}
-            className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+            className={`w-full rounded-xl border p-4 text-left transition-colors ${
               isUnread
-                ? "bg-gray-50 border-gray-200 hover:bg-gray-100"
-                : "bg-white border-gray-200 hover:bg-gray-50"
+                ? "bg-primary-light/40 border-primary/20 hover:bg-primary-light/60"
+                : "bg-card-bg border-border hover:bg-surface-bg"
             }`}
           >
             <div className="flex items-start gap-3">
@@ -128,15 +128,15 @@ export default function NotificationsClient({
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 {notif.title && (
-                  <p className={`text-xs font-semibold ${isUnread ? "text-text-primary" : "text-text-secondary"}`}>
+                  <p className={`text-xs font-semibold ${isUnread ? "text-text-main" : "text-text-muted"}`}>
                     {notif.title}
                   </p>
                 )}
-                <p className={`text-sm ${isUnread ? "text-text-primary" : "text-text-secondary"}`}>
+                <p className={`text-sm ${isUnread ? "text-text-main" : "text-text-muted"}`}>
                   {notif.body}
                 </p>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-text-secondary">
+                  <p className="text-xs text-text-muted">
                     {timeAgo(notif.created_at)}
                   </p>
                   {actionUrl && (
@@ -147,7 +147,7 @@ export default function NotificationsClient({
                 </div>
               </div>
               {isUnread && (
-                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-gray-400" />
+                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
               )}
             </div>
           </button>

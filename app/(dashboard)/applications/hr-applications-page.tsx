@@ -4,6 +4,7 @@ import type { Profile } from "@/lib/types";
 import { ApplicationsHubClient } from "./applications-client";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -126,6 +127,22 @@ export default async function HRApplicationsPage() {
     }
   } catch {
     // Non-blocking: render list even when admin sync is unavailable.
+  }
+
+  // Auto-compute missing match scores so Kanban cards show real values
+  if (applications && applications.length > 0) {
+    for (const app of applications) {
+      if (app.match_score === null || app.match_score === undefined) {
+        try {
+          const result = await computeAndStoreMatchScore(app.id);
+          if (result.success && typeof result.score === "number") {
+            (app as { match_score: number | null }).match_score = result.score;
+          }
+        } catch {
+          // Non-blocking fallback
+        }
+      }
+    }
   }
 
   // Group applications by job

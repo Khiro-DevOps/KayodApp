@@ -4,7 +4,7 @@ dotenv.config({ path: ".env.local" });
 dotenv.config({ path: ".env" });
 
 import { getAdminClient } from "../lib/supabase/admin";
-import { POST as computeMatchScore } from "../app/api/compute-match-score/route";
+import { computeAndStoreMatchScore } from "../lib/compute-match-score";
 
 type ApplicationRow = {
   id: string;
@@ -59,24 +59,14 @@ async function main() {
   let failureCount = 0;
 
   for (const applicationId of appIdsToProcess) {
-    const response = await computeMatchScore(
-      new Request("http://localhost/api/compute-match-score", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ application_id: applicationId, force }),
-      })
-    );
+    const result = await computeAndStoreMatchScore(applicationId, force);
 
-    const payload = (await response.json().catch(() => null)) as
-      | { success?: boolean; score?: number; error?: string }
-      | null;
-
-    if (response.ok && payload?.success) {
+    if (result.success) {
       successCount++;
-      console.log(`✓ ${applicationId} -> ${payload.score ?? "ok"}`);
+      console.log(`✓ ${applicationId} -> ${result.score ?? "ok"}`);
     } else {
       failureCount++;
-      console.error(`✗ ${applicationId} -> ${payload?.error ?? response.statusText}`);
+      console.error(`✗ ${applicationId} -> ${result.error ?? "failed"}`);
     }
   }
 

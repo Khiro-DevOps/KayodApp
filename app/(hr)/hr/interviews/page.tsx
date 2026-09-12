@@ -112,12 +112,12 @@ export default async function InterviewsPage() {
       {/* Today's Interviews Sidebar */}
       <div className="hidden w-80 shrink-0 md:block">
         <div className="sticky top-4 space-y-4">
-          <div className="rounded-2xl bg-surface border border-border p-4">
-            <h2 className="text-sm font-semibold text-text-primary mb-3">
+          <div className="rounded-xl bg-card-bg border border-border p-4 shadow-xs">
+            <h2 className="text-sm font-semibold text-text-main mb-3">
               Today&apos;s Interviews ({todaysInterviews.length})
             </h2>
             {todaysInterviews.length === 0 ? (
-              <p className="text-xs text-text-secondary">No interviews scheduled for today</p>
+              <p className="text-xs text-text-muted">No interviews scheduled for today</p>
             ) : (
               <div className="space-y-2">
                 {todaysInterviews.map((interview) => {
@@ -129,16 +129,16 @@ export default async function InterviewsPage() {
                     : "You've";
 
                   return (
-                    <div key={interview.id} className="rounded-xl bg-gray-50 p-3">
-                      <p className="text-xs font-medium text-text-primary">
+                    <div key={interview.id} className="rounded-lg bg-surface-bg border border-border/60 p-3">
+                      <p className="text-xs font-medium text-text-main">
                         {new Date(interview.scheduled_at).toLocaleTimeString("en-PH", {
                           hour: "numeric",
                           minute: "2-digit",
                           hour12: true,
                         })}
                       </p>
-                      <p className="text-xs text-text-secondary mt-1">{jobTitle}</p>
-                      <p className="text-xs text-text-secondary">{candidateName}</p>
+                      <p className="text-xs text-text-muted mt-1">{jobTitle}</p>
+                      <p className="text-xs text-text-muted">{candidateName}</p>
                     </div>
                   );
                 })}
@@ -156,20 +156,20 @@ export default async function InterviewsPage() {
               <div className="flex items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-bg transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                     <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
                   </svg>
                 </Link>
-                <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+                <h1 className="font-h1 text-xl font-bold text-text-main">
                   Interviews
                 </h1>
               </div>
               {isHR && (
                 <Link
                   href="/interviews/schedule"
-                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
                 >
                   + Schedule Interview
                 </Link>
@@ -178,7 +178,7 @@ export default async function InterviewsPage() {
 
             {isHR && (
               <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                   Needs Scheduling ({needsScheduling.length})
                 </h2>
                 {needsScheduling.length === 0 ? (
@@ -192,12 +192,12 @@ export default async function InterviewsPage() {
                       const title = application.job_postings?.title ?? "Position";
 
                       return (
-                        <div key={application.id} className="rounded-2xl border border-border bg-surface p-4">
-                          <p className="text-sm font-semibold text-text-primary">{name}</p>
-                          <p className="text-xs text-text-secondary">{title}</p>
+                        <div key={application.id} className="rounded-xl border border-border bg-card-bg p-4 shadow-xs">
+                          <p className="text-sm font-semibold text-text-main">{name}</p>
+                          <p className="text-xs text-text-muted">{title}</p>
                           <Link
                             href={`/interviews/schedule?applicationId=${application.id}`}
-                            className="mt-3 inline-flex rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90"
+                            className="mt-3 inline-flex rounded-lg bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors"
                           >
                             Schedule →
                           </Link>
@@ -210,7 +210,7 @@ export default async function InterviewsPage() {
             )}
 
             {isHR && (
-              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+              <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Scheduled Interviews
               </h2>
             )}
@@ -224,7 +224,7 @@ export default async function InterviewsPage() {
 
             {/* Upcoming */}
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+              <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Upcoming ({upcoming.length})
               </h2>
               {upcoming.length === 0 ? (
@@ -244,7 +244,7 @@ export default async function InterviewsPage() {
             {/* Past */}
             {past.length > 0 && (
               <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                   Past ({past.length})
                 </h2>
                 {past.map((interview) => (
@@ -266,8 +266,8 @@ export default async function InterviewsPage() {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl bg-surface border border-border p-6 text-center">
-      <p className="text-sm text-text-secondary">{message}</p>
+    <div className="rounded-xl bg-card-bg border border-dashed border-border p-6 text-center shadow-xs">
+      <p className="text-sm text-text-muted">{message}</p>
     </div>
   );
 }

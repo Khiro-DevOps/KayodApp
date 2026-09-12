@@ -220,12 +220,10 @@ export function ApplicationsHubClient({
   currentCompanyId: string;
   activeJobs: ActiveJobPosting[];
 }) {
-  // Localized job tabs state so the UI can add a temporary job without affecting server-side data
   const [selectedJobId, setSelectedJobId] = useState("");
   const [localJobs, setLocalJobs] = useState<ActiveJobPosting[]>(() => activeJobs);
 
   useEffect(() => {
-    // sync incoming activeJobs to localJobs when the prop changes
     setLocalJobs(activeJobs);
   }, [activeJobs]);
 
@@ -243,46 +241,53 @@ export function ApplicationsHubClient({
   }, [localJobs, hasActiveJobs, selectedJobId]);
 
   return (
-    <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden bg-[#fcf8ff] text-[#171542]">
-      <div className="mb-[32px] space-y-1">
-        <h1 className="font-[family-name:var(--font-heading)] text-[28px] font-semibold tracking-tight text-on-background">
-          Application Hub
-        </h1>
-        <p className="text-[14px] text-secondary">Manage candidate pipelines across all active roles</p>
-      </div>
-
-      <div className="mb-[20px] flex w-full flex-col gap-[16px] md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-[8px] overflow-x-auto max-w-full custom-scrollbar pb-1">
-          {localJobs.map((job) => (
-            <button
-              key={job.id}
-              onClick={() => setSelectedJobId(job.id)}
-              data-job-id={job.id}
-              className={`flex-shrink-0 whitespace-nowrap rounded-lg px-[16px] py-[10px] text-[14px] font-medium transition-colors ${job.id === selectedJobId ? "bg-[#7c7aac] text-white shadow-sm" : "bg-transparent text-secondary hover:bg-surface-container hover:text-[#4a4880]"}`}
-            >
-              {job.title}
-            </button>
-          ))}
+    <div className="flex h-full w-full flex-col bg-surface-bg text-text-main p-6 space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-main">
+            Application Hub
+          </h1>
+          <p className="text-xs text-text-muted">Manage candidate pipelines across active roles</p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-[8px] md:ml-auto">
-          <div className="inline-flex items-center rounded-full bg-[#ede9fe] px-[12px] py-[6px] text-[12px] text-[#5b21b6]">
-            <span className="mr-2 font-semibold">{selectedApplications.length}</span>
-            <span>applicants</span>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-bold text-primary-dark">
+            <span className="mr-1.5">{selectedApplications.length}</span>
+            <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
           </div>
 
-          <button className="flex h-9 items-center gap-2 rounded-[8px] border border-[#e5e7eb] bg-white px-3 text-sm transition-colors hover:bg-[#efebff]">
-            <span className="material-symbols-outlined">filter_list</span>
+          <button className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card-bg px-3 text-xs font-semibold text-text-main hover:bg-surface-bg transition-colors shadow-xs">
+            <span className="material-symbols-outlined text-[18px]">filter_list</span>
             Filter
           </button>
 
-          <button className="h-9 rounded-[8px] bg-[#7c3aed] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]">
-            Add Candidate
+          <button className="h-8 rounded-lg bg-primary hover:bg-primary-hover px-3.5 text-xs font-semibold text-white transition-colors shadow-xs">
+            + Add Candidate
           </button>
         </div>
       </div>
 
-      <section className="min-h-[480px] flex-1 min-h-0">
+      {/* Job Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 border-b border-border">
+        {localJobs.map((job) => (
+          <button
+            key={job.id}
+            onClick={() => setSelectedJobId(job.id)}
+            data-job-id={job.id}
+            className={`flex-shrink-0 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+              job.id === selectedJobId
+                ? "bg-primary text-white shadow-xs"
+                : "bg-card-bg text-text-muted hover:text-text-main hover:bg-surface-bg border border-border/60"
+            }`}
+          >
+            {job.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Kanban Board Container */}
+      <section className="flex-1 min-h-[500px] w-full min-w-0 overflow-hidden">
         <ApplicationsKanbanBoard
           applications={selectedApplications}
           currentCompanyId={currentCompanyId}

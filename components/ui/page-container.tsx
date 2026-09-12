@@ -112,11 +112,11 @@ export default function PageContainer({ children }: { children: ReactNode }) {
         let nextCompanyName = "Company";
 
         if (nextTenantId) {
-          const { data: company } = await supabase
+          const { data: company } = (await supabase
             .from("companies")
             .select("name")
             .eq("id", nextTenantId)
-            .maybeSingle<{ name?: string | null }>();
+            .maybeSingle()) as { data: { name?: string | null } | null };
 
           nextCompanyName = company?.name?.trim() || nextCompanyName;
         }

@@ -107,11 +107,11 @@ export default async function JobDetailManagePage({
             </div>
           )}
 
-          {!isLegacyJob && job.required_skills && job.required_skills.length > 0 && (
+          {!isLegacyJob && (job as JobPosting).required_skills && ((job as JobPosting).required_skills ?? []).length > 0 && (
             <div>
               <p className="text-xs font-medium text-text-secondary mb-1">Required Skills</p>
               <div className="flex flex-wrap gap-1.5">
-                {job.required_skills.map((skill) => (
+                {((job as JobPosting).required_skills ?? []).map((skill: string) => (
                   <span
                     key={skill}
                     className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"

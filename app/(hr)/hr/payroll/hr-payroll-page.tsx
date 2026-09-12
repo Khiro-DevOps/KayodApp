@@ -82,44 +82,44 @@ export default async function HRPayrollPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+          <h1 className="font-h1 text-xl font-bold text-text-main">
             Payroll
           </h1>
-          <span className="text-xs text-text-secondary">
+          <span className="text-xs text-text-muted">
             {activeEmployeeCount} active employees
           </span>
         </div>
 
         {/* New payroll period form */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-text-primary">New payroll period</h2>
+        <div className="rounded-xl bg-card-bg border border-border p-4 space-y-4 shadow-xs">
+          <h2 className="text-sm font-semibold text-text-main">New payroll period</h2>
           <form action={createPayrollPeriod} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-secondary">Period start</label>
+                <label className="text-xs font-medium text-text-muted">Period start</label>
                 <input
                   type="date" name="period_start" required
-                  className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary text-text-main bg-white"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-secondary">Period end</label>
+                <label className="text-xs font-medium text-text-muted">Period end</label>
                 <input
                   type="date" name="period_end" required
-                  className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary text-text-main bg-white"
                 />
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-text-secondary">Pay date</label>
+              <label className="text-xs font-medium text-text-muted">Pay date</label>
               <input
                 type="date" name="pay_date" required
-                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary text-text-main bg-white"
               />
             </div>
             <button
               type="submit"
-              className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
             >
               Create period
             </button>
@@ -128,12 +128,12 @@ export default async function HRPayrollPage() {
 
         {/* Hours preview for draft period */}
         {draftPeriod && hoursPreview.length > 0 && (
-          <div className="rounded-2xl bg-blue-50 border border-blue-200 p-4 space-y-3">
+          <div className="rounded-xl bg-primary-light/50 border border-primary/20 p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-blue-800">
+              <h2 className="text-sm font-semibold text-primary-dark">
                 Hours logged this period
               </h2>
-              <span className="text-xs text-blue-600">
+              <span className="text-xs text-primary-dark/80">
                 {new Date(draftPeriod.period_start).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
                 {" — "}
                 {new Date(draftPeriod.period_end).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
@@ -146,8 +146,8 @@ export default async function HRPayrollPage() {
                 const name = `${emp.profiles.first_name} ${emp.profiles.last_name}`;
                 return (
                   <div key={h.employee_id} className="flex items-center justify-between text-sm">
-                    <span className="text-blue-800">{name}</span>
-                    <span className="font-semibold text-blue-700">{h.total_hours}h</span>
+                    <span className="text-primary-dark font-medium">{name}</span>
+                    <span className="font-semibold text-primary-dark">{h.total_hours}h</span>
                   </div>
                 );
               })}
@@ -155,10 +155,10 @@ export default async function HRPayrollPage() {
                 ?.filter((e) => !hoursPreview.find((h) => h.employee_id === e.id))
                 .map((e) => (
                   <div key={e.id} className="flex items-center justify-between text-sm opacity-50">
-                    <span className="text-blue-800">
+                    <span className="text-primary-dark">
                       {e.profiles.first_name} {e.profiles.last_name}
                     </span>
-                    <span className="text-blue-600">0h</span>
+                    <span className="text-primary-dark">0h</span>
                   </div>
                 ))}
             </div>
@@ -167,9 +167,9 @@ export default async function HRPayrollPage() {
 
         {/* Payslip review for pending_approval period */}
         {pendingPeriod && pendingPayslips.length > 0 && (
-          <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
+          <div className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-text-primary">Review payslips</h2>
+              <h2 className="text-sm font-semibold text-text-main">Review payslips</h2>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS["pending_approval"]}`}>
                 pending approval
               </span>
@@ -177,21 +177,21 @@ export default async function HRPayrollPage() {
 
             {/* Summary totals */}
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl bg-gray-50 p-2 text-center">
-                <p className="text-xs text-text-tertiary">Total gross</p>
-                <p className="text-sm font-semibold text-text-primary">
+              <div className="rounded-lg bg-surface-bg border border-border p-2 text-center">
+                <p className="text-xs text-text-muted">Total gross</p>
+                <p className="text-sm font-semibold text-text-main">
                   ₱{pendingPayslips.reduce((s, p) => s + Number(p.gross_pay), 0).toLocaleString()}
                 </p>
               </div>
-              <div className="rounded-xl bg-red-50 p-2 text-center">
-                <p className="text-xs text-red-400">Deductions</p>
-                <p className="text-sm font-semibold text-red-600">
+              <div className="rounded-lg bg-error-bg border border-error/20 p-2 text-center">
+                <p className="text-xs text-error">Deductions</p>
+                <p className="text-sm font-semibold text-error">
                   -₱{pendingPayslips.reduce((s, p) => s + Number(p.total_deductions), 0).toLocaleString()}
                 </p>
               </div>
-              <div className="rounded-xl bg-green-50 p-2 text-center">
-                <p className="text-xs text-green-600">Net payout</p>
-                <p className="text-sm font-semibold text-green-700">
+              <div className="rounded-lg bg-success-bg border border-success/20 p-2 text-center">
+                <p className="text-xs text-success">Net payout</p>
+                <p className="text-sm font-semibold text-success">
                   ₱{pendingPayslips.reduce((s, p) => s + Number(p.net_pay), 0).toLocaleString()}
                 </p>
               </div>
@@ -209,19 +209,19 @@ export default async function HRPayrollPage() {
                 return (
                   <div
                     key={slip.id}
-                    className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm"
+                    className="flex items-center justify-between rounded-lg bg-surface-bg border border-border/60 px-3 py-2 text-sm"
                   >
                     <div>
-                      <p className="font-medium text-text-primary">{name}</p>
+                      <p className="font-medium text-text-main">{name}</p>
                       {slip.remarks && (
-                        <p className="text-xs text-text-tertiary mt-0.5">{slip.remarks}</p>
+                        <p className="text-xs text-text-muted mt-0.5">{slip.remarks}</p>
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-green-700">
+                      <p className="font-semibold text-success">
                         ₱{Number(slip.net_pay).toLocaleString()}
                       </p>
-                      <p className="text-xs text-text-tertiary">
+                      <p className="text-xs text-text-muted">
                         -₱{Number(slip.total_deductions).toLocaleString()} deductions
                       </p>
                     </div>
@@ -236,7 +236,7 @@ export default async function HRPayrollPage() {
                 <input type="hidden" name="period_id" value={pendingPeriod.id} />
                 <button
                   type="submit"
-                  className="w-full rounded-xl border border-border py-2 text-xs font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+                  className="w-full rounded-lg border border-border py-2 text-xs font-medium text-text-muted hover:bg-surface-bg transition-colors"
                 >
                   Reject & revise
                 </button>
@@ -245,7 +245,7 @@ export default async function HRPayrollPage() {
                 <input type="hidden" name="period_id" value={pendingPeriod.id} />
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-green-500 py-2 text-xs font-medium text-white hover:bg-green-600 transition-colors"
+                  className="w-full rounded-lg bg-success py-2 text-xs font-medium text-white hover:bg-success/90 transition-colors shadow-xs"
                 >
                   Approve & pay
                 </button>
@@ -256,20 +256,20 @@ export default async function HRPayrollPage() {
 
         {/* All periods history */}
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-text-primary">History</h2>
+          <h2 className="text-sm font-semibold text-text-main">History</h2>
           {!periods || periods.length === 0 ? (
-            <div className="rounded-2xl bg-surface border border-border p-6 text-center">
-              <p className="text-sm text-text-secondary">No payroll periods yet</p>
+            <div className="rounded-xl bg-card-bg border border-dashed border-border p-6 text-center shadow-xs">
+              <p className="text-sm text-text-muted">No payroll periods yet</p>
             </div>
           ) : (
             periods.map((period) => (
               <div
                 key={period.id}
-                className="rounded-2xl bg-surface border border-border p-4 space-y-3"
+                className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-text-primary">
+                    <p className="text-sm font-medium text-text-main">
                       {new Date(period.period_start).toLocaleDateString("en-PH", {
                         month: "short", day: "numeric",
                       })}
@@ -278,7 +278,7 @@ export default async function HRPayrollPage() {
                         month: "short", day: "numeric", year: "numeric",
                       })}
                     </p>
-                    <p className="text-xs text-text-secondary mt-0.5">
+                    <p className="text-xs text-text-muted mt-0.5">
                       Pay date:{" "}
                       {new Date(period.pay_date).toLocaleDateString("en-PH", {
                         month: "short", day: "numeric", year: "numeric",
@@ -297,7 +297,7 @@ export default async function HRPayrollPage() {
                     <input type="hidden" name="period_id" value={period.id} />
                     <button
                       type="submit"
-                      className="w-full rounded-xl bg-blue-500 py-2 text-xs font-medium text-white hover:bg-blue-600 transition-colors"
+                      className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
                     >
                       Generate payslips for {activeEmployeeCount} employees
                     </button>
@@ -305,7 +305,7 @@ export default async function HRPayrollPage() {
                 )}
 
                 {period.status === "paid" && (
-                  <p className="text-xs text-green-600 font-medium text-center">
+                  <p className="text-xs text-success font-medium text-center">
                     ✓ Payslips sent to all employees
                   </p>
                 )}

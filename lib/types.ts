@@ -97,6 +97,18 @@ export type PayFrequency =
   | "semi_monthly"
   | "monthly";
 
+export interface WorkLocation {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   role: UserRole;
@@ -111,12 +123,16 @@ export interface Profile {
   city: string | null;
   country: string;
   work_setup?: WorkSetup | null;
+  work_location_id?: string | null;
   city_id?: string | null;
   province_id?: string | null;
   tenant_id?: string | null;
+  email_notifications?: boolean;
+  push_notifications?: boolean;
   created_at: string;
   updated_at: string;
   full_name?: string;
+  work_locations?: WorkLocation;
 }
 
 export interface Resume {
@@ -306,11 +322,13 @@ export interface Employee {
   philhealth_number: string | null;
   pagibig_number: string | null;
   tin_number: string | null;
+  work_location_id?: string | null;
   created_at: string;
   updated_at: string;
   profiles?: Profile;
   departments?: Department;
   manager?: Employee;
+  work_locations?: WorkLocation;
 }
 
 export interface Schedule {

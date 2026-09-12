@@ -229,7 +229,7 @@ export default function BottomNav({
   if (isMeetingRoom) return null;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 shadow-lg border-t border-border bg-surface flex justify-around items-center px-4 py-3 rounded-t-xl">
+    <nav className="fixed inset-x-0 bottom-0 z-50 mx-auto flex h-16 w-full max-w-[480px] items-center justify-around border-t border-[#e6e4f0] bg-[#f7f6fc]/95 px-3 backdrop-blur-sm shadow-[0_-6px_16px_rgba(39,36,84,0.08)] md:hidden">
       {navItems.map((item) => {
         const isActive =
           pathname === item.href ||
@@ -238,21 +238,21 @@ export default function BottomNav({
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-col items-center justify-center gap-1 text-center transition-all ${
+            className={`flex min-h-[44px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-center text-[10px] font-medium transition-all duration-200 ${
               isActive
-                ? "text-primary"
-                : "text-on-surface-variant hover:bg-surface-container-high"
+                ? "bg-[#e9e5ff] text-[#2d2b68]"
+                : "text-[#5d5a75] hover:text-[#2d2b68]"
             }`}
           >
             <span className="relative flex items-center justify-center">
               {item.icon}
               {item.showBadge && unreadCount > 0 && (
-                <span className="absolute -right-2 -top-1 min-w-5 rounded-full border border-border bg-error px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                <span className="absolute -right-2 -top-1 min-w-5 rounded-full border border-[#e6e4f0] bg-[#ef4444] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
             </span>
-            <span className="text-[10px] font-label-caps">{item.label}</span>
+            <span className="uppercase tracking-[0.08em]">{item.label}</span>
           </Link>
         );
       })}

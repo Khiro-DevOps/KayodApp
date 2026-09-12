@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/layout/bottom-nav";
+import { RoleSidebar, pwaAppFrame, pwaShellBackground } from "@/components/layout/pwa-shell";
 import type { UserRole } from "@/lib/types";
 
 interface DashboardShellProps {
@@ -28,9 +29,15 @@ export default function DashboardShell({
   }
 
   return (
-    <div className="flex flex-col min-h-screen" data-layout={layoutName ?? "pwa"}>
-      <main className="flex-1 pb-20">{children}</main>
-      <BottomNav role={role} userId={userId} initialUnreadCount={initialUnreadCount} />
+    <div className={pwaShellBackground} data-layout={layoutName ?? "pwa"}>
+      <div className={pwaAppFrame}>
+        <RoleSidebar variant="employee" />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="flex-1 bg-[#f7f6fc] pb-20 md:pb-6">{children}</main>
+          <BottomNav role={role} userId={userId} initialUnreadCount={initialUnreadCount} />
+        </div>
+      </div>
     </div>
   );
 }
