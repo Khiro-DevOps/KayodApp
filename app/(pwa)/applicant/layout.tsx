@@ -4,8 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { effectiveRole } from "@/lib/roles";
 import type { Profile } from "@/lib/types";
 
-import Header from "@/components/Header";
-import BottomNav from "@/components/BottomNav";
+import PwaShell from "@/components/layout/pwa-shell";
 
 export default async function ApplicantLayout({
   children,
@@ -42,31 +41,23 @@ export default async function ApplicantLayout({
   const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ");
   const userName = fullName || "Jay Gomez";
 
-  // Fetch counts for Header metrics
-  const [{ count: applicationsCount }, { count: interviewsCount }] = await Promise.all([
-    supabase
-      .from("applications")
-      .select("*", { count: "exact", head: true })
-      .eq("candidate_id", user.id),
-    supabase
-      .from("applications")
-      .select("*", { count: "exact", head: true })
-      .eq("candidate_id", user.id)
-      .eq("status", "interview_scheduled"),
-  ]);
+  void userName;
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <Header 
-        userName={userName} 
-        notificationCount={5} 
-        applicationsCount={applicationsCount ?? 0}
-        interviewsPendingCount={interviewsCount ?? 0}
-      />
-      <main className="flex-1 pb-24 md:pb-8">
-        {children}
-      </main>
-      <BottomNav />
-    </div>
+    <PwaShell
+      variant="applicant"
+      config={{
+        label: "Applicant Portal",
+        navItems: [
+          { label: "Home", href: "/applicant/dashboard", icon: "home" },
+          { label: "Jobs", href: "/applicant/jobs", icon: "work" },
+          { label: "Applications", href: "/applicant/applications", icon: "assignment" },
+          { label: "Resume", href: "/applicant/resume", icon: "description" },
+          { label: "Profile", href: "/applicant/profile", icon: "person" },
+        ],
+      }}
+    >
+      {children}
+    </PwaShell>
   );
 }

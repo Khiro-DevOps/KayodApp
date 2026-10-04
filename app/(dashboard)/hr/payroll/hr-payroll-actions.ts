@@ -77,7 +77,14 @@ export async function generatePayslips(formData: FormData) {
     redirect("/payroll?error=No active employees found");
   }
 
-  // 3. Get all time_logs for this period (clock-out records have total_hours)
+  // 3. Get all time records (attendance_logs or legacy time_logs) for this period
+  const { data: attendanceLogs } = await supabase
+    .from("attendance_logs")
+    .select("employee_id, total_hours")
+    .not("clock_out", "is", null)
+    .gte("clock_in", `${period.period_start}T00:00:00Z`)
+    .lte("clock_in", `${period.period_end}T23:59:59Z`);
+
   const { data: timeLogs } = await supabase
     .from("time_logs")
     .select("employee_id, total_hours")
@@ -85,16 +92,30 @@ export async function generatePayslips(formData: FormData) {
     .gte("punched_at", `${period.period_start}T00:00:00Z`)
     .lte("punched_at", `${period.period_end}T23:59:59Z`);
 
-  // Build a map of employee_id → total hours worked this period
+  // Build maps of employee_id → total hours & overtime hours worked this period
   const hoursMap: Record<string, number> = {};
+  const otHoursMap: Record<string, number> = {};
+
+  const processRecord = (empId: string, hrs: number) => {
+    hoursMap[empId] = (hoursMap[empId] ?? 0) + hrs;
+    if (hrs > 8) {
+      otHoursMap[empId] = (otHoursMap[empId] ?? 0) + (hrs - 8);
+    }
+  };
+
+  for (const log of attendanceLogs ?? []) {
+    processRecord(log.employee_id, log.total_hours ?? 0);
+  }
+
   for (const log of timeLogs ?? []) {
-    hoursMap[log.employee_id] = (hoursMap[log.employee_id] ?? 0) + (log.total_hours ?? 0);
+    processRecord(log.employee_id, log.total_hours ?? 0);
   }
 
   // 4. Build payslips
   const payslips = employees.map((emp) => {
     const baseSalary  = Number(emp.base_salary);
     const hoursWorked = hoursMap[emp.id] ?? 0;
+    const otHours     = otHoursMap[emp.id] ?? 0;
 
     // For hourly/part-time: pay based on hours punched
     // For salaried/full-time: pay full base_salary regardless of hours
@@ -109,20 +130,23 @@ export async function generatePayslips(formData: FormData) {
       ? Math.round(hourlyRate * hoursWorked * 100) / 100
       : baseSalary;
 
+    // Calculate Overtime (OT) pay (1.25x hourly rate for hours > 8)
+    const overtimePay = Math.round(hourlyRate * 1.25 * otHours * 100) / 100;
+
     // Philippines statutory deductions
     const sss        = Math.min(basicPay * 0.045, 1_125);
     const philhealth = basicPay * 0.02;
     const pagibig    = Math.min(basicPay * 0.02, 200);
 
     // Withholding tax on taxable income (gross - SSS - PhilHealth - Pagibig)
-    const taxable        = Math.max(0, basicPay - sss - philhealth - pagibig);
+    const taxable        = Math.max(0, basicPay + overtimePay - sss - philhealth - pagibig);
     const withholdingTax = computeWithholdingTax(taxable);
 
     return {
       payroll_period_id:  periodId,
       employee_id:        emp.id,
       basic_pay:          Number(basicPay.toFixed(2)),
-      overtime_pay:       0,
+      overtime_pay:       Number(overtimePay.toFixed(2)),
       allowances:         0,
       bonuses:            0,
       sss_contribution:   Number(sss.toFixed(2)),
@@ -131,10 +155,10 @@ export async function generatePayslips(formData: FormData) {
       withholding_tax:    Number(withholdingTax.toFixed(2)),
       other_deductions:   0,
       status:             "pending_approval",
-      // Store hours worked in remarks for transparency
+      // Store hours worked and OT in remarks for transparency
       remarks: isHourly
-        ? `Hours worked: ${hoursWorked.toFixed(2)}h @ ₱${hourlyRate.toFixed(2)}/hr`
-        : `Salaried. Hours logged: ${hoursWorked.toFixed(2)}h`,
+        ? `Hours worked: ${hoursWorked.toFixed(2)}h @ ₱${hourlyRate.toFixed(2)}/hr | OT: ${otHours.toFixed(2)}h (₱${overtimePay.toFixed(2)})`
+        : `Salaried. Hours logged: ${hoursWorked.toFixed(2)}h | OT: ${otHours.toFixed(2)}h (₱${overtimePay.toFixed(2)})`,
     };
   });
 

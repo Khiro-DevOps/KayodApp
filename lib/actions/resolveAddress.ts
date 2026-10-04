@@ -8,10 +8,11 @@ interface ResolveAddressResponse {
   data?: {
     lat: number;
     lng: number;
+    locationId?: string;
   };
 }
 
-export async function resolveAddress(profileId: string, address: string): Promise<ResolveAddressResponse> {
+export async function resolveAddress(profileId: string, address: string, locationName = 'Custom Work Site'): Promise<ResolveAddressResponse> {
   try {
     const encodedAddress = encodeURIComponent(address);
     const url = `https://nominatim.openstreetmap.org/search?q=${encodedAddress}&format=json&limit=1`;
@@ -20,7 +21,7 @@ export async function resolveAddress(profileId: string, address: string): Promis
       headers: {
         'User-Agent': 'Kayod-HR-Attendance-System (contact: dev@kayod.app)',
       },
-      next: { revalidate: 86400 }, // Cache for 24 hours
+      next: { revalidate: 86400 },
     });
 
     if (!response.ok) {
@@ -41,22 +42,40 @@ export async function resolveAddress(profileId: string, address: string): Promis
     const longitude = parseFloat(lon);
 
     const supabase = await createClient();
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        work_lat: latitude,
-        work_lng: longitude,
-      })
-      .eq('id', profileId);
 
-    if (updateError) {
-      console.error('Supabase update error:', updateError);
-      return { success: false, error: "System failed to store resolved coordinates." };
+    // Insert or update work_locations table record
+    const { data: newLocation, error: locError } = await supabase
+      .from('work_locations')
+      .insert({
+        name: locationName,
+        address: address,
+        latitude: latitude,
+        longitude: longitude,
+        radius_meters: 200,
+        is_default: false,
+      })
+      .select('id')
+      .single();
+
+    if (locError || !newLocation) {
+      console.error('Work location creation error:', locError);
+      return { success: false, error: "System failed to store resolved site coordinates." };
     }
 
-    return { 
-      success: true, 
-      data: { lat: latitude, lng: longitude } 
+    // Link location to profile & employee
+    await supabase
+      .from('profiles')
+      .update({ work_location_id: newLocation.id })
+      .eq('id', profileId);
+
+    await supabase
+      .from('employees')
+      .update({ work_location_id: newLocation.id })
+      .eq('profile_id', profileId);
+
+    return {
+      success: true,
+      data: { lat: latitude, lng: longitude, locationId: newLocation.id }
     };
   } catch (error) {
     console.error('Address resolution exception:', error);

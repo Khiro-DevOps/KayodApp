@@ -29,6 +29,7 @@ type BookDemoFormState = {
 
 type RegistrationResponse = {
   success: boolean;
+  error?: string;
   userId?: string;
   tenantId?: string;
   workspaceSlug?: string;
@@ -37,7 +38,6 @@ type RegistrationResponse = {
   email?: string;
   companyName?: string;
   teamSize?: string;
-  error?: string;
 };
 
 const INDUSTRY_OPTIONS = [

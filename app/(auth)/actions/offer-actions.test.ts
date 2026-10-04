@@ -9,6 +9,7 @@ type MockRow = Record<string, unknown>;
 type TableName =
   | "applications"
   | "contract_templates"
+  | "contract_templates_old"
   | "job_offers"
   | "job_postings"
   | "signed_documents"
@@ -19,6 +20,7 @@ function createMockDatabase() {
   const tables: Record<TableName, MockRow[]> = {
     applications: [],
     contract_templates: [],
+    contract_templates_old: [],
     job_offers: [],
     job_postings: [],
     signed_documents: [],
@@ -26,9 +28,12 @@ function createMockDatabase() {
     tenants: [],
   };
 
-  const counters: Record<Exclude<TableName, "applications" | "job_postings">, number> = {
+  const counters: Record<TableName, number> = {
+    applications: 0,
     contract_templates: 0,
+    contract_templates_old: 0,
     job_offers: 0,
+    job_postings: 0,
     signed_documents: 0,
     profiles: 0,
     tenants: 0,
@@ -46,6 +51,7 @@ function createMockDatabase() {
       tables[tableName] = (seed?.[tableName] ?? []).map((row) => cloneRow(row));
     }
     counters.contract_templates = 0;
+    counters.contract_templates_old = 0;
     counters.job_offers = 0;
     counters.signed_documents = 0;
     failures.clear();
@@ -236,7 +242,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => mockDatabase.userClient),
 }));
 
-vi.mock("@/app/(dashboard)/jobs/manage/[id]/applicants/[appId]/offer/send-with-docuseal-actions", () => ({
+vi.mock("@/app/(dashboard)/hr/jobs/[id]/applicants/[appId]/offer/send-with-docuseal-actions", () => ({
   sendOfferWithDocuSeal: mockSendOfferWithDocuSeal,
 }));
 

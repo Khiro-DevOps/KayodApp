@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ShieldAlert, CheckCircle2, User, Clock, MapPin, ShieldCheck } from 'lucide-react';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface AttendanceRecord {
   id: string;
@@ -28,7 +29,7 @@ export default function AttendanceDashboard({ initialAttendance }: AttendanceDas
       .on(
         'postgres_changes',
         { event: '*', table: 'attendance' },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<AttendanceRecord>) => {
           if (payload.eventType === 'INSERT') {
             setRecords(prev => [payload.new as AttendanceRecord, ...prev]);
           } else if (payload.eventType === 'UPDATE') {

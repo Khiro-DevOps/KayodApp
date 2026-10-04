@@ -24,12 +24,15 @@ type DocusealFormWebhookPayload = {
     decline_reason?: string | null;
     completed_at?: string | null;
     declined_at?: string | null;
+    audit_log_url?: string | null;
+    combined_document_url?: string | null;
     submission?: {
       url?: string | null;
       combined_document_url?: string | null;
       audit_log_url?: string | null;
       status?: string | null;
       id?: number | null;
+      documents?: DocusealSubmissionDocument[];
     };
     documents?: DocusealSubmissionDocument[];
     values?: Array<{ field?: string; value?: string }>;

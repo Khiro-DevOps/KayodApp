@@ -8,9 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { effectiveRole, isHRRole, roleLabel } from "@/lib/roles";
 import type { UserRole } from "@/lib/types";
 import DashboardHeader from "@/components/ui/dashboard-header";
-import PwaShell from "@/components/layout/pwa-shell";
-import DashboardLayout from "@/app/(dashboard)/hr/layout";
-
+import PwaShell, { usePwaShellContext } from "@/components/layout/pwa-shell";
 import type { ReactNode } from "react";
 
 type NavItem = {
@@ -59,6 +57,7 @@ function isActiveNavItem(pathname: string, item: NavItem) {
 
 export default function PageContainer({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "";
+  const isInsidePwaShell = usePwaShellContext();
   const isApplicantRoute = pathname.startsWith("/applicant");
   const isEmployeeRoute = pathname.startsWith("/employee");
   const isHrDashboardRoute = pathname === "/hr";
@@ -115,11 +114,11 @@ export default function PageContainer({ children }: { children: ReactNode }) {
         let nextCompanyName = "Company";
 
         if (nextTenantId) {
-          const { data: company } = await supabase
+          const { data: company } = (await supabase
             .from("companies")
             .select("name")
             .eq("id", nextTenantId)
-            .maybeSingle() as unknown as { data: { name?: string | null } | null; error: any };
+            .maybeSingle()) as { data: { name?: string | null } | null };
 
           nextCompanyName = company?.name?.trim() || nextCompanyName;
         }
@@ -155,12 +154,16 @@ export default function PageContainer({ children }: { children: ReactNode }) {
     };
   }, [pathname]);
 
+  if ((isApplicantRoute || isEmployeeRoute) && isInsidePwaShell) {
+    return <>{children}</>;
+  }
+
   if (isApplicantRoute || isEmployeeRoute) {
     return <PwaShell variant={isApplicantRoute ? "applicant" : "employee"}>{children}</PwaShell>;
   }
 
   if (useHrShell) {
-    return <DashboardLayout>{children}</DashboardLayout>;
+    return <div className="w-full">{children}</div>;
   }
 
   return <div className="mx-auto w-full max-w-[480px] px-4 py-4">{children}</div>;

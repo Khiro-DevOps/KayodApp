@@ -17,31 +17,87 @@ export async function updateApplicationStatus(formData: FormData) {
   const status = formData.get("status") as string;
   if (!applicationId || !status) redirect("/applications");
 
-  await supabase
-    .from("applications")
-    .update({ status })
-    .eq("id", applicationId);
+  const statusMap: Record<string, string> = {
+    new: "applied",
+    draft: "applied",
+    submitted: "applied",
+    applied: "applied",
+    screening: "screening",
+    under_review: "screening",
+    shortlisted: "screening",
+    interview: "interview",
+    interviewing: "interview",
+    interview_scheduled: "interview",
+    interviewed: "interview",
+    offer: "offer",
+    negotiating: "offer",
+    offer_sent: "offer",
+    offer_accepted: "offer",
+    offer_declined: "offer",
+    offer_expired: "offer",
+    pre_employment: "offer",
+    hired: "hired",
+    hire_confirmed: "hired",
+    rejected: "rejected",
+    withdrawn: "withdrawn",
+  };
+  const normalizedStatus = status.toLowerCase();
+  const dbStatus = statusMap[normalizedStatus];
+
+  if (!dbStatus) {
+    throw new Error(`Unsupported application status: ${status}`);
+  }
+
+  const { error } = await supabase
+    .from("job_applications") // <--- MUST be job_applications
+    .update({ status: dbStatus })
+    .eq("id", applicationId)
+    .select();
+
+  if (error) {
+    console.error("KANBAN UPDATE FAILED:", error);
+    throw new Error(error.message);
+  }
+
+  const { data: appData } = await supabase
+    .from("job_applications")
+    .select("applicant_id, job:job_postings(title)")
+    .eq("id", applicationId)
+    .single();
+
+  if (appData) {
+    const jobTitle = (appData.job as unknown as { title: string } | null)?.title ?? "the position";
+
+    await supabase.from("notifications").insert({
+      recipient_id: appData.applicant_id,
+      title: "Application Stage Updated",
+      body: `Your application for ${jobTitle} moved to ${dbStatus}.`,
+      type: "application_status_changed",
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+  }
 
   // When shortlisted: notify candidate to choose interview format
-  if (status === "shortlisted") {
+  if (normalizedStatus === "shortlisted") {
     const { data: app } = await supabase
-      .from("applications")
-      .select("candidate_id, job_postings(title)")
+      .from("job_applications")
+      .select("applicant_id, job:job_postings(title)")
       .eq("id", applicationId)
       .single();
 
     if (app) {
-      const jobTitle = (app.job_postings as unknown as { title: string })?.title ?? "a position";
+      const jobTitle = (app.job as unknown as { title: string })?.title ?? "a position";
 
       // Mark when HR qualified this applicant
       await supabase
-        .from("applications")
+        .from("job_applications")
         .update({ interview_qualified_at: new Date().toISOString() })
         .eq("id", applicationId);
 
       // Send notification to candidate
       await supabase.from("notifications").insert({
-        recipient_id: app.candidate_id,
+        recipient_id: app.applicant_id,
         type: "application_status_changed",
         title: "You've been shortlisted! 🎉",
         body: `Congratulations! You've been selected for an interview for ${jobTitle}. Please choose your preferred interview format.`,
@@ -51,10 +107,10 @@ export async function updateApplicationStatus(formData: FormData) {
   }
 
   // Auto-create employee when hired
-  if (status === "hired") {
+  if (dbStatus === "hired") {
     const { data: app } = await supabase
-      .from("applications")
-      .select("candidate_id, job_postings(title)")
+      .from("job_applications")
+      .select("applicant_id, job:job_postings(title)")
       .eq("id", applicationId)
       .single();
 
@@ -62,13 +118,13 @@ export async function updateApplicationStatus(formData: FormData) {
       const { data: existing } = await supabase
         .from("employees")
         .select("id")
-        .eq("profile_id", app.candidate_id)
+        .eq("profile_id", app.applicant_id)
         .maybeSingle();
 
       if (!existing) {
-        const jobTitle = (app.job_postings as unknown as { title: string })?.title ?? "Employee";
+        const jobTitle = (app.job as unknown as { title: string })?.title ?? "Employee";
         await supabase.from("employees").insert({
-          profile_id:        app.candidate_id,
+          profile_id:        app.applicant_id,
           application_id:    applicationId,
           job_title:         jobTitle,
           start_date:        new Date().toISOString().split("T")[0],
@@ -81,7 +137,7 @@ export async function updateApplicationStatus(formData: FormData) {
         await supabase
           .from("profiles")
           .update({ role: "employee" })
-          .eq("id", app.candidate_id);
+          .eq("id", app.applicant_id);
       }
     }
   }
@@ -105,7 +161,7 @@ export async function moveToApplied(formData: FormData) {
 
   // Move application to "submitted" status (applied)
   await supabase
-    .from("applications")
+    .from("job_applications")
     .update({ 
       status: "submitted",
       updated_at: new Date().toISOString()
@@ -114,17 +170,17 @@ export async function moveToApplied(formData: FormData) {
 
   // Fetch application to send notification
   const { data: app } = await supabase
-    .from("applications")
-    .select("candidate_id, job_postings(title)")
+    .from("job_applications")
+    .select("applicant_id, job:job_postings(title)")
     .eq("id", applicationId)
     .single();
 
   if (app) {
-    const jobTitle = (app.job_postings as unknown as { title: string })?.title ?? "a position";
+    const jobTitle = (app.job as unknown as { title: string })?.title ?? "a position";
     
     // Send notification to candidate
     await supabase.from("notifications").insert({
-      recipient_id: app.candidate_id,
+      recipient_id: app.applicant_id,
       type: "application_status_changed",
       title: "Your application has been reconsidered",
       body: `Great news! Your application for ${jobTitle} has been moved back to active consideration.`,

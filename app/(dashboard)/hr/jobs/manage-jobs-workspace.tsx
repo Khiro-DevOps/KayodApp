@@ -46,14 +46,14 @@ function formatCurrencyRange(job: ManageJobPosting) {
   });
 
   if (hasMin && hasMax) {
-    return `${formatter.format(job.salary_min as number)} - ${formatter.format(job.salary_max as number)}`;
+    return `${formatter.format(job.salary_min!)} - ${formatter.format(job.salary_max!)}`;
   }
 
   if (hasMin) {
-    return `From ${formatter.format(job.salary_min as number)}`;
+    return `From ${formatter.format(job.salary_min!)}`;
   }
 
-  return `Up to ${formatter.format(job.salary_max as number)}`;
+  return `Up to ${formatter.format(job.salary_max!)}`;
 }
 
 function formatDate(value: string) {
@@ -103,25 +103,25 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
   if (jobs.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-3xl border border-card-border bg-[linear-gradient(180deg,#ffffff_0%,#f8f6ff_100%)] px-6 py-10 shadow-sm">
+      <div className="flex items-center justify-center rounded-xl border border-border bg-card-bg px-6 py-16 shadow-sm">
         <div className="max-w-xl space-y-5 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-light text-primary-dark">
             <span className="material-symbols-outlined text-[28px]">work</span>
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               {companyName}
             </p>
-            <h1 className="font-(family-name:--font-heading) text-2xl font-bold text-text-primary">
+            <h1 className="text-2xl font-bold text-text-main">
               Manage Jobs
             </h1>
-            <p className="text-sm leading-6 text-text-secondary">
+            <p className="text-xs leading-6 text-text-muted">
               No job postings found for this company workspace. Click "New Job" to create your first listing.
             </p>
           </div>
           <Link
-            href="/hr/jobs/new"
-            className="inline-flex items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+            href="/hr/jobs/manage/new"
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
           >
             New Job
           </Link>
@@ -133,46 +133,47 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
   const selectedJob = visibleJobs.find((job) => job.id === activeJobId) ?? visibleJobs[0] ?? null;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <h1 className="font-(family-name:--font-heading) text-2xl font-bold text-text-primary">
+          <h1 className="text-2xl font-bold text-text-main">
             Manage Jobs
           </h1>
-          <p className="text-sm text-text-secondary">
-            Securely scoped to {companyName}.
+          <p className="text-xs text-text-muted">
+            Scoped to {companyName}
           </p>
         </div>
 
         <Link
-          href="/hr/jobs/new"
-          className="mt-1 inline-flex shrink-0 items-center justify-center rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+          href="/hr/jobs/manage/new"
+          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
         >
           + New Job
         </Link>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] xl:gap-4 lg:items-start">
-        <aside className="flex min-w-0 flex-col gap-4 rounded-3xl border border-card-border bg-white/90 p-4 shadow-sm modern-scrollbar">
-          <div className="group relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">
+      <div className="grid gap-4 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start">
+        {/* Left Master List */}
+        <aside className="flex min-w-0 flex-col gap-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">
               search
             </span>
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="w-full rounded-2xl border border-card-border bg-white py-3 pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface-bg py-2 pl-9 pr-4 text-xs text-text-main outline-none transition-colors placeholder:text-text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
               placeholder="Search jobs..."
               type="text"
             />
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {visibleJobs.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-card-border bg-surface p-6 text-center">
-                <p className="text-sm font-medium text-text-primary">No matching jobs</p>
-                <p className="mt-1 text-xs text-text-secondary">
-                  Clear the search to view all listings in this workspace.
+              <div className="rounded-lg border border-dashed border-border bg-surface-bg p-6 text-center">
+                <p className="text-xs font-semibold text-text-main">No matching jobs</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  Clear the search to view all listings.
                 </p>
               </div>
             ) : (
@@ -185,47 +186,44 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                     key={job.id}
                     type="button"
                     onClick={() => setActiveJobId(job.id)}
-                    className={`w-full rounded-3xl border p-4 text-left transition-all duration-200 ${
+                    className={`w-full rounded-xl border p-3.5 text-left transition-all duration-150 ${
                       isActive
-                        ? "border-primary bg-primary/5 shadow-[0_10px_30px_rgba(124,122,172,0.16)]"
-                        : "border-card-border bg-white hover:border-primary/40 hover:bg-surface"
+                        ? "border-primary bg-primary-light/30 shadow-xs"
+                        : "border-border bg-card-bg hover:border-primary/40 hover:bg-surface-bg"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm font-semibold text-text-primary">{job.title}</p>
-                        <p className="text-xs text-text-secondary">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="truncate text-sm font-semibold text-text-main">{job.title}</p>
+                        <p className="text-xs text-text-muted truncate">
                           {departmentName} · {formatEmploymentType(job.employment_type)}
                         </p>
                       </div>
 
                       <span
-                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                           job.is_published
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-600"
+                            ? "bg-success-bg text-success border border-success/20"
+                            : "bg-surface-bg text-text-muted border border-border"
                         }`}
                       >
                         {job.is_published ? "Published" : "Draft"}
                       </span>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                      <span className="rounded-full bg-surface px-2.5 py-1">
+                    <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-text-muted">
+                      <span className="rounded-md bg-surface-bg px-2 py-0.5 border border-border/60">
                         {job.location ?? "Location not set"}
                       </span>
-                      <span className="rounded-full bg-surface px-2.5 py-1">
+                      <span className="rounded-md bg-surface-bg px-2 py-0.5 border border-border/60">
                         {formatCurrencyRange(job)}
                       </span>
-                      <span className="rounded-full bg-surface px-2.5 py-1">
+                      <span className="rounded-md bg-surface-bg px-2 py-0.5 border border-border/60 font-medium text-text-main">
                         {job.applicantCount} applicant{job.applicantCount === 1 ? "" : "s"}
-                      </span>
-                      <span className="rounded-full bg-surface px-2.5 py-1">
-                        {job.slots} slot{job.slots === 1 ? "" : "s"}
                       </span>
                     </div>
 
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+                    <p className="mt-2.5 text-[10px] text-text-muted uppercase tracking-wider">
                       Posted {formatDate(job.created_at)}
                       {job.closes_at ? ` · Closes ${formatDate(job.closes_at)}` : ""}
                     </p>
@@ -236,31 +234,32 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-col rounded-3xl border border-card-border bg-white shadow-sm modern-scrollbar">
+        {/* Right Detail Section */}
+        <section className="flex min-w-0 flex-col rounded-xl border border-border bg-card-bg shadow-sm">
           {selectedJob ? (
             <>
-              <div className="border-b border-card-border px-6 py-5">
+              <div className="border-b border-border p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                      <span className="rounded-full bg-primary-light px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-dark">
                         {selectedJob.departments?.name?.trim() || "General"}
                       </span>
                       <span
-                        className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                           selectedJob.is_published
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-600"
+                            ? "bg-success-bg text-success border border-success/20"
+                            : "bg-surface-bg text-text-muted border border-border"
                         }`}
                       >
                         {selectedJob.is_published ? "Published" : "Draft"}
                       </span>
                     </div>
 
-                    <h2 className="font-(family-name:--font-heading) text-2xl font-bold text-text-primary">
+                    <h2 className="text-xl font-bold text-text-main">
                       {selectedJob.title}
                     </h2>
-                    <p className="text-sm text-text-secondary">
+                    <p className="text-xs text-text-muted">
                       Posted {formatDate(selectedJob.created_at)}
                       {selectedJob.closes_at ? ` · Closes ${formatDate(selectedJob.closes_at)}` : ""}
                     </p>
@@ -268,14 +267,14 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
                   <div className="flex flex-wrap gap-2">
                     <Link
-                      href={`/hr/jobs/${selectedJob.id}`}
-                      className="rounded-2xl border border-card-border px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-primary hover:bg-surface"
+                      href={`/hr/jobs/manage/${selectedJob.id}`}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-main transition-colors hover:bg-surface-bg"
                     >
                       Open Details
                     </Link>
                     <Link
-                      href={`/hr/jobs/${selectedJob.id}/edit`}
-                      className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+                      href={`/hr/jobs/manage/${selectedJob.id}/edit`}
+                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
                     >
                       Edit Job
                     </Link>
@@ -283,140 +282,140 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                 </div>
               </div>
 
-              <div className="grid gap-3 border-b border-card-border px-6 py-5 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-                <div className="rounded-2xl bg-surface p-4 min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+              <div className="grid gap-3 border-b border-border p-5 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
+                <div className="rounded-lg bg-surface-bg p-3 border border-border/60 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                     Location
                   </p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-text-primary">
+                  <p className="mt-1 text-xs font-semibold text-text-main">
                     {selectedJob.location ?? "Not specified"}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-surface p-4 min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                <div className="rounded-lg bg-surface-bg p-3 border border-border/60 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                     Salary Range
                   </p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-text-primary">
+                  <p className="mt-1 text-xs font-semibold text-text-main">
                     {formatCurrencyRange(selectedJob)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-surface p-4 min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                <div className="rounded-lg bg-surface-bg p-3 border border-border/60 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                     Employment Type
                   </p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-text-primary">
+                  <p className="mt-1 text-xs font-semibold text-text-main capitalize">
                     {formatEmploymentType(selectedJob.employment_type)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-surface p-4 min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                <div className="rounded-lg bg-surface-bg p-3 border border-border/60 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                     Available Slots
                   </p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-text-primary">
+                  <p className="mt-1 text-xs font-semibold text-text-main">
                     {selectedJob.slots}
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-5 px-6 py-6 xl:grid-cols-[1.3fr_0.9fr]">
-                <div className="space-y-5">
-                  <div className="rounded-3xl border border-card-border bg-surface p-5">
+              <div className="grid gap-4 p-5 xl:grid-cols-[1.3fr_0.9fr]">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border bg-surface-bg p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
                         Job Description
                       </h3>
-                      <span className="text-xs text-text-secondary">
+                      <span className="text-xs font-semibold text-primary">
                         {selectedJob.applicantCount} applicant{selectedJob.applicantCount === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text-primary">
+                    <p className="mt-2.5 whitespace-pre-wrap text-xs leading-relaxed text-text-main">
                       {selectedJob.description}
                     </p>
                   </div>
 
-                  <div className="rounded-3xl border border-card-border bg-surface p-5">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                  <div className="rounded-xl border border-border bg-surface-bg p-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
                       Requirements & Qualifications
                     </h3>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text-primary">
+                    <p className="mt-2.5 whitespace-pre-wrap text-xs leading-relaxed text-text-main">
                       {selectedJob.requirements?.trim() || "No requirements were provided for this listing."}
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-5">
-                  <div className="rounded-3xl border border-card-border bg-white p-5 shadow-sm">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border bg-card-bg p-4 shadow-xs">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
                       Quick Summary
                     </h3>
-                    <dl className="mt-4 space-y-4">
+                    <dl className="mt-3 space-y-3 text-xs">
                       <div>
-                        <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                           Department
                         </dt>
-                        <dd className="mt-1 text-sm font-medium text-text-primary">
+                        <dd className="mt-0.5 font-semibold text-text-main">
                           {selectedJob.departments?.name?.trim() || "General"}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                           Published
                         </dt>
-                        <dd className="mt-1 text-sm font-medium text-text-primary">
+                        <dd className="mt-0.5 font-semibold text-text-main">
                           {selectedJob.is_published ? "Yes" : "No"}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                           Closing Date
                         </dt>
-                        <dd className="mt-1 text-sm font-medium text-text-primary">
+                        <dd className="mt-0.5 font-semibold text-text-main">
                           {selectedJob.closes_at ? formatDate(selectedJob.closes_at) : "Not set"}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                        <dt className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                           Required Skills
                         </dt>
-                        <dd className="mt-2 flex flex-wrap gap-2">
+                        <dd className="mt-1.5 flex flex-wrap gap-1.5">
                           {selectedJob.required_skills?.length ? (
                             selectedJob.required_skills.map((skill) => (
                               <span
                                 key={skill}
-                                className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"
+                                className="rounded-md bg-primary-light px-2 py-0.5 text-[11px] font-semibold text-primary-dark"
                               >
                                 {skill}
                               </span>
                             ))
                           ) : (
-                            <span className="text-sm text-text-secondary">No skills listed</span>
+                            <span className="text-xs text-text-muted">No skills listed</span>
                           )}
                         </dd>
                       </div>
                     </dl>
                   </div>
 
-                  <div className="rounded-3xl border border-dashed border-card-border bg-white p-5">
-                    <p className="text-sm font-semibold text-text-primary">Need to publish a new role?</p>
-                    <p className="mt-2 text-sm leading-6 text-text-secondary">
-                      Keep this workspace focused on the active company tenant and create new postings without leaving the page.
+                  <div className="rounded-xl border border-dashed border-border bg-surface-bg p-4">
+                    <p className="text-xs font-bold text-text-main">Need to publish a new role?</p>
+                    <p className="mt-1 text-xs leading-relaxed text-text-muted">
+                      Create new postings scoped to your workspace without leaving the portal.
                     </p>
                     <Link
-                      href="/hr/jobs/new"
-                      className="mt-4 inline-flex rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+                      href="/hr/jobs/manage/new"
+                      className="mt-3 inline-flex rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
                     >
-                      New Job
+                      + New Job
                     </Link>
                   </div>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex min-h-[420px] items-center justify-center px-6 py-10 text-center">
-              <div className="max-w-md space-y-3">
-                <p className="text-sm font-medium text-text-primary">No job selected</p>
-                <p className="text-sm leading-6 text-text-secondary">
-                  Pick a job from the left pane to review the full posting details.
+            <div className="flex min-h-[360px] items-center justify-center p-8 text-center">
+              <div className="max-w-md space-y-2">
+                <p className="text-sm font-semibold text-text-main">No job selected</p>
+                <p className="text-xs text-text-muted">
+                  Pick a job from the left pane to review full details.
                 </p>
               </div>
             </div>

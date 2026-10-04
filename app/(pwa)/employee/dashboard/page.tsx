@@ -1,70 +1,60 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
-import type { Profile, Schedule, LeaveRequest } from "@/lib/types";
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { Palmtree, Banknote, Calendar } from "lucide-react";
 
-// ── Helpers ──────────────────────────────────────────────────
+import { createClient } from "@/lib/supabase/server";
+import PageContainer from "@/components/ui/page-container";
+import type { LeaveBalance, LeaveRequest, Payslip, Profile, TimeLog } from "@/lib/types";
+import { LEAVE_STATUS_COLORS, PAYROLL_STATUS_COLORS } from "@/lib/types";
 
-function getMonday(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getMonthDates(year: number, month: number): (Date | null)[] {
-  const firstDay = new Date(year, month, 1);
-  const lastDay  = new Date(year, month + 1, 0);
-  // Pad start: Monday = 0
-  const startPad = (firstDay.getDay() + 6) % 7;
-  const days: (Date | null)[] = Array(startPad).fill(null);
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    days.push(new Date(year, month, d));
-  }
-  // Pad end to complete last row
-  while (days.length % 7 !== 0) days.push(null);
-  return days;
-}
-
-const SHIFT_COLORS: Record<string, string> = {
-  morning:   "bg-amber-100 text-amber-800",
-  afternoon: "bg-blue-100 text-blue-800",
-  evening:   "bg-purple-100 text-purple-800",
-  night:     "bg-gray-200 text-gray-700",
-  custom:    "bg-teal-100 text-teal-800",
+type EmployeePayslip = Payslip & {
+  payroll_periods?: {
+    period_start: string;
+    period_end: string;
+    pay_date: string;
+    status: string;
+  } | null;
 };
 
-const SHIFT_TIMES: Record<string, string> = {
-  morning:   "8:00 AM – 5:00 PM",
-  afternoon: "1:00 PM – 10:00 PM",
-  evening:   "5:00 PM – 2:00 AM",
-  night:     "10:00 PM – 7:00 AM",
-};
+function formatPeso(amount: number) {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
-const MONTH_NAMES = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
-];
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+  });
+}
 
-const DAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-
-// ── Page ─────────────────────────────────────────────────────
+function formatLongDate(value: string) {
+  return new Date(value).toLocaleDateString("en-PH", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default async function EmployeeDashboardPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("role, first_name, last_name")
     .eq("id", user.id)
-    .single<Profile & { first_name: string; last_name: string }>();
+    .single<Pick<Profile, "role" | "first_name" | "last_name">>();
 
-  // Non-employees fall through to the existing dashboard page logic
   if (!profile || profile.role !== "employee") redirect("/applicant/dashboard");
 
   const { data: employee } = await supabase
@@ -76,287 +66,271 @@ export default async function EmployeeDashboardPage() {
 
   if (!employee) redirect("/applicant/dashboard");
 
-  const now      = new Date();
-  const year     = now.getFullYear();
-  const month    = now.getMonth();
-  const todayStr = now.toISOString().split("T")[0];
-
-  // Fetch this month's schedules
-  const monthStart = new Date(year, month, 1).toISOString().split("T")[0];
-  const monthEnd   = new Date(year, month + 1, 0).toISOString().split("T")[0];
-
-  const [{ data: schedules }, { data: leaves }] = await Promise.all([
+  const [balanceResult, payslipResult, leaveResult, timeLogResult] = await Promise.all([
     supabase
-      .from("schedules")
-      .select("week_start, shift, shift_start, shift_end, location, is_published")
+      .from("leave_balances")
+      .select("id, leave_type, year, total_credits, used_credits, remaining, updated_at")
       .eq("employee_id", employee.id)
-      .gte("week_start", monthStart)
-      .lte("week_start", monthEnd)
-      .returns<Schedule[]>(),
+      .order("year", { ascending: false })
+      .returns<LeaveBalance[]>(),
+    supabase
+      .from("payslips")
+      .select("*, payroll_periods(*)")
+      .eq("employee_id", employee.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     supabase
       .from("leave_requests")
-      .select("start_date, end_date, leave_type, status")
+      .select("id, leave_type, status, start_date, end_date, total_days, filed_at")
       .eq("employee_id", employee.id)
-      .in("status", ["pending", "approved"])
-      .gte("end_date", monthStart)
-      .lte("start_date", monthEnd)
+      .order("filed_at", { ascending: false })
+      .limit(3)
       .returns<LeaveRequest[]>(),
+    supabase
+      .from("time_logs")
+      .select("id, punch_type, punched_at, total_hours")
+      .eq("employee_id", employee.id)
+      .order("punched_at", { ascending: false })
+      .limit(3)
+      .returns<TimeLog[]>(),
   ]);
 
-  // Build a map: dateStr → { shift, isLeave, leaveStatus, isRestDay }
-  type DayInfo = {
-    shift: string | null;
-    shiftStart: string | null;
-    shiftEnd: string | null;
-    isLeave: boolean;
-    leaveStatus: string | null;
-    leaveType: string | null;
-    isRestDay: boolean;
-  };
+  const balances = balanceResult.data ?? [];
+  const latestPayslip = (payslipResult.data as EmployeePayslip | null) ?? null;
+  const recentLeaves = leaveResult.data ?? [];
+  const recentTimeLogs = timeLogResult.data ?? [];
 
-  const dayMap: Record<string, DayInfo> = {};
-
-  // Map schedules: one row per week, applies Mon–Fri
-  for (const sched of schedules ?? []) {
-    const weekMonday = new Date(sched.week_start);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(weekMonday);
-      d.setDate(d.getDate() + i);
-      const ds = d.toISOString().split("T")[0];
-      const isWeekend = i >= 5; // Sat/Sun = rest
-      dayMap[ds] = {
-        shift:       isWeekend ? null : (sched.shift ?? null),
-        shiftStart:  isWeekend ? null : (sched.shift_start ?? null),
-        shiftEnd:    isWeekend ? null : (sched.shift_end ?? null),
-        isLeave:     false,
-        leaveStatus: null,
-        leaveType:   null,
-        isRestDay:   isWeekend,
-      };
-    }
-  }
-
-  // Overlay leave days
-  for (const leave of leaves ?? []) {
-    const cursor = new Date(leave.start_date);
-    const end    = new Date(leave.end_date);
-    while (cursor <= end) {
-      const ds = cursor.toISOString().split("T")[0];
-      if (dayMap[ds]) {
-        dayMap[ds].isLeave     = true;
-        dayMap[ds].leaveStatus = leave.status;
-        dayMap[ds].leaveType   = leave.leave_type;
-      } else {
-        dayMap[ds] = {
-          shift: null, shiftStart: null, shiftEnd: null,
-          isLeave: true,
-          leaveStatus: leave.status,
-          leaveType: leave.leave_type,
-          isRestDay: false,
-        };
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  }
-
-  const monthDates = getMonthDates(year, month);
-
-  // This week's shift (for the info card below calendar)
-  const thisWeekMonday = getMonday(now).toISOString().split("T")[0];
-  const thisWeekSched  = (schedules ?? []).find((s) => s.week_start === thisWeekMonday);
-
-  // Upcoming leaves
-  const upcomingLeaves = (leaves ?? [])
-    .filter((l) => l.status === "approved" && new Date(l.end_date) >= now)
-    .slice(0, 2);
-
-  const firstName = profile.first_name ?? "there";
+  const totalLeaveRemaining = balances.reduce((sum, balance) => sum + balance.remaining, 0);
+  const latestTimeLog = recentTimeLogs[0] ?? null;
+  const firstName = profile.first_name || "there";
+  const todayLabel = formatLongDate(new Date().toISOString());
 
   return (
     <PageContainer>
-      <div className="space-y-5">
-
-        {/* Greeting */}
-        <div>
-          <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-            Hey, {firstName} 👋
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900 font-sans">
+            Hello, {firstName}
           </h1>
-          <p className="text-sm text-text-secondary mt-0.5">
-            {now.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
-          </p>
+          <p className="text-xs text-text-secondary">{todayLabel}</p>
         </div>
 
-        {/* This week shift card */}
-        {thisWeekSched ? (
-          <div className={`rounded-2xl border p-4 ${SHIFT_COLORS[thisWeekSched.shift] ?? "bg-surface border-border"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium opacity-70 uppercase tracking-wide">This week</p>
-                <p className="text-base font-semibold capitalize mt-0.5">
-                  {thisWeekSched.shift} shift
-                </p>
-                <p className="text-sm opacity-80 mt-0.5">
-                  {SHIFT_TIMES[thisWeekSched.shift] ?? `${thisWeekSched.shift_start} – ${thisWeekSched.shift_end}`}
-                </p>
+        <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SurfaceCard>
+              <div className="flex items-center justify-between">
+                <CardLabel>LEAVE BALANCE</CardLabel>
+                <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center w-10 h-10 shrink-0">
+                  <Palmtree className="w-5 h-5" />
+                </div>
               </div>
-              <div className="text-3xl opacity-40">
-                {thisWeekSched.shift === "morning"   ? "🌅" :
-                 thisWeekSched.shift === "afternoon"  ? "☀️" :
-                 thisWeekSched.shift === "evening"    ? "🌆" :
-                 thisWeekSched.shift === "night"      ? "🌙" : "⏰"}
+              <div className="mt-4 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-4xl font-semibold tracking-tight text-text-primary">{totalLeaveRemaining}</p>
+                  <p className="mt-1 text-sm text-text-secondary">days remaining across your balance types</p>
+                </div>
+                <span className="rounded-full bg-[#E9E5FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2d2b68]">
+                  {balances.length > 0 ? `${balances.length} types` : "No record"}
+                </span>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {balances.length > 0 ? (
+                  balances.map((balance) => (
+                    <span
+                      key={balance.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#e6e4f0] bg-[#f7f6fc] px-3 py-1.5 text-xs font-medium text-text-secondary"
+                    >
+                      <span className="capitalize">{balance.leave_type.replace("_", " ")}</span>
+                      <span className="text-text-primary">{balance.remaining}</span>
+                    </span>
+                  ))
+                ) : (
+                  <div className="w-full flex items-center justify-between">
+                    <p className="text-sm text-text-secondary">No leave balance record is available yet.</p>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">0 Days</span>
+                  </div>
+                )}
+              </div>
+            </SurfaceCard>
+
+            <SurfaceCard>
+              <div className="flex items-center justify-between">
+                <CardLabel>NEXT PAYSLIP</CardLabel>
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center w-10 h-10 shrink-0">
+                  <Banknote className="w-5 h-5" />
+                </div>
+              </div>
+              {latestPayslip?.payroll_periods ? (
+                <div className="mt-4 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-lg font-semibold text-text-primary">
+                        {formatShortDate(latestPayslip.payroll_periods.pay_date)}
+                      </p>
+                      <p className="mt-1 text-sm text-text-secondary">
+                        {formatShortDate(latestPayslip.payroll_periods.period_start)} to {formatShortDate(latestPayslip.payroll_periods.period_end)}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${PAYROLL_STATUS_COLORS[latestPayslip.status]}`}>
+                      {latestPayslip.status.replace("_", " ")}
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#e6e4f0] bg-[#f7f6fc] px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Net pay</p>
+                    <p className="mt-1 text-2xl font-semibold text-text-primary">{formatPeso(Number(latestPayslip.net_pay))}</p>
+                    <p className="mt-1 text-sm text-text-secondary">Payroll processed by HR and saved to your record.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 bg-gradient-to-br from-gray-50 to-purple-50/30 border border-gray-100 rounded-2xl p-4 text-sm text-text-secondary">
+                  No payslip has been generated yet.
+                </div>
+              )}
+            </SurfaceCard>
+          </div>
+
+          <div className="grid gap-4">
+            <SurfaceCard>
+              <CardLabel>NEED HELP</CardLabel>
+              <div className="mt-4 space-y-3">
+                <p className="text-sm leading-6 text-text-secondary">
+                  If a leave balance or payslip looks wrong, review the relevant record first and contact HR from your profile if you still need help.
+                </p>
+                <Link
+                  href="/employee/profile"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#2d2b68] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#2A2375] transition-all shadow-sm active:scale-[0.98]"
+                >
+                  Open profile
+                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </Link>
+              </div>
+            </SurfaceCard>
+
+            <SurfaceCard>
+              <CardLabel>UPCOMING MEETING</CardLabel>
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[#e6e4f0] bg-[#fbfaff] px-4 py-4">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E9E5FF] text-[#2d2b68]">
+                    <span className="material-symbols-outlined text-[22px]">event</span>
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">No meeting feed connected yet</p>
+                    <p className="text-sm text-text-secondary">Use Schedule for shifts and attendance updates while meeting data is unavailable.</p>
+                  </div>
+                </div>
+
+                <Link
+                  href="/employee/schedule"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#e6e4f0] px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-[#2A2375] hover:text-white transition-all shadow-sm active:scale-[0.98]"
+                >
+                  View schedule
+                  <span className="material-symbols-outlined text-[18px]">north_east</span>
+                </Link>
+              </div>
+            </SurfaceCard>
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <SurfaceCard>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardLabel>Quick Actions</CardLabel>
+                <p className="mt-1 text-sm text-text-secondary">Move straight to the most common employee tasks.</p>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-surface border border-border p-4">
-            <p className="text-sm text-text-secondary">No shift assigned for this week</p>
-            <p className="text-xs text-text-tertiary mt-0.5">Check back or contact HR</p>
-          </div>
-        )}
 
-        {/* Month calendar */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-text-primary">
-              {MONTH_NAMES[month]} {year}
-            </h2>
-            <Link
-              href="/leaves/new"
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              + Request leave
-            </Link>
-          </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <ActionTile href="/employee/leaves/new" icon="event_available" title="File leave" subtitle="Start a request" />
+              <ActionTile href="/employee/payslips" icon="payments" title="View payslip" subtitle="My statements" />
+              <ActionTile href="/employee/profile" icon="person" title="My profile" subtitle="Update details" />
+              <ActionTile
+                href="/employee/schedule"
+                icon="history"
+                title="Time history"
+                subtitle={latestTimeLog ? `${latestTimeLog.punch_type === "in" ? "Clocked in" : "Clocked out"} ${new Date(latestTimeLog.punched_at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}` : "Attendance view"}
+              />
+            </div>
+          </SurfaceCard>
 
-          {/* Day labels */}
-          <div className="grid grid-cols-7 gap-1">
-            {DAY_LABELS.map((d) => (
-              <p key={d} className="text-center text-xs font-medium text-text-tertiary py-1">
-                {d}
-              </p>
-            ))}
-          </div>
-
-          {/* Date grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {monthDates.map((date, i) => {
-              if (!date) {
-                return <div key={`pad-${i}`} />;
-              }
-
-              const ds       = date.toISOString().split("T")[0];
-              const info     = dayMap[ds];
-              const isToday  = ds === todayStr;
-              const dayNum   = date.getDate();
-
-              // Determine cell style
-              let cellStyle = "bg-gray-50 text-text-tertiary"; // default: no schedule
-              let dotColor  = "";
-              let label     = "";
-
-              if (info?.isLeave && info.leaveStatus === "approved") {
-                cellStyle = "bg-amber-100 text-amber-800";
-                label     = "leave";
-              } else if (info?.isLeave && info.leaveStatus === "pending") {
-                cellStyle = "bg-yellow-50 text-yellow-700 border border-yellow-200";
-                label     = "pending";
-              } else if (info?.isRestDay) {
-                cellStyle = "bg-gray-100 text-text-tertiary";
-                label     = "rest";
-              } else if (info?.shift) {
-                const sc  = SHIFT_COLORS[info.shift] ?? "bg-green-50 text-green-800";
-                cellStyle = sc;
-                dotColor  = "bg-green-500";
-                label     = info.shift.slice(0, 3);
-              }
-
-              if (isToday) {
-                cellStyle = "bg-primary text-white ring-2 ring-primary ring-offset-1";
-                label     = info?.shift?.slice(0, 3) ?? "";
-              }
-
-              return (
-                <Link
-                  key={ds}
-                  href={`/leaves/new?date=${ds}`}
-                  className={`
-                    relative rounded-xl p-1.5 text-center transition-opacity hover:opacity-80
-                    ${cellStyle}
-                  `}
-                >
-                  <p className="text-xs font-semibold leading-tight">{dayNum}</p>
-                  {label && (
-                    <p className={`text-center leading-tight capitalize ${isToday ? "text-white/80" : ""}`} style={{ fontSize: 8 }}>
-                      {label}
-                    </p>
-                  )}
-                  {dotColor && !isToday && (
-                    <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${dotColor}`} />
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-3 pt-1">
-            {[
-              { color: "bg-amber-100", label: "Approved leave" },
-              { color: "bg-yellow-50 border border-yellow-200", label: "Pending leave" },
-              { color: "bg-gray-100", label: "Rest day" },
-              { color: "bg-green-50", label: "Work day" },
-            ].map((l) => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <span className={`w-3 h-3 rounded-sm ${l.color}`} />
-                <span className="text-xs text-text-tertiary">{l.label}</span>
+          <SurfaceCard>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardLabel>Recent Activity</CardLabel>
+                <p className="mt-1 text-sm text-text-secondary">Latest leave requests from your record.</p>
               </div>
-            ))}
-          </div>
-        </div>
+              <Link href="/employee/leaves" className="text-sm font-medium text-[#2d2b68] transition-colors hover:text-[#4a4880]">
+                View all
+              </Link>
+            </div>
 
-        {/* Upcoming leaves */}
-        {upcomingLeaves.length > 0 && (
-          <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
-            <h2 className="text-sm font-semibold text-text-primary">Upcoming leaves</h2>
-            {upcomingLeaves.map((l, i) => (
-              <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0 border-border">
-                <span className="capitalize text-text-secondary">
-                  {l.leave_type.replace("_", " ")}
-                </span>
-                <span className="text-text-tertiary text-xs">
-                  {new Date(l.start_date).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
-                  {" – "}
-                  {new Date(l.end_date).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-2">
-          <h2 className="text-sm font-semibold text-text-primary mb-3">Quick actions</h2>
-          <QuickLink href="/leaves/new"  label="File a leave request" />
-          <QuickLink href="/employee/leaves" label="View my leave history" />
-          <QuickLink href="/employee/schedules" label="Full schedule view" />
-          <QuickLink href="/employee/leaves" label="Request leave" />
-        </div>
-
+            <div className="mt-5 space-y-3">
+              {recentLeaves.length > 0 ? (
+                recentLeaves.map((leave) => (
+                  <div
+                    key={leave.id}
+                    className="flex items-start justify-between gap-4 rounded-2xl border border-[#e6e4f0] bg-[#fbfaff] px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-text-primary capitalize">
+                        {leave.leave_type.replace("_", " ")} leave
+                      </p>
+                      <p className="mt-1 text-sm text-text-secondary">
+                        {formatShortDate(leave.start_date)} to {formatShortDate(leave.end_date)} · {leave.total_days} day{leave.total_days !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${LEAVE_STATUS_COLORS[leave.status]}`}>
+                      {leave.status}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#e6e4f0] bg-[#fbfaff] px-4 py-6 text-sm text-text-secondary">
+                  No leave requests yet.
+                </div>
+              )}
+            </div>
+          </SurfaceCard>
+        </section>
       </div>
     </PageContainer>
   );
 }
 
-function QuickLink({ href, label }: { href: string; label: string }) {
+function SurfaceCard({ children }: { children: ReactNode }) {
+  return <div className="rounded-[28px] border border-[#e6e4f0] bg-white p-5 shadow-[0_12px_30px_rgba(39,36,84,0.08)]">{children}</div>;
+}
+
+function CardLabel({ children }: { children: ReactNode }) {
+  return <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-secondary">{children}</p>;
+}
+
+function ActionTile({
+  href,
+  icon,
+  title,
+  subtitle,
+}: {
+  href: string;
+  icon: string;
+  title: string;
+  subtitle: string;
+}) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded-xl bg-primary/5 p-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+      className="group flex flex-col justify-between rounded-3xl border border-[#e6e4f0] bg-[#fbfaff] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#cfcaf8] hover:bg-white"
     >
-      {label}
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-        <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
-      </svg>
+      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E9E5FF] text-[#2d2b68] transition-transform group-hover:scale-105">
+        <span className="material-symbols-outlined text-[22px]">{icon}</span>
+      </span>
+      <div className="mt-4 space-y-1">
+        <p className="text-sm font-semibold text-text-primary">{title}</p>
+        <p className="text-xs text-text-secondary">{subtitle}</p>
+      </div>
     </Link>
   );
 }

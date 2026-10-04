@@ -19,7 +19,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   // 1. Fetch Job Listing configuration (Template Data)
   const { data: job, error: jobError } = await supabase
     .from("job_postings")
-    .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+    .select("title, work_mode, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
     .eq("id", jobId)
     .single();
 
@@ -77,7 +77,11 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_setup: job.work_setup || 'Remote',
+      work_mode: job.work_mode || 'remote',
+      work_location_id: job.work_location_id || null,
+      shift_start: job.shift_start || null,
+      shift_end: job.shift_end || null,
+      work_days: job.work_days || null,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       job_metadata: {
@@ -240,7 +244,7 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, work_mode, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -294,7 +298,11 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
       created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_setup: job.work_setup || "Remote",
+      work_mode: job.work_mode || "remote",
+      work_location_id: job.work_location_id || null,
+      shift_start: job.shift_start || null,
+      shift_end: job.shift_end || null,
+      work_days: job.work_days || null,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       job_metadata: {

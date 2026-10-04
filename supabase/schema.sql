@@ -181,6 +181,8 @@ create table if not exists profiles (
   city_id         uuid,
   province_id     uuid,
   tenant_name     text,
+  email_notifications boolean not null default true,
+  push_notifications  boolean not null default true,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
@@ -189,7 +191,9 @@ create table if not exists profiles (
 );
 
 alter table if exists profiles
-  add column if not exists age int;
+  add column if not exists age int,
+  add column if not exists email_notifications boolean not null default true,
+  add column if not exists push_notifications boolean not null default true;
 
 do $$
 begin
@@ -294,6 +298,22 @@ create table if not exists departments (
   created_at  timestamptz not null default now()
 );
 
+
+-- ============================================================
+-- TABLE: work_locations
+-- HR-configurable work sites and geofence radii for attendance
+-- ============================================================
+create table if not exists work_locations (
+  id              uuid primary key default uuid_generate_v4(),
+  name            text not null,
+  address         text,
+  latitude        numeric(10, 7) not null,
+  longitude       numeric(10, 7) not null,
+  radius_meters   int not null default 200,
+  is_default      boolean not null default false,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
 
 -- ============================================================
 -- TABLE: locations
@@ -948,23 +968,11 @@ create trigger trg_notify_payslip
 
 
 -- ============================================================
--- TRIGGER: promote candidate to employee on hire
--- Sets profile role to 'employee' automatically.
+-- NOTE: Candidate promotion to employee role & employee record creation
+-- is explicitly handled in server route /api/hr/confirm-hire/[applicationId]
+-- to ensure atomic updates and complete employee profile hydration.
 -- ============================================================
-create or replace function promote_to_employee()
-returns trigger language plpgsql security definer as $$
-begin
-  if new.status = 'hired' and old.status <> 'hired' then
-    update profiles set role = 'employee' where id = new.candidate_id;
-  end if;
-  return new;
-end;
-$$;
 
-drop trigger if exists trg_promote_to_employee on applications;
-create trigger trg_promote_to_employee
-  after update on applications
-  for each row execute procedure promote_to_employee();
 
 
 -- ============================================================

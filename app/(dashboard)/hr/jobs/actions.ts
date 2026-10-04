@@ -38,9 +38,14 @@ export async function createJob(formData: FormData) {
   const job_category = formData.get("job_category") as string;
   const description = formData.get("description") as string;
   const requirements = formData.get("requirements") as string;
-  const work_setup = formData.get("work_setup") as string;
+  const work_mode = formData.get("work_mode") as string;
   const employment_type = formData.get("employment_type") as string;
-  const location = formData.get("location") as string;
+  const work_location_id = formData.get("work_location_id") as string;
+  const shift_start = formData.get("shift_start") as string;
+  const shift_end = formData.get("shift_end") as string;
+  const work_days = formData.getAll("work_days") as string[];
+  const schedule_type = (formData.get("schedule_type") as string) || "fixed";
+  const rest_days_type = (formData.get("rest_days_type") as string) || "fixed";
   const salary_range = formData.get("salary_range") as string;
   const skillsRaw = formData.get("skills") as string;
 
@@ -123,9 +128,14 @@ export async function createJob(formData: FormData) {
       job_category: job_category || null,
       description,
       requirements: requirements || null,
-      work_setup: work_setup || "onsite",
+      work_mode: work_mode || "onsite",
       employment_type: employment_type || "full_time",
-      location: location || null,
+      work_location_id: work_location_id || null,
+      shift_start: shift_start || null,
+      shift_end: shift_end || null,
+      work_days: work_days.length > 0 ? work_days : null,
+      schedule_type,
+      rest_days_type,
       salary_min: salaryMin,
       salary_max: salaryMax,
       required_skills: skills,
@@ -167,7 +177,7 @@ export async function createJob(formData: FormData) {
           jobTitle: title,
           department: ph_department || job_category || undefined,
           employmentType: employment_type || "full_time",
-          location: location || undefined,
+          location: work_location_id || undefined,
           jobDescription: description,
           salary_min: salaryMin || undefined,
           salary_max: salaryMax || undefined,
@@ -220,7 +230,13 @@ export async function updateJob(formData: FormData) {
   const description = formData.get("description") as string;
   const requirements = formData.get("requirements") as string;
   const skillsRaw = formData.get("skills") as string;
-  const location = formData.get("location") as string;
+  const work_mode = formData.get("work_mode") as string;
+  const work_location_id = formData.get("work_location_id") as string;
+  const shift_start = formData.get("shift_start") as string;
+  const shift_end = formData.get("shift_end") as string;
+  const work_days = formData.getAll("work_days") as string[];
+  const schedule_type = (formData.get("schedule_type") as string) || "fixed";
+  const rest_days_type = (formData.get("rest_days_type") as string) || "fixed";
   const salary_range = formData.get("salary_range") as string;
   const industry = formData.get("industry") as string;
   const job_category = formData.get("job_category") as string;
@@ -246,7 +262,13 @@ export async function updateJob(formData: FormData) {
       description,
       requirements: requirements || null,
       required_skills: skills,
-      location: location || null,
+      work_mode: work_mode || "onsite",
+      work_location_id: work_location_id || null,
+      shift_start: shift_start || null,
+      shift_end: shift_end || null,
+      work_days: work_days.length > 0 ? work_days : null,
+      schedule_type,
+      rest_days_type,
       salary_min: salaryMin,
       salary_max: salaryMax,
       industry: industry || null,

@@ -12,24 +12,26 @@ type DashboardIdentity = {
 type CandidateStats = {
   applications: number;
   interviews: number;
+  resumes: number;
 };
 
 type CandidateInterviewRow = {
   id: string;
-  scheduled_at: string;
-  duration_minutes: number;
-  interview_type: "online" | "in_person";
+  scheduled_at: string | null;
+  duration_minutes: number | null;
   status: string;
-  location_address: string | null;
-  location_notes: string | null;
-  applications?: {
-    job_postings?: { title?: string }[] | null;
+  room_name: string | null;
+  video_provider: string | null;
+  job?: { title?: string } | { title?: string }[] | null;
+  application?: {
+    id?: string;
   } | null;
 };
 
 const initialStats: CandidateStats = {
   applications: 0,
   interviews: 0,
+  resumes: 0,
 };
 
 export default function ApplicantDashboardView({
@@ -59,27 +61,31 @@ export default function ApplicantDashboardView({
       setError(null);
 
       try {
-        const [applicationsResult, interviewsResult] = await Promise.all([
+        const [applicationsResult, interviewsResult, resumesResult, upcomingInterviewsResult] = await Promise.all([
           supabase
             .from("applications")
             .select("*", { count: "exact", head: true })
             .eq("candidate_id", identity.userId),
           supabase
-            .from("applications")
+            .from("interview_schedules")
             .select("*", { count: "exact", head: true })
-            .eq("candidate_id", identity.userId)
-            .eq("status", "interview_scheduled"),
+            .eq("applicant_id", identity.userId)
+            .in("status", ["proposed", "scheduled", "rescheduled"]),
+          supabase
+            .from("resumes")
+            .select("id", { count: "exact", head: true })
+            .eq("candidate_id", identity.userId),
+          supabase
+            .from("interview_schedules")
+            .select("id, scheduled_at, duration_minutes, status, room_name, video_provider, job:job_postings(title), application:job_applications(id)")
+            .eq("applicant_id", identity.userId)
+            .in("status", ["proposed", "scheduled", "rescheduled"])
+            .gte("scheduled_at", new Date().toISOString())
+            .order("scheduled_at", { ascending: true })
+            .limit(1),
         ]);
 
-        const { data: candidateInterviews } = (await supabase
-          .from("interviews")
-          .select(
-            `id, scheduled_at, duration_minutes, interview_type, status, location_address, location_notes, applications!inner(candidate_id, job_postings(title))`
-          )
-          .eq("applications.candidate_id", identity.userId)
-          .in("status", ["scheduled", "confirmed", "rescheduled"])
-          .order("scheduled_at", { ascending: true })
-        ) as { data: CandidateInterviewRow[] | null };
+        const candidateInterviews = (upcomingInterviewsResult.data ?? []) as CandidateInterviewRow[];
 
         if (!isMounted) {
           return;
@@ -88,16 +94,21 @@ export default function ApplicantDashboardView({
         setStats({
           applications: applicationsResult.count ?? 0,
           interviews: interviewsResult.count ?? 0,
+          resumes: resumesResult.count ?? 0,
         });
 
         const upcomingInterview = candidateInterviews?.[0];
         if (upcomingInterview) {
+          const job = Array.isArray(upcomingInterview.job)
+            ? upcomingInterview.job[0]
+            : upcomingInterview.job;
+
           setNextInterview({
-            title: upcomingInterview.applications?.job_postings?.[0]?.title ?? "Interview",
-            scheduledAt: upcomingInterview.scheduled_at,
-            interviewType: upcomingInterview.interview_type,
-            locationAddress: upcomingInterview.location_address ?? null,
-            locationNotes: upcomingInterview.location_notes ?? null,
+            title: job?.title ?? "Interview",
+            scheduledAt: upcomingInterview.scheduled_at ?? new Date().toISOString(),
+            interviewType: upcomingInterview.video_provider === "webrtc" ? "online" : "in_person",
+            locationAddress: null,
+            locationNotes: null,
           });
         } else {
           setNextInterview(null);
@@ -121,188 +132,225 @@ export default function ApplicantDashboardView({
   }, [identity.userId]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pt-4 space-y-8">
+    <div className="mx-auto max-w-6xl space-y-6">
+      {error ? (
+        <div className="mx-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
-        {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
+      {/* --- MOBILE ONLY VIEW (Inverted Navy Header Banner) --- */}
+      <div className="block md:hidden bg-[#1F195E] text-white p-6 pb-12 -mx-6 -mt-6 mb-[-32px] rounded-b-[40px]">
+        {/* Greeting Section */}
+        <div className="mb-6 flex flex-col">
+          <span className="text-sm opacity-80">Hello,</span>
+          <h1 className="text-2xl font-bold text-white">{displayName}</h1>
+          <span className="text-sm opacity-80">Find your next opportunity</span>
+        </div>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Applications" value={stats.applications} icon="description" tone="primary" />
-          <StatCard label="Interviews" value={stats.interviews} icon="event" tone="secondary" />
-          <StatCard label="Next Interview" value={nextInterview ? 1 : 0} icon="schedule" tone="tertiary" suffix={nextInterview ? "scheduled" : "none"} />
-          <StatCard label="Resume" value={1} icon="upload_file" tone="accent" suffix="ready" />
-        </section>
+        {/* 2-Column Stat Cards for Mobile */}
+        <div className="grid grid-cols-2 gap-4">
+          <StatCardVision title="Applications" value={stats.applications} />
+          <StatCardVision title="Interview pending" value={stats.interviews} />
+        </div>
+      </div>
 
-        {nextInterview ? (
-          <Link
-            href="/interviews"
-            className="rounded-xl border border-[#E0D9FC] bg-white p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)] transition-colors hover:bg-[#F8F6FF]"
-          >
-            <div className="mb-2 flex items-center justify-between gap-4">
-              <h2 className="font-[family-name:var(--font-poppins)] text-[18px] font-semibold text-on-background">
-                Upcoming Interview
-              </h2>
-              <span className="rounded-full border border-[#E0D9FC] bg-[#F8F6FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5B5784]">
-                {nextInterview.interviewType === "online" ? "Online" : "In person"}
-              </span>
+      {/* --- DESKTOP ONLY VIEW (Clean, Aligned Layout) --- */}
+      <div className="hidden md:block space-y-6">
+        <header className="space-y-1">
+          <h1 className="font-[family-name:var(--font-poppins)] text-2xl font-semibold text-on-background">
+            Hello, {displayName}
+          </h1>
+        </header>
+
+        {/* 4-Column Stat Cards for Desktop */}
+        <div className="grid grid-cols-4 gap-6">
+          <StatCardVision title="Applications" value={stats.applications} />
+          <StatCardVision title="Interview pending" value={stats.interviews} />
+          <StatCardVision title="Next Interview" value={nextInterview ? 1 : 0} />
+          <StatCardVision title="Resumes" value={stats.resumes} />
+        </div>
+      </div>
+
+      {/* --- SHARED MAIN CONTENT AREA --- */}
+      <div className="pt-6 md:pt-0 space-y-6">
+        <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+          {nextInterview ? (
+            <Link
+              href="/applicant/applications"
+              className="rounded-[28px] border border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)] transition-transform hover:-translate-y-0.5 hover:bg-[#FCFBFF]"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Upcoming Interview</p>
+                  <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-on-background">
+                    {nextInterview.title}
+                  </h2>
+                  <p className="mt-1 text-sm text-outline">
+                    {new Date(nextInterview.scheduledAt).toLocaleString("en-PH", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+                <span className="rounded-full border border-[#E0D9FC] bg-[#F8F6FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5B5784]">
+                  {nextInterview.interviewType === "online" ? "Online" : "In person"}
+                </span>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <InfoChip icon="schedule" label="Scheduled" value={new Date(nextInterview.scheduledAt).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })} />
+                <InfoChip icon="work" label="Source" value="Applications" />
+              </div>
+
+              {nextInterview.interviewType === "in_person" && nextInterview.locationAddress ? (
+                <div className="mt-4 rounded-2xl border border-[#E0D9FC] bg-[#F8F6FF] px-4 py-3 text-sm text-on-background">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b688d]">Location</p>
+                  <p className="mt-1">
+                    {nextInterview.locationAddress}
+                    {nextInterview.locationNotes ? ` — ${nextInterview.locationNotes}` : ""}
+                  </p>
+                </div>
+              ) : null}
+            </Link>
+          ) : (
+            <div className="rounded-[28px] border border-dashed border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Upcoming Interview</p>
+              <div className="mt-4 rounded-2xl border border-dashed border-[#E0D9FC] bg-[#FCFBFF] px-4 py-6 text-sm text-outline">
+                No upcoming interview yet. Check Applications for interview status updates.
+              </div>
             </div>
-            <p className="text-sm text-outline">{nextInterview.title}</p>
-            <p className="mt-2 text-[14px] leading-6 text-on-background">
-              {new Date(nextInterview.scheduledAt).toLocaleString("en-PH", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </p>
-            {nextInterview.interviewType === "in_person" && nextInterview.locationAddress ? (
-              <p className="mt-1 text-sm text-outline">
-                {nextInterview.locationAddress}
-                {nextInterview.locationNotes ? ` — ${nextInterview.locationNotes}` : ""}
-              </p>
-            ) : null}
-          </Link>
-        ) : (
-          <div className="rounded-xl border border-dashed border-[#E0D9FC] bg-white p-5 text-sm leading-6 text-outline">
-            No upcoming interview yet. Check your applications and job messages for updates.
-          </div>
-        )}
+          )}
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <ActivityCard />
-          </div>
+          <div className="space-y-4">
+            <div className="rounded-[28px] border border-card-border bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Need a shortcut</p>
+                  <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-on-background">
+                    Interviews live inside Applications
+                  </h2>
+                  <p className="mt-1 text-sm text-outline">
+                    Open the applications hub to review your scheduled interview details and the latest status updates.
+                  </p>
+                </div>
+              </div>
 
+              <Link
+                href="/applicant/applications"
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+              >
+                Open Applications
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              </Link>
+            </div>
+
+            <div className="rounded-[28px] border border-card-border bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
+              <ActivityCard stats={stats} nextInterview={nextInterview} />
+            </div>
+          </div>
         </section>
+      </div>
     </div>
   );
 }
 
-function StatCard({
+function StatCardVision({
+  title,
+  value,
+}: {
+  title: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-sm text-[#1F195E]">
+      <p className="text-[32px] font-bold text-[#4C3A96] leading-none mb-2">{value}</p>
+      <p className="text-sm font-semibold text-[#1F195E]">{title}</p>
+    </div>
+  );
+}
+
+function InfoChip({
+  icon,
   label,
   value,
-  icon,
-  tone,
-  suffix,
 }: {
-  label: string;
-  value: number;
   icon: string;
-  tone: "primary" | "secondary" | "tertiary" | "accent";
-  suffix?: string;
+  label: string;
+  value: string;
 }) {
-  const iconTone = {
-    primary: "bg-[#E3DFFF] text-primary",
-    secondary: "bg-[#E6DEFF] text-secondary",
-    tertiary: "bg-[#E4DFFF] text-[#5B5784]",
-    accent: "bg-[#E3DFFF] text-primary",
-  }[tone];
-
   return (
-    <div className="rounded-xl border border-card-border bg-white p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <span className={`rounded-lg p-2 ${iconTone}`}>
-          <span className="material-symbols-outlined text-[20px]">{icon}</span>
-        </span>
+    <div className="flex items-center gap-3 rounded-2xl border border-[#E0D9FC] bg-[#FCFBFF] px-4 py-3">
+      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F0ECFF] text-primary">
+        <span className="material-symbols-outlined text-[20px]">{icon}</span>
+      </span>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b688d]">{label}</p>
+        <p className="text-sm font-semibold text-on-background">{value}</p>
       </div>
-      <h3 className="mb-1 font-[family-name:var(--font-inter)] text-[11px] font-medium uppercase tracking-[0.06em] text-outline">
-        {label}
-      </h3>
-      <p className="font-[family-name:var(--font-poppins)] text-[28px] font-bold leading-none text-on-background">
-        {value}
-      </p>
-      {suffix ? <p className="mt-1 text-[11px] uppercase tracking-[0.06em] text-outline">{suffix}</p> : null}
     </div>
   );
 }
 
-function ActivityCard() {
+function ActivityCard({
+  stats,
+  nextInterview,
+}: {
+  stats: CandidateStats;
+  nextInterview: {
+    title: string;
+    scheduledAt: string;
+    interviewType: "online" | "in_person";
+    locationAddress: string | null;
+    locationNotes: string | null;
+  } | null;
+}) {
   return (
-    <div className="rounded-xl border border-card-border bg-white p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <div>
+      <div className="mb-5 flex items-center justify-between gap-4">
         <div>
-          <h2 className="font-[family-name:var(--font-poppins)] text-[22px] font-semibold text-on-background">
-            Your application journey
-          </h2>
-          <p className="mt-1 text-sm text-outline">
-            Track your applications, interview status, and next steps.
-          </p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Application Journey</p>
+          <p className="mt-1 text-sm text-outline">A compact view of where you stand right now.</p>
         </div>
         <span className="rounded-full border border-[#E0D9FC] bg-[#F8F6FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5B5784]">
           Overview
         </span>
       </div>
 
-      <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-[#E0D9FC] bg-[#FCFBFF] px-6 text-center">
-        <div className="max-w-xl space-y-3">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#F0ECFF] text-primary">
-            <span className="material-symbols-outlined text-[28px]">auto_awesome</span>
-          </div>
-          <p className="font-[family-name:var(--font-poppins)] text-[16px] font-semibold text-on-background">
-            Your progress will appear here.
-          </p>
-          <p className="text-[14px] leading-6 text-outline">
-            As your applications move forward, this dashboard will show interviews, offers, and the next steps.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QuickActionsCard() {
-  return (
-    <div className="rounded-xl border border-card-border bg-white p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="font-[family-name:var(--font-poppins)] text-[22px] font-semibold text-on-background">
-          Quick Actions
-        </h2>
-        <Link href="/applications" className="text-[12px] font-bold text-primary hover:underline">
-          View Hub
-        </Link>
-      </div>
-
       <div className="space-y-3">
-        <QuickActionLink href="/jobs" icon="search" title="Browse Jobs" subtitle="Find new opportunities" />
-        <QuickActionLink href="/resume" icon="description" title="Resume" subtitle="Update your profile" />
-        <QuickActionLink href="/applications" icon="layers" title="Applications" subtitle="Check application status" />
-        <QuickActionLink href="/interviews" icon="event" title="Interviews" subtitle="View upcoming interviews" />
+        <JourneyRow label="Applications" value={`${stats.applications} active`} icon="description" />
+        <JourneyRow label="Interviews" value={`${stats.interviews} scheduled`} icon="event" />
+        <JourneyRow label="Next interview" value={nextInterview ? new Date(nextInterview.scheduledAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" }) : "None yet"} icon="schedule" />
+        <JourneyRow label="Resume" value="Ready to submit" icon="upload_file" />
       </div>
     </div>
   );
 }
 
-function QuickActionLink({
-  href,
+function JourneyRow({
+  label,
+  value,
   icon,
-  title,
-  subtitle,
 }: {
-  href: string;
+  label: string;
+  value: string;
   icon: string;
-  title: string;
-  subtitle: string;
 }) {
   return (
-    <Link
-      href={href}
-      className="flex items-center gap-3 rounded-lg border border-[#E0D9FC] p-3 transition-colors hover:bg-[#F8F6FF]"
-    >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E2E2E9] text-primary">
-        <span className="material-symbols-outlined text-[20px]">{icon}</span>
+    <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#E0D9FC] bg-[#FCFBFF] px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F0ECFF] text-primary">
+          <span className="material-symbols-outlined text-[20px]">{icon}</span>
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-on-background">{label}</p>
+          <p className="text-xs text-outline">{value}</p>
+        </div>
       </div>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <p className="truncate font-[family-name:var(--font-poppins)] text-[14px] font-semibold text-on-background">
-          {title}
-        </p>
-        <p className="truncate font-[family-name:var(--font-inter)] text-[11px] uppercase tracking-[0.06em] text-outline">
-          {subtitle}
-        </p>
-      </div>
-    </Link>
+      <span className="material-symbols-outlined text-[18px] text-[#5B5784]">arrow_forward</span>
+    </div>
   );
 }

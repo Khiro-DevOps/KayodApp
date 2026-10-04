@@ -139,9 +139,9 @@ export default async function AnalyticsPage() {
   }
 
   const funnelSteps = [
-    { label: "Submitted", count: statusCounts.submitted, color: "bg-info" },
+    { label: "Submitted", count: statusCounts.submitted, color: "bg-primary" },
     { label: "Shortlisted", count: statusCounts.shortlisted, color: "bg-warning" },
-    { label: "Interview", count: statusCounts.interview_scheduled, color: "bg-purple-500" },
+    { label: "Interview", count: statusCounts.interview_scheduled, color: "bg-primary-dark" },
     { label: "Hired", count: statusCounts.hired, color: "bg-success" },
   ];
 
@@ -149,27 +149,27 @@ export default async function AnalyticsPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-1 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
           <Link
-            href="/hr"
-            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
+            href="/dashboard"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-bg transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
               <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
             </svg>
           </Link>
           <div>
-            <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
               Analytics
             </h1>
-            <p className="text-xs text-text-secondary">{companyName}</p>
+            <p className="text-xs text-text-muted">{companyName}</p>
           </div>
         </div>
 
         {/* Overview Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard label="Total Jobs" value={totalJobs || 0} sub={`${activeJobs || 0} active`} />
           <StatCard label="Total Applicants" value={totalApplicants || 0} />
           <StatCard label="Total Hires" value={statusCounts.hired} />
@@ -195,18 +195,18 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Application Funnel */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-          <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
+        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
+          <h2 className="font-h1 text-sm font-semibold text-text-main">
             Application Funnel
           </h2>
           <div className="space-y-2.5">
             {funnelSteps.map((step) => (
               <div key={step.label} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">{step.label}</span>
-                  <span className="font-medium text-text-primary">{step.count}</span>
+                  <span className="text-text-muted">{step.label}</span>
+                  <span className="font-medium text-text-main">{step.count}</span>
                 </div>
-                <div className="h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-2.5 w-full rounded-full bg-surface-bg overflow-hidden">
                   <div
                     className={`h-full rounded-full ${step.color} transition-all`}
                     style={{
@@ -220,41 +220,41 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Applicants Per Job */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-          <h2 className="font-(family-name:--font-heading) text-sm font-semibold text-text-primary">
+        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
+          <h2 className="font-h1 text-sm font-semibold text-text-main">
             Applicants Per Job
           </h2>
 
           {jobStats.length === 0 ? (
-            <p className="text-xs text-text-secondary">No jobs posted yet</p>
+            <p className="text-xs text-text-muted">No jobs posted yet</p>
           ) : (
             <div className="space-y-2">
               {jobStats.map((job) => (
                 <Link
                   key={job.id}
-                  href={`/hr/applicants?jobId=${job.id}`}
-                  className="flex items-center justify-between rounded-xl bg-background p-3 hover:bg-primary/5 transition-colors"
+                  href={`/jobs/manage/${job.id}/applicants`}
+                  className="flex items-center justify-between rounded-lg bg-surface-bg border border-border/50 p-3 hover:bg-primary-light/30 transition-colors"
                 >
                   <div className="min-w-0 flex-1 mr-3">
-                    <p className="text-sm font-medium text-text-primary truncate">
+                    <p className="text-sm font-medium text-text-main truncate">
                       {job.title}
                     </p>
-                    <p className="text-xs text-text-secondary">
+                    <p className="text-xs text-text-muted">
                       {job.status === "active" ? "Active" : "Closed"}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 text-right">
                     <div>
-                      <p className="text-sm font-bold text-text-primary">
+                      <p className="text-sm font-bold text-text-main">
                         {job.applicants}
                       </p>
-                      <p className="text-[10px] text-text-secondary">applicants</p>
+                      <p className="text-[10px] text-text-muted">applicants</p>
                     </div>
                     <div>
                       <p className="text-sm font-bold text-success">
                         {job.hired}
                       </p>
-                      <p className="text-[10px] text-text-secondary">hired</p>
+                      <p className="text-[10px] text-text-muted">hired</p>
                     </div>
                   </div>
                 </Link>
@@ -279,16 +279,16 @@ function StatCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-2xl bg-surface border border-border p-4 text-center">
+    <div className="rounded-xl bg-card-bg border border-border p-4 text-center shadow-xs">
       <p
-        className={`font-(family-name:--font-heading) text-2xl font-bold ${
-          accent || "text-text-primary"
+        className={`font-h1 text-2xl font-bold ${
+          accent || "text-text-main"
         }`}
       >
         {value}
       </p>
-      <p className="text-xs text-text-secondary mt-1">{label}</p>
-      {sub && <p className="text-[10px] text-text-secondary mt-0.5">{sub}</p>}
+      <p className="text-xs text-text-muted mt-1">{label}</p>
+      {sub && <p className="text-[10px] text-text-muted mt-0.5">{sub}</p>}
     </div>
   );
 }

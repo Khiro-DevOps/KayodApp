@@ -46,11 +46,11 @@ export default function DashboardPage() {
         const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
         const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
 
-        const { data: profile } = await supabase
+        const { data: profile } = (await supabase
           .from("profiles")
           .select("role, tenant_id, first_name, last_name, email, avatar_url")
           .eq("id", user.id)
-          .maybeSingle() as unknown as { data: DashboardProfile | null; error: any };
+          .maybeSingle()) as { data: DashboardProfile | null };
 
         if (!isMounted) {
           return;

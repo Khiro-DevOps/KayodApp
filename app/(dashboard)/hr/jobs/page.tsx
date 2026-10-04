@@ -112,17 +112,35 @@ export default async function ManageJobsPage() {
   const legacyCountMap: Record<string, number> = {};
 
   if (jobIds.length) {
-    const { data: counts, error: countErr } = await supabase
-      .from("applications")
-      .select("job_posting_id")
-      .in("job_posting_id", jobIds as string[]);
+    const [{ data: counts, error: countErr }, { data: jaCounts, error: jaCountErr }] = await Promise.all([
+      supabase
+        .from("applications")
+        .select("job_posting_id")
+        .in("job_posting_id", jobIds as string[]),
+      supabase
+        .from("job_applications")
+        .select("job_id")
+        .in("job_id", jobIds as string[]),
+    ]);
 
     if (countErr) {
-      console.error("Applicant count fetch error:", countErr);
+      console.error("Applicant count fetch error (applications):", countErr);
     } else {
       counts?.forEach((app) => {
         if (!app.job_posting_id) return;
         countMap[app.job_posting_id] = (countMap[app.job_posting_id] ?? 0) + 1;
+      });
+    }
+
+    if (jaCountErr) {
+      console.info("job_applications count fetch notice:", jaCountErr.message);
+    } else {
+      jaCounts?.forEach((app) => {
+        if (!app.job_id) return;
+        // Count from job_applications if not already counted via applications table
+        if (!countMap[app.job_id]) {
+          countMap[app.job_id] = (countMap[app.job_id] ?? 0) + 1;
+        }
       });
     }
   }

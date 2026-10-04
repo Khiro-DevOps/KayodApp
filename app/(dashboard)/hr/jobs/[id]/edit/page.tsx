@@ -29,11 +29,12 @@ function EditJobForm({ jobId }: { jobId: string }) {
   const [job, setJob] = useState<JobPosting | null>(null);
   const [loading, setLoading] = useState(true);
   const [requiredDocuments, setRequiredDocuments] = useState<RequiredDocumentDraft[]>(DEFAULT_REQUIRED_DOCUMENTS);
+  const [workLocations, setWorkLocations] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchJob() {
       const supabase = createClient();
-      const [{ data: jobData }, { data: documentData }] = await Promise.all([
+      const [{ data: jobData }, { data: documentData }, { data: branchesData }] = await Promise.all([
         supabase
           .from("job_postings")
           .select("*")
@@ -44,10 +45,15 @@ function EditJobForm({ jobId }: { jobId: string }) {
           .select("id, name, is_required")
           .eq("job_posting_id", jobId)
           .order("created_at", { ascending: true }),
+        supabase
+          .from("office_branches")
+          .select("*")
+          .order("name", { ascending: true }),
       ]);
 
       setJob(jobData as JobPosting | null);
       setRequiredDocuments((documentData ?? []).length > 0 ? (documentData as RequiredDocumentDraft[]) : DEFAULT_REQUIRED_DOCUMENTS);
+      setWorkLocations(branchesData ?? []);
       setLoading(false);
     }
     fetchJob();
@@ -78,9 +84,12 @@ function EditJobForm({ jobId }: { jobId: string }) {
     title: job.title,
     industry: job.industry ?? undefined,
     jobCategory: job.job_category ?? undefined,
-    workSetup: job.work_setup ?? undefined,
+    workMode: (job as any).work_mode ?? (job as any).work_setup ?? undefined,
     employmentType: job.employment_type ?? undefined,
-    location: job.location ?? undefined,
+    workLocationId: (job as any).work_location_id ?? (job as any).location ?? undefined,
+    shiftStart: (job as any).shift_start ?? undefined,
+    shiftEnd: (job as any).shift_end ?? undefined,
+    workDays: (job as any).work_days ?? undefined,
     salaryRange:
       job.salary_min != null || job.salary_max != null
         ? `${job.salary_min ?? ""}-${job.salary_max ?? ""}`.replace(/^-|-$|--/g, "")
@@ -101,6 +110,7 @@ function EditJobForm({ jobId }: { jobId: string }) {
       jobId={job.id}
       initialValues={initialValues}
       initialDocuments={requiredDocuments}
+      workLocations={workLocations}
       showPublicationStatus
     />
   );

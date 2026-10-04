@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";

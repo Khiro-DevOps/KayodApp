@@ -7,6 +7,7 @@ export default function ResumeUploadClient() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -48,21 +49,49 @@ export default function ResumeUploadClient() {
     }
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSelectedFileName(e.target.files?.[0]?.name ?? "");
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file || !fileInputRef.current) return;
+
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    fileInputRef.current.files = transfer.files;
+    setSelectedFileName(file.name);
+  }
+
   return (
-    <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-text-primary">Upload Resume</h2>
+    <div className="rounded-xl bg-card-bg border border-border p-5 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-text-primary">Upload Resume</h2>
+        <p className="mt-1 text-sm text-text-secondary">Add an existing resume to your account.</p>
+      </div>
       <form onSubmit={handleUpload} className="space-y-3">
-        <div>
+        <label
+          htmlFor="resume-upload"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
+          className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface-bg px-4 py-5 text-center transition-colors hover:border-primary hover:bg-primary-light/30"
+        >
+          <span className="material-symbols-outlined text-3xl text-primary">upload_file</span>
+          <span className="mt-2 text-sm font-medium text-text-primary">Drag and drop your file here</span>
+          <span className="mt-1 text-xs text-text-secondary">PDF, DOC, DOCX, or TXT (max 5MB)</span>
+          <span className="mt-3 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-white">Browse Files</span>
           <input
+            id="resume-upload"
             ref={fileInputRef}
             type="file"
             accept=".pdf,.doc,.docx,.txt"
-            className="block w-full text-sm text-text-secondary file:mr-3 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-primary/20"
+            onChange={handleFileChange}
+            className="sr-only"
           />
-          <p className="mt-1 text-xs text-text-secondary">
-            PDF, DOC, DOCX, or TXT (max 5MB)
-          </p>
-        </div>
+        </label>
+
+        {selectedFileName && <p className="truncate text-xs text-text-secondary">Selected: {selectedFileName}</p>}
 
         {error && <p className="text-xs text-danger">{error}</p>}
         {success && (

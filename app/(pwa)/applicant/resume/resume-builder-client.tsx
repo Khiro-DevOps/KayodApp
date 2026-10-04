@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Resume, Profile } from "@/lib/types";
-import ResumeUploadClient from "./resume-upload-client";
 import { createClient } from "@/lib/supabase/client";
 
 interface ResumeBuilderClientProps {
@@ -85,7 +84,6 @@ function buildLocation(profileLike: Partial<Profile> | null): string {
 export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderClientProps) {
   const router = useRouter();
   const supabase = createClient();
-  const formRef = useRef<HTMLFormElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -172,17 +170,6 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
     };
   }, [profile?.id, profile?.first_name, profile?.last_name, profile?.email, resolvedPhone, profile?.city, profile?.country, profile?.address]);
 
-  useEffect(() => {
-    const handleGenerateFromSidebar = () => {
-      formRef.current?.requestSubmit();
-    };
-
-    window.addEventListener("resume:generate-request", handleGenerateFromSidebar);
-    return () => {
-      window.removeEventListener("resume:generate-request", handleGenerateFromSidebar);
-    };
-  }, []);
-
   const handleChange = (field: keyof FormData, value: string) => {
     if (field === "fullName" || field === "email" || field === "phone" || field === "location") {
       setPersonalInfoDirty(true);
@@ -251,7 +238,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
   return (
     <div className="space-y-3">
       {/* Form Section */}
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-surface border border-border p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl bg-card-bg border border-border p-6">
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-3">
                 <p className="text-sm text-red-700">{error}</p>
@@ -425,7 +412,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
               disabled={isLoading}
               className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
             >
-              {isLoading ? "Generating with AI..." : "Generate Resume with AI"}
+              {isLoading ? "Creating resume..." : "Create resume"}
             </button>
           </form>
 
@@ -463,14 +450,6 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
         </div>
       )}
 
-      {/* File Upload - At Bottom */}
-      <div className="space-y-4 rounded-2xl bg-surface border border-border p-6">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-text-primary">Upload Resume</h2>
-          <p className="text-xs text-text-secondary">Or upload an existing resume file instead of creating one</p>
-        </div>
-        <ResumeUploadClient />
-      </div>
     </div>
   );
 }

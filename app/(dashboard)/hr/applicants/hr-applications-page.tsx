@@ -7,6 +7,7 @@ import Link from "next/link";
 import { updateApplicationStatus, moveToApplied } from "./hr-applications-actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
 import HRApplicantCard from "./hr-applicant-card";
 
 function normalizeName(value: unknown): string {
@@ -65,28 +66,30 @@ export default async function HRApplicationsPage() {
 
   const authRole = (user.user_metadata?.role) as string | undefined;
   const { data: profile } = await supabase
-    .from("profiles").select("role").eq("id", user.id).single<Pick<Profile, "role">>();
+    .from("profiles").select("role, tenant_id").eq("id", user.id).single<Pick<Profile, "role" | "tenant_id">>();
 
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  // Get all job postings with applicant count
-  const { data: jobs } = await supabase
-    .from("job_postings")
-    .select("id, title, is_published, employment_type")
-    .order("created_at", { ascending: false });
+  const hrTenantId = profile?.tenant_id ?? null;
 
-  // Get all applications with full details
-  const { data: applications } = await supabase
-    .from("applications")
-    .select(`
-      id, status, match_score, submitted_at, cover_letter, candidate_id,
-      job_posting_id,
-      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone ),
-      resumes ( title, content_text ),
-      job_postings ( title )
-    `)
-    .order("submitted_at", { ascending: false });
+  // Fetch all active jobs (bypass strict tenant filter for local testing)
+  const { data: jobs, error: jobsError } = await supabase
+    .from("job_postings")
+    .select("id, title, tenant_id, is_published, employment_type")
+    .order("created_at", { ascending: false });
+  const jobIds = jobs?.map((j) => j.id) || [];
+
+  console.log("DIAG [1] Current HR User ID:", user.id);
+  console.log("DIAG [2] Jobs Query Result:", { jobsCount: jobs?.length, jobsError, sampleJob: jobs?.[0] });
+
+  // Fetch applications through the authenticated client so RLS enforces HR access.
+  const { data: applications, error: appsError } = await supabase
+    .from('job_applications')
+    .select('*, candidate:profiles(*), job:job_postings(*)')
+    .in('job_id', jobIds.length > 0 ? jobIds : ['00000000-0000-0000-0000-000000000000']);
+
+  console.log("DIAG [3] Applications Query Result:", { appsCount: applications?.length, appsError, sampleApp: applications?.[0] });
 
   // Repair candidate profile names from auth metadata for stale applicant rows.
   try {
@@ -132,16 +135,39 @@ export default async function HRApplicationsPage() {
     // Non-blocking: render list even when admin sync is unavailable.
   }
 
+  // Auto-compute missing match scores so Kanban cards show real values
+  if (applications && applications.length > 0) {
+    for (const app of applications) {
+      if (app.match_score === null || app.match_score === undefined) {
+        try {
+          const result = await computeAndStoreMatchScore(app.id);
+          if (result.success && typeof result.score === "number") {
+            (app as { match_score: number | null }).match_score = result.score;
+          }
+        } catch {
+          // Non-blocking fallback
+        }
+      }
+    }
+  }
+
   // Group applications by job
   const appsByJob: Record<string, typeof applications> = {};
   (applications ?? []).forEach((app) => {
-    const jid = app.job_posting_id;
+    const jid = (app as any).job_id;
     if (!appsByJob[jid]) appsByJob[jid] = [];
     appsByJob[jid]!.push(app);
   });
 
   const totalApps = applications?.length ?? 0;
-  const newApps = applications?.filter((a) => a.status === "submitted").length ?? 0;
+  const newApps = applications?.filter((app) => app.status === "submitted").length ?? 0;
+
+  // Build active jobs list (published first)
+  const activeJobs = (jobs ?? [])
+    .filter((j: any) => j.is_published)
+    .map((j: any) => ({ id: j.id, title: j.title }));
+
+  const currentCompanyId = hrTenantId || (jobs && jobs[0]?.tenant_id) || "";
 
   return (
     <PageContainer>

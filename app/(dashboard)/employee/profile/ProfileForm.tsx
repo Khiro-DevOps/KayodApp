@@ -10,13 +10,14 @@ interface ProfileFormProps {
 }
 
 export default function ProfileForm({ profile }: ProfileFormProps) {
-  const [address, setAddress] = useState(profile.work_address || '');
+  const currentAddress = profile.work_locations?.address || '';
+  const [address, setAddress] = useState(currentAddress);
   const [error, setError] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleAddressResolution = async (newAddress: string) => {
-    if (!newAddress || newAddress === profile.work_address) return;
+    if (!newAddress || newAddress === currentAddress) return;
     
     setIsResolving(true);
     setError(null);

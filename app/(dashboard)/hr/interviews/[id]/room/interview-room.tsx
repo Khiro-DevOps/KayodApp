@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { acquireMediaStream, parseMediaDeviceError } from "@/lib/media-devices";
 
@@ -33,14 +34,13 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const joinPingRef = useRef<number | null>(null);
   const autosaveRef = useRef<number | null>(null);
   const offerSentRef = useRef(false);
-  const startedRef = useRef(false);
-  const mediaAcquiredRef = useRef(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [notes, setNotes] = useState(initialHrNotes ?? "");
+  const [evaluation, setEvaluation] = useState<"poor" | "avg" | "excel" | null>(null);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [hasVideo, setHasVideo] = useState(true);
   const [hasAudio, setHasAudio] = useState(true);
@@ -64,6 +64,21 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     }
 
     return supabaseRef.current;
+  };
+
+  const safePlayVideo = async (videoElement: HTMLVideoElement | null, stream: MediaStream | null) => {
+    if (!videoElement || !stream) return;
+
+    if (videoElement.srcObject !== stream) {
+      videoElement.srcObject = stream;
+      try {
+        await videoElement.play();
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "AbortError") {
+          console.error("Video play error:", error);
+        }
+      }
+    }
   };
 
   const persistHrNotes = async () => {
@@ -93,12 +108,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   };
 
   const setLocalPreview = (stream: MediaStream | null) => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-      void localVideoRef.current.play().catch((error) => {
-        console.error("Browser blocked local video autoplay stream:", error);
-      });
-    }
+    void safePlayVideo(localVideoRef.current, stream);
   };
 
   const revertFromScreenShare = async () => {
@@ -123,13 +133,12 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   };
 
   useEffect(() => {
-    if (mediaAcquiredRef.current) return;
-    mediaAcquiredRef.current = true;
-
     const supabase = ensureSupabase();
     let active = true;
+    const pendingIceCandidates: RTCIceCandidateInit[] = [];
 
     const sendJoinSignal = async () => {
+      if (!active) return;
       await channelRef.current?.send({
         type: "broadcast",
         event: "join",
@@ -138,12 +147,14 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     };
 
     const createAndSendOffer = async () => {
-      if (!pcRef.current || !channelRef.current || offerSentRef.current) return;
+      if (!active || !pcRef.current || !channelRef.current || offerSentRef.current) return;
 
       offerSentRef.current = true;
 
       const offer = await pcRef.current.createOffer();
+      if (!active) return;
       await pcRef.current.setLocalDescription(offer);
+      if (!active) return;
 
       await channelRef.current.send({
         type: "broadcast",
@@ -151,26 +162,29 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         payload: { sdp: offer },
       });
 
-      if (!startedRef.current) {
-        startedRef.current = true;
-        void supabase.from("interviews").update({ webrtc_started_at: new Date().toISOString() }).eq("id", interviewId);
-      }
     };
 
     const setup = async () => {
       try {
         const iceResponse = await fetch("/api/turn-credentials");
+        if (!active) return;
         if (!iceResponse.ok) {
           throw new Error("Failed to load ICE servers");
         }
 
         const iceConfig = (await iceResponse.json()) as RTCConfiguration;
-        
+        if (!active) return;
+
         // Gracefully acquire media devices with fallback strategy
         const mediaResult = await acquireMediaStream({
           preferVideo: true,
           preferAudio: true,
         });
+
+        if (!active) {
+          if (mediaResult?.stream) stopStream(mediaResult.stream);
+          return;
+        }
 
         if (!mediaResult) {
           const error = new Error("No media devices available");
@@ -181,18 +195,12 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         }
 
         const stream = mediaResult.stream;
-        
-        if (!active) {
-          stopStream(stream);
-          return;
-        }
 
         // Update state with actual device availability
         setHasVideo(mediaResult.hasVideo);
         setHasAudio(mediaResult.hasAudio);
 
         localStreamRef.current = stream;
-
         setLocalPreview(stream);
 
         const pc = new RTCPeerConnection(iceConfig);
@@ -207,52 +215,73 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         const channel = supabase.channel(`interview-room-${roomId}`);
         channelRef.current = channel;
 
+        const applyRemoteDescription = async (description: RTCSessionDescriptionInit) => {
+          await pc.setRemoteDescription(description);
+          for (const candidate of pendingIceCandidates.splice(0)) {
+            await pc.addIceCandidate(candidate);
+          }
+        };
+
         channel.on("broadcast", { event: "join" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (!isHR || offerSentRef.current || payload?.role !== "applicant") return;
-          await createAndSendOffer().catch(() => setConnectionState("failed"));
+          await createAndSendOffer().catch(() => {
+            if (active) setConnectionState("failed");
+          });
         });
 
         channel.on("broadcast", { event: "offer" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (isHR || !pcRef.current) return;
 
           try {
-            await pcRef.current.setRemoteDescription(payload.sdp);
+            await applyRemoteDescription(payload.sdp);
+            if (!active) return;
             const answer = await pcRef.current.createAnswer();
+            if (!active) return;
             await pcRef.current.setLocalDescription(answer);
+            if (!active) return;
             await channel.send({
               type: "broadcast",
               event: "answer",
               payload: { sdp: answer },
             });
           } catch {
-            setConnectionState("failed");
+            if (active) setConnectionState("failed");
           }
         });
 
         channel.on("broadcast", { event: "answer" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           if (!isHR || !pcRef.current) return;
 
           try {
-            await pcRef.current.setRemoteDescription(payload.sdp);
+            await applyRemoteDescription(payload.sdp);
           } catch {
-            setConnectionState("failed");
+            if (active) setConnectionState("failed");
           }
         });
 
         channel.on("broadcast", { event: "ice-candidate" }, async (evt: any) => {
+          if (!active) return;
           const payload = evt?.payload;
           try {
-            await pcRef.current?.addIceCandidate(payload.candidate);
+            if (!payload?.candidate || !pcRef.current) return;
+            if (pcRef.current.remoteDescription) {
+              await pcRef.current.addIceCandidate(payload.candidate);
+            } else {
+              pendingIceCandidates.push(payload.candidate);
+            }
           } catch {
-            // Ignore candidate races during setup.
+            if (active) setConnectionState("failed");
           }
         });
 
         pc.onicecandidate = ({ candidate }) => {
-          if (!candidate || !channelRef.current) return;
+          if (!active || !candidate || !channelRef.current) return;
 
           void channelRef.current.send({
             type: "broadcast",
@@ -261,20 +290,18 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           });
         };
 
-        pc.ontrack = ({ streams }) => {
-          const remoteStream = streams[0];
+        pc.ontrack = (event) => {
+          if (!active) return;
+          const remoteStream = event.streams[0];
+          if (!remoteStream) return;
 
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play().catch((error) => {
-              console.error("Browser blocked remote video autoplay stream:", error);
-            });
-          }
-          
+          void safePlayVideo(remoteVideoRef.current, remoteStream);
+
           setHasRemoteStream(true);
         };
 
         pc.onconnectionstatechange = () => {
+          if (!active) return;
           const state = pc.connectionState;
           if (state === "connected") {
             clearJoinPing();
@@ -299,7 +326,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           if (!isHR) {
             clearJoinPing();
             joinPingRef.current = window.setInterval(() => {
-              if (pcRef.current?.connectionState === "connected") {
+              if (!active || pcRef.current?.connectionState === "connected") {
                 clearJoinPing();
                 return;
               }
@@ -315,8 +342,9 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         });
 
       } catch (error) {
+        if (!active) return;
         console.error("Failed to initialize interview room:", error);
-        
+
         // Parse device-specific errors
         if (error instanceof Error && (
           error.name === "NotFoundError" ||
@@ -329,7 +357,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         } else {
           setDeviceError("Failed to initialize interview. Please check your connection and try again.");
         }
-        
+
         setConnectionState("failed");
       }
     };
@@ -338,6 +366,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
 
     return () => {
       active = false;
+      offerSentRef.current = false;
       clearJoinPing();
 
       if (autosaveRef.current) {
@@ -362,7 +391,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         channelRef.current = null;
       }
     };
-  }, []);
+  }, [interviewId, isHR, roomId]);
 
   useEffect(() => {
     if (!isHR) return;
@@ -507,8 +536,8 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
       if (isHR) {
         const supabase = ensureSupabase();
         const { error } = await supabase
-          .from("interviews")
-          .update({ webrtc_ended_at: new Date().toISOString() })
+          .from("interview_schedules")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
           .eq("id", interviewId);
 
         if (error) {
@@ -523,11 +552,11 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         return;
       }
 
-      router.replace("/interviews/thank-you");
+      router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
     } catch (error) {
       console.error("Failed to cleanly terminate session:", error);
       if (!isHR) {
-        router.replace("/interviews/thank-you");
+        router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
       }
     } finally {
       setIsEnding(false);
@@ -559,7 +588,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
               Retry
             </button>
             <a
-              href="/interviews"
+              href={isHR ? "/hr/interviews" : "/applicant/interviews"}
               className="block w-full rounded-xl bg-gray-800 py-3 text-sm font-semibold text-gray-300 transition-colors hover:bg-gray-700"
             >
               Back to Interviews
@@ -570,235 +599,95 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     );
   }
 
-  if (isHR) {
-    return (
-      <div className="flex h-screen flex-col overflow-hidden bg-gray-950 text-white">
-        <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <span className="text-lg">🟢</span>
-            <div>
-              <p className="text-sm font-semibold tracking-wide">LIVE INTERVIEW — KAYOD</p>
-              <p className="text-xs text-gray-400">HR view</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span className={`h-2.5 w-2.5 rounded-full ${connection.color}`} />
-            <span>{connection.label}</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="flex min-h-0 flex-1 items-center justify-center bg-black px-0 py-0 relative">
-            <div className="relative flex h-full w-full items-center justify-center bg-black">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="h-full w-full object-contain"
-              />
-              {!hasRemoteStream && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <p className="text-sm text-gray-500">Waiting for applicant…</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <aside className="flex w-full flex-col gap-4 border-t border-gray-800 bg-gray-900 p-4 md:w-72 md:border-l md:border-t-0 md:p-4">
-            <div className="rounded-xl overflow-hidden border border-gray-800 bg-black">
-              <div className="border-b border-gray-800 px-3 py-2 text-xs font-semibold text-gray-300">You (HR)</div>
-              <div className="relative aspect-video bg-black">
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                  style={{ transform: "scaleX(-1)" }}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-800">
-              <div className="flex items-center justify-between border-b border-gray-700 bg-gray-800 px-3 py-2">
-                <span className="text-xs font-semibold text-gray-300">Interview Notes</span>
-                <span className="text-xs text-gray-500">Auto-saves every 10s</span>
-              </div>
-              <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                className="min-h-40 flex-1 resize-none bg-transparent p-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none"
-                placeholder="Type interview notes here..."
-              />
-            </div>
-          </aside>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-center gap-4 border-t border-gray-800 bg-gray-900 px-6 py-4">
-          <button
-            type="button"
-            onClick={toggleMute}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isMuted ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            {isMuted ? "🎤" : "🎙️"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleCamera}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isCameraOff ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            {isCameraOff ? "📷" : "🎥"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleScreenShare}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isSharing ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            🖥
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleEndCall()}
-            disabled={isEnding}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            📵
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-950 text-white">
-      <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-4 py-2 md:px-6 md:py-3">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.75)]" />
-          <span className="text-xs font-medium tracking-wide text-gray-300">LIVE INTERVIEW</span>
+    <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950 text-white">
+      <div className="relative h-full w-full overflow-hidden bg-slate-950">
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="h-full w-full object-cover"
+        />
+
+        {!hasRemoteStream && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-sm text-slate-400">Waiting for {isHR ? "applicant" : "interviewer"}...</p>
+          </div>
+        )}
+
+        <div className="absolute right-6 top-6 z-20 h-52 w-40 overflow-hidden rounded-2xl border-2 border-white/80 bg-slate-900 object-cover shadow-2xl sm:h-60 sm:w-48">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover"
+            style={{ transform: "scaleX(-1)" }}
+          />
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span className={`h-2.5 w-2.5 rounded-full ${connection.color}`} />
+
+        <div className="absolute left-6 top-6 z-20 flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xl">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
           <span>{connection.label}</span>
         </div>
-      </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black md:hidden">
-        <div className="bg-gray-900 px-4 py-2 flex items-center gap-2 shrink-0 border-b border-gray-800">
-          <div className={`h-2 w-2 rounded-full ${connection.color}`} />
-          <span className="text-xs font-medium text-gray-300">LIVE INTERVIEW</span>
-        </div>
-
-        <div className="relative flex-1 bg-black">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="h-full w-full object-cover"
-          />
-
-          {!hasRemoteStream && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-sm text-gray-500">Waiting for interviewer...</p>
-            </div>
-          )}
-
-          <div className="absolute right-3 top-3 h-[90px] w-[120px] overflow-hidden rounded-xl border-2 border-gray-700 shadow-lg md:hidden">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full object-cover"
-              style={{ transform: "scaleX(-1)" }}
+        {isHR && (
+          <div className="absolute bottom-20 right-6 z-20 w-80 space-y-3 rounded-2xl border border-white/60 bg-white/85 p-4 text-slate-900 shadow-2xl backdrop-blur-xl sm:w-96">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">INTERVIEW NOTES</p>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="h-24 w-full resize-none rounded-xl border border-slate-200/80 bg-white/70 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+              placeholder="Add notes during the interview..."
             />
+            <div className="flex items-center gap-2">
+              {(["poor", "avg", "excel"] as const).map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => setEvaluation(rating)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${evaluation === rating ? "border-purple-600 bg-purple-600 text-white" : "border-slate-200 bg-white/90 text-slate-700 hover:bg-purple-600 hover:text-white"}`}
+                >
+                  {rating === "avg" ? "AVG" : rating.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex shrink-0 items-center justify-center gap-6 border-t border-gray-800 bg-gray-900 px-6 py-4">
+        <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-full border border-white/60 bg-white/80 px-6 py-3 shadow-2xl backdrop-blur-xl">
           <button
             type="button"
             onClick={toggleMute}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isMuted ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
+            title={isMuted ? "Unmute microphone" : "Mute microphone"}
+            aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+            className="rounded-full border border-slate-200/60 bg-slate-100/90 p-3 text-slate-800 transition-all hover:bg-slate-200"
           >
-            {isMuted ? "🎤" : "🎙️"}
+            {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
           </button>
           <button
             type="button"
             onClick={toggleCamera}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isCameraOff ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
+            title={isCameraOff ? "Turn camera on" : "Turn camera off"}
+            aria-label={isCameraOff ? "Turn camera on" : "Turn camera off"}
+            className="rounded-full border border-slate-200/60 bg-slate-100/90 p-3 text-slate-800 transition-all hover:bg-slate-200"
           >
-            {isCameraOff ? "📷" : "🎥"}
+            {isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
           </button>
           <button
             type="button"
             onClick={() => void handleEndCall()}
             disabled={isEnding}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            title="End call"
+            aria-label="End call"
+            className="rounded-full bg-rose-600 p-3 text-white shadow-lg transition-all hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            📵
+            <PhoneOff size={20} />
           </button>
         </div>
-      </div>
 
-      <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex">
-        <div className="relative flex min-h-0 flex-1 bg-black">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="h-full w-full object-cover"
-          />
-
-          {!hasRemoteStream && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-sm text-gray-500">Waiting for interviewer...</p>
-            </div>
-          )}
-
-          <div className="absolute right-6 top-6 h-40 w-56 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
-            <div className="border-b border-gray-800 px-3 py-2 text-xs font-semibold text-gray-300">You (Applicant)</div>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-[calc(100%-2rem)] w-full object-cover"
-              style={{ transform: "scaleX(-1)" }}
-            />
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-center gap-4 border-t border-gray-800 bg-gray-900 px-6 py-4">
-          <button
-            type="button"
-            onClick={toggleMute}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isMuted ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            {isMuted ? "🎤" : "🎙️"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleCamera}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isCameraOff ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            {isCameraOff ? "📷" : "🎥"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleScreenShare}
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${isSharing ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            🖥
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleEndCall()}
-            disabled={isEnding}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            📵
-          </button>
+        <div className="absolute bottom-6 left-6 z-20 rounded-full border border-white/60 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xl">
+          {isHR ? "Jay Gomez (Candidate)" : "Interviewer (HR)"}
         </div>
       </div>
     </div>

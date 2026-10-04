@@ -9,6 +9,7 @@ import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchS
 import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
 import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
+import ApplicantJobsClient from "./jobs-client";
 
 interface Props {
   searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string; work_setup?: string }>;
@@ -216,9 +217,65 @@ export default async function JobsPage({ searchParams }: Props) {
     ? [...shortlistedJobs].sort((a, b) => b.score - a.score).map((s) => s.job)
     : (filteredJobs as JobPosting[]);
 
+  // Fetch candidate application statuses for all jobs shown
+  const { data: userApplications } = await supabase
+    .from("applications")
+    .select("job_posting_id, match_score")
+    .eq("candidate_id", user.id);
+
+  const applicationsMap: Record<string, { hasApplied: boolean; matchScore: number | null }> = {};
+  if (userApplications) {
+    for (const app of userApplications) {
+      applicationsMap[app.job_posting_id] = {
+        hasApplied: true,
+        matchScore: app.match_score as number | null,
+      };
+    }
+  }
+
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+  const isCandidate = (profile?.role ?? authRole ?? "candidate") === "candidate";
+
+  const hasResume = (resumes?.length ?? 0) > 0;
+
+  if (!hasResume) {
+    return (
+      <div className="w-full min-h-[400px] flex items-center justify-center p-4 md:p-8">
+        <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center p-6 md:p-8 text-center bg-white border border-gray-200 rounded-2xl space-y-4 shadow-sm min-w-0">
+          <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[32px]">description</span>
+          </div>
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 w-full text-center block whitespace-normal break-words">
+            Unlock AI-Matched Job Opportunities
+          </h2>
+          <p className="w-full text-center block text-sm md:text-base leading-relaxed text-muted-foreground whitespace-normal break-words">
+            You haven&apos;t added a resume yet. Build a tailored resume in minutes using our AI builder or upload your existing PDF to view and apply for jobs.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2 w-full justify-center">
+            <Link
+              href="/applicant/resume"
+              className="bg-[#1F195E] text-white px-6 py-3 rounded-xl font-medium text-sm text-center flex items-center justify-center gap-2 hover:bg-[#1F195E]/90 transition-all"
+            >
+              <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+              Build Resume with AI
+            </Link>
+            <Link
+              href="/applicant/resume"
+              className="border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-medium text-sm text-center flex items-center justify-center gap-2 hover:bg-gray-50 transition-all"
+            >
+              <span className="material-symbols-outlined text-[20px]">upload_file</span>
+              Upload PDF Resume
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 pt-4 space-y-8">
-      <section className="bg-white rounded-card border border-outline-variant p-6 md:p-8 shadow-sm">
+      <section className="bg-white rounded-xl border border-outline-variant p-6 md:p-8 shadow-xs">
         <div className="mb-6">
           <h2 className="text-headline-sm font-headline-sm text-on-surface">AI Recommended Jobs</h2>
           <p className="text-body-sm text-on-surface-variant">We match your resume skills and salary expectations with current market openings.</p>
@@ -231,7 +288,7 @@ export default async function JobsPage({ searchParams }: Props) {
               <select
                 name="resume_id"
                 defaultValue={selectedResume?.id ?? ""}
-                className="w-full bg-surface border border-border rounded-card px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
+                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
               >
                 {resumes && resumes.length > 0 ? (
                   resumes.map((resume) => (
@@ -253,14 +310,14 @@ export default async function JobsPage({ searchParams }: Props) {
               <input
                 name="payMin"
                 defaultValue={payMin ?? ""}
-                className="w-1/2 bg-surface border border-border rounded-card px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
+                className="w-1/2 bg-surface border border-border rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
                 placeholder="Min"
                 type="number"
               />
               <input
                 name="payMax"
                 defaultValue={payMax ?? ""}
-                className="w-1/2 bg-surface border border-border rounded-card px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
+                className="w-1/2 bg-surface border border-border rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
                 placeholder="Max"
                 type="number"
               />
@@ -273,7 +330,7 @@ export default async function JobsPage({ searchParams }: Props) {
               <select
                 name="location"
                 defaultValue={location ?? "all"}
-                className="w-full bg-surface border border-border rounded-card px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
+                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
               >
                 <option value="all">All Locations</option>
                 {PHILIPPINE_CITIES.map((city, index) => (
@@ -292,7 +349,7 @@ export default async function JobsPage({ searchParams }: Props) {
               <select
                 name="work_setup"
                 defaultValue={work_setup ?? ""}
-                className="w-full bg-surface border border-border rounded-card px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
+                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
               >
                 <option value="">Any Setup</option>
                 <option value="remote">Remote</option>
@@ -304,153 +361,19 @@ export default async function JobsPage({ searchParams }: Props) {
             </div>
           </div>
 
-          <button type="submit" className="md:col-span-4 w-full bg-primary text-on-primary py-4 rounded-xl font-headline-sm text-headline-sm hover:opacity-95 transition-all shadow-md">
+          <button type="submit" className="md:col-span-4 w-full bg-primary text-on-primary py-3.5 rounded-xl font-headline-sm text-headline-sm hover:opacity-95 transition-all shadow-xs">
             Show matches
           </button>
         </form>
       </section>
 
-      <section className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-headline-sm font-headline-sm text-on-surface">Jobs For You</h2>
-            <p className="text-body-sm text-on-surface-variant">Based on {selectedResume?.title ?? "your experience"}</p>
-          </div>
-          {selectedResume && (
-            <div className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-label-caps font-label-caps flex items-center gap-2">
-              <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-              Selected resume
-            </div>
-          )}
-        </div>
-
-        {selectedResume && recommendedJobs.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {recommendedJobs.map(({ job, fit }) => (
-              <RecommendedJobCard key={job.id} job={job} fit={fit} />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-card border border-dashed border-outline-variant p-8 text-center bg-surface">
-            <p className="text-body-sm text-on-surface-variant">No recommended jobs matching your criteria.</p>
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-6">
-        <div className="flex items-center gap-3">
-          <h2 className="text-headline-sm font-headline-sm text-on-surface">All Jobs</h2>
-          <span className="bg-surface-container-highest text-primary px-3 py-0.5 rounded-full text-label-caps font-label-caps">
-            {allJobs.length} openings
-          </span>
-        </div>
-
-        <div className="space-y-4">
-          {allJobs.map((job) => (
-            <JobCard key={job.id} job={job} />
-          ))}
-        </div>
-      </section>
+      <ApplicantJobsClient
+        recommendedJobs={recommendedJobs}
+        allJobs={allJobs}
+        selectedResumeTitle={selectedResume?.title ?? undefined}
+        applicationsMap={applicationsMap}
+        isCandidate={isCandidate}
+      />
     </div>
   );
-}
-
-function RecommendedJobCard({ job, fit }: { job: JobPosting; fit: JobFitAnalysisOutput }) {
-  const dept = job.departments as unknown as { name: string } | null;
-  const salaryRange = formatSalaryRange(job);
-
-  return (
-    <article className="bg-white border border-outline-variant rounded-card p-6 job-card-hover cursor-pointer group relative">
-      <Link href={`/jobs/${job.id}`} className="absolute inset-0 z-10" />
-      <div className="flex justify-between items-start mb-4">
-        <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary">
-          <span className="material-symbols-outlined text-[32px]">analytics</span>
-        </div>
-        <div
-          className="px-3 py-1 rounded-full text-label-caps font-label-caps"
-          style={{ backgroundColor: `${fit.card_color_hex}18`, color: fit.card_color_hex }}
-        >
-          {(fit as any).is_fallback ? "ANALYSIS PENDING" : `${fit.match_level} ${fit.fit_score}%`}
-        </div>
-      </div>
-      <h3 className="text-title-lg font-title-lg text-on-surface group-hover:text-primary transition-colors">
-        {job.title}
-      </h3>
-      <p className="text-body-sm text-on-surface-variant font-medium mb-3">
-        {dept?.name ?? "General"}{job.job_category && ` • ${job.job_category}`}
-      </p>
-      <p className="text-body-sm text-on-surface-variant line-clamp-2 mb-6">
-        {fit.top_reasons[0]}
-      </p>
-      <div className="flex flex-wrap gap-3">
-        {job.location && (
-          <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-            <span className="material-symbols-outlined text-[18px]">location_on</span> {job.location}
-          </div>
-        )}
-        {salaryRange && (
-          <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-            <span className="material-symbols-outlined text-[18px]">payments</span> {salaryRange}
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-          <span className="material-symbols-outlined text-[18px]">home_work</span> {formatWorkSetup(job.work_setup)}
-        </div>
-        <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-          <span className="material-symbols-outlined text-[18px]">schedule</span> {formatEmploymentType(job.employment_type)}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function JobCard({ job }: { job: JobPosting }) {
-  const salaryRange = formatSalaryRange(job);
-
-  return (
-    <div className="bg-white border border-outline-variant rounded-card p-6 job-card-hover flex flex-col md:flex-row gap-6 group relative">
-      <Link href={`/jobs/${job.id}`} className="absolute inset-0 z-10" />
-      <div className="flex-shrink-0">
-        <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center text-primary">
-          <span className="material-symbols-outlined text-[40px]">monitoring</span>
-        </div>
-      </div>
-      <div className="flex-grow space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-          <h3 className="text-title-lg font-title-lg text-on-surface group-hover:text-primary transition-colors">
-            {job.title}
-          </h3>
-          <span className="text-label-caps font-label-caps text-on-surface-variant">
-            Posted {new Date(job.created_at).toLocaleDateString()}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-4">
-          {job.location && (
-            <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-              <span className="material-symbols-outlined text-[18px]">location_on</span> {job.location}
-            </div>
-          )}
-          {salaryRange && (
-            <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-              <span className="material-symbols-outlined text-[18px]">payments</span> {salaryRange}
-            </div>
-          )}
-          <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-            <span className="material-symbols-outlined text-[18px]">home_work</span> {formatWorkSetup(job.work_setup)}
-          </div>
-        </div>
-        <p className="text-body-sm text-on-surface-variant line-clamp-2">
-          {job.description}
-        </p>
-      </div>
-      <div className="flex items-center relative z-20">
-        <Link
-          href={`/jobs/${job.id}`}
-          className="w-full md:w-auto border border-primary text-primary px-8 py-2 rounded-full font-label-caps text-label-caps hover:bg-primary hover:text-on-primary transition-all text-center"
-        >
-          View Details
-        </Link>
-      </div>
-    </div>
-  );
-}
+}

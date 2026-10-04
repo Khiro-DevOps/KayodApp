@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
+import { updateApplicationStatus as updateApplicationStatusAction } from "./hr-applications-actions";
 
 type CandidateProfile = {
   id: string;
@@ -27,8 +29,9 @@ export type PipelineStageKey = "new" | "screening" | "interview" | "offer" | "re
 
 export type ApplicationHubCard = {
   id: string;
-  job_posting_id: string;
-  candidate_id: string;
+  job_id: string;
+  candidate_id?: string;
+  applicant_id?: string;
   resume_id: string;
   status: string;
   cover_letter: string | null;
@@ -36,8 +39,12 @@ export type ApplicationHubCard = {
   hr_notes: string | null;
   submitted_at: string;
   updated_at: string;
-  profiles: CandidateProfile | CandidateProfile[] | null;
-  job_postings: JobPostingSummary | JobPostingSummary[] | null;
+  // Supabase .select('*, candidate:profiles(*), job:job_postings(*)')
+  candidate?: CandidateProfile | CandidateProfile[] | null;
+  job?: JobPostingSummary | JobPostingSummary[] | null;
+  // Legacy fallback shape
+  profiles?: CandidateProfile | CandidateProfile[] | null;
+  job_postings?: JobPostingSummary | JobPostingSummary[] | null;
 };
 
 type ApplicationsKanbanBoardProps = {
@@ -60,62 +67,67 @@ const PIPELINE_STAGES: StageConfig[] = [
     label: "New",
     description: "Fresh applications",
     tintClassName: "",
-    badgeClassName: "bg-[#dbeafe] text-[#1d4ed8]",
+    badgeClassName: "bg-primary-light text-primary-dark border border-primary/20",
   },
   {
     key: "screening",
     label: "Screening",
     description: "Assessment in progress",
     tintClassName: "",
-    badgeClassName: "bg-[#fef3c7] text-[#92400e]",
+    badgeClassName: "bg-warning-bg text-warning border border-warning/20",
   },
   {
     key: "interview",
     label: "Interview",
     description: "Interview coordination",
     tintClassName: "",
-    badgeClassName: "bg-[#ede9fe] text-[#5b21b6]",
+    badgeClassName: "bg-primary-light text-primary-dark border border-primary/20",
   },
   {
     key: "offer",
     label: "Offer",
     description: "Offer and negotiation",
     tintClassName: "",
-    badgeClassName: "bg-[#d1fae5] text-[#065f46]",
+    badgeClassName: "bg-success-bg text-success border border-success/20",
   },
   {
     key: "rejected",
     label: "Rejected",
     description: "Closed candidates",
     tintClassName: "",
-    badgeClassName: "bg-[#fee2e2] text-[#991b1b]",
+    badgeClassName: "bg-error-bg text-error border border-error/20",
   },
 ];
 
 const ACTIVE_STAGE_SEQUENCE: PipelineStageKey[] = ["new", "screening", "interview", "offer"];
 
 const NEXT_STATUS_BY_STAGE: Record<Exclude<PipelineStageKey, "rejected">, string | null> = {
-  new: "under_review",
-  screening: "interview_scheduled",
-  interview: "offer_sent",
+  new: "screening",
+  screening: "interview",
+  interview: "offer",
   offer: null,
 };
 
-const STAGE_BY_STATUS: Record<string, PipelineStageKey> = {
+const STAGE_BY_STATUS: Record<string, PipelineStageKey | null> = {
+  applied: "new",
   draft: "new",
   submitted: "new",
+  screening: "screening",
   under_review: "screening",
   shortlisted: "screening",
+  interview: "interview",
+  interviewing: "interview",
   interview_scheduled: "interview",
   interviewed: "interview",
+  offer: "offer",
   negotiating: "offer",
   offer_sent: "offer",
   offer_accepted: "offer",
   offer_declined: "offer",
   offer_expired: "offer",
   pre_employment: "offer",
-  hired: "offer",
-  hire_confirmed: "offer",
+  hired: null,
+  hire_confirmed: null,
   rejected: "rejected",
   withdrawn: "rejected",
 };
@@ -128,6 +140,32 @@ function normalizeRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
+/**
+ * Resolves the CandidateProfile from an ApplicationHubCard.
+ * The HR query uses aliases: candidate:profiles(*) and job:job_postings(*)
+ * so we check both the aliased and legacy property names.
+ */
+function resolveProfile(application: ApplicationHubCard | null | undefined): CandidateProfile | null {
+  if (!application) return null;
+  return (
+    normalizeRelation(application.candidate) ??
+    normalizeRelation(application.profiles) ??
+    null
+  );
+}
+
+/**
+ * Resolves the JobPostingSummary from an ApplicationHubCard.
+ */
+function resolveJob(application: ApplicationHubCard | null | undefined): JobPostingSummary | null {
+  if (!application) return null;
+  return (
+    normalizeRelation(application.job) ??
+    normalizeRelation(application.job_postings) ??
+    null
+  );
+}
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -136,6 +174,10 @@ function getApplicantName(profile: CandidateProfile | null): string {
   if (!profile) {
     return "Unknown Candidate";
   }
+
+  // Support full_name field if present
+  const fullNameField = normalizeText((profile as any).full_name);
+  if (fullNameField) return fullNameField;
 
   const fullName = [normalizeText(profile.first_name), normalizeText(profile.last_name)]
     .filter(Boolean)
@@ -156,15 +198,17 @@ function getApplicantInitials(profile: CandidateProfile | null): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "A";
 }
 
-function getStageKeyFromStatus(status: string): PipelineStageKey {
+function getStageKeyFromStatus(status: string): PipelineStageKey | null {
   return STAGE_BY_STATUS[String(status).toLowerCase()] ?? "new";
 }
 
-function getNextStatus(stageKey: PipelineStageKey): string | null {
-  return stageKey === "rejected" ? null : NEXT_STATUS_BY_STAGE[stageKey];
+function getNextStatus(stageKey: PipelineStageKey | null): string | null {
+  if (!stageKey || stageKey === "rejected") return null;
+  return NEXT_STATUS_BY_STAGE[stageKey];
 }
 
-function getStageProgress(stageKey: PipelineStageKey): number {
+function getStageProgress(stageKey: PipelineStageKey | null): number {
+  if (!stageKey) return 100;
   const activeIndex = ACTIVE_STAGE_SEQUENCE.indexOf(stageKey as (typeof ACTIVE_STAGE_SEQUENCE)[number]);
   if (activeIndex < 0) {
     return 0;
@@ -175,18 +219,18 @@ function getStageProgress(stageKey: PipelineStageKey): number {
 
 function getScoreClasses(score: number | null): string {
   if (score === null) {
-    return "bg-gray-100 text-gray-500";
+    return "bg-surface-bg text-text-muted border border-border";
   }
 
   if (score >= 75) {
-    return "bg-green-50 text-green-700";
+    return "bg-success-bg text-success border border-success/20";
   }
 
   if (score >= 50) {
-    return "bg-amber-50 text-amber-700";
+    return "bg-warning-bg text-warning border border-warning/20";
   }
 
-  return "bg-red-50 text-red-700";
+  return "bg-error-bg text-error border border-error/20";
 }
 
 function formatApplicationTime(value: string): string {
@@ -221,7 +265,10 @@ function groupApplicationsByStage(items: ApplicationHubCard[]): Record<PipelineS
   };
 
   for (const item of items) {
-    grouped[getStageKeyFromStatus(item.status)].push(item);
+    const stageKey = getStageKeyFromStatus(item.status);
+    if (stageKey) {
+      grouped[stageKey].push(item);
+    }
   }
 
   return {
@@ -254,13 +301,13 @@ function mergeRealtimeApplication(
 }
 
 function getCandidateLocation(application: ApplicationHubCard): string {
-  const profile = normalizeRelation(application.profiles);
-  const jobPosting = normalizeRelation(application.job_postings);
+  const profile = resolveProfile(application);
+  const jobPosting = resolveJob(application);
   return profile?.city?.trim() || jobPosting?.location?.trim() || "Remote";
 }
 
 function getRoleTitle(application: ApplicationHubCard): string {
-  const jobPosting = normalizeRelation(application.job_postings);
+  const jobPosting = resolveJob(application);
   return jobPosting?.title?.trim() || "Untitled role";
 }
 
@@ -296,51 +343,51 @@ function ApplicationCard({
   onPrimaryAction: (application: ApplicationHubCard) => void;
   onSchedule: (application: ApplicationHubCard) => void;
 }) {
-  const profile = normalizeRelation(application.profiles);
-  const stageKey = getStageKeyFromStatus(application.status);
+  const profile = resolveProfile(application);
+  const stageKey = getStageKeyFromStatus(application.status) ?? "new";
   const actionLabel = getPrimaryActionLabel(stageKey);
   const score = application.match_score !== null ? Math.round(Number(application.match_score)) : null;
 
   return (
     <article
-      className="hairline-border cursor-pointer rounded-xl bg-white p-5 transition-all duration-200 hover:border-primary hover:shadow-sm"
+      className="cursor-pointer rounded-xl border border-border bg-card-bg p-4 shadow-xs transition-all duration-200 hover:border-primary hover:shadow-md space-y-3"
       onClick={() => onSelect(application.id)}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {profile?.avatar_url ? (
             <img
               alt={getApplicantName(profile)}
               src={profile.avatar_url}
-              className="h-10 w-10 shrink-0 rounded-full object-cover"
+              className="h-9 w-9 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary-dark font-bold text-xs">
               {getApplicantInitials(profile)}
             </div>
           )}
 
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-semibold text-on-surface">{getApplicantName(profile)}</p>
-            <p className="text-[11px] uppercase tracking-[0.06em] text-outline">
+            <p className="truncate text-sm font-semibold text-text-main">{getApplicantName(profile)}</p>
+            <p className="text-[10px] text-text-muted uppercase tracking-wider">
               Applied {formatApplicationTime(application.submitted_at)}
             </p>
           </div>
         </div>
 
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getScoreClasses(score)}`}>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(score)}`}>
           {score !== null ? `${score}% match` : "Calculating..."}
         </span>
       </div>
 
-      <div className="mb-4 space-y-1">
-        <p className="truncate text-[13px] font-medium text-on-surface">{getRoleTitle(application)}</p>
-        <p className="text-[13px] text-secondary">{getCandidateLocation(application)}</p>
+      <div className="space-y-0.5">
+        <p className="truncate text-xs font-medium text-text-main">{getRoleTitle(application)}</p>
+        <p className="text-xs text-text-muted">{getCandidateLocation(application)}</p>
       </div>
 
-      <div className="mb-4 flex items-center justify-between text-[11px] uppercase tracking-[0.06em] text-outline">
+      <div className="flex items-center justify-between text-[10px] font-semibold text-text-muted border-t border-border/40 pt-2 uppercase tracking-wider">
         <span>{getStageLabel(stageKey)}</span>
-        <span>{normalizeRelation(application.job_postings)?.tenant_id ? "Tenant scoped" : "Active pipeline"}</span>
+        <span>{normalizeRelation(application.job ?? application.job_postings)?.tenant_id ? "Tenant scoped" : "Active pipeline"}</span>
       </div>
 
       <button
@@ -355,17 +402,7 @@ function ApplicationCard({
 
           onPrimaryAction(application);
         }}
-        className={`w-full rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors ${
-          stageKey === "new"
-            ? "bg-[#F0EDFD] text-[#4A4880] hover:bg-[#e1dbfb]"
-            : stageKey === "screening"
-              ? "bg-[#F0EDFD] text-[#4A4880] hover:bg-[#e1dbfb]"
-              : stageKey === "interview"
-                ? "bg-primary text-white hover:bg-primary-dark"
-                : stageKey === "offer"
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "bg-rose-100 text-rose-700 hover:bg-rose-200"
-        }`}
+        className="w-full rounded-lg bg-primary hover:bg-primary-hover px-3 py-2 text-xs font-semibold text-white transition-colors shadow-xs"
       >
         {actionLabel}
       </button>
@@ -387,23 +424,25 @@ function PipelineColumn({
   onSchedule: (application: ApplicationHubCard) => void;
 }) {
   return (
-    <section className={`kanban-col flex h-full min-h-0 flex-col rounded-xl border border-card-border/40 p-4 min-w-[320px] max-w-[320px] flex-shrink-0 ${stage.tintClassName}`}>
-      <div className="mb-4 flex items-center justify-between px-1">
+    <section className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card-bg p-4 min-w-[310px] max-w-[310px] shrink-0 shadow-xs">
+      <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <span className="text-[17px] font-medium text-on-surface">{stage.label}</span>
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${stage.badgeClassName}`}>
+          <span className="text-sm font-bold text-text-main">{stage.label}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${stage.badgeClassName}`}>
             {applications.length}
           </span>
         </div>
 
-        {/* Removed non-functional more_horiz button */}
+        <button type="button" className="text-text-muted transition-colors hover:text-text-main" aria-label={`${stage.label} options`}>
+          <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+        </button>
       </div>
 
-      <p className="mb-4 px-1 text-[12px] text-secondary">{stage.description}</p>
+      <p className="mb-3 px-1 text-xs text-text-muted">{stage.description}</p>
 
       <div className="flex-1 space-y-3 overflow-y-auto pr-1 modern-scrollbar">
         {applications.length === 0 ? (
-          <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-card-border bg-white/60 px-4 text-center text-[13px] text-secondary">
+          <div className="flex h-36 items-center justify-center rounded-lg border border-dashed border-border bg-surface-bg px-4 text-center text-xs text-text-muted">
             No candidates yet
           </div>
         ) : (
@@ -437,9 +476,9 @@ function ApplicationDrawer({
   onAdvance: (applicationId: string) => void;
   onOpenFullApplication: (applicationId: string) => void;
 }) {
-  const profile = normalizeRelation(application?.profiles);
-  const jobPosting = normalizeRelation(application?.job_postings);
-  const stageKey = application ? getStageKeyFromStatus(application.status) : "new";
+  const profile = resolveProfile(application);
+  const jobPosting = resolveJob(application);
+  const stageKey = application ? (getStageKeyFromStatus(application.status) ?? "new") : "new";
   const nextStatus = getNextStatus(stageKey);
   const matchScore = application?.match_score !== null && application?.match_score !== undefined
     ? Math.round(Number(application.match_score))
@@ -651,7 +690,7 @@ export default function ApplicationsKanbanBoard({
 
     let isMounted = true;
     const supabase = createClient();
-    const applicationFilter = `job_posting_id=in.(${tenantJobIds.join(",")})`;
+    const applicationFilter = `job_id=in.(${tenantJobIds.join(",")})`;
 
     const channel = supabase
       .channel(`application-hub-${currentCompanyId}`)
@@ -660,10 +699,11 @@ export default function ApplicationsKanbanBoard({
         {
           event: "*",
           schema: "public",
-          table: "applications",
+          table: "job_applications",
           filter: applicationFilter,
         },
         async (payload: any) => {
+          console.log("DIAG [4] Realtime Payload Received:", payload);
           if (!isMounted) {
             return;
           }
@@ -686,12 +726,12 @@ export default function ApplicationsKanbanBoard({
           }
 
           if (eventType === "INSERT") {
-            const { data: inserted } = (await supabase
-              .from("applications")
+            const { data: inserted } = await supabase
+              .from("job_applications")
               .select(`
                 id,
-                job_posting_id,
-                candidate_id,
+                job_id,
+                applicant_id,
                 resume_id,
                 status,
                 cover_letter,
@@ -699,18 +739,23 @@ export default function ApplicationsKanbanBoard({
                 hr_notes,
                 submitted_at,
                 updated_at,
-                profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
-                job_postings!inner ( id, title, location, tenant_id )
+                candidate:profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),
+                job:job_postings ( id, title, location, tenant_id )
               `)
               .eq("id", changedId)
-              .eq("job_postings.tenant_id", currentCompanyId)
-              .maybeSingle()) as { data: ApplicationHubCard | null; error: any };
+              .maybeSingle();
 
-            if (!isMounted || !inserted) {
+            const insertedRow = inserted as ApplicationHubCard | null;
+            if (!isMounted || !insertedRow) {
               return;
             }
 
-            setApplications((prev) => mergeRealtimeApplication(prev, inserted));
+            toast.info("🎉 New Application Received!", {
+              description: "A candidate just applied to an open position.",
+            });
+
+            setApplications((prev) => mergeRealtimeApplication(prev, insertedRow));
+            router.refresh();
             return;
           }
 
@@ -795,23 +840,21 @@ export default function ApplicationsKanbanBoard({
       ),
     );
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("applications")
-      .update({
-        status: nextStatus,
-        updated_at: nextTimestamp,
-      })
-      .eq("id", applicationId)
-      .in("job_posting_id", tenantJobIds);
+    const formData = new FormData();
+    formData.set("application_id", applicationId);
+    formData.set("status", nextStatus);
 
-    setIsSavingId(null);
-
-    if (error) {
-      console.error("Failed to update application status:", error.message);
+    try {
+      await updateApplicationStatusAction(formData);
+    } catch (error) {
+      console.error("Failed to update application status:", error);
+      toast.error("Failed to update candidate stage.");
       setApplications(previousState);
+      setIsSavingId(null);
       return;
     }
+
+    setIsSavingId(null);
 
     if (options?.closeDrawer) {
       setSelectedApplicationId(null);
@@ -879,10 +922,10 @@ export default function ApplicationsKanbanBoard({
   const hasSelectedApplication = Boolean(selectedApplication);
 
   return (
-    <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <div className={`flex min-h-0 flex-1 flex-col gap-5 pr-0 ${hasSelectedApplication ? "xl:pr-[440px]" : ""}`}>
-        <div className="flex-1 min-h-0 overflow-x-auto pb-2 modern-scrollbar">
-          <div className="flex flex-row h-full min-h-0 gap-4 p-5 px-6 bg-[#f4f5f7] overflow-x-auto overflow-y-hidden pb-4">
+    <div className="relative flex h-full w-full flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className={`flex h-full w-full flex-1 min-h-0 flex-col gap-4 ${hasSelectedApplication ? "xl:pr-[450px]" : ""}`}>
+        <div className="flex-1 w-full h-full min-h-0 overflow-x-auto overflow-y-hidden pb-2 modern-scrollbar">
+          <div className="inline-flex min-w-full h-full gap-4 p-4 bg-surface-bg border border-border rounded-xl">
             {PIPELINE_STAGES.map((stage) => (
               <PipelineColumn
                 key={stage.key}
