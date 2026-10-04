@@ -103,7 +103,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
   if (jobs.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-border bg-card-bg px-6 py-12 shadow-xs">
+      <div className="flex items-center justify-center rounded-xl border border-border bg-card-bg px-6 py-16 shadow-sm">
         <div className="max-w-xl space-y-5 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-light text-primary-dark">
             <span className="material-symbols-outlined text-[28px]">work</span>
@@ -133,10 +133,10 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
   const selectedJob = visibleJobs.find((job) => job.id === activeJobId) ?? visibleJobs[0] ?? null;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-xl font-bold text-text-main">
+          <h1 className="text-2xl font-bold text-text-main">
             Manage Jobs
           </h1>
           <p className="text-xs text-text-muted">
@@ -154,7 +154,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
       <div className="grid gap-4 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start">
         {/* Left Master List */}
-        <aside className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card-bg p-4 shadow-xs">
+        <aside className="flex min-w-0 flex-col gap-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">
               search
@@ -235,7 +235,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
         </aside>
 
         {/* Right Detail Section */}
-        <section className="flex min-w-0 flex-col rounded-xl border border-border bg-card-bg shadow-xs">
+        <section className="flex min-w-0 flex-col rounded-xl border border-border bg-card-bg shadow-sm">
           {selectedJob ? (
             <>
               <div className="border-b border-border p-5">

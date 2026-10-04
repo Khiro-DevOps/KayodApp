@@ -8,9 +8,11 @@ type JobOfferRow = {
   application_id: string;
   job_posting_id: string;
   status: string;
+  salary?: number | null;
   updated_at: string;
   latest_docuseal_url: string | null;
   job_metadata: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   applications: {
     id: string;
     candidate_id: string;
@@ -76,9 +78,11 @@ export async function POST(_request: NextRequest, ctx: any) {
         application_id,
         job_posting_id,
         status,
+        salary,
         updated_at,
         latest_docuseal_url,
         job_metadata,
+        metadata,
         applications!inner (
           id,
           candidate_id,
@@ -213,12 +217,17 @@ export async function POST(_request: NextRequest, ctx: any) {
       return "monthly";
     };
 
+    const offerSalary = typeof (offer as any).salary === "number" && (offer as any).salary > 0 ? (offer as any).salary : null;
+    const metadataSalary = typeof offer.job_metadata?.base_salary === "number" && offer.job_metadata.base_salary > 0
+      ? offer.job_metadata.base_salary
+      : typeof offer.job_metadata?.salary_amount === "number" && offer.job_metadata.salary_amount > 0
+      ? offer.job_metadata.salary_amount
+      : typeof offer.job_metadata?.salary === "number" && offer.job_metadata.salary > 0
+      ? offer.job_metadata.salary
+      : null;
+
     const baseSalaryValue = Number(
-      typeof offer.job_metadata?.salary_amount === "number"
-        ? offer.job_metadata.salary_amount
-        : typeof offer.job_metadata?.salary === "number"
-          ? offer.job_metadata.salary
-          : jobPosting?.salary_min ?? jobPosting?.salary_max ?? 0
+      offerSalary ?? metadataSalary ?? jobPosting?.salary_min ?? jobPosting?.salary_max ?? 0
     ) || 0;
 
     // Perform critical updates sequentially to avoid partial state.
@@ -270,6 +279,33 @@ export async function POST(_request: NextRequest, ctx: any) {
       return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
     }
 
+    // Extract schedule settings from offer metadata or job_metadata
+    const metadata = offer.metadata ?? {};
+    const jobMetadata = offer.job_metadata ?? {};
+
+    const extractedWorkModel =
+      (typeof metadata.work_model === "string" ? metadata.work_model : null) ??
+      (typeof jobMetadata.work_model === "string" ? jobMetadata.work_model : null) ??
+      (typeof jobMetadata.work_arrangement === "string" ? jobMetadata.work_arrangement : null) ??
+      "onsite";
+
+    const defaultHybridDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    const extractedHybridDays =
+      (Array.isArray(metadata.hybrid_onsite_days) ? metadata.hybrid_onsite_days : null) ??
+      (Array.isArray(jobMetadata.hybrid_onsite_days) ? jobMetadata.hybrid_onsite_days : null) ??
+      (Array.isArray(metadata.hybrid_days) ? metadata.hybrid_days : null) ??
+      defaultHybridDays;
+
+    const extractedShiftStart =
+      (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
+      (typeof jobMetadata.shift_start === "string" ? jobMetadata.shift_start : null) ??
+      "09:00";
+
+    const extractedShiftEnd =
+      (typeof metadata.shift_end === "string" ? metadata.shift_end : null) ??
+      (typeof jobMetadata.shift_end === "string" ? jobMetadata.shift_end : null) ??
+      "18:00";
+
     // 4) Upsert employees record
     const { error: employeeInsertError } = await admin
       .from("employees")
@@ -286,6 +322,11 @@ export async function POST(_request: NextRequest, ctx: any) {
           base_salary: baseSalaryValue,
           pay_frequency: normalizePayFrequency(offer.job_metadata?.pay_frequency),
           currency: typeof offer.job_metadata?.salary_currency === "string" ? offer.job_metadata.salary_currency : "PHP",
+          work_model: extractedWorkModel || "onsite",
+          hybrid_onsite_days: extractedHybridDays || defaultHybridDays,
+          shift_start: extractedShiftStart || "09:00",
+          shift_end: extractedShiftEnd || "18:00",
+          updated_at: new Date().toISOString(),
         },
         { onConflict: "profile_id" }
       );
@@ -304,21 +345,32 @@ export async function POST(_request: NextRequest, ctx: any) {
       return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
     }
 
-    // 5) Insert notification (non-critical)
+    // 5) Archive/Clean up old applicant-phase notifications & Insert fresh welcome notification
+    try {
+      await admin
+        .from("notifications")
+        .delete()
+        .eq("recipient_id", application.candidate_id);
+    } catch (cleanupErr) {
+      console.warn("[Confirm Hire] failed to cleanup applicant notifications", cleanupErr);
+    }
+
+    const companyName = "Kayod";
+
     const { error: notificationError } = await admin
       .from("notifications")
       .insert({
         recipient_id: application.candidate_id,
-        type: "hire_confirmed",
-        title: "Your application has been confirmed!",
-        body: startDate
-          ? `Congratulations! ${jobTitle} has confirmed your hire. Your start date is ${startDate}.`
-          : `Congratulations! ${jobTitle} has confirmed your hire.`,
-        action_url: "/dashboard",
+        title: "Welcome to the Team! 🎉",
+        body: `Congratulations on joining ${companyName}! We are glad you're here. Review your schedule and profile to get started.`,
+        type: "welcome",
+        action_url: "/employee/dashboard",
+        is_read: false,
+        created_at: new Date().toISOString()
       });
     results.push({ step: "notification_insert", error: notificationError?.message ?? null });
     if (notificationError) {
-      console.warn("[Confirm Hire] failed to insert notification", notificationError.message);
+      console.warn("[Confirm Hire] failed to insert welcome notification", notificationError.message);
     }
 
     return NextResponse.json({ success: true, employeeId: application.candidate_id });

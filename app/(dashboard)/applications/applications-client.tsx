@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { withdrawApplication } from "./actions";
 import { createClient } from "@/lib/supabase/client";
@@ -33,16 +34,22 @@ type ActiveJobPosting = {
   title: string;
 };
 
+type ApplicationStatusPayload = {
+  new: {
+    status: string;
+  };
+};
+
 const statusConfig: Record<string, { label: string; classes: string }> = {
-  draft: { label: "Draft", classes: "bg-gray-100 text-text-secondary" },
-  submitted: { label: "Submitted", classes: "bg-blue-50 text-info" },
-  under_review: { label: "Under Review", classes: "bg-amber-50 text-amber-700" },
-  shortlisted: { label: "Shortlisted", classes: "bg-yellow-50 text-warning" },
-  interview_scheduled: { label: "Interview Scheduled", classes: "bg-purple-50 text-purple-700" },
-  interviewed: { label: "Interviewed", classes: "bg-purple-50 text-purple-700" },
-  offer_sent: { label: "Offer Sent", classes: "bg-green-50 text-success" },
-  hired: { label: "Hired", classes: "bg-green-50 text-success" },
-  rejected: { label: "Rejected", classes: "bg-red-50 text-danger" },
+  draft: { label: "Draft", classes: "bg-surface text-text-muted" },
+  submitted: { label: "Submitted", classes: "bg-primary/10 text-primary" },
+  under_review: { label: "Under Review", classes: "bg-warning/10 text-warning" },
+  shortlisted: { label: "Shortlisted", classes: "bg-warning/10 text-warning" },
+  interview_scheduled: { label: "Interview Scheduled", classes: "bg-primary/10 text-primary" },
+  interviewed: { label: "Interviewed", classes: "bg-primary/10 text-primary" },
+  offer_sent: { label: "Offer Sent", classes: "bg-success/10 text-success" },
+  hired: { label: "Hired", classes: "bg-success/10 text-success" },
+  rejected: { label: "Rejected", classes: "bg-error/10 text-error" },
 };
 
 function ApplicationsList({
@@ -55,8 +62,8 @@ function ApplicationsList({
   return (
     <div className="space-y-3">
       {applications.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-text-secondary">
+        <div className="rounded-xl border border-dashed border-border bg-card-bg p-8 text-center">
+          <p className="text-sm text-text-muted">
             You haven&apos;t applied to any jobs yet. Browse available positions to get started.
           </p>
         </div>
@@ -74,32 +81,32 @@ function ApplicationsList({
           return (
             <Link
               key={app.id}
-              href={`/applications/${app.id}`}
-              className="block group transition-all duration-200"
+              href={`/applicant/jobs/${app.job_posting_id}`}
+              className="group block rounded-xl border border-border bg-card-bg p-4 transition-all duration-200 hover:border-primary hover:shadow-sm"
             >
-              <div className="rounded-2xl bg-surface border border-border p-4 space-y-3 group-hover:border-primary/50 group-hover:shadow-md transition-all">
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-text-primary group-hover:text-primary truncate block transition-colors">
+                    <span className="block truncate text-sm font-semibold text-text-main transition-colors group-hover:text-primary">
                       {job?.title || "Unknown Job"}
                     </span>
-                    {job?.location && <p className="text-xs text-text-secondary">{job.location}</p>}
+                    {job?.location && <p className="text-xs text-text-muted">{job.location}</p>}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex shrink-0 items-center gap-2">
                     {app.match_score !== null && (
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                           app.match_score >= 70
-                            ? "bg-green-50 text-success"
+                            ? "bg-success/10 text-success"
                             : app.match_score >= 40
-                              ? "bg-yellow-50 text-warning"
-                              : "bg-gray-100 text-text-secondary"
+                              ? "bg-warning/10 text-warning"
+                              : "bg-surface text-text-muted"
                         }`}
                       >
                         {app.match_score}%
                       </span>
                     )}
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${config.classes}`}>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${config.classes}`}>
                       {config.label}
                     </span>
                   </div>
@@ -109,18 +116,18 @@ function ApplicationsList({
                   app.status === "interviewed" ||
                   app.status === "hired") &&
                   interview && (
-                    <div className="rounded-xl bg-purple-50 p-3 space-y-1">
-                      <p className="text-xs font-medium text-purple-700">
+                    <div className="rounded-xl bg-primary/5 p-3 space-y-1">
+                      <p className="text-xs font-semibold text-primary">
                         Interview: {new Date(interview.scheduled_at).toLocaleString()}
                       </p>
                       {interview.interviewer_notes && (
-                        <p className="text-xs text-purple-600">{interview.interviewer_notes}</p>
+                        <p className="text-xs text-text-muted">{interview.interviewer_notes}</p>
                       )}
                     </div>
                   )}
 
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-text-secondary">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-text-muted">
                     Applied {new Date(app.submitted_at).toLocaleDateString()}
                   </p>
 
@@ -129,7 +136,7 @@ function ApplicationsList({
                       <input type="hidden" name="application_id" value={app.id} />
                       <button
                         type="submit"
-                        className="text-xs font-medium text-danger hover:underline relative z-10"
+                        className="relative z-10 text-xs font-medium text-error hover:underline"
                       >
                         Withdraw
                       </button>
@@ -162,6 +169,19 @@ export default function ApplicationsClient({
 
     const channel = supabase
       .channel("candidate-applications-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "job_applications",
+          filter: `applicant_id=eq.${candidateId}`,
+        },
+        (payload: ApplicationStatusPayload) => {
+          toast.info(`Application updated to: ${payload.new.status}`);
+          router.refresh();
+        },
+      )
       .on(
         "postgres_changes",
         {
@@ -228,7 +248,7 @@ export function ApplicationsHubClient({
   }, [activeJobs]);
 
   const selectedApplications = useMemo(
-    () => (selectedJobId ? applications.filter((application) => application.job_posting_id === selectedJobId) : []),
+    () => (selectedJobId ? applications.filter((application) => application.job_id === selectedJobId) : []),
     [applications, selectedJobId],
   );
 

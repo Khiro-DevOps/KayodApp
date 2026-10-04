@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
-import { logout } from "@/app/(auth)/actions";
 import PageContainer from "@/components/ui/page-container";
+import { PwaSignOutButton } from "@/components/layout/pwa-shell";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, roleLabel, isCandidateRole } from "@/lib/roles";
@@ -210,14 +210,9 @@ export default async function ProfilePage() {
         )}
 
         {/* Logout */}
-        <form action={logout}>
-          <button
-            type="submit"
-            className="w-full rounded-2xl border border-danger py-3 text-sm font-medium text-danger transition-colors hover:bg-red-50"
-          >
-            Log Out
-          </button>
-        </form>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <PwaSignOutButton />
+        </div>
       </div>
     </PageContainer>
   );

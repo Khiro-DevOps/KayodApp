@@ -78,11 +78,11 @@ export default async function HRPayrollPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
+      <div className="space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="font-h1 text-xl font-bold text-text-main">
+        <div className="flex items-end justify-between border-b border-border pb-5">
+          <h1 className="font-h1 text-2xl font-bold text-text-main">
             Payroll
           </h1>
           <span className="text-xs text-text-muted">
@@ -91,7 +91,7 @@ export default async function HRPayrollPage() {
         </div>
 
         {/* New payroll period form */}
-        <div className="rounded-xl bg-card-bg border border-border p-4 space-y-4 shadow-xs">
+        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-text-main">New payroll period</h2>
           <form action={createPayrollPeriod} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -128,7 +128,7 @@ export default async function HRPayrollPage() {
 
         {/* Hours preview for draft period */}
         {draftPeriod && hoursPreview.length > 0 && (
-          <div className="rounded-xl bg-primary-light/50 border border-primary/20 p-4 space-y-3 shadow-xs">
+          <div className="space-y-3 rounded-xl border border-primary/20 bg-primary-light/50 p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-primary-dark">
                 Hours logged this period
@@ -167,7 +167,7 @@ export default async function HRPayrollPage() {
 
         {/* Payslip review for pending_approval period */}
         {pendingPeriod && pendingPayslips.length > 0 && (
-          <div className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs">
+          <div className="space-y-3 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-text-main">Review payslips</h2>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS["pending_approval"]}`}>

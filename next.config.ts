@@ -11,10 +11,10 @@ const nextConfig: NextConfig = {
       { source: "/notifications", destination: "/applicant/notifications", permanent: false },
       { source: "/offer-signing", destination: "/applicant/offer-signing", permanent: false },
       { source: "/interviews/thank-you", destination: "/applicant/interviews/thank-you", permanent: false },
-      { source: "/interviews", destination: "/applicant/dashboard", permanent: false },
+      { source: "/interviews", destination: "/applicant/interviews", permanent: false },
       { source: "/leaves", destination: "/employee/leaves", permanent: false },
       { source: "/leaves/new", destination: "/employee/leaves/new", permanent: false },
-      { source: "/schedules", destination: "/employee/schedules", permanent: false },
+      { source: "/schedules", destination: "/employee/schedule", permanent: false },
     ];
   },
 };

@@ -623,7 +623,7 @@ export default function ApplicantsHubClient({
         case "interview": {
           // Redirect HR to the central Interview Schedule page to use the existing scheduling flow
           try {
-            router.push(`/interviews/schedule?applicationId=${encodeURIComponent(app.id)}`);
+            router.push(`/hr/interviews/schedule?applicationId=${encodeURIComponent(app.id)}`);
           } catch (err) {
             toast.error("Failed to open schedule page");
           }

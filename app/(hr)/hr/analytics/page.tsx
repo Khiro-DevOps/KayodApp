@@ -149,9 +149,9 @@ export default async function AnalyticsPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-1 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
           <Link
             href="/dashboard"
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-bg transition-colors"
@@ -161,7 +161,7 @@ export default async function AnalyticsPage() {
             </svg>
           </Link>
           <div>
-            <h1 className="font-h1 text-xl font-bold text-text-main">
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
               Analytics
             </h1>
             <p className="text-xs text-text-muted">{companyName}</p>
@@ -169,7 +169,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Overview Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard label="Total Jobs" value={totalJobs || 0} sub={`${activeJobs || 0} active`} />
           <StatCard label="Total Applicants" value={totalApplicants || 0} />
           <StatCard label="Total Hires" value={statusCounts.hired} />
@@ -195,7 +195,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Application Funnel */}
-        <div className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs">
+        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <h2 className="font-h1 text-sm font-semibold text-text-main">
             Application Funnel
           </h2>
@@ -220,7 +220,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Applicants Per Job */}
-        <div className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs">
+        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <h2 className="font-h1 text-sm font-semibold text-text-main">
             Applicants Per Job
           </h2>

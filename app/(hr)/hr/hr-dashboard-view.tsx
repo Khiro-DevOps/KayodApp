@@ -30,7 +30,7 @@ export default function HRDashboardView({
   topCandidates,
 }: HRDashboardViewProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -56,9 +56,9 @@ export default function HRDashboardView({
       </div>
 
       {/* Dashboard Grid - Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
         {/* Total Employees */}
-        <div className="bg-card-bg border border-border rounded-xl p-5 shadow-xs">
+        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-3">
             <span className="material-symbols-outlined p-2 bg-primary-light text-primary-dark rounded-lg text-[20px]">
               group
@@ -69,7 +69,7 @@ export default function HRDashboardView({
         </div>
 
         {/* Active Jobs */}
-        <div className="bg-card-bg border border-border rounded-xl p-5 shadow-xs">
+        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-3">
             <span className="material-symbols-outlined p-2 bg-primary-light text-primary-dark rounded-lg text-[20px]">
               work
@@ -80,7 +80,7 @@ export default function HRDashboardView({
         </div>
 
         {/* Pending Leaves */}
-        <div className="bg-card-bg border border-border rounded-xl p-5 shadow-xs">
+        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-3">
             <span className="material-symbols-outlined p-2 bg-primary-light text-primary-dark rounded-lg text-[20px]">
               event_busy
@@ -96,7 +96,7 @@ export default function HRDashboardView({
         </div>
 
         {/* Interviews Today */}
-        <div className="bg-card-bg border border-border rounded-xl p-5 shadow-xs">
+        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-3">
             <span className="material-symbols-outlined p-2 bg-primary-light text-primary-dark rounded-lg text-[20px]">
               calendar_today
@@ -108,10 +108,10 @@ export default function HRDashboardView({
       </div>
 
       {/* Main Analytics & Candidates Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Workforce Health Index Section */}
-        <div className="lg:col-span-2 bg-card-bg border border-border rounded-xl p-5 flex flex-col justify-between shadow-xs">
-          <div className="flex-1 flex flex-col">
+        <div className="lg:col-span-2 min-h-[390px] bg-card-bg border border-border rounded-xl p-5 flex flex-col shadow-xs min-w-0">
+          <div className="flex min-h-0 flex-1 flex-col min-w-0">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-bold text-text-main">Workforce Health Index</h2>
@@ -120,18 +120,18 @@ export default function HRDashboardView({
             </div>
 
             {/* Honest Low-Data State */}
-            <div className="flex-1 min-h-[180px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-xl bg-surface-bg my-2 overflow-hidden">
-              <div className="w-10 h-10 rounded-full bg-primary-light text-primary-dark flex items-center justify-center mb-2 flex-shrink-0">
+            <div className="w-full max-w-lg mx-auto flex flex-col items-center justify-center text-center p-6 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 mb-3">
                 <span className="material-symbols-outlined text-[24px]">analytics</span>
               </div>
-              <h3 className="text-sm font-bold text-text-main mb-1">Not enough data yet</h3>
-              <p className="text-xs text-text-muted max-w-md leading-relaxed">
+              <h3 className="font-semibold text-gray-900 mb-1">Not enough data yet</h3>
+              <p className="w-full min-w-[250px] whitespace-normal break-words text-center text-sm text-muted-foreground leading-relaxed block">
                 Workforce sentiment metrics (retention, morale, feedback rate, absence rate) will render here automatically as employee check-ins and performance surveys accumulate.
               </p>
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-center gap-6 border-t border-border pt-4 flex-wrap">
+          <div className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-border pt-4">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 bg-primary rounded-sm"></div>
               <span className="text-xs font-medium text-text-main">Retention</span>
@@ -152,7 +152,7 @@ export default function HRDashboardView({
         </div>
 
         {/* Real Top Applicants / Quick Actions Sidebar */}
-        <div className="bg-card-bg border border-border rounded-xl p-5 shadow-xs flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-text-main">Top Candidates</h2>
@@ -186,8 +186,8 @@ export default function HRDashboardView({
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-text-main truncate">{candidate.name}</p>
-                        <p className="text-xs text-text-muted truncate">{candidate.jobTitle}</p>
+                        <p className="text-sm font-semibold text-text-main whitespace-normal break-words leading-snug">{candidate.name}</p>
+                        <p className="text-xs text-text-muted whitespace-normal break-words leading-snug">{candidate.jobTitle}</p>
                       </div>
                       <div className="flex-shrink-0 flex flex-col items-end">
                         {candidate.matchScore !== null ? (

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { effectiveRole } from "@/lib/roles";
 import type { Profile } from "@/lib/types";
 
-import DashboardShell from "@/components/layout/dashboard-shell";
+import PwaShell from "@/components/layout/pwa-shell";
 
 export default async function EmployeeLayout({
   children,
@@ -39,8 +39,20 @@ export default async function EmployeeLayout({
   }
 
   return (
-    <DashboardShell role="employee" userId={user.id} layoutName="employee">
+    <PwaShell
+      variant="employee"
+      config={{
+        label: "Employee Portal",
+        navItems: [
+          { label: "Home", href: "/employee/dashboard", icon: "home" },
+          { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
+          { label: "Leaves", href: "/employee/leaves", icon: "event_note" },
+          { label: "Payslips", href: "/employee/payslips", icon: "payments" },
+          { label: "Profile", href: "/employee/profile", icon: "person" },
+        ],
+      }}
+    >
       {children}
-    </DashboardShell>
+    </PwaShell>
   );
 }

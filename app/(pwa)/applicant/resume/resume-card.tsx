@@ -78,7 +78,7 @@ export default function ResumeCard({
             />
           </div>
         ) : (
-          <p className="flex-1 truncate text-sm font-medium text-text-primary">
+          <p className="w-full min-w-0 flex-1 block whitespace-normal break-words leading-relaxed text-sm font-medium text-text-primary">
             {resume.title || "Untitled Resume"}
           </p>
         )}

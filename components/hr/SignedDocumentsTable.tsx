@@ -101,7 +101,7 @@ export default function SignedDocumentsTable({ documents }: SignedDocumentsTable
   return (
     <div className="space-y-4">
       {/* Summary bar */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card-bg p-4 md:flex-row md:items-center md:justify-between shadow-xs">
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-semibold text-text-main">Signed contracts</p>
           <p className="text-xs text-text-muted">
@@ -119,7 +119,7 @@ export default function SignedDocumentsTable({ documents }: SignedDocumentsTable
       </div>
 
       {/* Filter + Search */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card-bg p-4 md:flex-row md:items-center md:justify-between shadow-xs">
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm md:flex-row md:items-center md:justify-between">
         <div className="flex gap-2">
           {[
             { key: "awaiting" as const, label: "Awaiting confirmation" },
@@ -162,14 +162,14 @@ export default function SignedDocumentsTable({ documents }: SignedDocumentsTable
       </div>
 
       {visibleDocuments.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card-bg p-8 text-center shadow-xs">
+        <div className="rounded-xl border border-dashed border-border bg-card-bg p-10 text-center shadow-sm">
           <p className="text-sm font-medium text-text-main">No signed documents found</p>
           <p className="mt-1 text-sm text-text-muted">
             Try a different filter or search term.
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card-bg shadow-xs">
+        <div className="overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-surface-bg">

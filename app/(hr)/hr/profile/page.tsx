@@ -38,13 +38,13 @@ export default async function HRProfilePage() {
 
   return (
     <PageContainer>
-      <div className="space-y-6">
-        <h1 className="font-h1 text-xl font-bold text-text-main">
+      <div className="space-y-7">
+        <h1 className="border-b border-border pb-5 font-h1 text-2xl font-bold text-text-main">
           HR Account Profile
         </h1>
 
         {/* HR Profile Overview Card */}
-        <div className="rounded-xl bg-card-bg border border-border p-5 space-y-4 shadow-xs">
+        <div className="space-y-5 rounded-xl border border-border bg-card-bg p-6 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white font-bold text-xl shadow-xs">
               {displayName.charAt(0).toUpperCase()}
@@ -91,7 +91,7 @@ export default async function HRProfilePage() {
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wide px-1">
             HR Quick Management
           </p>
-          <div className="rounded-xl bg-card-bg border border-border overflow-hidden divide-y divide-border shadow-xs">
+          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
             <Link
               href="/hr/applicants"
               className="flex items-center justify-between px-4 py-3.5 text-sm text-text-main hover:bg-surface-bg transition-colors"

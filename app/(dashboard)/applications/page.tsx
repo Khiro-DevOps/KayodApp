@@ -87,7 +87,7 @@ export default async function ApplicationsPage() {
   return (
     <PageContainer>
       <div className="space-y-6">
-        <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
+        <h1 className="text-2xl font-bold text-text-main">
           My Applications
         </h1>
 

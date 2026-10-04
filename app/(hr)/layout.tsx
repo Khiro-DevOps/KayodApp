@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import NotificationBell from "@/components/notifications/notification-bell";
 
 type NavItem = {
   label: string;
@@ -17,9 +18,11 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/hr", icon: "dashboard", exact: true },
   { label: "Employees", href: "/hr/employees", icon: "group" },
-  { label: "Applicants", href: "/hr/applicants", icon: "layers", badge: "12" },
+  { label: "Applicants", href: "/hr/applicants", icon: "layers" },
   { label: "Manage Jobs", href: "/hr/jobs/manage", icon: "work" },
   { label: "Interviews", href: "/hr/interviews", icon: "video_camera_front" },
+  { label: "Schedules", href: "/hr/schedules", icon: "calendar_today" },
+  { label: "Attendance", href: "/hr/attendance", icon: "fact_check" },
   { label: "Payroll", href: "/hr/payroll", icon: "payments" },
   { label: "Reports", href: "/hr/analytics", icon: "assessment" },
 ];
@@ -34,6 +37,7 @@ export default function DashboardLayout({
   const [displayName, setDisplayName] = useState("Admin User");
   const displayRole = "HR Manager"; // Standardized to "HR Manager" everywhere
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [applicantsBadge, setApplicantsBadge] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const isActive = (item: NavItem) => {
@@ -98,7 +102,16 @@ export default function DashboardLayout({
         setCompanyName(nextCompanyName || "Company");
         setDisplayName(nextName);
         setAvatarUrl(profile.avatar_url ?? null);
+
+        // Count pending applications from the canonical job_applications table
+        const { count } = await supabase
+          .from("job_applications")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "applied");
+
+        setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
       } catch (err) {
+        setApplicantsBadge(null);
         // swallow
       }
     };
@@ -124,9 +137,9 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-surface-bg text-text-main">
-      {/* Top Navigation Bar */}
-      <header className="fixed top-0 left-0 w-full h-[56px] bg-brand-navy flex items-center justify-between px-6 z-50 no-shadow">
+    <div className="min-h-screen flex flex-col bg-surface-bg text-text-main">
+      {/* Top Navigation Header (Full Width) */}
+      <header className="h-[56px] w-full bg-brand-navy text-white flex items-center justify-between px-6 z-20 shrink-0 no-shadow">
         <div className="flex items-center gap-3">
           <Link href="/hr" className="font-bold text-xl text-white tracking-tight hover:opacity-90 transition-opacity">
             Kayod
@@ -138,27 +151,9 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        {/* Global Search Bar */}
-        <div className="flex-1 max-w-md mx-8 hidden md:block relative">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/50 text-[18px]">
-            search
-          </span>
-          <input
-            type="text"
-            placeholder="Search anything..."
-            className="w-full bg-brand-navy-light text-white placeholder-white/50 text-xs rounded-lg pl-9 pr-4 py-2 border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 transition-all"
-          />
-        </div>
-
+        {/* Right Navigation & Profile Area */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="p-2 text-white/80 hover:bg-white/10 rounded-full relative transition-colors"
-            title="Notifications"
-          >
-            <span className="material-symbols-outlined text-[20px]">notifications</span>
-            <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
-          </button>
+          <NotificationBell />
           <button
             type="button"
             className="p-2 text-white/80 hover:bg-white/10 rounded-full transition-colors"
@@ -211,6 +206,13 @@ export default function DashboardLayout({
                       My Profile
                     </Link>
                     <Link
+                      href="/hr/settings/branches"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-bg text-text-main transition-colors text-left"
+                    >
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">storefront</span>
+                      Office Branches
+                    </Link>
+                    <Link
                       href="/hr/profile"
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium rounded-lg hover:bg-surface-bg text-text-main transition-colors text-left"
                     >
@@ -234,77 +236,88 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      {/* Side Navigation Bar */}
-      <aside className="fixed left-0 top-[56px] w-[220px] h-[calc(100vh-56px)] bg-card-bg border-r border-border flex flex-col z-40">
-        <nav className="flex-1 py-3 space-y-0.5">
-          {navItems.map((item) => {
-            const active = isActive(item);
+      {/* Main Body Shell */}
+      <div className="flex flex-1 w-full relative overflow-hidden">
+        {/* Left Sidebar */}
+        <aside className="w-[220px] shrink-0 border-r border-border bg-card-bg flex flex-col justify-between p-4 z-10">
+          <nav className="flex-1 space-y-0.5">
+            {navItems.map((item) => {
+              const active = isActive(item);
+              const badge = item.label === "Applicants" ? applicantsBadge : item.badge;
 
-            if (active) {
+              if (active) {
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="bg-primary-light text-primary-dark font-semibold rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </div>
+                    {badge ? (
+                      <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                        {badge}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+              }
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="bg-primary-light text-primary-dark font-semibold rounded-lg mx-2 my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
+                  className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                    <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
+                      {item.icon}
+                    </span>
                     <span>{item.label}</span>
                   </div>
-                  {item.badge ? (
-                    <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                      {item.badge}
+                  {badge ? (
+                    <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      {badge}
                     </span>
                   ) : null}
                 </Link>
               );
-            }
+            })}
+          </nav>
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg mx-2 my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
-                    {item.icon}
-                  </span>
-                  <span>{item.label}</span>
-                </div>
-                {item.badge ? (
-                  <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </Link>
-            );
-          })}
-        </nav>
+          {/* Pinned Bottom Items: Support & Settings */}
+          <div className="pt-2 border-t border-border space-y-0.5 shrink-0 z-10">
+            <Link
+              href="/support"
+              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">contact_support</span>
+              <span>Support</span>
+            </Link>
+            <Link
+              href="/hr/settings/branches"
+              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">storefront</span>
+              <span>Office Branches</span>
+            </Link>
+            <Link
+              href="/hr/profile"
+              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">settings</span>
+              <span>Settings</span>
+            </Link>
+          </div>
+        </aside>
 
-        {/* Pinned Bottom Items: Support & Settings */}
-        <div className="p-2 border-t border-border space-y-0.5">
-          <Link
-            href="/support"
-            className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
-          >
-            <span className="material-symbols-outlined text-[20px]">contact_support</span>
-            <span>Support</span>
-          </Link>
-          <Link
-            href="/hr/profile"
-            className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
-          >
-            <span className="material-symbols-outlined text-[20px]">settings</span>
-            <span>Settings</span>
-          </Link>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="ml-[220px] pt-[56px] min-h-screen bg-surface-bg">
-        {children}
-      </main>
+        {/* Main Content Area */}
+        <main className="flex-1 w-full min-w-0 p-8 overflow-y-auto bg-surface-bg">
+          {children}
+        </main>
+      </div>
     </div>
   );
-}
+}

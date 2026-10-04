@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
+import { updateApplicationStatus as updateApplicationStatusAction } from "./hr-applications-actions";
 
 type CandidateProfile = {
   id: string;
@@ -27,8 +29,9 @@ export type PipelineStageKey = "new" | "screening" | "interview" | "offer" | "re
 
 export type ApplicationHubCard = {
   id: string;
-  job_posting_id: string;
-  candidate_id: string;
+  job_id: string;
+  candidate_id?: string;
+  applicant_id?: string;
   resume_id: string;
   status: string;
   cover_letter: string | null;
@@ -36,8 +39,12 @@ export type ApplicationHubCard = {
   hr_notes: string | null;
   submitted_at: string;
   updated_at: string;
-  profiles: CandidateProfile | CandidateProfile[] | null;
-  job_postings: JobPostingSummary | JobPostingSummary[] | null;
+  // Supabase .select('*, candidate:profiles(*), job:job_postings(*)')
+  candidate?: CandidateProfile | CandidateProfile[] | null;
+  job?: JobPostingSummary | JobPostingSummary[] | null;
+  // Legacy fallback shape
+  profiles?: CandidateProfile | CandidateProfile[] | null;
+  job_postings?: JobPostingSummary | JobPostingSummary[] | null;
 };
 
 type ApplicationsKanbanBoardProps = {
@@ -95,19 +102,24 @@ const PIPELINE_STAGES: StageConfig[] = [
 const ACTIVE_STAGE_SEQUENCE: PipelineStageKey[] = ["new", "screening", "interview", "offer"];
 
 const NEXT_STATUS_BY_STAGE: Record<Exclude<PipelineStageKey, "rejected">, string | null> = {
-  new: "under_review",
-  screening: "interview_scheduled",
-  interview: "offer_sent",
+  new: "screening",
+  screening: "interview",
+  interview: "offer",
   offer: null,
 };
 
 const STAGE_BY_STATUS: Record<string, PipelineStageKey | null> = {
+  applied: "new",
   draft: "new",
   submitted: "new",
+  screening: "screening",
   under_review: "screening",
   shortlisted: "screening",
+  interview: "interview",
+  interviewing: "interview",
   interview_scheduled: "interview",
   interviewed: "interview",
+  offer: "offer",
   negotiating: "offer",
   offer_sent: "offer",
   offer_accepted: "offer",
@@ -128,6 +140,32 @@ function normalizeRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
+/**
+ * Resolves the CandidateProfile from an ApplicationHubCard.
+ * The HR query uses aliases: candidate:profiles(*) and job:job_postings(*)
+ * so we check both the aliased and legacy property names.
+ */
+function resolveProfile(application: ApplicationHubCard | null | undefined): CandidateProfile | null {
+  if (!application) return null;
+  return (
+    normalizeRelation(application.candidate) ??
+    normalizeRelation(application.profiles) ??
+    null
+  );
+}
+
+/**
+ * Resolves the JobPostingSummary from an ApplicationHubCard.
+ */
+function resolveJob(application: ApplicationHubCard | null | undefined): JobPostingSummary | null {
+  if (!application) return null;
+  return (
+    normalizeRelation(application.job) ??
+    normalizeRelation(application.job_postings) ??
+    null
+  );
+}
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -136,6 +174,10 @@ function getApplicantName(profile: CandidateProfile | null): string {
   if (!profile) {
     return "Unknown Candidate";
   }
+
+  // Support full_name field if present
+  const fullNameField = normalizeText((profile as any).full_name);
+  if (fullNameField) return fullNameField;
 
   const fullName = [normalizeText(profile.first_name), normalizeText(profile.last_name)]
     .filter(Boolean)
@@ -259,13 +301,13 @@ function mergeRealtimeApplication(
 }
 
 function getCandidateLocation(application: ApplicationHubCard): string {
-  const profile = normalizeRelation(application.profiles);
-  const jobPosting = normalizeRelation(application.job_postings);
+  const profile = resolveProfile(application);
+  const jobPosting = resolveJob(application);
   return profile?.city?.trim() || jobPosting?.location?.trim() || "Remote";
 }
 
 function getRoleTitle(application: ApplicationHubCard): string {
-  const jobPosting = normalizeRelation(application.job_postings);
+  const jobPosting = resolveJob(application);
   return jobPosting?.title?.trim() || "Untitled role";
 }
 
@@ -301,7 +343,7 @@ function ApplicationCard({
   onPrimaryAction: (application: ApplicationHubCard) => void;
   onSchedule: (application: ApplicationHubCard) => void;
 }) {
-  const profile = normalizeRelation(application.profiles);
+  const profile = resolveProfile(application);
   const stageKey = getStageKeyFromStatus(application.status) ?? "new";
   const actionLabel = getPrimaryActionLabel(stageKey);
   const score = application.match_score !== null ? Math.round(Number(application.match_score)) : null;
@@ -345,7 +387,7 @@ function ApplicationCard({
 
       <div className="flex items-center justify-between text-[10px] font-semibold text-text-muted border-t border-border/40 pt-2 uppercase tracking-wider">
         <span>{getStageLabel(stageKey)}</span>
-        <span>{normalizeRelation(application.job_postings)?.tenant_id ? "Tenant scoped" : "Active pipeline"}</span>
+        <span>{normalizeRelation(application.job ?? application.job_postings)?.tenant_id ? "Tenant scoped" : "Active pipeline"}</span>
       </div>
 
       <button
@@ -434,8 +476,8 @@ function ApplicationDrawer({
   onAdvance: (applicationId: string) => void;
   onOpenFullApplication: (applicationId: string) => void;
 }) {
-  const profile = normalizeRelation(application?.profiles);
-  const jobPosting = normalizeRelation(application?.job_postings);
+  const profile = resolveProfile(application);
+  const jobPosting = resolveJob(application);
   const stageKey = application ? (getStageKeyFromStatus(application.status) ?? "new") : "new";
   const nextStatus = getNextStatus(stageKey);
   const matchScore = application?.match_score !== null && application?.match_score !== undefined
@@ -653,7 +695,7 @@ export default function ApplicationsKanbanBoard({
 
     let isMounted = true;
     const supabase = createClient();
-    const applicationFilter = `job_posting_id=in.(${tenantJobIds.join(",")})`;
+    const applicationFilter = `job_id=in.(${tenantJobIds.join(",")})`;
 
     const channel = supabase
       .channel(`application-hub-${currentCompanyId}`)
@@ -662,10 +704,11 @@ export default function ApplicationsKanbanBoard({
         {
           event: "*",
           schema: "public",
-          table: "applications",
+          table: "job_applications",
           filter: applicationFilter,
         },
         async (payload: any) => {
+          console.log("DIAG [4] Realtime Payload Received:", payload);
           if (!isMounted) {
             return;
           }
@@ -689,11 +732,11 @@ export default function ApplicationsKanbanBoard({
 
           if (eventType === "INSERT") {
             const { data: inserted } = await supabase
-              .from("applications")
+              .from("job_applications")
               .select(`
                 id,
-                job_posting_id,
-                candidate_id,
+                job_id,
+                applicant_id,
                 resume_id,
                 status,
                 cover_letter,
@@ -701,11 +744,10 @@ export default function ApplicationsKanbanBoard({
                 hr_notes,
                 submitted_at,
                 updated_at,
-                profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
-                job_postings!inner ( id, title, location, tenant_id )
+                candidate:profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),
+                job:job_postings ( id, title, location, tenant_id )
               `)
               .eq("id", changedId)
-              .eq("job_postings.tenant_id", currentCompanyId)
               .maybeSingle();
 
             const insertedRow = inserted as ApplicationHubCard | null;
@@ -713,7 +755,12 @@ export default function ApplicationsKanbanBoard({
               return;
             }
 
+            toast.info("🎉 New Application Received!", {
+              description: "A candidate just applied to an open position.",
+            });
+
             setApplications((prev) => mergeRealtimeApplication(prev, insertedRow));
+            router.refresh();
             return;
           }
 
@@ -798,23 +845,21 @@ export default function ApplicationsKanbanBoard({
       ),
     );
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("applications")
-      .update({
-        status: nextStatus,
-        updated_at: nextTimestamp,
-      })
-      .eq("id", applicationId)
-      .in("job_posting_id", tenantJobIds);
+    const formData = new FormData();
+    formData.set("application_id", applicationId);
+    formData.set("status", nextStatus);
 
-    setIsSavingId(null);
-
-    if (error) {
-      console.error("Failed to update application status:", error.message);
+    try {
+      await updateApplicationStatusAction(formData);
+    } catch (error) {
+      console.error("Failed to update application status:", error);
+      toast.error("Failed to update candidate stage.");
       setApplications(previousState);
+      setIsSavingId(null);
       return;
     }
+
+    setIsSavingId(null);
 
     if (options?.closeDrawer) {
       setSelectedApplicationId(null);
@@ -847,7 +892,7 @@ export default function ApplicationsKanbanBoard({
   };
 
   const handleScheduleInterview = (application: ApplicationHubCard) => {
-    router.push(`/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`);
+    router.push(`/hr/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`);
   };
 
   const handleRejectApplication = async (applicationId: string) => {

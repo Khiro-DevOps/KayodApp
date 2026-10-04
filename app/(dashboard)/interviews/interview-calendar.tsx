@@ -62,20 +62,15 @@ export function InterviewCalendar({ interviews }: Props) {
 
   function handleScheduleFromModal() {
     if (!selectedDate) return;
-    // Format as YYYY-MM-DD for the URL
-    const yyyy = selectedDate.getFullYear();
-    const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
-    const dd = String(selectedDate.getDate()).padStart(2, "0");
-    const dateStr = `${yyyy}-${mm}-${dd}`;
     setModalOpen(false);
-    router.push(`/interviews/schedule?date=${dateStr}`);
+    router.push("/hr/interviews");
   }
 
   const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
 
   return (
     <>
-      <div className="rounded-2xl bg-surface border border-border p-4 space-y-3">
+      <div className="w-full rounded-2xl bg-surface border border-border p-4 space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-text-primary">

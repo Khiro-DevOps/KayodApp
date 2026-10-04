@@ -1,3 +1,5 @@
+import { createClient } from "@/lib/supabase/client";
+
 type DashboardHeaderProps = {
   companyName: string;
   displayName: string;
@@ -21,8 +23,11 @@ export default function DashboardHeader({
   const initials = getInitials(displayName);
 
   // 🚪 DESTROY SESSION AND FORCE LOGOUT
-  const handleLogout = () => {
+  const handleLogout = async () => {
     console.log("Terminating session and logging out...");
+
+    const supabase = createClient();
+    await supabase.auth.signOut();
 
     // 1. Clear storage mechanisms
     localStorage.clear();

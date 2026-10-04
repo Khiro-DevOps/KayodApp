@@ -36,10 +36,10 @@ export default async function HRNotificationsPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="font-h1 text-xl font-bold text-text-main">
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
               HR Notifications
             </h1>
             <p className="text-xs text-text-muted">
@@ -54,7 +54,7 @@ export default async function HRNotificationsPage() {
         </div>
 
         {!notifications || notifications.length === 0 ? (
-          <div className="rounded-xl bg-card-bg border border-dashed border-border p-6 text-center space-y-2 shadow-xs">
+          <div className="space-y-2 rounded-xl border border-dashed border-border bg-card-bg p-10 text-center shadow-sm">
             <p className="text-sm text-text-muted">No HR notifications yet</p>
             <p className="text-xs text-text-muted">
               You&apos;ll receive updates when applicants submit forms, book interviews, or accept job offers.

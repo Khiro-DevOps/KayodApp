@@ -86,16 +86,16 @@ export default async function SignedDocumentsPage() {
   if (ownedJobPostingIds.length === 0) {
     return (
       <PageContainer>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
-            <h1 className="font-h1 text-xl font-bold text-text-main">
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
               Signed Documents
             </h1>
             <p className="text-sm text-text-muted">
               Review signed offer letters before confirming hires.
             </p>
           </div>
-          <div className="rounded-xl border border-dashed border-border bg-card-bg p-8 text-center shadow-xs">
+          <div className="rounded-xl border border-dashed border-border bg-card-bg p-10 text-center shadow-sm">
             <p className="text-sm font-medium text-text-main">No job postings found</p>
             <p className="mt-1 text-sm text-text-muted">
               Create a job posting first so signed contracts appear here.

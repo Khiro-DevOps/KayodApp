@@ -36,18 +36,18 @@ export default async function PayrollPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
+      <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-bg transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
               <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
             </svg>
           </Link>
-          <h1 className="font-h1 text-xl font-bold text-text-main">My payslips</h1>
+          <h1 className="font-h1 text-2xl font-bold text-text-main">My payslips</h1>
         </div>
         <div className="space-y-3">
           {!payslips || payslips.length === 0 ? (
-            <div className="rounded-xl bg-card-bg border border-dashed border-border p-6 text-center shadow-xs">
+            <div className="rounded-xl border border-dashed border-border bg-card-bg p-10 text-center shadow-sm">
               <p className="text-sm text-text-muted">No payslips yet</p>
             </div>
           ) : (
@@ -68,7 +68,7 @@ function PayslipCard({ slip }: { slip: Payslip }) {
   };
 
   return (
-    <div className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs">
+    <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-text-main">

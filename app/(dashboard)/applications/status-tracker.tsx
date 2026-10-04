@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { ApplicationStatus, Interview } from "@/lib/types";
-import { isActiveInterview } from "@/lib/interviews";
+import { isActiveInterview } from "@/lib/interview-utils";
 
 interface StatusTrackerProps {
   status: ApplicationStatus;

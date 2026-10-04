@@ -9,57 +9,79 @@ export async function submitApplication(formData: FormData) {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    return { success: false, error: "Unauthorized. Please log in." };
+  }
 
   const jobId = formData.get("job_id") as string;
   const resumeId = formData.get("resume_id") as string;
   const coverLetter = formData.get("cover_letter") as string;
 
   if (!jobId || !resumeId) {
-    redirect(`/jobs/${jobId}/apply?error=Missing+required+fields`);
+    return { success: false, error: "Missing required fields" };
   }
 
-// Verify job exists, is published, and not yet closed
-const { data: job } = await supabase
-  .from("job_postings")
-  .select("id, tenant_id, is_published, closes_at")
-  .eq("id", jobId)
-  .eq("is_published", true)
-  .maybeSingle();
+  // 1. Fetch the target job record first to obtain its tenant_id
+  const { data: job } = await supabase
+    .from("job_postings")
+    .select("id, tenant_id, is_published, closes_at")
+    .eq("id", jobId)
+    .single();
 
-if (!job) {
-  redirect(`/jobs/${jobId}/apply?error=Job+not+found`);
-}
+  if (!job) {
+    return { success: false, error: "Job not found" };
+  }
 
-if (job.closes_at && new Date(job.closes_at) < new Date()) {
-  redirect(`/jobs/${jobId}/apply?error=Job+posting+has+closed`);
-}
+  if (job.closes_at && new Date(job.closes_at) < new Date()) {
+    return { success: false, error: "Job posting has closed" };
+  }
 
   // Check if already applied
-  const { data: existing } = await supabase
+  const { data: existingJA } = await supabase
+    .from("job_applications")
+    .select("id")
+    .eq("applicant_id", user.id)
+    .eq("job_id", jobId)
+    .maybeSingle();
+
+  if (existingJA) {
+    return { success: false, error: "Already applied", alreadyApplied: true };
+  }
+
+  const { data: existingApp } = await supabase
     .from("applications")
     .select("id")
     .eq("candidate_id", user.id)
     .eq("job_posting_id", jobId)
     .maybeSingle();
 
-  if (existing) {
-    redirect(`/jobs/${jobId}?already_applied=true`);
+  if (existingApp) {
+    return { success: false, error: "Already applied", alreadyApplied: true };
   }
 
-  const { data: selectedResume } = await supabase
-    .from("resumes")
-    .select("id, candidate_id, pdf_url")
-    .eq("id", resumeId)
-    .eq("candidate_id", user.id)
-    .maybeSingle();
+  // Primary insertion into `job_applications`
+  const now = new Date().toISOString();
+  const { data: createdJA, error: jaError } = await supabase
+    .from("job_applications")
+    .insert({
+      applicant_id: user.id,
+      job_id: jobId,
+      resume_id: resumeId,
+      cover_letter: coverLetter || null,
+      status: "applied",
+      created_at: now,
+      status_updated_at: now,
+    })
+    .select("id")
+    .single();
 
-  if (!selectedResume) {
-    redirect(`/jobs/${jobId}/apply?error=Selected+resume+not+found`);
+  if (jaError || !createdJA) {
+    console.error("Job application submission error:", jaError);
+    return { success: false, error: jaError?.message || "Failed to submit application" };
   }
 
-  // Create application
-  const { data: createdApplication, error } = await supabase
+  // Legacy table insertion for backward compatibility (applications uses job_posting_id)
+  const { data: createdApplication, error: appError } = await supabase
     .from("applications")
     .insert({
       candidate_id: user.id,
@@ -67,24 +89,28 @@ if (job.closes_at && new Date(job.closes_at) < new Date()) {
       resume_id: resumeId,
       cover_letter: coverLetter || null,
       status: "applied",
-      submitted_at: new Date().toISOString(),
+      submitted_at: now,
     })
     .select("id")
     .single();
 
-  if (error || !createdApplication) {
-    console.error("Application submission error:", error);
-    redirect(`/jobs/${jobId}/apply?error=Failed+to+submit+application`);
+  if (appError) {
+    console.warn("Legacy applications table insert error (non-fatal):", appError.message);
   }
 
+  const targetAppId = createdApplication?.id || createdJA.id;
   try {
-    await computeAndStoreMatchScore(createdApplication.id);
+    await computeAndStoreMatchScore(targetAppId);
   } catch (recomputeError) {
     console.warn("Match score computation failed:", recomputeError);
   }
 
-  revalidatePath("/applications");
-  redirect(`/jobs/${jobId}?applied=true`);
+  // 4. Revalidate paths immediately
+  revalidatePath("/applicant/applications");
+  revalidatePath("/hr/applicants");
+  revalidatePath("/applicant/jobs");
+
+  return { success: true };
 }
 
 export async function withdrawApplication(formData: FormData) {

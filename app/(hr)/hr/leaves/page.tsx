@@ -69,11 +69,11 @@ export default async function HRLeavesPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-6">
+      <div className="space-y-7">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="border-b border-border pb-5">
           <div>
-            <h1 className="font-h1 text-xl font-bold text-text-main">
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
               Leave Requests
             </h1>
             <p className="text-sm text-text-muted">
@@ -83,16 +83,16 @@ export default async function HRLeavesPage() {
         </div>
 
         {/* Metrics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl bg-card-bg border border-border p-4 shadow-xs">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
             <p className="text-xs text-text-muted">Pending Approval</p>
             <p className="text-2xl font-bold text-warning mt-1">{pendingRequests.length}</p>
           </div>
-          <div className="rounded-xl bg-card-bg border border-border p-4 shadow-xs">
+          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
             <p className="text-xs text-text-muted">Approved Leaves</p>
             <p className="text-2xl font-bold text-success mt-1">{approvedCount}</p>
           </div>
-          <div className="rounded-xl bg-card-bg border border-border p-4 shadow-xs">
+          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
             <p className="text-xs text-text-muted">Total Processed</p>
             <p className="text-2xl font-bold text-text-main mt-1">{leaveRequests.length}</p>
           </div>
@@ -121,7 +121,7 @@ export default async function HRLeavesPage() {
                   : "Employee";
 
                 return (
-                  <div key={req.id} className="rounded-xl bg-card-bg border border-border p-5 space-y-4 shadow-xs">
+                    <div key={req.id} className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-primary-light text-primary-dark flex items-center justify-center font-bold text-sm">
@@ -209,7 +209,7 @@ export default async function HRLeavesPage() {
               <p className="text-sm text-text-muted">No leave history recorded yet.</p>
             </div>
           ) : (
-            <div className="rounded-xl bg-card-bg border border-border overflow-hidden divide-y divide-border shadow-xs">
+            <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card-bg shadow-sm">
               {reviewedRequests.map((req) => {
                 const empName = req.employees?.profiles
                   ? `${req.employees.profiles.first_name ?? ""} ${req.employees.profiles.last_name ?? ""}`.trim()

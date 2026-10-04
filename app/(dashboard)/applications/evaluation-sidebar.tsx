@@ -787,7 +787,7 @@ export default function EvaluationSidebar({
             Schedule after the candidate confirms their format selection.
           </p>
           <a
-            href={`/interviews/schedule?applicationId=${application.id}`}
+            href={`/hr/interviews/schedule?applicationId=${application.id}`}
             className="block w-full rounded-lg bg-purple-500 px-4 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-purple-600"
           >
             Open Scheduling

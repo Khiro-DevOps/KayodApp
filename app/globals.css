@@ -134,7 +134,7 @@ body {
 html {
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: #7c7aac #f3efff;
+  scrollbar-color: var(--color-primary, #595198) transparent;
 }
 
 body {
@@ -145,27 +145,26 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: linear-gradient(180deg, #f8f6ff 0%, #f3efff 100%);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #7c7aac 0%, #4a4880 100%);
-  border: 3px solid #f8f6ff;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: var(--color-primary, #595198);
+  border-radius: 9999px;
+  border: 1px solid transparent;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #8f8cc0 0%, #5a568d 100%);
+  background: var(--color-primary-hover, #4a4382);
 }
 
 ::-webkit-scrollbar-corner {
-  background: #f8f6ff;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-button {
@@ -176,28 +175,26 @@ body {
 
 .modern-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #7c7aac #f3efff;
+  scrollbar-color: var(--color-primary, #595198) transparent;
   scrollbar-gutter: stable;
 }
 
 .modern-scrollbar::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 7px;
+  height: 7px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-track {
-  background: linear-gradient(180deg, #f8f6ff 0%, #f3efff 100%);
+  background: transparent;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #7c7aac 0%, #4a4880 100%);
-  border: 3px solid #f8f6ff;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: var(--color-primary, #595198);
+  border-radius: 9999px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #8f8cc0 0%, #5a568d 100%);
+  background: var(--color-primary-hover, #4a4382);
 }
 
 .modern-scrollbar::-webkit-scrollbar-button:vertical:decrement,
@@ -207,6 +204,29 @@ body {
   width: 0;
   height: 0;
   display: none;
+}
+
+.modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary, #595198) transparent;
+}
+
+.modal-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.modal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-primary, #595198) !important;
+  border-radius: 9999px !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover, #4a4382) !important;
 }
 
 .custom-scrollbar {

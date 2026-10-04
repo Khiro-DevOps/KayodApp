@@ -24,6 +24,11 @@ export default async function NewJobPage() {
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
+  const { data: workLocations } = await supabase
+    .from("office_branches")
+    .select("*")
+    .order("name", { ascending: true });
+
   return (
     <JobForm
       action={createJob}
@@ -32,6 +37,7 @@ export default async function NewJobPage() {
       backHref="/jobs/manage"
       initialDocuments={DEFAULT_REQUIRED_DOCUMENTS}
       showOfferLetterSettings
+      workLocations={workLocations ?? []}
     />
   );
 }

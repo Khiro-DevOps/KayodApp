@@ -1,14 +1,15 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
 import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createDocusealSubmission } from "@/lib/docuseal";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
 
-function createWebrtcRoom(applicationId: string) {
-  const roomName = `kayod-interview-${applicationId.slice(0, 8)}-${Date.now()}`;
+function createWebrtcRoom() {
+  const roomName = `kayod-interview-${crypto.randomUUID()}`;
 
   return {
     // Local application path for joining (used in notifications). The real join uses the room name for signaling.
@@ -24,6 +25,18 @@ export async function scheduleInterviewProposal(formData: FormData) {
   if (!user) {
     return { success: false, error: "Not authenticated" };
   }
+
+  const { data: actor } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!actor || !["hr", "hr_manager", "admin"].includes(String(actor.role))) {
+    return { success: false, error: "HR permissions required" };
+  }
+
+  const supabaseAdmin = getAdminClient();
 
   const rawApplicationId = String(
     formData.get("application_id") ??
@@ -62,54 +75,21 @@ export async function scheduleInterviewProposal(formData: FormData) {
   try {
     type ResolvedApplication = {
       id: string;
-      candidate_id: string;
-      status?: string | null;
-      selected_mode?: InterviewType | null;
-      job_posting_id?: string | null;
-      job_listing_id?: string | null;
+      applicant_id: string;
+      job_id: string;
     };
 
-    let application: ResolvedApplication | null = null;
-
-    const { data: byApplicationId, error: byApplicationIdError } = await supabase
-      .from("applications")
-      .select("*")
+    const { data: application, error: applicationError } = await supabaseAdmin
+      .from("job_applications")
+      .select("id, job_id, applicant_id")
       .eq("id", rawApplicationId)
       .maybeSingle();
 
-    if (byApplicationIdError) {
-      throw byApplicationIdError;
+    if (applicationError) {
+      throw applicationError;
     }
 
-    application = (byApplicationId as ResolvedApplication | null) ?? null;
-
-    const matchesJob = (app: ResolvedApplication | null) => {
-      if (!app) return false;
-      const appJobId = app.job_posting_id ?? app.job_listing_id ?? null;
-      return appJobId === jobId;
-    };
-
-    if (application && !matchesJob(application)) {
-      application = null;
-    }
-
-    if (!application) {
-      const { data: byCandidateId, error: byCandidateIdError } = await supabase
-        .from("applications")
-        .select("*")
-        .eq("candidate_id", rawApplicationId)
-        .order("submitted_at", { ascending: false })
-        .limit(25);
-
-      if (byCandidateIdError) {
-        throw byCandidateIdError;
-      }
-
-      application =
-        ((byCandidateId as ResolvedApplication[] | null) ?? []).find((app) => matchesJob(app)) ?? null;
-    }
-
-    if (!application) {
+    if (!application || application.job_id !== jobId) {
       return {
         success: false,
         error: "Application not found for this job. Refresh the page and try again.",
@@ -118,31 +98,20 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
     const applicationId = application.id;
 
-    if (String(application.status ?? "").toUpperCase() === "COMPLETED") {
-      return {
-        success: false,
-        error: "This application is marked as completed. Rescheduling is locked.",
-      };
-    }
-
-    const { data: app } = await supabase
-      .from("applications")
-      .select("job_postings(title)")
-      .eq("id", applicationId)
+    const { data: app } = await supabaseAdmin
+      .from("job_postings")
+      .select("title")
+      .eq("id", application.job_id)
       .single();
 
-    const jobTitle = (app?.job_postings as any)?.title || "the position";
+    const jobTitle = app?.title || "the position";
 
-    const selectedMode = application.selected_mode ?? null;
-    const interviewType: InterviewType =
-      selectedMode && offeredModes.includes(selectedMode)
-        ? selectedMode
-        : offeredModes[0];
+    const interviewType: InterviewType = offeredModes[0];
 
     const hrOfficeAddress = offeredModes.includes("in_person") ? locationDetails : null;
 
-    const { error: appUpdateError } = await supabase
-      .from("applications")
+    const { error: appUpdateError } = await supabaseAdmin
+      .from("job_applications")
       .update({
         hr_offered_modes: offeredModes,
         hr_office_address: hrOfficeAddress,
@@ -155,8 +124,8 @@ export async function scheduleInterviewProposal(formData: FormData) {
         /column/i.test(appUpdateError.message || "");
 
       if (isMissingColumn) {
-        const { error: fallbackAppUpdateError } = await supabase
-          .from("applications")
+        const { error: fallbackAppUpdateError } = await supabaseAdmin
+          .from("job_applications")
           .update({ updated_at: new Date().toISOString() })
           .eq("id", applicationId);
 
@@ -168,26 +137,22 @@ export async function scheduleInterviewProposal(formData: FormData) {
       }
     }
 
-    let meetingLink: string | null = null;
-    let meetingRoomName: string | null = null;
-
-    if (interviewType === "online") {
-      const room = createWebrtcRoom(applicationId);
-      meetingLink = room.url;
-      meetingRoomName = room.name;
-    }
+    const scheduledAtTimestamp = new Date(scheduledAt).toISOString();
+    const room = createWebrtcRoom();
+    const meetingLink = interviewType === "online" ? room.url : null;
+    const meetingRoomName = room.name;
 
     const payload = {
-      applicant_id: applicationId,
+      applicant_id: application.applicant_id,
       type: interviewType,
-      scheduled_at: new Date(scheduledAt).toISOString(),
+      scheduled_at: scheduledAtTimestamp,
       duration_minutes: durationMinutes,
-      meeting_link: interviewType === "online" ? meetingLink : null,
+      meeting_link: meetingLink,
       location: interviewType === "in_person" ? hrOfficeAddress : null,
     };
 
-    const { data: existingInterview } = await supabase
-      .from("interviews")
+    const { data: existingInterview } = await supabaseAdmin
+      .from("interview_schedules")
       .select("id, status")
       .eq("application_id", applicationId)
       .maybeSingle();
@@ -197,24 +162,20 @@ export async function scheduleInterviewProposal(formData: FormData) {
     const backgroundTasks: Promise<unknown>[] = [];
 
     if (existingInterview) {
-      const { data, error } = await supabase
-        .from("interviews")
+      const { data, error } = await supabaseAdmin
+        .from("interview_schedules")
         .update({
           status: "scheduled",
           scheduled_at: payload.scheduled_at,
           duration_minutes: payload.duration_minutes,
-          timezone,
-          interview_type: interviewType,
-          location_address: payload.location,
-          location_notes: null,
-          video_room_url: payload.meeting_link,
-          video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "webrtc" : null,
-          interviewer_notes: notes?.trim() || null,
+          meeting_link: payload.meeting_link,
+          room_name: meetingRoomName,
+          video_provider: "webrtc",
+          interview_notes: notes?.trim() || "",
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingInterview.id)
-        .select("id, interview_type, scheduled_at")
+        .select("id, scheduled_at")
         .single();
 
       if (error) {
@@ -229,36 +190,35 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
       backgroundTasks.push(
         Promise.resolve(
-          supabase.from("notifications").insert({
-            recipient_id: application.candidate_id,
+          supabaseAdmin.from("notifications").insert({
+            recipient_id: application.applicant_id,
             type: "interview_rescheduled",
             title: "Interview Rescheduled 🔄",
             body: `Your interview for ${jobTitle} has been rescheduled. ${rescheduleTarget}`,
-            action_url: `/interviews`,
+            action_url: "/applicant/applications",
           })
         ).then(() => null).catch((err: unknown) => {
           console.error("Failed to insert rescheduled notification:", err);
         })
       );
     } else {
-      const { data, error } = await supabase
-        .from("interviews")
+      const { data, error } = await supabaseAdmin
+        .from("interview_schedules")
         .insert({
-          application_id: applicationId,
-          scheduled_by: user.id,
-          scheduled_at: payload.scheduled_at,
-          duration_minutes: payload.duration_minutes,
-          timezone,
-          interview_type: interviewType,
+          application_id: application.id,
+          job_id: application.job_id,
+          applicant_id: application.applicant_id,
+          interviewer_id: user.id,
+          proposed_slots: [],
+          scheduled_at: scheduledAtTimestamp,
+          duration_minutes: durationMinutes || 60,
           status: "scheduled",
-          location_address: payload.location,
-          location_notes: null,
-          video_room_url: payload.meeting_link,
-          video_room_name: meetingRoomName,
-          video_provider: interviewType === "online" ? "webrtc" : null,
-          interviewer_notes: notes?.trim() || null,
+          meeting_link: meetingLink,
+          video_provider: "webrtc",
+          room_name: meetingRoomName,
+          interview_notes: notes?.trim() || "",
         })
-        .select("id, interview_type, scheduled_at")
+        .select("id, scheduled_at")
         .single();
 
       if (error) {
@@ -275,12 +235,12 @@ export async function scheduleInterviewProposal(formData: FormData) {
 
       backgroundTasks.push(
         Promise.resolve(
-          supabase.from("notifications").insert({
-            recipient_id: application.candidate_id,
+          supabaseAdmin.from("notifications").insert({
+            recipient_id: application.applicant_id,
             type: "interview_scheduled",
-            title: "Interview Invitation 🎉",
+            title: "Interview Scheduled",
             body: `Your interview for ${jobTitle} is scheduled. ${invitationTarget}`,
-            action_url: `/interviews`,
+            action_url: "/applicant/applications",
           })
         ).then(() => null).catch((err: unknown) => {
           console.error("Failed to insert scheduled notification:", err);
@@ -288,9 +248,9 @@ export async function scheduleInterviewProposal(formData: FormData) {
       );
     }
 
-    await supabase
-      .from("applications")
-      .update({ status: "interview_scheduled" })
+    await supabaseAdmin
+      .from("job_applications")
+      .update({ status: "interview", status_updated_at: new Date().toISOString() })
       .eq("id", applicationId);
 
     try {
@@ -301,7 +261,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
     }
 
     try {
-      void Promise.allSettled(backgroundTasks);
+      await Promise.allSettled(backgroundTasks);
     } catch (err) {
       console.error("Background tasks scheduling failed:", err);
     }

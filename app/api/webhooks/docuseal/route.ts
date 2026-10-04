@@ -223,13 +223,84 @@ export async function POST(request: Request) {
       }
     }
 
+    // Extract base salary and schedule attributes from submission values if present
+    const rawValues = payload.data?.values;
+    let extractedSalary: number | null = null;
+    let extractedWorkModel: string | null = null;
+    let extractedHybridDays: string[] | null = null;
+    let extractedShiftStart: string | null = null;
+    let extractedShiftEnd: string | null = null;
+
+    const parseValue = (keys: string[]) => {
+      if (Array.isArray(rawValues)) {
+        const item = rawValues.find((v) => v && typeof v.field === "string" && keys.includes(v.field));
+        return item?.value != null ? String(item.value).trim() : null;
+      } else if (rawValues && typeof rawValues === "object") {
+        const vals = rawValues as Record<string, unknown>;
+        for (const key of keys) {
+          if (vals[key] != null) return String(vals[key]).trim();
+        }
+      }
+      return null;
+    };
+
+    const rawSalary = parseValue(["base_salary", "salary", "phMonthlyBasicSalary"]);
+    if (rawSalary) {
+      const parsed = Number(rawSalary.replace(/[^0-9.]/g, ""));
+      if (!isNaN(parsed) && parsed > 0) extractedSalary = parsed;
+    }
+
+    const rawModel = parseValue(["work_model", "work_arrangement", "workModel", "workArrangement"]);
+    if (rawModel) {
+      const norm = rawModel.toLowerCase();
+      if (norm.includes("hybrid")) extractedWorkModel = "hybrid";
+      else if (norm.includes("wfh") || norm.includes("remote")) extractedWorkModel = "wfh";
+      else if (norm.includes("onsite") || norm.includes("on-site")) extractedWorkModel = "onsite";
+    }
+
+    const rawHybridDays = parseValue(["hybrid_days", "hybrid_onsite_days", "hybridDays"]);
+    if (rawHybridDays) {
+      if (Array.isArray(rawHybridDays)) {
+        extractedHybridDays = (rawHybridDays as any[]).map((d) => String(d).trim()).filter(Boolean);
+      } else if (typeof rawHybridDays === "string") {
+        try {
+          const parsedJson = JSON.parse(rawHybridDays);
+          if (Array.isArray(parsedJson)) {
+            extractedHybridDays = parsedJson.map((d) => String(d).trim()).filter(Boolean);
+          } else {
+            extractedHybridDays = rawHybridDays.split(",").map((d) => d.trim()).filter(Boolean);
+          }
+        } catch {
+          extractedHybridDays = rawHybridDays.split(",").map((d) => d.trim()).filter(Boolean);
+        }
+      }
+    }
+
+    const rawShiftStart = parseValue(["shift_start", "shiftStart"]);
+    if (rawShiftStart) extractedShiftStart = rawShiftStart;
+
+    const rawShiftEnd = parseValue(["shift_end", "shiftEnd"]);
+    if (rawShiftEnd) extractedShiftEnd = rawShiftEnd;
+
     const offerToUpdate = jobOffer ?? linkedJobOffer;
     if (offerToUpdate) {
+      const existingMetadata = (offerToUpdate.metadata ?? (jobOffer as any)?.metadata ?? {}) as Record<string, unknown>;
+      const updatedMetadata = {
+        ...existingMetadata,
+        ...(extractedSalary != null ? { base_salary: extractedSalary } : {}),
+        ...(extractedWorkModel ? { work_model: extractedWorkModel } : {}),
+        ...(extractedHybridDays && extractedHybridDays.length > 0 ? { hybrid_onsite_days: extractedHybridDays } : {}),
+        ...(extractedShiftStart ? { shift_start: extractedShiftStart } : {}),
+        ...(extractedShiftEnd ? { shift_end: extractedShiftEnd } : {}),
+      };
+
       const { error: updateJobOfferError } = await admin
         .from("job_offers")
         .update({
           status: "SIGNED",
           latest_docuseal_url: offerToUpdate.latest_docuseal_url ?? payload.data?.submission?.url ?? null,
+          ...(extractedSalary != null ? { salary: extractedSalary } : {}),
+          metadata: updatedMetadata,
           updated_at: new Date().toISOString(),
         })
         .eq("id", offerToUpdate.id);

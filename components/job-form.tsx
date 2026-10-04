@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
 import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 import type { RequiredDocumentDraft } from "@/lib/pre-employment-actions";
 import PageContainer from "@/components/ui/page-container";
 import JobRequiredDocumentsEditor from "@/components/job-required-documents-editor";
 
-const WORK_SETUP_OPTIONS = [
+const WORK_MODE_OPTIONS = [
   { value: "onsite", label: "On-Site" },
   { value: "remote", label: "Remote" },
-  { value: "wfh", label: "WFH" },
   { value: "hybrid", label: "Hybrid" },
 ];
 
@@ -32,9 +32,12 @@ export type JobFormValues = {
   title?: string;
   industry?: string | null;
   jobCategory?: string | null;
-  workSetup?: string | null;
+  workMode?: string | null;
   employmentType?: string | null;
-  location?: string | null;
+  workLocationId?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  workDays?: string[] | null;
   salaryRange?: string | null;
   description?: string | null;
   requirements?: string | null;
@@ -58,6 +61,8 @@ export type JobFormValues = {
   phVacationLeaveDays?: number | string | null;
   phSickLeaveDays?: number | string | null;
   phHmoProvider?: string | null;
+  scheduleType?: "fixed" | "flexible" | "rotating" | null;
+  restDaysType?: "fixed" | "rotating" | "flexible" | null;
 };
 
 type JobFormProps = {
@@ -71,6 +76,7 @@ type JobFormProps = {
   initialDocuments?: RequiredDocumentDraft[];
   showOfferLetterSettings?: boolean;
   showPublicationStatus?: boolean;
+  workLocations?: any[];
 };
 
 function toCsvSkills(value?: string[] | string | null) {
@@ -92,7 +98,15 @@ export default function JobForm({
   initialDocuments = DEFAULT_REQUIRED_DOCUMENTS,
   showOfferLetterSettings = false,
   showPublicationStatus = false,
+  workLocations = [],
 }: JobFormProps) {
+  const [scheduleType, setScheduleType] = useState<"fixed" | "rotating">(
+    initialValues?.scheduleType === "rotating" || initialValues?.scheduleType === "flexible" ? "rotating" : "fixed"
+  );
+  const [restDaysType, setRestDaysType] = useState<string>(
+    initialValues?.restDaysType ?? "rotating"
+  );
+
   return (
     <PageContainer>
       <div className="space-y-6">
@@ -165,21 +179,41 @@ export default function JobForm({
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <label htmlFor="work_setup" className="text-sm font-medium text-text-primary">Work Setup *</label>
+                <label htmlFor="work_mode" className="text-sm font-medium text-text-primary">Work Mode *</label>
+                <div className="flex gap-4">
+                  {WORK_MODE_OPTIONS.map((option) => (
+                    <label key={option.value} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="work_mode"
+                        value={option.value}
+                        defaultChecked={initialValues?.workMode === option.value || (option.value === "onsite" && !initialValues?.workMode)}
+                        className="text-primary focus:ring-primary h-4 w-4 border-gray-300"
+                      />
+                      <span className="text-sm text-gray-700">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="work_location_id" className="text-sm font-medium text-text-primary">Office Branch *</label>
                 <select
-                  id="work_setup"
-                  name="work_setup"
+                  id="work_location_id"
+                  name="work_location_id"
                   required
-                  defaultValue={initialValues?.workSetup ?? ""}
+                  defaultValue={initialValues?.workLocationId ?? ""}
                   className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="" disabled>Select work setup</option>
-                  {WORK_SETUP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                  <option value="">Select Branch</option>
+                  {workLocations?.map((branch: any) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
                   ))}
                 </select>
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <label htmlFor="employment_type" className="text-sm font-medium text-text-primary">Employment Type *</label>
                 <select
@@ -195,24 +229,6 @@ export default function JobForm({
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label htmlFor="location" className="text-sm font-medium text-text-primary">Work Location *</label>
-                <select
-                  id="location"
-                  name="location"
-                  required
-                  defaultValue={initialValues?.location ?? ""}
-                  className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Select City</option>
-                  {PHILIPPINE_CITIES.map((city, index) => (
-                    <option key={`${city}-${index}`} value={city}>{city}</option>
-                  ))}
-                </select>
-              </div>
 
               <div className="space-y-1">
                 <label htmlFor="salary_range" className="text-sm font-medium text-text-primary">Salary Range (Monthly)</label>
@@ -225,6 +241,131 @@ export default function JobForm({
                   className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border bg-gray-50/50 p-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-text-primary">Schedule Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="schedule_type_radio"
+                      value="fixed"
+                      checked={scheduleType === "fixed"}
+                      onChange={() => setScheduleType("fixed")}
+                      className="text-primary focus:ring-primary h-4 w-4 border-gray-300"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Fixed Schedule</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="schedule_type_radio"
+                      value="rotating"
+                      checked={scheduleType === "rotating"}
+                      onChange={() => setScheduleType("rotating")}
+                      className="text-primary focus:ring-primary h-4 w-4 border-gray-300"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Rotating / Flexible Rest Days</span>
+                  </label>
+                </div>
+                <input type="hidden" name="schedule_type" value={scheduleType} />
+              </div>
+
+              {scheduleType === "fixed" ? (
+                <div className="space-y-3 border-t border-gray-200 pt-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Shift Start & End Time</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          name="shift_start"
+                          defaultValue={initialValues?.shiftStart ?? "09:00"}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                        <span className="text-sm text-gray-500">to</span>
+                        <input
+                          type="time"
+                          name="shift_end"
+                          defaultValue={initialValues?.shiftEnd ?? "18:00"}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Work Days</label>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                          <label key={day} className="flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              name="work_days"
+                              value={day}
+                              defaultChecked={initialValues?.workDays ? initialValues.workDays.includes(day) : (day !== "Sat" && day !== "Sun")}
+                              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+                            />
+                            <span className="text-xs text-gray-700">{day}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <input type="hidden" name="rest_days_type" value="fixed" />
+                </div>
+              ) : (
+                <div className="space-y-3 border-t border-gray-200 pt-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Shift Start & End Time</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          name="shift_start"
+                          defaultValue={initialValues?.shiftStart ?? "09:00"}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                        <span className="text-sm text-gray-500">to</span>
+                        <input
+                          type="time"
+                          name="shift_end"
+                          defaultValue={initialValues?.shiftEnd ?? "18:00"}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="work_days_count" className="text-xs font-medium text-gray-600">Work Days Count (per week)</label>
+                      <input
+                        id="work_days_count"
+                        name="work_days_count"
+                        type="number"
+                        min="1"
+                        max="7"
+                        defaultValue={initialValues?.workDays?.length ? initialValues.workDays.length : 5}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="rest_days_type" className="text-xs font-medium text-gray-600">Rest Days Policy</label>
+                      <select
+                        id="rest_days_type"
+                        name="rest_days_type"
+                        value={restDaysType}
+                        onChange={(e) => setRestDaysType(e.target.value)}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="rotating">Rotating Rest Days</option>
+                        <option value="flexible">Flexible / Roster-Based</option>
+                        <option value="manager_assigned">Manager Assigned</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">

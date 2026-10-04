@@ -75,6 +75,7 @@ export type NotificationType =
   | "leave_status_changed"
   | "payroll_processed"
   | "schedule_published"
+  | "welcome"
   | "general";
 
 export type WorkSetup = "onsite" | "remote" | "hybrid" | "wfh";
@@ -87,9 +88,11 @@ export type EmploymentType =
 
 export type EmploymentStatus =
   | "active"
+  | "onboarding"
   | "on_leave"
   | "suspended"
-  | "terminated";
+  | "terminated"
+  | "separated";
 
 export type PayFrequency =
   | "weekly"
@@ -184,6 +187,8 @@ export interface JobPosting {
   published_at: string | null;
   closes_at: string | null;
   required_skills: string[];
+  schedule_type?: 'fixed' | 'flexible' | 'rotating';
+  rest_days_type?: 'fixed' | 'rotating' | 'flexible';
   created_at: string;
   updated_at: string;
   departments?: Department;
@@ -314,8 +319,10 @@ export interface Employee {
   employment_type: EmploymentType;
   employment_status: EmploymentStatus;
   start_date: string;
+  probation_end_date?: string | null;
   end_date: string | null;
   base_salary: number;
+  salary?: number;
   pay_frequency: PayFrequency;
   currency: string;
   sss_number: string | null;
@@ -323,6 +330,12 @@ export interface Employee {
   pagibig_number: string | null;
   tin_number: string | null;
   work_location_id?: string | null;
+  work_mode?: "onsite" | "hybrid" | "remote";
+  work_model?: "onsite" | "wfh" | "hybrid";
+  hybrid_onsite_days?: string[];
+  shift_start?: string;
+  shift_end?: string;
+  work_days?: string[];
   created_at: string;
   updated_at: string;
   profiles?: Profile;
@@ -523,6 +536,52 @@ export interface JobOfferTerms {
   notes?: string;
 }
 
+export interface OfficeBranch {
+  id: string;
+  tenant_id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeRemoteResidence {
+  id: string;
+  employee_id: string;
+  tenant_id: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  geofence_radius_meters: number;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttendanceLog {
+  id: string;
+  employee_id: string;
+  tenant_id?: string;
+  clock_in?: string | null;
+  clock_out?: string | null;
+  status?: string | null;
+  verification_type?: string | null;
+  break_status?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy_meters?: number | null;
+  distance_meters?: number | null;
+  zone_status?: "onsite_verified" | "remote_verified" | "outside_zone" | "location_unverified" | null;
+  location_used?: "office_branch" | "remote_residence" | "unconfigured" | null;
+  flag_reason?: string | null;
+  server_timestamp?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface JobOffer {
   id: string;
   application_id: string;
@@ -539,6 +598,13 @@ export interface JobOffer {
   viewed_at: string | null;
   accepted_at: string | null;
   negotiation_round: number;
+  work_location_id?: string | null;
+  work_mode?: "onsite" | "remote" | "hybrid" | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  work_days?: string[] | null;
+  schedule_type?: 'fixed' | 'flexible' | 'rotating';
+  rest_days_type?: 'fixed' | 'rotating' | 'flexible';
   created_at: string;
   updated_at: string;
 }
@@ -579,3 +645,109 @@ export const JOB_OFFER_STATUS_COLORS: Record<JobOfferStatus, string> = {
   declined:    "bg-red-100 text-red-700",
   expired:     "bg-gray-100 text-gray-500",
 };
+
+// ============================================================
+// ONBOARDING DOCUMENTS TYPES (Sprint 2.5)
+// ============================================================
+
+export type OnboardingDocumentStatus = "pending" | "submitted" | "approved" | "rejected";
+
+export interface OnboardingDocumentRequirement {
+  id: string;
+  tenant_id: string;
+  document_code: string;
+  document_name: string;
+  description: string | null;
+  is_required: boolean;
+  created_at: string;
+}
+
+export interface EmployeeOnboardingDocument {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  requirement_id: string;
+  file_path: string;
+  file_name: string;
+  file_size_bytes: number | null;
+  mime_type: string | null;
+  status: OnboardingDocumentStatus;
+  rejection_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  requirement?: OnboardingDocumentRequirement;
+  reviewer?: Profile;
+}
+
+export interface OnboardingDocumentItem {
+  requirement: OnboardingDocumentRequirement;
+  document: EmployeeOnboardingDocument | null;
+  status: OnboardingDocumentStatus;
+}
+
+export interface EmployeeOnboardingProgress {
+  items: OnboardingDocumentItem[];
+  completionPercentage: number;
+  totalRequirements: number;
+  approvedCount: number;
+  counts: {
+    pending: number;
+    submitted: number;
+    approved: number;
+    rejected: number;
+  };
+  employee: Employee | null;
+}
+
+// ============================================================
+// EMPLOYEE PAYSLIPS TYPES (Sprint 2.6)
+// ============================================================
+
+export type PayslipRecordStatus = "draft" | "published";
+
+export interface EmployeePayslip {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  payroll_period_start: string;
+  payroll_period_end: string;
+  pay_date: string;
+  gross_pay: number;
+  basic_pay: number;
+  allowances: number;
+  overtime_pay: number;
+  sss_deduction: number;
+  philhealth_deduction: number;
+  pagibig_deduction: number;
+  withholding_tax: number;
+  other_deductions: number;
+  total_deductions: number;
+  net_pay: number;
+  status: PayslipRecordStatus;
+  pdf_storage_path: string | null;
+  created_at: string;
+  updated_at: string;
+  employees?: Employee;
+}
+
+export interface EmployeePayslipDetails {
+  payslip: EmployeePayslip;
+  breakdown: {
+    grossPay: number;
+    basicPay: number;
+    allowances: number;
+    overtimePay: number;
+    statutoryDeductions: {
+      sss: number;
+      philhealth: number;
+      pagibig: number;
+      withholdingTax: number;
+      other: number;
+      total: number;
+    };
+    netPay: number;
+  };
+}
+

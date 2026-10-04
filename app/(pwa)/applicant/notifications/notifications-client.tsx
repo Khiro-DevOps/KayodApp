@@ -56,7 +56,7 @@ export default function NotificationsClient({
       (notif.type === "interview_scheduled" || notif.type === "interview_rescheduled") &&
       /^\/interviews\/.+/.test(notif.action_url)
     ) {
-      return "/interviews";
+      return "/applicant/interviews";
     }
 
     return notif.action_url;

@@ -14,10 +14,11 @@ interface ClockInModuleProps {
   isOnLeave: boolean;
   profile: {
     work_setup?: string | null;
-    work_radius_m: number;
-    work_lat: number;
-    work_lng: number;
+    work_radius_m?: number | null;
+    work_lat?: number | null;
+    work_lng?: number | null;
     location_name?: string | null;
+    location_error?: string | null;
   };
   onClockIn?: (lat: number | null, lng: number | null, withinZone: boolean) => void;
 }
@@ -25,18 +26,37 @@ interface ClockInModuleProps {
 type ExecutionState = 'initializing' | 'secured' | 'violation' | 'blocked';
 
 export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockInModuleProps) {
-  const [state, setState] = useState<ExecutionState>('initializing');
+  const normalizedWorkSetup = (profile.work_setup ?? '').trim().toLowerCase();
+  const isOnsite = normalizedWorkSetup === 'onsite' || normalizedWorkSetup === 'on_site';
+  const isRemote = normalizedWorkSetup === 'remote' || normalizedWorkSetup === 'wfh';
+  const requiresGeofence = !isOnsite;
+  const hasGeofenceReference =
+    typeof profile.work_lat === 'number' &&
+    Number.isFinite(profile.work_lat) &&
+    typeof profile.work_lng === 'number' &&
+    Number.isFinite(profile.work_lng) &&
+    typeof profile.work_radius_m === 'number' &&
+    Number.isFinite(profile.work_radius_m);
+
+  const [state, setState] = useState<ExecutionState>(isOnsite ? 'secured' : 'initializing');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [errorHeader, setErrorHeader] = useState('');
 
-  const isRemote = profile.work_setup === 'remote' || profile.work_setup === 'wfh';
+  const locationLabel = isRemote ? 'Home' : 'Site';
+  const distanceLabel = isRemote ? 'registered home address' : 'registered site';
 
   useEffect(() => {
     if (isOnLeave) return;
 
-    if (isRemote) {
+    if (!requiresGeofence) {
       setState('secured');
+      return;
+    }
+
+    if (!hasGeofenceReference) {
+      setState('blocked');
+      setErrorHeader(profile.location_error ?? (isRemote ? 'Home Address Missing' : 'Geofence Reference Missing'));
       return;
     }
 
@@ -55,12 +75,12 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
         const dist = calculateHaversineDistance(
           latitude,
           longitude,
-          profile.work_lat,
-          profile.work_lng
+          profile.work_lat!,
+          profile.work_lng!
         );
         setDistance(dist);
 
-        if (dist <= profile.work_radius_m) {
+        if (dist <= profile.work_radius_m!) {
           setState('secured');
         } else {
           setState('violation');
@@ -75,7 +95,7 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
     );
 
     return () => navigator.geolocation.clearWatch(watcher);
-  }, [isOnLeave, profile, isRemote]);
+  }, [hasGeofenceReference, isOnLeave, isRemote, profile.location_error, profile.work_lat, profile.work_lng, profile.work_radius_m, requiresGeofence]);
 
   if (isOnLeave) {
     return (
@@ -92,16 +112,16 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
         <header className="flex justify-between items-center">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Attendance Clock-In</h2>
-            {profile.location_name && (
+            {profile.location_name && requiresGeofence && (
               <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                <span>Site: <strong className="text-slate-700">{profile.location_name}</strong></span>
+                <span>{locationLabel}: <strong className="text-slate-700">{profile.location_name}</strong></span>
               </p>
             )}
           </div>
-          {isRemote && (
+          {requiresGeofence && !isOnsite && (
             <span className="px-2.5 py-1 bg-teal-50 text-teal-700 text-xs font-bold rounded-full uppercase border border-teal-200">
-              Remote / WFH
+              {isRemote ? 'Remote / WFH' : 'Hybrid / Geofence'}
             </span>
           )}
         </header>
@@ -109,7 +129,7 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
         {state === 'initializing' && (
           <div className="flex flex-col items-center justify-center py-12 space-y-3">
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            <p className="text-sm text-slate-500 font-medium">Verifying dynamic geofence location...</p>
+            <p className="text-sm text-slate-500 font-medium">Verifying {isRemote ? 'home-based' : 'assigned'} geofence location...</p>
           </div>
         )}
 
@@ -118,10 +138,10 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
             <div className="flex items-center gap-3 p-4 bg-teal-50 border border-teal-100 rounded-xl text-teal-900">
               <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
               <div className="text-sm font-medium">
-                Zone Compliance Verified
+                {isOnsite ? 'On-site clock-in enabled' : 'Zone Compliance Verified'}
                 {distance !== null && (
                   <span className="block text-xs text-teal-700 opacity-90 font-normal mt-0.5">
-                    {Math.round(distance)}m from registered site (Radius: {profile.work_radius_m}m)
+                    {Math.round(distance)}m from {distanceLabel} (Radius: {profile.work_radius_m}m)
                   </span>
                 )}
               </div>
@@ -148,9 +168,9 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
             </div>
             <div className="h-64 bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
               <OutsideZoneMap
-                work_lat={profile.work_lat}
-                work_lng={profile.work_lng}
-                work_radius_m={profile.work_radius_m}
+                work_lat={profile.work_lat ?? 0}
+                work_lng={profile.work_lng ?? 0}
+                work_radius_m={profile.work_radius_m ?? 0}
                 current_lat={coords?.lat ?? 0}
                 current_lng={coords?.lng ?? 0}
                 isWithinZone={false}
@@ -170,7 +190,7 @@ export default function ClockInModule({ isOnLeave, profile, onClockIn }: ClockIn
                 <h3 className="font-bold text-sm">{errorHeader}</h3>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                System Access Blocked. To enable clock-in, please allow location access in your browser or device settings.
+                {profile.location_error ?? (isRemote ? 'Add a home address to your profile before clocking in.' : 'System Access Blocked. To enable clock-in, please allow location access in your browser or device settings.')}
               </p>
             </div>
           </div>

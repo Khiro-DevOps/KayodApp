@@ -112,20 +112,20 @@ export default function Home() {
             <div className="absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#332477]/8" />
           </div>
 
-          <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center justify-center gap-7 py-4 lg:grid lg:grid-cols-[1.08fr_0.78fr] lg:text-left">
-            <div className="flex max-w-3xl flex-col items-center gap-4 lg:items-start lg:pt-0">
-              <span className="inline-flex rounded-full bg-[#DFDCFF] px-4 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
+          <div className="w-full max-w-7xl mx-auto px-4 md:px-8 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Text Column - Span 6 or 7 columns */}
+            <div className="lg:col-span-6 flex flex-col space-y-6 text-left min-w-0">
+              <span className="inline-flex w-fit rounded-full bg-[#DFDCFF] px-4 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
                 Efficiency Elevated
               </span>
-              <h1 className="max-w-2xl font-[family-name:var(--font-poppins)] text-[48px] font-bold leading-[52px] tracking-tight text-[#1A1B21] md:text-[54px] md:leading-[60px] lg:text-[50px] lg:leading-[54px]">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-tight">
                 Hire smarter or find better work faster
               </h1>
-              <p className="max-w-2xl text-[15px] leading-[22px] text-[#484551] md:max-w-xl md:text-[16px] md:leading-[24px] lg:max-w-[31rem]">
+              <p className="w-full max-w-2xl text-base md:text-lg text-muted-foreground leading-relaxed text-left whitespace-normal break-words">
                 AI screening, simple contract signing, and a mobile-first experience built for the speed of modern business.
-                The HRIS that works as hard as you do.
               </p>
 
-              <div className="flex flex-col items-center gap-3 pt-2 sm:flex-row lg:items-start">
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <SmoothScrollButton
                   targetId="pricing"
                   offset={72}
@@ -142,7 +142,8 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="w-full max-w-[460px] lg:justify-self-end">
+            {/* Right Preview Graphic - Span 5 or 6 columns */}
+            <div className="lg:col-span-6 w-full">
               <div className="rounded-[12px] border border-[#E8E6F8] bg-white p-3 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
                 <div className="overflow-hidden rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF]">
                   <div className="flex items-center justify-between border-b border-[#E8E6F8] bg-white px-4 py-2.5">
@@ -356,18 +357,18 @@ export default function Home() {
 
         <section id="pricing" className="scroll-mt-20 bg-[#FAF8FF] px-6 py-10 lg:scroll-mt-24 lg:py-12">
           <div className="mx-auto max-w-6xl">
-            <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-12">
-              <div className="max-w-xl text-center lg:pt-0 lg:text-left">
+            <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12">
+              <div className="lg:col-span-6 w-full min-w-0 text-center lg:pt-0 lg:text-left pr-0 lg:pr-6">
                 <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Pricing</span>
-                <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-[#1A1B21] sm:text-[32px]">
+                <h2 className="mt-2 font-[family-name:var(--font-poppins)] w-full text-3xl md:text-5xl font-bold tracking-tight text-gray-900 leading-tight block break-words whitespace-normal">
                   Enterprise pricing for teams that need everything
                 </h2>
-                <p className="mx-auto mt-3 max-w-2xl text-[15px] leading-[22px] text-[#484551] lg:mx-0">
+                <p className="mx-auto mt-3 w-full max-w-2xl text-[15px] leading-[22px] text-[#484551] lg:mx-0 block break-words whitespace-normal">
                   Custom pricing for organizations that want the full hiring and employee experience in one platform.
                 </p>
               </div>
 
-              <div className="flex justify-center lg:justify-end">
+              <div className="lg:col-span-6 flex justify-center lg:justify-end min-w-0">
                 <article className="flex w-full max-w-[540px] flex-col rounded-[12px] border border-[#332477] bg-white p-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] ring-2 ring-[#332477]/10 sm:p-5">
                   <div className="flex flex-col gap-3 sm:gap-4">
                     <div>

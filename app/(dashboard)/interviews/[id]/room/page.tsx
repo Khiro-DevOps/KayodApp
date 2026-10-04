@@ -14,14 +14,49 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     redirect("/login");
   }
 
-  const [{ data: profile }, { data: interview }] = await Promise.all([
+  const [{ data: profile }, { data: schedule }] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", user.id).single(),
-    supabase.from("interviews").select("id, room_id, hr_notes, application_id").eq("id", id).single(),
+    supabase
+      .from("interview_schedules")
+      .select("id, room_name, interview_notes, applicant_id, interviewer_id, scheduled_at, duration_minutes, status")
+      .eq("id", id)
+      .maybeSingle(),
   ]);
 
-  if (!profile || !interview) {
+  if (!profile) {
     notFound();
   }
+
+  if (schedule) {
+    const isHR = ["hr", "hr_manager", "admin"].includes(String(profile.role));
+    const isAuthorized = isHR || schedule.interviewer_id === user.id || schedule.applicant_id === user.id;
+    if (!isAuthorized || schedule.status !== "scheduled") notFound();
+
+    if (!isHR && schedule.applicant_id === user.id) {
+      if (!schedule.scheduled_at) notFound();
+      const startTime = new Date(schedule.scheduled_at).getTime();
+      const endTime = startTime + (schedule.duration_minutes ?? 45) * 60_000;
+      const now = Date.now();
+      if (now < startTime - 10 * 60_000 || now >= endTime) notFound();
+    }
+
+    return (
+      <InterviewRoom
+        roomId={schedule.room_name ?? schedule.id}
+        interviewId={schedule.id}
+        initialHrNotes={schedule.interview_notes}
+        isHR={isHR}
+      />
+    );
+  }
+
+  const { data: interview } = await supabase
+    .from("interviews")
+    .select("id, room_id, hr_notes, application_id")
+    .eq("id", id)
+    .single();
+
+  if (!interview) notFound();
 
   const isHR = profile.role === "hr_manager" || profile.role === "admin";
 

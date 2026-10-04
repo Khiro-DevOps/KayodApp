@@ -219,7 +219,7 @@ export default function ApplicantDetailDrawer({
       return {
         label: "Schedule Interview",
         color: "bg-primary text-white",
-        onClick: () => router.push(`/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`),
+        onClick: () => router.push(`/hr/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`),
       };
     }
 
@@ -834,7 +834,7 @@ export default function ApplicantDetailDrawer({
             <button
               onClick={() => {
                 if (canReschedule) {
-                  router.push(`/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`);
+                  router.push(`/hr/interviews/schedule?applicationId=${encodeURIComponent(application.id)}`);
                 }
               }}
               disabled={!canReschedule}
