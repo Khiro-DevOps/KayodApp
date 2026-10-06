@@ -138,15 +138,15 @@ function getScoreClasses(score: string | null): string {
 
   const n = Number(score);
 
-  if (n >= 75) {
+  if (n >= 70) {
     return "bg-success-bg text-success border border-success/20";
   }
 
-  if (n >= 50) {
+  if (n >= 40) {
     return "bg-warning-bg text-warning border border-warning/20";
   }
 
-  return "bg-error-bg text-error border border-error/20";
+  return "bg-surface-bg text-text-muted border border-border";
 }
 
 function formatApplicationTime(value: string): string {

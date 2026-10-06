@@ -7,6 +7,7 @@ import { WithdrawModal } from "./WithdrawModal";
 export interface ApplicationTrackerCardData {
   id: string;
   status: string;
+  matchScore: number | null;
   submittedAt: string;
   rejectionReason?: string | null;
   documentsUrl?: string | null;
@@ -95,6 +96,15 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
     year: "numeric",
   });
 
+  const matchScoreClasses =
+    application.matchScore === null
+      ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      : application.matchScore >= 70
+        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+        : application.matchScore >= 40
+          ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400"
+          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
+
   // Work setup badge colors
   const getWorkModeBadge = (mode?: string | null) => {
     if (!mode) return null;
@@ -146,8 +156,11 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
             </div>
           </div>
 
-          <div className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
-            Applied {formattedDate}
+          <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-slate-400 dark:text-slate-500">
+            <span>Applied {formattedDate}</span>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${matchScoreClasses}`}>
+              {application.matchScore === null ? "Not scored yet" : `${Math.round(application.matchScore)}% match`}
+            </span>
           </div>
         </div>
 
