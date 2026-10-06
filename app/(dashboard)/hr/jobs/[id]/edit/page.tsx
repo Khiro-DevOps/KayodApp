@@ -105,7 +105,7 @@ function EditJobForm({ jobId }: { jobId: string }) {
       action={updateJob}
       title="Edit Job"
       submitLabel="Save Changes"
-      backHref={`/jobs/manage/${jobId}`}
+      backHref={`/hr/jobs/${jobId}`}
       error={error}
       jobId={job.id}
       initialValues={initialValues}

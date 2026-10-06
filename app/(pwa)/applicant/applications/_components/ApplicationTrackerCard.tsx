@@ -9,6 +9,8 @@ export interface ApplicationTrackerCardData {
   status: string;
   submittedAt: string;
   rejectionReason?: string | null;
+  documentsUrl?: string | null;
+  documentsOpenCount?: number;
   interview?: {
     id: string;
     scheduled_at?: string | null;
@@ -276,6 +278,14 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
                 Join Interview Call
               </Link>
             </div>
+          </div>
+        )}
+
+        {application.documentsUrl && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Pre-hire documents requested</p>
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">{application.documentsOpenCount ?? 0} document{application.documentsOpenCount === 1 ? "" : "s"} pending.</p>
+            <Link href={application.documentsUrl} className="mt-3 inline-flex rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800">Open documents</Link>
           </div>
         )}
 

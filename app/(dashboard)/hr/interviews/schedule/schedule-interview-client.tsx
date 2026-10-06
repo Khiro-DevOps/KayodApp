@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { scheduleInterviewProposal } from "../actions";
-import type { InterviewType } from "@/lib/types";
+import { getOfficeBranches, scheduleInterviewProposal } from "../actions";
+import type { OfficeBranchOption } from "../actions";
+import type { InterviewType, MeetingType } from "@/lib/types";
 
 interface Application {
   id: string;
@@ -25,7 +26,13 @@ export default function ScheduleInterviewClient({ application, error: initialErr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online"]);
-  const [locationDetails, setLocationDetails] = useState("");
+  const [meetingType, setMeetingType] = useState<MeetingType>("online");
+  const [branches, setBranches] = useState<OfficeBranchOption[]>([]);
+  const [officeBranchId, setOfficeBranchId] = useState("");
+
+  useEffect(() => {
+    void getOfficeBranches().then((result) => { if (result.success) setBranches(result.data ?? []); });
+  }, []);
 
   const allowsInPerson = offeredModes.includes("in_person");
 
@@ -42,7 +49,6 @@ export default function ScheduleInterviewClient({ application, error: initialErr
       setOfferedModes(["online", "in_person"]);
     } else {
       setOfferedModes([choice]);
-      if (choice === "online") setLocationDetails("");
     }
   };
 
@@ -60,8 +66,8 @@ export default function ScheduleInterviewClient({ application, error: initialErr
     setLoading(true);
     setError(null);
 
-    if (allowsInPerson && !locationDetails.trim()) {
-      setError("Interview address/location details are required when In-Person is enabled.");
+    if ((meetingType === "in_person" || meetingType === "hybrid") && !officeBranchId) {
+      setError("Office branch is required for in-person or hybrid interviews.");
       setLoading(false);
       return;
     }
@@ -71,8 +77,8 @@ export default function ScheduleInterviewClient({ application, error: initialErr
       formData.append("application_id", application!.id);
       formData.append("job_id", application!.job_postings?.id ?? "");
       offeredModes.forEach((mode) => formData.append("available_modes", mode));
-      formData.append("location_details", allowsInPerson ? locationDetails.trim() : "");
-
+      formData.set("meeting_type", meetingType);
+      formData.set("office_branch_id", meetingType === "in_person" || meetingType === "hybrid" ? officeBranchId : "");
       const response = await scheduleInterviewProposal(formData);
 
       if (response.success) {
@@ -94,19 +100,9 @@ export default function ScheduleInterviewClient({ application, error: initialErr
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/hr/interviews"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
-          </svg>
-        </Link>
-        <div>
+      <div>
           <h1 className="font-h1 text-h1 text-on-surface">Schedule Interview</h1>
           <p className="text-body text-on-surface-variant">Set up an interview for an applicant</p>
-        </div>
       </div>
 
       {/* Error state — no application */}
@@ -199,7 +195,7 @@ export default function ScheduleInterviewClient({ application, error: initialErr
                       <button
                         key={key}
                         type="button"
-                        onClick={() => selectMode(key)}
+                        onClick={() => { selectMode(key); setMeetingType(key === "both" ? "hybrid" : key); }}
                         className={`rounded-xl border-2 p-3 text-left transition-all ${
                           active
                             ? "border-primary bg-primary/5 shadow-sm"
@@ -220,21 +216,21 @@ export default function ScheduleInterviewClient({ application, error: initialErr
               </div>
 
               {/* In-Person Location */}
-              {allowsInPerson && (
+              {(meetingType === "in_person" || meetingType === "hybrid") && (
                 <div className="space-y-2">
-                  <label htmlFor="location_details" className="block text-label-caps font-medium text-on-surface-variant uppercase tracking-wider">
-                    Office / Location Address <span className="text-error">*</span>
+                  <label htmlFor="office_branch_id" className="block text-label-caps font-medium text-on-surface-variant uppercase tracking-wider">
+                    Office Branch <span className="text-error">*</span>
                   </label>
-                  <textarea
-                    id="location_details"
-                    name="location_details"
-                    value={locationDetails}
-                    onChange={(e) => setLocationDetails(e.target.value)}
-                    required={allowsInPerson}
-                    rows={3}
-                    placeholder="e.g. 3rd Floor, Acme Building, Ayala Ave., Makati City. Please check in with reception."
+                  <select
+                    id="office_branch_id"
+                    value={officeBranchId}
+                    onChange={(e) => setOfficeBranchId(e.target.value)}
+                    required
                     className="w-full rounded-xl border border-outline-variant bg-background px-4 py-2.5 text-body text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors resize-none"
-                  />
+                  >
+                    <option value="">Select office branch</option>
+                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} — {branch.address}</option>)}
+                  </select>
                 </div>
               )}
 
@@ -290,7 +286,7 @@ export default function ScheduleInterviewClient({ application, error: initialErr
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-1">
+              <div className="sticky bottom-0 flex gap-3 border-t border-outline-variant bg-surface/95 py-3 pt-4 backdrop-blur">
                 <button
                   type="submit"
                   disabled={loading}
@@ -323,6 +319,15 @@ export default function ScheduleInterviewClient({ application, error: initialErr
 
           {/* Right sidebar — tips */}
           <aside className="hidden lg:block space-y-4">
+            <div className="sticky top-6 rounded-2xl border border-outline-variant bg-surface p-5">
+              <p className="text-label-caps font-semibold text-on-surface-variant uppercase tracking-wider">Interview summary</p>
+              <div className="mt-4 space-y-3 text-sm">
+                <div><p className="text-xs text-on-surface-variant">Candidate</p><p className="font-semibold text-on-surface">{candidateName}</p></div>
+                <div><p className="text-xs text-on-surface-variant">Job</p><p className="font-semibold text-on-surface">{application.job_postings?.title ?? "—"}</p></div>
+                <div><p className="text-xs text-on-surface-variant">Meeting type</p><p className="font-semibold text-on-surface">{meetingType === "hybrid" ? "Both · Hybrid" : meetingType === "in_person" ? "In-Person" : "Online"}</p></div>
+                {(meetingType === "in_person" || meetingType === "hybrid") && <div><p className="text-xs text-on-surface-variant">Branch</p><p className="font-semibold text-on-surface">{branches.find((branch) => branch.id === officeBranchId)?.name ?? "Choose a branch"}</p></div>}
+              </div>
+            </div>
             <div className="rounded-2xl border border-outline-variant bg-surface p-5 space-y-4">
               <p className="text-label-caps font-semibold text-on-surface uppercase tracking-wider">What happens next?</p>
               <ol className="space-y-3">

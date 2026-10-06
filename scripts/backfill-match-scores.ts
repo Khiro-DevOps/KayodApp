@@ -8,8 +8,9 @@ import { computeAndStoreMatchScore } from "../lib/compute-match-score";
 
 type ApplicationRow = {
   id: string;
-  candidate_id: string;
-  job_posting_id: string;
+  applicant_id: string;
+  job_id: string;
+  match_score: number | null;
 };
 
 async function main() {
@@ -17,8 +18,8 @@ async function main() {
   const admin = getAdminClient();
 
   const { data: applications, error: applicationsError } = await admin
-    .from("applications")
-    .select("id, candidate_id, job_posting_id")
+    .from("job_applications")
+    .select("id, applicant_id, job_id, match_score")
     .order("id", { ascending: true });
 
   if (applicationsError) {
@@ -30,22 +31,12 @@ async function main() {
     return;
   }
 
-  const { data: scoreRows, error: scoreRowsError } = await admin
-    .from("match_scores")
-    .select("applicant_id, job_id");
-
-  if (scoreRowsError) {
-    throw scoreRowsError;
-  }
-
-  const existingKeys = new Set((scoreRows ?? []).map((row) => `${row.applicant_id}:${row.job_id}`));
-
   const applicationRows = (applications ?? []) as ApplicationRow[];
 
   const appIdsToProcess = force
     ? applicationRows.map((application) => application.id)
     : applicationRows
-        .filter((application) => !existingKeys.has(`${application.candidate_id}:${application.job_posting_id}`))
+        .filter((application) => !application.match_score || application.match_score === 0)
         .map((application) => application.id);
 
   if (!appIdsToProcess.length) {

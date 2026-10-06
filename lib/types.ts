@@ -24,6 +24,7 @@ export type ApplicationStatus =
   | "withdrawn";
 
 export type InterviewType = "online" | "in_person";
+export type MeetingType = "online" | "in_person" | "hybrid";
 
 export type InterviewStatus =
   | "scheduled"

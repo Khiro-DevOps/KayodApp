@@ -36,7 +36,7 @@ export default async function ApplicantDetailPage({
     .eq("id", id)
     .single();
 
-  if (!job) redirect("/jobs/manage");
+  if (!job) redirect("/hr/jobs");
 
   const { data: application, error } = await supabase
     .from("applications")
@@ -61,7 +61,7 @@ export default async function ApplicantDetailPage({
       <PageContainer>
         <div className="space-y-4">
           <Link
-            href={`/jobs/manage/${id}/applicants`}
+            href={`/hr/jobs/${id}/applicants`}
             className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -87,7 +87,7 @@ export default async function ApplicantDetailPage({
       <PageContainer>
         <div className="space-y-4">
           <Link
-            href={`/jobs/manage/${id}/applicants`}
+            href={`/hr/jobs/${id}/applicants`}
             className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -100,7 +100,7 @@ export default async function ApplicantDetailPage({
               No application found with ID <code className="bg-yellow-100 px-2 py-1 rounded text-xs">{appId}</code> for job <code className="bg-yellow-100 px-2 py-1 rounded text-xs">{id}</code>
             </p>
             <Link
-              href={`/jobs/manage/${id}/applicants`}
+              href={`/hr/jobs/${id}/applicants`}
               className="inline-block text-primary hover:underline text-sm font-medium"
             >
               ← Back to applicants
@@ -171,7 +171,7 @@ export default async function ApplicantDetailPage({
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link
-            href={`/jobs/manage/${id}/applicants`}
+            href={`/hr/jobs/${id}/applicants`}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -248,7 +248,7 @@ export default async function ApplicantDetailPage({
               <h3 className="text-sm font-semibold text-text-primary">Actions</h3>
 
               <Link
-                href={`/jobs/manage/${id}/applicants/${appId}/interview`}
+                href={`/hr/jobs/${id}/applicants/${appId}/interview`}
                 className="block rounded-xl bg-primary px-4 py-3 text-center text-sm font-medium text-white hover:bg-primary/90"
               >
                 Schedule interview
@@ -278,7 +278,7 @@ export default async function ApplicantDetailPage({
                     Job offer available after moving to negotiation or under review
                   </p>
                   <Link
-                    href={`/jobs/manage/${id}/review`}
+                    href={`/hr/jobs/${id}/review`}
                     className="text-xs text-primary underline underline-offset-2"
                   >
                     Go to Review Board →
@@ -287,7 +287,7 @@ export default async function ApplicantDetailPage({
               )}
 
               <Link
-                href={`/jobs/manage/${id}/applicants`}
+                href={`/hr/jobs/${id}/applicants`}
                 className="block text-center text-xs text-primary hover:underline"
               >
                 Back to applicants list

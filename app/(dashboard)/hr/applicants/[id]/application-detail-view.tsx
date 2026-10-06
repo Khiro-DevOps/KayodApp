@@ -79,7 +79,7 @@ export default function ApplicationDetailView({
                   </div>
                   {interview.video_room_url ? (
                     <Link
-                      href="/interviews"
+                      href="/hr/interviews"
                       className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition-colors font-semibold"
                     >
                       <span>🎥</span>

@@ -116,7 +116,7 @@ export default async function JobsPage({ searchParams }: Props) {
     .single<Pick<Profile, "role" | "city_id" | "province_id">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (isHR) redirect("/hr/jobs/manage");
+  if (isHR) redirect("/hr/jobs");
 
   const { data: resumes } = await supabase
     .from("resumes")

@@ -3,17 +3,27 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
-import type { InterviewType } from "@/lib/types";
+import type { InterviewType, MeetingType } from "@/lib/types";
 import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createDocusealSubmission } from "@/lib/docuseal";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
+
+export async function getOfficeBranches() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, data: [] };
+  const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
+  if (!profile?.tenant_id) return { success: false, data: [] };
+  const { data, error } = await supabase.from("office_branches").select("id, name, address").eq("tenant_id", profile.tenant_id).order("name");
+  return { success: !error, data: data ?? [] };
+}
 
 function createWebrtcRoom() {
   const roomName = `kayod-interview-${crypto.randomUUID()}`;
 
   return {
     // Local application path for joining (used in notifications). The real join uses the room name for signaling.
-    url: `/interviews/${roomName}/room`,
+    url: `/hr/interviews/${roomName}/room`,
     name: roomName,
   };
 }
@@ -55,6 +65,9 @@ export async function scheduleInterviewProposal(formData: FormData) {
     .filter((value): value is InterviewType => value === "online" || value === "in_person");
   const offeredModes = Array.from(new Set(rawModes));
   const locationDetails = (formData.get("location_details") as string | null)?.trim() || null;
+  const rawMeetingType = String(formData.get("meeting_type") ?? "").toLowerCase();
+  const meetingType: MeetingType = rawMeetingType === "in_person" || rawMeetingType === "hybrid" ? rawMeetingType : "online";
+  const officeBranchId = String(formData.get("office_branch_id") ?? "").trim() || null;
 
   if (!rawApplicationId || !jobId || !scheduledAt) {
     return { success: false, error: "Missing required fields" };
@@ -68,8 +81,8 @@ export async function scheduleInterviewProposal(formData: FormData) {
     return { success: false, error: "Please choose at least one interview availability option" };
   }
 
-  if (offeredModes.includes("in_person") && !locationDetails) {
-    return { success: false, error: "Address/location details are required for in-person interviews" };
+  if (["in_person", "hybrid"].includes(meetingType) && !officeBranchId) {
+    return { success: false, error: "Office branch is required for in-person or hybrid interviews" };
   }
 
   try {
@@ -97,6 +110,12 @@ export async function scheduleInterviewProposal(formData: FormData) {
     }
 
     const applicationId = application.id;
+    let officeBranchName: string | null = null;
+    if (["in_person", "hybrid"].includes(meetingType)) {
+      const { data: branch } = await supabaseAdmin.from("office_branches").select("id, name, address").eq("id", officeBranchId).eq("tenant_id", (await supabaseAdmin.from("job_postings").select("tenant_id").eq("id", application.job_id).single()).data?.tenant_id ?? "").maybeSingle();
+      if (!branch) return { success: false, error: "Office branch is not in the interview tenant" };
+      officeBranchName = `${branch.name}${branch.address ? `, ${branch.address}` : ""}`;
+    }
 
     const { data: app } = await supabaseAdmin
       .from("job_postings")
@@ -138,9 +157,9 @@ export async function scheduleInterviewProposal(formData: FormData) {
     }
 
     const scheduledAtTimestamp = new Date(scheduledAt).toISOString();
-    const room = createWebrtcRoom();
-    const meetingLink = interviewType === "online" ? room.url : null;
-    const meetingRoomName = room.name;
+    const room = meetingType === "online" || meetingType === "hybrid" ? createWebrtcRoom() : null;
+    const meetingLink = meetingType === "online" || meetingType === "hybrid" ? room?.url : null;
+    const meetingRoomName = room?.name ?? null;
 
     const payload = {
       applicant_id: application.applicant_id,
@@ -148,7 +167,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
       scheduled_at: scheduledAtTimestamp,
       duration_minutes: durationMinutes,
       meeting_link: meetingLink,
-      location: interviewType === "in_person" ? hrOfficeAddress : null,
+      location: meetingType === "in_person" || meetingType === "hybrid" ? officeBranchName : null,
     };
 
     const { data: existingInterview } = await supabaseAdmin
@@ -170,7 +189,9 @@ export async function scheduleInterviewProposal(formData: FormData) {
           duration_minutes: payload.duration_minutes,
           meeting_link: payload.meeting_link,
           room_name: meetingRoomName,
-          video_provider: "webrtc",
+          video_provider: meetingType === "online" || meetingType === "hybrid" ? "webrtc" : null,
+          meeting_type: meetingType,
+          office_branch_id: ["in_person", "hybrid"].includes(meetingType) ? officeBranchId : null,
           interview_notes: notes?.trim() || "",
           updated_at: new Date().toISOString(),
         })
@@ -186,7 +207,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
       const rescheduleTarget =
         interviewType === "online"
           ? `Meeting link: ${meetingLink}`
-          : `Location: ${hrOfficeAddress}`;
+          : `In-Person at ${officeBranchName}`;
 
       backgroundTasks.push(
         Promise.resolve(
@@ -214,8 +235,10 @@ export async function scheduleInterviewProposal(formData: FormData) {
           duration_minutes: durationMinutes || 60,
           status: "scheduled",
           meeting_link: meetingLink,
-          video_provider: "webrtc",
+          video_provider: meetingType === "online" || meetingType === "hybrid" ? "webrtc" : null,
           room_name: meetingRoomName,
+          meeting_type: meetingType,
+          office_branch_id: ["in_person", "hybrid"].includes(meetingType) ? officeBranchId : null,
           interview_notes: notes?.trim() || "",
         })
         .select("id, scheduled_at")
@@ -231,7 +254,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
       const invitationTarget =
         interviewType === "online"
           ? `Meeting link: ${meetingLink}`
-          : `Location: ${hrOfficeAddress}`;
+          : `In-Person at ${officeBranchName}`;
 
       backgroundTasks.push(
         Promise.resolve(
@@ -254,7 +277,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
       .eq("id", applicationId);
 
     try {
-      revalidatePath(`/jobs/manage/${jobId}/applicants`);
+      revalidatePath(`/hr/jobs/${jobId}/applicants`);
       revalidatePath(`/applications/${applicationId}`);
     } catch (err) {
       console.error("Revalidation error:", err);
@@ -352,14 +375,14 @@ export async function submitInterviewPreference(formData: FormData) {
           type: "application_status_changed",
           title: "Interview Preference Submitted",
           body: `${candidateName} has submitted their interview format preference (${preferredType}).`,
-          action_url: `/interviews`,
+          action_url: `/hr/interviews`,
         })
       ).catch((err: unknown) => {
         console.error("Failed to insert preference notification:", err);
       });
     }
 
-    revalidatePath(`/interviews/respond/${applicationId}`);
+    revalidatePath(`/hr/interviews/respond/${applicationId}`);
 
     return { success: true };
   } catch (error) {
@@ -524,7 +547,7 @@ export async function sendJobOffer(formData: FormData) {
       console.error("Failed to insert offer notification:", err);
     });
 
-    revalidatePath(`/jobs/manage/${application.job_posting_id}/applicants`);
+    revalidatePath(`/hr/jobs/${application.job_posting_id}/applicants`);
     revalidatePath(`/applications/${applicationId}`);
 
     return {
@@ -623,7 +646,7 @@ export async function withdrawJobOffer(formData: FormData) {
       console.error("Failed to insert withdrawal notification:", err);
     });
 
-    revalidatePath(`/jobs/manage/${application.job_posting_id}/applicants`);
+    revalidatePath(`/hr/jobs/${application.job_posting_id}/applicants`);
     revalidatePath(`/applications/${applicationId}`);
 
     return { success: true };
@@ -715,7 +738,7 @@ export async function acceptJobOffer(formData: FormData) {
           type: "application_status_changed",
           title: "Offer Accepted ✅",
           body: `Candidate has accepted the job offer for ${jobData.title}.`,
-          action_url: `/jobs/manage/${application.job_posting_id}/applicants`,
+          action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
         })
       ).catch((err: unknown) => {
         console.error("Failed to insert acceptance notification:", err);
@@ -809,7 +832,7 @@ export async function declineJobOffer(formData: FormData) {
           body: reason
             ? `Candidate declined the offer for ${jobData.title}. Reason: ${reason}`
             : `Candidate declined the offer for ${jobData.title}.`,
-          action_url: `/jobs/manage/${application.job_posting_id}/applicants`,
+          action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
         })
       ).catch((err: unknown) => {
         console.error("Failed to insert decline notification:", err);

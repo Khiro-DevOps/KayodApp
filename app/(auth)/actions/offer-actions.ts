@@ -125,8 +125,8 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       throw new Error(`DocuSeal submission was created, but the job offer status could not be updated: ${offerUpdateError.message}`);
     }
 
-    revalidatePath(`/jobs/manage/${jobId}`);
-    revalidatePath(`/jobs/manage/${jobId}/applicants`);
+    revalidatePath(`/hr/jobs/${jobId}`);
+    revalidatePath(`/hr/jobs/${jobId}/applicants`);
     revalidatePath(`/job-offer/${applicationId}`);
     revalidatePath(`/job-offer/${offer.id}`);
     revalidatePath(`/offer-signing`);
@@ -222,8 +222,8 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   });
 
   // Revalidate to update the UI on Review Board
-  revalidatePath(`/jobs/manage/${jobId}`);
-  revalidatePath(`/jobs/manage/${jobId}/applicants`);
+  revalidatePath(`/hr/jobs/${jobId}`);
+  revalidatePath(`/hr/jobs/${jobId}/applicants`);
   revalidatePath(`/job-offer/${applicationId}`);
   revalidatePath(`/job-offer/${offer.id}`);
   revalidatePath(`/offer-signing`);
@@ -407,8 +407,8 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
       .update({ status: "offer_sent", contract_offer_id: signedDocId, updated_at: new Date().toISOString() })
       .eq("id", applicationId);
 
-    revalidatePath(`/jobs/manage/${jobId}/applicants`);
-    revalidatePath(`/jobs/manage/${jobId}/applicants/${applicationId}`);
+    revalidatePath(`/hr/jobs/${jobId}/applicants`);
+    revalidatePath(`/hr/jobs/${jobId}/applicants/${applicationId}`);
     revalidatePath(`/job-offer/${applicationId}`);
   } catch (err) {
     console.error("sendDraftOffer: failed to finalize offer", err);

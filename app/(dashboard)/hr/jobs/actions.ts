@@ -151,8 +151,8 @@ export async function createJob(formData: FormData) {
     await saveJobRequiredDocuments(jobData.id, requiredDocumentsJson);
   }
 
-  if (error) redirect(`/jobs/manage/new?error=${encodeURIComponent(error.message)}`);
-  if (!jobData?.id) redirect(`/jobs/manage/new?error=${encodeURIComponent("Failed to create job")}`);
+  if (error) redirect(`/hr/jobs/new?error=${encodeURIComponent(error.message)}`);
+  if (!jobData?.id) redirect(`/hr/jobs/new?error=${encodeURIComponent("Failed to create job")}`);
 
   // Create DocuSeal template after job is published
   if (!process.env.DOCUSEAL_API_KEY) {
@@ -214,7 +214,7 @@ export async function createJob(formData: FormData) {
   }
 
   revalidatePath("/jobs");
-  redirect("/jobs/manage");
+  redirect("/hr/jobs");
 }
 
 export async function updateJob(formData: FormData) {
@@ -280,14 +280,14 @@ export async function updateJob(formData: FormData) {
 
   if (error) {
     console.error("Update job error:", error);
-    redirect(`/jobs/manage/${jobId}?error=${encodeURIComponent(error.message)}`);
+    redirect(`/hr/jobs/${jobId}?error=${encodeURIComponent(error.message)}`);
   }
 
   await saveJobRequiredDocuments(jobId, requiredDocumentsJson);
 
   revalidatePath("/jobs");
-  revalidatePath(`/jobs/manage/${jobId}`);
-  redirect(`/jobs/manage/${jobId}`);
+  revalidatePath(`/hr/jobs/${jobId}`);
+  redirect(`/hr/jobs/${jobId}`);
 }
 
 export async function deleteJob(formData: FormData) {
@@ -300,7 +300,7 @@ export async function deleteJob(formData: FormData) {
   if (!(await verifyHR(supabase, user))) redirect("/dashboard");
 
   const jobId = formData.get("job_id") as string;
-  if (!jobId) redirect("/jobs/manage");
+  if (!jobId) redirect("/hr/jobs");
 
   const adminClient = getAdminClient();
   const { error } = await adminClient
@@ -310,10 +310,10 @@ export async function deleteJob(formData: FormData) {
 
   if (error) {
     console.error("Delete job error:", error);
-    redirect(`/jobs/manage/${jobId}?error=${encodeURIComponent(error.message)}`);
+    redirect(`/hr/jobs/${jobId}?error=${encodeURIComponent(error.message)}`);
   }
 
   revalidatePath("/jobs");
-  revalidatePath("/jobs/manage");
-  redirect("/jobs/manage");
+  revalidatePath("/hr/jobs");
+  redirect("/hr/jobs");
 }

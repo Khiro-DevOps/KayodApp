@@ -4,6 +4,7 @@ import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { selectInterviewSlot, requestReschedule, TimeSlot } from "@/app/actions/interviews";
 import { CalendarExportButton } from "./CalendarExportButton";
+import { getRoomAccess } from "@/lib/interview-room-access";
 
 export interface InterviewScheduleItem {
   id: string;
@@ -17,6 +18,9 @@ export interface InterviewScheduleItem {
   status: "proposed" | "scheduled" | "rescheduled" | "pending_selection" | "confirmed" | "reschedule_requested" | "completed" | "cancelled";
   reschedule_reason?: string | null;
   meeting_link?: string | null;
+  meeting_type?: "online" | "in_person" | "hybrid";
+  branchName?: string | null;
+  branchAddress?: string | null;
   jobTitle: string;
   interviewerName?: string | null;
 }
@@ -48,7 +52,12 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
     return nowMs >= startTimeMs - 10 * 60 * 1000 && nowMs <= startTimeMs + 4 * 360 * 1000;
   };
 
-  const activeLink = isMeetingLinkActive();
+  const activeLink = (interview.meeting_type === "online" || interview.meeting_type === "hybrid") && getRoomAccess({
+    scheduled_at: interview.scheduled_at ?? interview.selected_slot?.start_time,
+    duration_minutes: interview.duration_minutes,
+    status: interview.status,
+    meeting_type: interview.meeting_type,
+  }).state === "open";
 
   const handleConfirmSlot = () => {
     if (!selectedSlotId) return;
@@ -79,6 +88,7 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
   const formatSlotTime = (isoStr: string) => {
     const d = new Date(isoStr);
     return d.toLocaleString("en-US", {
+      timeZone: "Asia/Manila",
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -198,7 +208,9 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {activeLink ? (
+            {interview.meeting_type === "in_person" || interview.meeting_type === "hybrid" ? (
+              <p className="text-xs text-amber-800 dark:text-amber-300">In-Person at {interview.branchName ?? "office"}{interview.branchAddress ? `, ${interview.branchAddress}` : ""}</p>
+            ) : activeLink ? (
               <Link
                 href={`/applicant/interviews/${interview.id}/room`}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-purple-700 transition-colors"
@@ -225,7 +237,7 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
               title={`Interview: ${interview.jobTitle}`}
               startTime={interview.selected_slot.start_time}
               endTime={interview.selected_slot.end_time}
-              meetingLink={`/applicant/interviews/${interview.id}/room`}
+              meetingLink={interview.meeting_type === "online" || interview.meeting_type === "hybrid" ? `/applicant/interviews/${interview.id}/room` : undefined}
             />
 
             <button

@@ -12,6 +12,7 @@ interface InterviewRoomProps {
   applicationId?: string;
   initialHrNotes: string | null;
   isHR: boolean;
+  closesAt?: string | null;
 }
 
 type ConnectionState = "connecting" | "connected" | "disconnected" | "failed";
@@ -23,7 +24,7 @@ const statusMap: Record<ConnectionState, { label: string; color: string }> = {
   failed: { label: "Poor connection", color: "bg-red-600" },
 };
 
-export default function InterviewRoom({ roomId, interviewId, applicationId, initialHrNotes, isHR }: InterviewRoomProps) {
+export default function InterviewRoom({ roomId, interviewId, applicationId, initialHrNotes, isHR, closesAt }: InterviewRoomProps) {
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -47,6 +48,27 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const [timeEnded, setTimeEnded] = useState(false);
+  const [showEndingWarning, setShowEndingWarning] = useState(false);
+
+  useEffect(() => {
+    if (!closesAt) return;
+    const closeTime = new Date(closesAt).getTime();
+    const update = () => {
+      const remaining = closeTime - Date.now();
+      setShowEndingWarning(remaining > 0 && remaining <= 5 * 60_000);
+      if (remaining <= 0) {
+        setTimeEnded(true);
+        stopStream(localStreamRef.current);
+        localStreamRef.current = null;
+        pcRef.current?.close();
+        clearJoinPing();
+      }
+    };
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [closesAt]);
 
   useEffect(() => {
     const seededNotes = initialHrNotes ?? "";
@@ -533,37 +555,29 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         await persistHrNotes();
       }
 
-      if (isHR) {
-        const supabase = ensureSupabase();
-        const { error } = await supabase
-          .from("interview_schedules")
-          .update({ status: "completed", updated_at: new Date().toISOString() })
-          .eq("id", interviewId);
-
-        if (error) {
-          throw error;
-        }
-      }
-
       await closeSessionResources();
-
-      if (isHR) {
-        router.replace("/interviews");
-        return;
-      }
 
       router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
     } catch (error) {
       console.error("Failed to cleanly terminate session:", error);
-      if (!isHR) {
-        router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
-      }
+      router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
     } finally {
       setIsEnding(false);
     }
   };
 
   const connection = statusMap[connectionState];
+
+  if (timeEnded) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-950 px-4 text-white">
+        <div className="space-y-4 text-center">
+          <h2 className="text-xl font-semibold">Interview time has ended</h2>
+          <button type="button" onClick={() => router.replace(isHR ? "/hr/interviews" : "/applicant/interviews")} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold">Back to interviews</button>
+        </div>
+      </div>
+    );
+  }
 
   if (connectionState === "failed") {
     return (
@@ -601,6 +615,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
 
   return (
     <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950 text-white">
+      {showEndingWarning && <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 rounded-full bg-amber-100 px-4 py-2 text-xs font-semibold text-amber-900">Interview ends in less than 5 minutes</div>}
       <div className="relative h-full w-full overflow-hidden bg-slate-950">
         <video
           ref={remoteVideoRef}

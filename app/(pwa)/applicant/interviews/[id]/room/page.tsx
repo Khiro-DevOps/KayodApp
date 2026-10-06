@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import InterviewRoom from "@/app/(dashboard)/hr/interviews/[id]/room/interview-room";
+import { formatPht, getRoomAccess } from "@/lib/interview-room-access";
 
 function RoomUnavailable({ message }: { message: string }) {
   return (
@@ -22,22 +23,18 @@ export default async function ApplicantInterviewRoomPage({ params }: { params: P
 
   const { data: schedule } = await supabase
     .from("interview_schedules")
-    .select("id, applicant_id, room_name, scheduled_at, duration_minutes, status, interview_notes")
+    .select("id, applicant_id, room_name, scheduled_at, duration_minutes, status, interview_notes, meeting_type")
     .eq("id", id)
     .eq("applicant_id", user.id)
     .maybeSingle();
 
   if (!schedule) return <RoomUnavailable message="This interview does not exist or is not assigned to your account." />;
-  if (schedule.status !== "scheduled") return <RoomUnavailable message="This interview is not currently scheduled." />;
+  if (schedule.meeting_type === "in_person") redirect("/applicant/interviews");
+  if (!["scheduled", "confirmed", "rescheduled"].includes(schedule.status)) return <RoomUnavailable message="This interview is not currently scheduled." />;
   if (!schedule.scheduled_at) return <RoomUnavailable message="The interview time has not been confirmed yet." />;
 
-  const startTime = new Date(schedule.scheduled_at).getTime();
-  const endTime = startTime + (schedule.duration_minutes ?? 45) * 60_000;
-  const now = Date.now();
-  if (now < startTime - 10 * 60_000) {
-    return <RoomUnavailable message={`The room opens 10 minutes before your interview at ${new Date(schedule.scheduled_at).toLocaleString("en-PH")}.`} />;
-  }
-  if (now >= endTime) return <RoomUnavailable message="The interview window has ended." />;
+  const access = getRoomAccess(schedule);
+  if (access.state !== "open") return <RoomUnavailable message={access.state === "too_early" ? `Opens at ${formatPht(access.opensAt)} PHT` : "This interview has ended"} />;
 
   return (
     <InterviewRoom
@@ -46,6 +43,7 @@ export default async function ApplicantInterviewRoomPage({ params }: { params: P
       applicationId={undefined}
       initialHrNotes={null}
       isHR={false}
+      closesAt={access.closesAt?.toISOString() ?? null}
     />
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { OfficeBranch } from "@/lib/types";
 import { createBranchAction, updateBranchAction, deleteBranchAction } from "./branch-actions";
+import BranchMapPicker from "./branch-map-picker";
 
 interface BranchManagerProps {
   initialBranches: OfficeBranch[];
@@ -118,6 +119,9 @@ export default function BranchManager({ initialBranches }: BranchManagerProps) {
       </div>
 
       {isModalOpen && (
+        <BranchMapPicker branch={editingBranch} onClose={() => { setIsModalOpen(false); setEditingBranch(null); }} />
+      )}
+      {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-[90vw] min-w-[320px] sm:w-full max-w-lg bg-white p-6 rounded-2xl shadow-xl mx-auto space-y-4 z-50 text-slate-900">
             <div className="flex items-center justify-between border-b border-border pb-3">

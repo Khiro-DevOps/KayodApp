@@ -86,7 +86,7 @@ export default async function ApplicantsPage({
 
   const job = currentJob ?? legacyJob;
 
-  if (!job) redirect("/jobs/manage");
+  if (!job) redirect("/hr/jobs");
 
   const isLegacyJob = !currentJob;
   const jobTitle = job.title;
@@ -252,7 +252,7 @@ export default async function ApplicantsPage({
       <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
         <div className="flex items-center gap-3 shrink-0">
           <Link
-            href={`/jobs/manage/${id}`}
+            href={`/hr/jobs/${id}`}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">

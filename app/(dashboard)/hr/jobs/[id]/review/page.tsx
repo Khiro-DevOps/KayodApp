@@ -6,5 +6,5 @@ export default async function ReviewBoardPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/jobs/manage/${id}/applicants`);
+  redirect(`/hr/jobs/${id}/applicants`);
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { scheduleInterviewProposal } from "./actions";
-import type { InterviewType } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { getOfficeBranches, scheduleInterviewProposal } from "./actions";
+import type { InterviewType, MeetingType } from "@/lib/types";
+import type { OfficeBranchOption } from "./actions";
 
 interface InterviewSchedulingFormProps {
   applicationId: string;
@@ -20,7 +21,15 @@ export default function InterviewSchedulingForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online"]);
-  const [locationDetails, setLocationDetails] = useState("");
+  const [meetingType, setMeetingType] = useState<MeetingType>("online");
+  const [branches, setBranches] = useState<OfficeBranchOption[]>([]);
+  const [officeBranchId, setOfficeBranchId] = useState("");
+
+  useEffect(() => {
+    void getOfficeBranches().then((result) => {
+      if (result.success) setBranches(result.data ?? []);
+    });
+  }, []);
 
   const allowsInPerson = offeredModes.includes("in_person");
 
@@ -39,8 +48,8 @@ export default function InterviewSchedulingForm({
     setLoading(true);
     setError(null);
 
-    if (allowsInPerson && !locationDetails.trim()) {
-      setError("Interview address/location details are required when In-Person is enabled");
+    if ((meetingType === "in_person" || meetingType === "hybrid") && !officeBranchId) {
+      setError("Office branch is required for an in-person or hybrid interview");
       setLoading(false);
       return;
     }
@@ -50,8 +59,8 @@ export default function InterviewSchedulingForm({
       formData.append("job_id", jobId);
       formData.append("application_id", applicationId);
       offeredModes.forEach((mode) => formData.append("available_modes", mode));
-      formData.append("location_details", allowsInPerson ? locationDetails.trim() : "");
-
+      formData.set("meeting_type", meetingType);
+      formData.set("office_branch_id", meetingType === "in_person" || meetingType === "hybrid" ? officeBranchId : "");
       const response = await scheduleInterviewProposal(formData);
 
       if (response.success) {
@@ -122,7 +131,7 @@ export default function InterviewSchedulingForm({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => toggleMode("online")}
+            onClick={() => { toggleMode("online"); setMeetingType("online"); }}
             className={`rounded-lg border p-3 text-left transition-colors ${
               offeredModes.includes("online")
                 ? "border-primary bg-primary/5"
@@ -134,7 +143,17 @@ export default function InterviewSchedulingForm({
           </button>
           <button
             type="button"
-            onClick={() => toggleMode("in_person")}
+            onClick={() => { setOfferedModes(["online", "in_person"]); setMeetingType("hybrid"); }}
+            className={`rounded-lg border p-3 text-left transition-colors ${
+              meetingType === "hybrid" ? "border-primary bg-primary/5" : "border-border hover:bg-gray-50"
+            }`}
+          >
+            <p className="text-sm font-medium text-text-primary">Both</p>
+            <p className="text-xs text-text-secondary">Video room and office option</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => { toggleMode("in_person"); setMeetingType("in_person"); }}
             className={`rounded-lg border p-3 text-left transition-colors ${
               offeredModes.includes("in_person")
                 ? "border-primary bg-primary/5"
@@ -150,21 +169,21 @@ export default function InterviewSchedulingForm({
         </p>
       </div>
 
-      {allowsInPerson && (
+      {(meetingType === "in_person" || meetingType === "hybrid") && (
         <div>
-          <label htmlFor="location_details" className="block text-sm font-medium text-text-primary mb-2">
-            Interview Address / Location Details
+          <label htmlFor="office_branch_id" className="block text-sm font-medium text-text-primary mb-2">
+            Office Branch
           </label>
-          <textarea
-            id="location_details"
-            name="location_details"
-            value={locationDetails}
-            onChange={(e) => setLocationDetails(e.target.value)}
-            required={allowsInPerson}
-            rows={3}
-            placeholder="e.g. 3rd Floor, Acme Building, Makati City. Please check in with reception."
+          <select
+            id="office_branch_id"
+            value={officeBranchId}
+            onChange={(e) => setOfficeBranchId(e.target.value)}
+            required
             className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+          >
+            <option value="">Select office branch</option>
+            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} — {branch.address}</option>)}
+          </select>
         </div>
       )}
 

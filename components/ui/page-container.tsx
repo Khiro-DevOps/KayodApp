@@ -38,7 +38,7 @@ function isHrDesktopRoute(pathname: string) {
     pathname.startsWith("/applications") ||
     pathname.startsWith("/employees") ||
     pathname.startsWith("/applicants") ||
-    pathname.startsWith("/jobs/manage") ||
+    pathname.startsWith("/hr/jobs") ||
     pathname.startsWith("/payroll") ||
     pathname.startsWith("/reports") ||
     pathname.startsWith("/leaves") ||
@@ -69,7 +69,7 @@ export default function PageContainer({ children }: { children: ReactNode }) {
   const [companyName, setCompanyName] = useState("Company");
   const [applicantsBadge, setApplicantsBadge] = useState<string | null>(null);
 
-  const useHrShell = isHrDesktopRoute(pathname) && isHRRole(role);
+  const useHrShell = isHrDesktopRoute(pathname) && (role === null || isHRRole(role));
 
   useEffect(() => {
     if (!isHrDesktopRoute(pathname)) {
@@ -130,17 +130,25 @@ export default function PageContainer({ children }: { children: ReactNode }) {
         setAvatarUrl(profileRow?.avatar_url ?? null);
         setCompanyName(nextCompanyName);
 
-        if (nextTenantId) {
-          try {
-            const { count } = await supabase
-              .from("applications")
-              .select("id", { count: "exact", head: true })
-              .eq("job_postings.tenant_id", nextTenantId);
+        try {
+          let jobsQuery = supabase.from("job_postings").select("id");
+          jobsQuery = nextTenantId
+            ? jobsQuery.or(`tenant_id.eq.${nextTenantId},created_by.eq.${user.id}`)
+            : jobsQuery.eq("created_by", user.id);
+          const { data: jobs } = await jobsQuery;
+          const jobIds = (jobs ?? []).map((job: { id: string }) => job.id);
 
-            setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
-          } catch {
+          if (jobIds.length === 0) {
             setApplicantsBadge(null);
+          } else {
+            const { count } = await supabase
+              .from("job_applications")
+              .select("id", { count: "exact", head: true })
+              .in("job_id", jobIds);
+            setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
           }
+        } catch {
+          setApplicantsBadge(null);
         }
       } catch (err) {
         console.error("loadIdentity error:", err);
@@ -166,5 +174,5 @@ export default function PageContainer({ children }: { children: ReactNode }) {
     return <div className="w-full">{children}</div>;
   }
 
-  return <div className="mx-auto w-full max-w-[480px] px-4 py-4">{children}</div>;
+  return <div className={`mx-auto w-full px-4 py-4 ${isHrDesktopRoute(pathname) ? "" : "max-w-[480px]"}`}>{children}</div>;
 }

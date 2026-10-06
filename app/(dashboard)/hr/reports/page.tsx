@@ -232,7 +232,7 @@ export default async function AnalyticsPage() {
               {jobStats.map((job) => (
                 <Link
                   key={job.id}
-                  href={`/jobs/manage/${job.id}/applicants`}
+                  href={`/hr/jobs/${job.id}/applicants`}
                   className="flex items-center justify-between rounded-lg bg-surface-bg border border-border/50 p-3 hover:bg-primary-light/30 transition-colors"
                 >
                   <div className="min-w-0 flex-1 mr-3">

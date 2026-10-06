@@ -15,20 +15,36 @@ type NavItem = {
   badge?: string;
 };
 
-const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/hr", icon: "dashboard", exact: true },
-  { label: "Applicants", href: "/hr/applicants", icon: "layers" },
-  { label: "Manage Jobs", href: "/hr/jobs", icon: "work" },
-  { label: "Interviews", href: "/hr/interviews", icon: "event" },
-  { label: "Offers", href: "/hr/offers", icon: "description" },
-  { label: "Employees", href: "/hr/employees", icon: "group" },
-  { label: "Applicants", href: "/hr/applicants", icon: "layers" },
-  { label: "Manage Jobs", href: "/hr/jobs/manage", icon: "work" },
-  { label: "Interviews", href: "/hr/interviews", icon: "video_camera_front" },
-  { label: "Schedules", href: "/hr/schedules", icon: "calendar_today" },
-  { label: "Attendance", href: "/hr/attendance", icon: "fact_check" },
-  { label: "Payroll", href: "/hr/payroll", icon: "payments" },
-  { label: "Reports", href: "/hr/reports", icon: "assessment" },
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Core Workspace",
+    items: [
+      { label: "Dashboard", href: "/hr", icon: "dashboard", exact: true },
+      { label: "Schedule", href: "/hr/schedules", icon: "calendar_today" },
+      { label: "Attendance", href: "/hr/attendance", icon: "fact_check" },
+    ],
+  },
+  {
+    label: "Recruitment & Hiring",
+    items: [
+      { label: "Manage Jobs", href: "/hr/jobs", icon: "work" },
+      { label: "Applicants", href: "/hr/applicants", icon: "layers" },
+      { label: "Interviews", href: "/hr/interviews", icon: "event" },
+      { label: "Offers", href: "/hr/offers", icon: "description" },
+    ],
+  },
+  {
+    label: "Organization & Payroll",
+    items: [
+      { label: "Employees", href: "/hr/employees", icon: "group" },
+      { label: "Payslips", href: "/hr/payslips", icon: "payments" },
+    ],
+  },
 ];
 
 export default function DashboardLayout({
@@ -107,13 +123,24 @@ export default function DashboardLayout({
         setDisplayName(nextName);
         setAvatarUrl(profile.avatar_url ?? null);
 
-        // Count pending applications from the canonical job_applications table
-        const { count } = await supabase
-          .from("job_applications")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "applied");
+        const jobsQuery = profile.tenant_id
+          ? supabase
+              .from("job_postings")
+              .select("id")
+              .or(`tenant_id.eq.${profile.tenant_id},created_by.eq.${user.id}`)
+          : supabase.from("job_postings").select("id").eq("created_by", user.id);
+        const { data: jobs } = await jobsQuery;
+        const jobIds = (jobs ?? []).map((job: { id: string }) => job.id);
 
-        setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
+        if (jobIds.length === 0) {
+          setApplicantsBadge(null);
+        } else {
+          const { count } = await supabase
+            .from("job_applications")
+            .select("id", { count: "exact", head: true })
+            .in("job_id", jobIds);
+          setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
+        }
       } catch (err) {
         setApplicantsBadge(null);
         // swallow
@@ -241,54 +268,63 @@ export default function DashboardLayout({
       </header>
 
       {/* Main Body Shell */}
-      <div className="flex flex-1 w-full relative overflow-hidden">
+      <div className="relative flex flex-1 w-full pl-[220px] overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="w-[220px] shrink-0 border-r border-border bg-card-bg flex flex-col justify-between p-4 z-10">
+        <aside className="absolute inset-y-0 left-0 w-[220px] shrink-0 border-r border-border bg-card-bg flex flex-col justify-between p-4 z-10">
           <nav className="flex-1 space-y-0.5">
-            {navItems.map((item) => {
-              const active = isActive(item);
-              const badge = item.label === "Applicants" ? applicantsBadge : item.badge;
+            {navGroups.map((group) => (
+              <section key={group.label} className="mt-4 first:mt-0">
+                <h2 className="px-3 mb-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                  {group.label}
+                </h2>
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const active = isActive(item);
+                    const badge = item.label === "Applicants" ? applicantsBadge : item.badge;
 
-              if (active) {
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="bg-primary-light text-primary-dark font-semibold rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                      <span>{item.label}</span>
-                    </div>
-                    {badge ? (
-                      <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                        {badge}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              }
+                    if (active) {
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="bg-primary-light text-primary-dark font-semibold rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                            <span>{item.label}</span>
+                          </div>
+                          {badge ? (
+                            <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                              {badge}
+                            </span>
+                          ) : null}
+                        </Link>
+                      );
+                    }
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
-                      {item.icon}
-                    </span>
-                    <span>{item.label}</span>
-                  </div>
-                  {badge ? (
-                    <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
-                      {badge}
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
+                            {item.icon}
+                          </span>
+                          <span>{item.label}</span>
+                        </div>
+                        {badge ? (
+                          <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            {badge}
+                          </span>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </nav>
 
           {/* Pinned Bottom Items: Support & Settings */}

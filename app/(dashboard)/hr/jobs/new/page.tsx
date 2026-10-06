@@ -34,7 +34,7 @@ export default async function NewJobPage() {
       action={createJob}
       title="Post New Job"
       submitLabel="Create Job"
-      backHref="/jobs/manage"
+      backHref="/hr/jobs"
       initialDocuments={DEFAULT_REQUIRED_DOCUMENTS}
       showOfferLetterSettings
       workLocations={workLocations ?? []}

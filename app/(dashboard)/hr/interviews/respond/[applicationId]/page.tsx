@@ -36,19 +36,12 @@ export default async function InterviewRespondPage({
 
   // Fetch application with job details
   const { data: application } = await supabase
-    .from("applications")
+    .from("job_applications")
     .select(`
       id,
       status,
-      interview_preference,
-      interview_preference_set_at,
-      interview_qualified_at,
-      hr_offered_modes,
-      hr_office_address,
-      selected_mode,
-      selected_mode_set_at,
-      candidate_id,
-      job_postings (
+      applicant_id,
+      job:job_postings!job_applications_job_id_fkey (
         id,
         title,
         description,
@@ -69,23 +62,21 @@ export default async function InterviewRespondPage({
   if (!application) notFound();
 
   // Only the candidate who owns this application can access this page
-  if (application.candidate_id !== user.id) {
+  if (application.applicant_id !== user.id) {
     redirect("/applications");
   }
 
   // If not yet qualified, redirect away
-  const eligibleStatuses = ["shortlisted", "interview_scheduled", "under_review"];
+  const eligibleStatuses = ["applied", "screening", "interview"];
   if (!eligibleStatuses.includes(application.status)) {
     redirect("/applications");
   }
 
-  const job = (application.job_postings as RespondJob[] | null)?.[0];
+  const jobRelation = application.job as RespondJob | RespondJob[] | null;
+  const job = Array.isArray(jobRelation) ? jobRelation[0] : jobRelation;
   if (!job) notFound();
 
-  const offeredModes =
-    (application.hr_offered_modes as InterviewType[] | null)?.filter(
-      (mode): mode is InterviewType => mode === "online" || mode === "in_person"
-    ) ?? ["online", "in_person"];
+  const offeredModes: InterviewType[] = ["online", "in_person"];
 
   return (
     <PageContainer>
@@ -93,9 +84,9 @@ export default async function InterviewRespondPage({
         applicationId={applicationId}
         job={{ ...job, departments: job.departments?.[0] ?? null }}
         offeredModes={offeredModes}
-        hrOfficeAddress={application.hr_office_address ?? null}
-        existingPreference={(application.selected_mode ?? application.interview_preference) ?? null}
-        preferenceSetAt={(application.selected_mode_set_at ?? application.interview_preference_set_at) ?? null}
+        hrOfficeAddress={null}
+        existingPreference={null}
+        preferenceSetAt={null}
       />
     </PageContainer>
   );

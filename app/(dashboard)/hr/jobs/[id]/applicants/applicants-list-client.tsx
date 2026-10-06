@@ -95,16 +95,16 @@ interface StageDefinition {
   key: string;
   label: string;
   statuses: string[];
-  color: string;
+  colorClassName: string;
 }
 
 const STAGES: StageDefinition[] = [
-  { key: "new", label: "New", statuses: ["submitted", "draft"] as ApplicationStatus[], color: "#3b82f6" },
-  { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"] as ApplicationStatus[], color: "#eab308" },
-  { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"] as ApplicationStatus[], color: "#a855f7" },
-  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent", "offer_accepted"] as ApplicationStatus[], color: "#f97316" },
-  { key: "pre_employment", label: "Pre-employment", statuses: ["pre_employment"] as ApplicationStatus[], color: "#0ea5e9" },
-  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"] as ApplicationStatus[], color: "#16a34a" },
+  { key: "new", label: "New", statuses: ["submitted", "draft"] as ApplicationStatus[], colorClassName: "bg-blue-500 text-white" },
+  { key: "screening", label: "Screening", statuses: ["under_review", "shortlisted"] as ApplicationStatus[], colorClassName: "bg-warning text-white" },
+  { key: "interview", label: "Interview", statuses: ["interview_scheduled", "interviewed"] as ApplicationStatus[], colorClassName: "bg-primary text-white" },
+  { key: "offer", label: "Offer", statuses: ["negotiating", "offer_sent", "offer_accepted"] as ApplicationStatus[], colorClassName: "bg-orange-500 text-white" },
+  { key: "pre_employment", label: "Pre-employment", statuses: ["pre_employment"] as ApplicationStatus[], colorClassName: "bg-sky-500 text-white" },
+  { key: "hired", label: "Hired", statuses: ["hired", "hire_confirmed"] as ApplicationStatus[], colorClassName: "bg-success text-white" },
 ];
 
 const CLOSED_STATUSES = ["rejected", "withdrawn"] as string[];
@@ -139,7 +139,7 @@ function getOfferDeliveryState(jobOffer?: JobOfferRow): "signed" | "sent" | "not
 type QuickAction = {
   label: string;
   action: "screen" | "interview" | "view_interview" | "send_offer" | "view_offer" | "documents" | "confirm_hire" | null;
-  color: string;
+  colorClassName: string;
 };
 
 interface ApplicantsHubClientProps {
@@ -170,31 +170,31 @@ interface ConfirmSheetAppState {
 
 function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickAction | null {
   if (app.status === "pre_employment" || (hasSignedContract && !["hired", "hire_confirmed"].includes(app.status))) {
-    return { label: "Review docs", action: "documents", color: "#0ea5e9" };
+    return { label: "Review docs", action: "documents", colorClassName: "bg-sky-500" };
   }
 
   switch (app.status) {
     case "submitted":
     case "draft":
-      return { label: "Move to screening", action: "screen", color: "#eab308" };
+      return { label: "Move to screening", action: "screen", colorClassName: "bg-warning" };
     case "under_review":
     case "shortlisted":
-      return { label: "Schedule interview", action: "interview", color: "#a855f7" };
+      return { label: "Schedule interview", action: "interview", colorClassName: "bg-primary" };
     case "interview_scheduled":
-      return { label: "Schedule Interview", action: "interview", color: "#a855f7" };
+      return { label: "Schedule Interview", action: "interview", colorClassName: "bg-primary" };
     case "interviewed":
       // Still allow scheduling (follow-up) from the interview panel — use the existing interview flow
-      return { label: "Schedule interview", action: "interview", color: "#a855f7" };
+      return { label: "Schedule interview", action: "interview", colorClassName: "bg-primary" };
     case "negotiating":
     case "offer_sent":
       // Offer stage should be read-only for quick actions in the pipeline view
       return null;
     case "pre_employment":
-      return { label: "Review docs", action: "documents", color: "#0ea5e9" };
+      return { label: "Review docs", action: "documents", colorClassName: "bg-sky-500" };
     case "hired":
-      return { label: "Confirm hire ✓", action: "confirm_hire", color: "#16a34a" };
+      return { label: "Confirm hire ✓", action: "confirm_hire", colorClassName: "bg-success" };
     case "hire_confirmed":
-      return { label: "Hired ✓", action: null, color: "#16a34a" };
+      return { label: "Hired ✓", action: null, colorClassName: "bg-success" };
     default:
       return null;
   }
@@ -212,15 +212,15 @@ function getJobOfferBadge(jobOffer?: JobOfferRow) {
       ? "⏳ Awaiting signature"
       : "⚠ Offer not sent yet";
 
-  const color = deliveryState === "signed"
-    ? "#16a34a"
+  const colorClassName = deliveryState === "signed"
+    ? "text-success"
     : deliveryState === "sent"
-      ? "#f97316"
-      : "#b45309";
+      ? "text-orange-600"
+      : "text-warning";
 
   return {
     label,
-    color,
+    colorClassName,
     updatedAt: jobOffer.updated_at,
     isSigned,
   };
@@ -631,7 +631,7 @@ export default function ApplicantsHubClient({
         }
 
         case "view_interview": {
-          router.push("/interviews");
+          router.push("/hr/interviews");
           return;
         }
 
@@ -660,7 +660,7 @@ export default function ApplicantsHubClient({
         }
 
         case "documents": {
-          router.push(`/jobs/manage/${jobId}/applicants/${app.id}/documents`);
+          router.push(`/hr/jobs/${jobId}/applicants/${app.id}/documents`);
           return;
         }
 
@@ -796,12 +796,11 @@ export default function ApplicantsHubClient({
                   <button
                     key={stage.key}
                     onClick={() => setActiveTab(stage.key)}
-                    className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all"
-                    style={{
-                      background: activeTab === stage.key ? stage.color : "#f5f5f0",
-                      color: activeTab === stage.key ? "#fff" : "#666",
-                      border: activeTab === stage.key ? "none" : "1px solid #e8e8e4",
-                    }}
+                    className={`flex-shrink-0 rounded-full border px-4 py-2 text-xs font-medium whitespace-nowrap transition-all ${
+                      activeTab === stage.key
+                        ? `${stage.colorClassName} border-transparent`
+                        : "border-border bg-surface-bg text-text-muted hover:bg-card-bg"
+                    }`}
                   >
                     {stage.label} ({appsCount})
                   </button>
@@ -977,7 +976,7 @@ function ApplicantCardComponent({
   const quickAction = getQuickAction(app, hasSignedContract);
   const displayStatus = isOfferSentApplication ? "OFFER SENT" : currentStage?.label ?? app.status.replace(/_/g, " ").toUpperCase();
   const offerBadgeLabel = isOfferSentApplication ? "✓ Offer sent" : jobOfferBadge?.label ?? null;
-  const offerBadgeColor = isOfferSentApplication ? "#16a34a" : jobOfferBadge?.color ?? null;
+  const offerBadgeColorClassName = isOfferSentApplication ? "text-success" : jobOfferBadge?.colorClassName ?? null;
   const offerBadgeUpdatedAt = jobOfferBadge?.updatedAt ?? null;
   const now = new Date();
   const scheduledAt = interview ? new Date(interview.scheduled_at) : null;
@@ -1060,9 +1059,9 @@ function ApplicantCardComponent({
 
         {/* Job Offer Badge */}
         {isOfferStage && offerBadgeLabel && (
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: offerBadgeColor ?? undefined }}>
+          <div className={`flex items-center gap-1.5 text-xs ${offerBadgeColorClassName ?? "text-text-muted"}`}>
             <span className="font-medium">{offerBadgeLabel}</span>
-            <span className="text-gray-400">
+            <span className="text-text-muted">
               {offerBadgeUpdatedAt ? new Date(offerBadgeUpdatedAt).toLocaleDateString() : ""}
             </span>
           </div>
@@ -1074,39 +1073,16 @@ function ApplicantCardComponent({
 
         {/* Signed Contract Indicator */}
         {hasSignedContract && app.status !== "hire_confirmed" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 12px",
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "#16a34a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                <path d="M2 5l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+          <div className="flex items-center gap-2.5 rounded-xl border border-success/20 bg-success-bg px-3 py-2.5">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success text-white">
+              <span className="text-xs" aria-hidden="true">✓</span>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: "#15803d", margin: 0 }}>
+            <div className="min-w-0">
+              <p className="m-0 text-xs font-semibold text-success">
                 Contract signed - awaiting confirmation
               </p>
               {jobOffer?.updated_at && (
-                <p style={{ fontSize: 11, color: "#16a34a", margin: 0 }}>
+                <p className="m-0 text-[11px] text-success">
                   Signed on {new Date(jobOffer.updated_at).toLocaleDateString("en-PH")}
                 </p>
               )}
@@ -1118,10 +1094,9 @@ function ApplicantCardComponent({
         <div className={isMobile ? "flex flex-col gap-2" : "space-y-2"}>
           {showJoinRoom && interview?.video_room_url && (
             <a
-              href={`/interviews?id=${interview.id}`}
+              href={`/hr/interviews?interviewId=${interview.id}`}
               onClick={(event) => event.stopPropagation()}
-              className="block w-full rounded-xl py-2 text-center text-xs font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: "#7c3aed" }}
+              className="block w-full rounded-xl bg-primary py-2 text-center text-xs font-semibold text-white transition-opacity hover:opacity-90"
             >
               🎥 Join Interview Room
             </a>
@@ -1135,7 +1110,7 @@ function ApplicantCardComponent({
                 // Refresh logic here
               }}
               type="button"
-              className="w-full rounded-xl border border-[#e8e8e4] bg-[#f5f5f0] py-2 text-xs font-medium text-[#555] transition-opacity hover:opacity-90"
+              className="w-full rounded-xl border border-border bg-surface-bg py-2 text-xs font-medium text-text-muted transition-opacity hover:bg-card-bg"
             >
               ↻ Check if signed
             </button>
@@ -1148,12 +1123,7 @@ function ApplicantCardComponent({
                 void onQuickAction("send_offer");
               }}
               type="button"
-              style={{
-                background: "linear-gradient(135deg, #ea580c 0%, #fb923c 100%)",
-                color: "#fff",
-                boxShadow: "0 10px 24px rgba(234, 88, 12, 0.24)",
-              }}
-              className="w-full rounded-xl py-3 text-sm font-semibold tracking-wide transition-transform transition-shadow hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
+              className="w-full rounded-xl bg-orange-500 py-3 text-sm font-semibold tracking-wide text-white shadow-sm transition-transform transition-shadow hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
             >
               Send Offer to DocuSeal
             </button>
@@ -1167,8 +1137,7 @@ function ApplicantCardComponent({
                 void onQuickAction(quickAction.action!);
               }}
               type="button"
-              className="w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: quickAction.color }}
+              className={`w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 ${quickAction.colorClassName}`}
             >
               {quickAction.label}
             </button>
@@ -1177,8 +1146,7 @@ function ApplicantCardComponent({
           {/* Hired Confirmation State */}
           {quickAction && !quickAction.action && (
             <div
-              className="w-full rounded-xl py-2 text-center text-xs font-semibold"
-              style={{ background: "#f0fdf4", color: "#16a34a" }}
+              className="w-full rounded-xl bg-success-bg py-2 text-center text-xs font-semibold text-success"
             >
               {quickAction.label}
             </div>
@@ -1186,7 +1154,7 @@ function ApplicantCardComponent({
 
           {/* Default CTA */}
           {!shouldShowCheckSigned && !shouldShowSendOffer && !quickAction && (
-            <div className="w-full rounded-xl bg-[#f5f5f0] py-2 text-center text-xs font-semibold text-[#777]">
+            <div className="w-full rounded-xl bg-surface-bg py-2 text-center text-xs font-semibold text-text-muted">
               Click to view details
             </div>
           )}

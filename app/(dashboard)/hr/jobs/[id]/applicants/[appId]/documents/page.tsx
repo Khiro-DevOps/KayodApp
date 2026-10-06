@@ -61,7 +61,7 @@ export default async function ApplicantDocumentsPage({
     .maybeSingle<JobPostingRow & { created_by: string }>();
 
   if (!jobPosting || jobPosting.created_by !== user.id) {
-    redirect("/jobs/manage");
+    redirect("/hr/jobs");
   }
 
   const { data: application } = await admin
@@ -81,7 +81,7 @@ export default async function ApplicantDocumentsPage({
     .maybeSingle<ApplicantRow>();
 
   if (!application) {
-    redirect(`/jobs/manage/${jobId}/applicants`);
+    redirect(`/hr/jobs/${jobId}/applicants`);
   }
 
   const { data: requiredDocuments } = await admin
@@ -137,7 +137,7 @@ export default async function ApplicantDocumentsPage({
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Link
-            href={`/jobs/manage/${jobId}/applicants`}
+            href={`/hr/jobs/${jobId}/applicants`}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-text-secondary hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">

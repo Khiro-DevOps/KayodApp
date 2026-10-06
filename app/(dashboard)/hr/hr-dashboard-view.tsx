@@ -46,7 +46,7 @@ export default function HRDashboardView({
         </div>
         <div>
           <Link
-            href="/hr/jobs/manage"
+            href="/hr/jobs"
             className="bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-semibold shadow-xs whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[20px]">add</span>

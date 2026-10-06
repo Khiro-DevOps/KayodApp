@@ -5,6 +5,8 @@ import PageContainer from "@/components/ui/page-container";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import type { Profile } from "@/lib/types";
 import { ApplicationsHubClient } from "./applications-client";
+import type { ApplicationHubCard } from "./applications-kanban-board";
+import { getHrJobScope } from "@/lib/hr-job-scope";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -56,69 +58,137 @@ export default async function HRApplicantsHubPage() {
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  // Get all job postings
-  const { data: jobs } = await supabase
+  const jobScope = await getHrJobScope(supabase, user.id);
+  const tenantId = jobScope.tenantId;
+
+  // ── Fetch job postings scoped to the HR user's tenant ────────────────────────
+  // Allow both published and unpublished (HR should see their own drafts too).
+  const jobQuery = supabase
     .from("job_postings")
     .select("id, title")
-    .eq("is_published", true)
+    .or(jobScope.filter)
     .order("created_at", { ascending: false });
+  const { data: jobs, error: jobsError } = await jobQuery;
+  const activeJobs = (jobs ?? []) as { id: string; title: string }[];
+  const tenantJobIds = activeJobs.map((j) => j.id);
 
-  // Get all applications for the Kanban board
-  const { data: applications } = await supabase
-    .from("applications")
-    .select(`
-      id, 
-      status, 
-      match_score, 
-      submitted_at, 
-      job_posting_id,
-      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone ),
-      job_postings ( title )
-    `)
-    .order("submitted_at", { ascending: false });
+  if (jobsError) {
+    console.error("Applicants jobs fetch error:", jobsError);
+  }
+  if (process.env.DEBUG_APPLICANTS === "1") {
+    console.log("[applicants-debug] tenant id used", tenantId);
+    console.log("[applicants-debug] number of jobs returned", activeJobs.length);
+  }
 
-  // Repair candidate profile names if needed
-  try {
-    const admin = getAdminClient();
-    const apps = (applications ?? []) as any[];
-    const uniqueCandidateIds = Array.from(new Set(apps.map((app) => app.profiles?.id).filter(Boolean)));
+  // ── Fetch job_applications for the tenant's jobs ─────────────────────────────
+  // Uses an inner join via the nested select: only rows whose job_id references
+  // a job_posting owned by this tenant will be returned.
+  let applications: ApplicationHubCard[] = [];
 
-    for (const candidateId of uniqueCandidateIds) {
-      const { data: authData } = await admin.auth.admin.getUserById(candidateId);
-      const authUser = authData?.user;
-      if (!authUser) continue;
+  if (tenantJobIds.length > 0) {
+    const { data: rawApps, error: applicationsError } = await supabase
+      .from("job_applications")
+      .select(`
+        id,
+        job_id,
+        applicant_id,
+        resume_id,
+        status,
+        cover_letter,
+        match_score,
+        hr_notes,
+        rejection_reason,
+        created_at,
+        updated_at,
+        candidate:profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),
+        job:job_postings ( id, title, location, tenant_id )
+      `)
+      .in("job_id", tenantJobIds)
+      .order("created_at", { ascending: false });
 
-      const { firstName, lastName } = deriveNamesFromUser(authUser);
-      if (!firstName && !lastName) continue;
+    if (applicationsError) {
+      console.error("Applicants applications fetch error:", applicationsError);
+    }
 
-      let needsUpdate = false;
-      for (const app of apps) {
-        if (app.profiles?.id !== candidateId) continue;
-        const p = app.profiles ?? {};
-        if (normalizeName(p.first_name) !== firstName || normalizeName(p.last_name) !== lastName) {
-          needsUpdate = true;
-          app.profiles.first_name = firstName;
-          app.profiles.last_name = lastName;
+    if (process.env.DEBUG_APPLICANTS === "1") {
+      console.log("[applicants-debug] number of job_applications returned before mapping", rawApps?.length ?? 0);
+      console.log("[applicants-debug] application status values", (rawApps ?? []).map((app) => app.status));
+    }
+
+    // Map to ApplicationHubCard — use created_at as submitted_at
+    const mapped = (rawApps ?? []).map((app: any): ApplicationHubCard => ({
+      id: app.id,
+      job_id: app.job_id,
+      applicant_id: app.applicant_id,
+      resume_id: app.resume_id ?? "",
+      status: app.status ?? "applied",
+      cover_letter: app.cover_letter ?? null,
+      match_score: app.match_score ?? null,
+      hr_notes: app.hr_notes ?? null,
+      submitted_at: app.created_at ?? new Date().toISOString(),
+      updated_at: app.updated_at ?? new Date().toISOString(),
+      candidate: app.candidate ?? null,
+      job: app.job ?? null,
+    }));
+
+    applications = mapped;
+
+    if (process.env.DEBUG_APPLICANTS === "1") {
+      console.log("[applicants-debug] number after stage mapping", applications.length);
+      console.log("[applicants-debug] rows dropped by mapping", []);
+    }
+
+    // ── Repair candidate profile names if missing (best-effort) ──────────────
+    try {
+      const admin = getAdminClient();
+      const uniqueApplicantIds = Array.from(
+        new Set(applications.map((a) => {
+          const c = Array.isArray(a.candidate) ? a.candidate[0] : a.candidate;
+          return c?.id ?? null;
+        }).filter(Boolean))
+      ) as string[];
+
+      for (const applicantId of uniqueApplicantIds) {
+        const { data: authData } = await admin.auth.admin.getUserById(applicantId);
+        const authUser = authData?.user;
+        if (!authUser) continue;
+
+        const { firstName, lastName } = deriveNamesFromUser(authUser);
+        if (!firstName && !lastName) continue;
+
+        let needsUpdate = false;
+        for (const app of applications) {
+          const p = Array.isArray(app.candidate) ? app.candidate[0] : app.candidate;
+          if (!p || p.id !== applicantId) continue;
+          if (normalizeName(p.first_name) !== firstName || normalizeName(p.last_name) !== lastName) {
+            needsUpdate = true;
+            p.first_name = firstName;
+            p.last_name = lastName;
+          }
+        }
+
+        if (needsUpdate) {
+          await admin
+            .from("profiles")
+            .update({ first_name: firstName, last_name: lastName })
+            .eq("id", applicantId);
         }
       }
-
-      if (needsUpdate) {
-        await admin
-          .from("profiles")
-          .update({ first_name: firstName, last_name: lastName })
-          .eq("id", candidateId);
-      }
+    } catch {
+      // Non-blocking
     }
-  } catch {
-    // Non-blocking
+  } else if (process.env.DEBUG_APPLICANTS === "1") {
+    console.log("[applicants-debug] number of job_applications returned before mapping", 0);
+    console.log("[applicants-debug] number after stage mapping", 0);
+    console.log("[applicants-debug] rows dropped by mapping", []);
   }
 
   return (
     <PageContainer>
       <ApplicationsHubClient
-        applications={(applications ?? []) as any}
-        activeJobs={(jobs ?? []) as any}
-        currentCompanyId={profile?.tenant_id ?? ""}
+        applications={applications}
+        activeJobs={activeJobs}
+        currentCompanyId={tenantId ?? ""}
       />
     </PageContainer>
   );

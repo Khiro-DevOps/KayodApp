@@ -5,6 +5,24 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
 
+export async function recalculateMatchScores() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+  const { data: profile } = await supabase.from("profiles").select("role, tenant_id").eq("id", user.id).single();
+  if (!profile || !["hr", "hr_manager", "admin"].includes(String(profile.role))) return { success: false, error: "Forbidden" };
+  const { data: rows, error } = await supabase.from("job_applications").select("id, match_score, job:job_postings!job_applications_job_id_fkey ( tenant_id )").or("match_score.is.null,match_score.eq.0");
+  if (error) return { success: false, error: error.message };
+  const ids = (rows ?? []).filter((row) => (row.job as { tenant_id?: string } | null)?.tenant_id === profile.tenant_id).map((row) => row.id);
+  let scored = 0; let failed = 0;
+  for (let index = 0; index < ids.length; index += 10) {
+    const results = await Promise.all(ids.slice(index, index + 10).map((id) => computeAndStoreMatchScore(id)));
+    scored += results.filter((result) => result.success).length;
+    failed += results.filter((result) => !result.success).length;
+  }
+  return { success: true, scored, skipped: 0, failed };
+}
+
 export async function submitApplication(formData: FormData) {
   const supabase = await createClient();
 
@@ -21,7 +39,6 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Missing required fields" };
   }
 
-  // 1. Fetch the target job record first to obtain its tenant_id
   const { data: job } = await supabase
     .from("job_postings")
     .select("id, tenant_id, is_published, closes_at")
@@ -36,7 +53,6 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Job posting has closed" };
   }
 
-  // Check if already applied
   const { data: existingJA } = await supabase
     .from("job_applications")
     .select("id")
@@ -48,18 +64,6 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Already applied", alreadyApplied: true };
   }
 
-  const { data: existingApp } = await supabase
-    .from("applications")
-    .select("id")
-    .eq("candidate_id", user.id)
-    .eq("job_posting_id", jobId)
-    .maybeSingle();
-
-  if (existingApp) {
-    return { success: false, error: "Already applied", alreadyApplied: true };
-  }
-
-  // Primary insertion into `job_applications`
   const now = new Date().toISOString();
   const { data: createdJA, error: jaError } = await supabase
     .from("job_applications")
@@ -80,32 +84,12 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: jaError?.message || "Failed to submit application" };
   }
 
-  // Legacy table insertion for backward compatibility (applications uses job_posting_id)
-  const { data: createdApplication, error: appError } = await supabase
-    .from("applications")
-    .insert({
-      candidate_id: user.id,
-      job_posting_id: jobId,
-      resume_id: resumeId,
-      cover_letter: coverLetter || null,
-      status: "applied",
-      submitted_at: now,
-    })
-    .select("id")
-    .single();
-
-  if (appError) {
-    console.warn("Legacy applications table insert error (non-fatal):", appError.message);
-  }
-
-  const targetAppId = createdApplication?.id || createdJA.id;
   try {
-    await computeAndStoreMatchScore(targetAppId);
+    void computeAndStoreMatchScore(createdJA.id).catch((error) => console.warn("Match score computation failed:", error));
   } catch (recomputeError) {
     console.warn("Match score computation failed:", recomputeError);
   }
 
-  // 4. Revalidate paths immediately
   revalidatePath("/applicant/applications");
   revalidatePath("/hr/applicants");
   revalidatePath("/applicant/jobs");
@@ -120,30 +104,36 @@ export async function withdrawApplication(formData: FormData) {
   if (!user) redirect("/login");
 
   const applicationId = formData.get("application_id") as string;
-  if (!applicationId) redirect("/applications");
+  if (!applicationId) redirect("/applicant/applications");
 
-  // Verify the application belongs to the user
+  // Verify ownership on the canonical table — applicant can only withdraw their own
   const { data: application } = await supabase
-    .from("applications")
-    .select("id, candidate_id, status")
+    .from("job_applications")
+    .select("id, applicant_id, status")
     .eq("id", applicationId)
     .single();
 
-  if (!application || application.candidate_id !== user.id) {
-    redirect("/applications");
+  if (!application || application.applicant_id !== user.id) {
+    redirect("/applicant/applications");
   }
 
-  // Can only withdraw if status is "applied"
-  if (application.status !== "applied") {
-    redirect("/applications");
+  // Can only withdraw from active (non-closed) statuses
+  const closedStatuses = ["hired", "hire_confirmed", "rejected", "withdrawn"];
+  if (closedStatuses.includes(application.status)) {
+    redirect("/applicant/applications");
   }
 
-  // Update status to withdrawn
   await supabase
-    .from("applications")
-    .update({ status: "withdrawn" })
-    .eq("id", applicationId);
+    .from("job_applications")
+    .update({
+      status: "withdrawn",
+      withdrawn_at: new Date().toISOString(),
+      status_updated_at: new Date().toISOString(),
+    })
+    .eq("id", applicationId)
+    .eq("applicant_id", user.id);
 
-  revalidatePath("/applications");
-  redirect("/applications?success=Application+withdrawn+successfully");
+  revalidatePath("/hr/applicants");
+  revalidatePath("/applicant/applications");
+  redirect("/applicant/applications?success=Application+withdrawn+successfully");
 }

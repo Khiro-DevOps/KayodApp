@@ -46,17 +46,6 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Already applied", alreadyApplied: true };
   }
 
-  const { data: existingApp } = await supabase
-    .from("applications")
-    .select("id")
-    .eq("candidate_id", user.id)
-    .eq("job_posting_id", jobId)
-    .maybeSingle();
-
-  if (existingApp) {
-    return { success: false, error: "Already applied", alreadyApplied: true };
-  }
-
   const now = new Date().toISOString();
   const { data: createdJA, error: jaError } = await supabase
     .from("job_applications")
@@ -77,29 +66,9 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: jaError?.message || "Failed to submit application" };
   }
 
-  const { data: createdApplication, error: appError } = await supabase
-    .from("applications")
-    .insert({
-      candidate_id: user.id,
-      job_posting_id: jobId,
-      resume_id: resumeId,
-      cover_letter: coverLetter || null,
-      status: "applied",
-      submitted_at: now,
-    })
-    .select("id")
-    .single();
-
-  if (appError) {
-    console.warn("Legacy applications table insert error (non-fatal):", appError.message);
-  }
-
-  const targetAppId = createdApplication?.id || createdJA.id;
-  try {
-    await computeAndStoreMatchScore(targetAppId);
-  } catch (recomputeError) {
+  void computeAndStoreMatchScore(createdJA.id).catch((recomputeError) => {
     console.warn("Match score computation failed:", recomputeError);
-  }
+  });
 
   revalidatePath("/applicant/applications");
   revalidatePath("/hr/applicants");
@@ -118,12 +87,12 @@ export async function withdrawApplication(formData: FormData) {
   if (!applicationId) redirect("/applications");
 
   const { data: application } = await supabase
-    .from("applications")
-    .select("id, candidate_id, status")
+    .from("job_applications")
+    .select("id, applicant_id, status")
     .eq("id", applicationId)
     .single();
 
-  if (!application || application.candidate_id !== user.id) {
+  if (!application || application.applicant_id !== user.id) {
     redirect("/applications");
   }
 
@@ -132,8 +101,8 @@ export async function withdrawApplication(formData: FormData) {
   }
 
   await supabase
-    .from("applications")
-    .update({ status: "withdrawn" })
+    .from("job_applications")
+    .update({ status: "withdrawn", withdrawn_at: new Date().toISOString() })
     .eq("id", applicationId);
 
   revalidatePath("/applications");

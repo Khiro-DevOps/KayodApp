@@ -46,14 +46,33 @@ export default async function ApplicantDocumentsPage({
     .eq("candidate_id", user.id)
     .maybeSingle<ApplicantDocumentsPageRow>();
 
-  if (!application || application.status !== "pre_employment") {
+  let resolvedApplication = application;
+  if (!resolvedApplication) {
+    const { data: jobApplication } = await admin
+      .from("job_applications")
+      .select("id, job_id, applicant_id")
+      .eq("id", applicationId)
+      .eq("applicant_id", user.id)
+      .maybeSingle();
+    if (jobApplication) {
+      const { data: legacyApplication } = await admin
+        .from("applications")
+        .select("id, candidate_id, status, doc_deadline, doc_submission_note, job_postings ( id, title )")
+        .eq("job_posting_id", jobApplication.job_id)
+        .eq("candidate_id", jobApplication.applicant_id)
+        .maybeSingle<ApplicantDocumentsPageRow>();
+      resolvedApplication = legacyApplication;
+    }
+  }
+
+  if (!resolvedApplication || resolvedApplication.status !== "pre_employment") {
     redirect("/dashboard");
   }
 
   const { data: requiredDocuments } = await admin
     .from("job_required_documents")
     .select("id, job_posting_id, name, is_required, created_at, updated_at")
-    .eq("job_posting_id", application.job_postings?.id ?? "")
+    .eq("job_posting_id", resolvedApplication.job_postings?.id ?? "")
     .order("created_at", { ascending: true })
     .returns<JobRequiredDocument[]>();
 
@@ -74,7 +93,7 @@ export default async function ApplicantDocumentsPage({
       created_at,
       updated_at
     `)
-    .eq("application_id", applicationId)
+    .eq("application_id", resolvedApplication.id)
     .returns<ApplicantDocument[]>();
 
   const documentRows = (requiredDocuments ?? []).map((requiredDocument) => ({
@@ -84,16 +103,16 @@ export default async function ApplicantDocumentsPage({
 
   const verifiedCount = documentRows.filter(({ requiredDocument, applicantDocument }) => requiredDocument.is_required && applicantDocument?.hr_verified).length;
   const totalRequired = documentRows.filter(({ requiredDocument }) => requiredDocument.is_required).length;
-  const deadlineDate = application.doc_deadline ? new Date(application.doc_deadline) : null;
+  const deadlineDate = resolvedApplication.doc_deadline ? new Date(resolvedApplication.doc_deadline) : null;
   const daysLeft = deadlineDate ? Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
     <ApplicantDocumentsClient
-      applicationId={application.id}
-      jobTitle={application.job_postings?.title ?? "Pre-employment requirements"}
-      deadline={application.doc_deadline}
+      applicationId={resolvedApplication.id}
+      jobTitle={resolvedApplication.job_postings?.title ?? "Pre-employment requirements"}
+      deadline={resolvedApplication.doc_deadline}
       daysLeft={daysLeft}
-      submissionNote={application.doc_submission_note}
+      submissionNote={resolvedApplication.doc_submission_note}
       verifiedCount={verifiedCount}
       totalRequired={totalRequired}
       documents={documentRows}

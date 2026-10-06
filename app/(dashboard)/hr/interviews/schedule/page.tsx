@@ -8,6 +8,9 @@ interface PageProps {
   searchParams: Promise<{ applicationId?: string; application_id?: string }>;
 }
 
+type ApplicantProfile = { first_name: string | null; last_name: string | null; email: string | null };
+type JobSummary = { id: string; title: string | null };
+
 export default async function ScheduleInterviewPage({ searchParams }: PageProps) {
   const supabase = await createClient();
 
@@ -39,11 +42,11 @@ export default async function ScheduleInterviewPage({ searchParams }: PageProps)
 
   if (applicationId) {
     const { data, error } = await supabase
-      .from("applications")
+      .from("job_applications")
       .select(`
-        id, status, candidate_id,
-        profiles!applications_candidate_id_fkey ( first_name, last_name, email ),
-        job_postings ( id, title )
+        id, status, applicant_id,
+        applicant:profiles!job_applications_applicant_id_fkey ( first_name, last_name, email ),
+        job:job_postings!job_applications_job_id_fkey ( id, title )
       `)
       .eq("id", applicationId)
       .maybeSingle();
@@ -53,7 +56,20 @@ export default async function ScheduleInterviewPage({ searchParams }: PageProps)
     } else if (!data) {
       fetchError = "Application not found or you do not have access to it.";
     } else {
-      application = data as unknown as typeof application;
+      const record = data as unknown as {
+        id: string;
+        status: string;
+        applicant_id: string;
+        applicant: ApplicantProfile | null;
+        job: JobSummary | JobSummary[] | null;
+      };
+      application = {
+        id: record.id,
+        status: record.status,
+        candidate_id: record.applicant_id,
+        profiles: record.applicant,
+        job_postings: Array.isArray(record.job) ? record.job[0] ?? null : record.job,
+      };
     }
   } else {
     fetchError = "Missing application ID. Open this page from an applicant card.";

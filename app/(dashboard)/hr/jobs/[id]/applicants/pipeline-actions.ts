@@ -81,7 +81,7 @@ export async function moveToScreening(applicationId: string): Promise<PipelineTr
     const applicantName = getApplicantName(typedApplication);
 
     // Revalidate cache
-    revalidatePath("/jobs/manage");
+    revalidatePath("/hr/jobs");
     revalidatePath("/applications");
 
     return {
@@ -155,7 +155,7 @@ export async function moveToInterview(applicationId: string): Promise<PipelineTr
       const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
       const applicantName = getApplicantName(typedApplication);
 
-      revalidatePath("/jobs/manage");
+      revalidatePath("/hr/jobs");
       revalidatePath("/applications");
 
       return {
@@ -222,7 +222,7 @@ export async function confirmInterviewScheduled(applicationId: string): Promise<
     const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
     const applicantName = getApplicantName(typedApplication);
 
-    revalidatePath("/jobs/manage");
+    revalidatePath("/hr/jobs");
     revalidatePath("/applications");
 
     return {
@@ -298,7 +298,7 @@ export async function moveToOffer(applicationId: string): Promise<PipelineTransi
         const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
         const applicantName = getApplicantName(typedApplication);
 
-        revalidatePath("/jobs/manage");
+        revalidatePath("/hr/jobs");
         revalidatePath("/applications");
 
         return {
@@ -364,7 +364,7 @@ export async function confirmOfferSent(applicationId: string): Promise<PipelineT
     const typedApplication = application as (typeof application & ApplicationWithApplicantProfile) | null;
     const applicantName = getApplicantName(typedApplication);
 
-    revalidatePath("/jobs/manage");
+    revalidatePath("/hr/jobs");
     revalidatePath("/applications");
 
     return {

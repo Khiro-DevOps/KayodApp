@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { JobListing, JobPosting, Profile } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import ManageJobsWorkspace from "./manage-jobs-workspace";
+import { getHrJobScope } from "@/lib/hr-job-scope";
 
 type WorkspaceProfile = Pick<Profile, "role" | "tenant_id"> & {
   tenants?: { name?: string | null } | null;
@@ -60,10 +61,14 @@ export default async function ManageJobsPage() {
     redirect("/dashboard");
   }
 
-  const tenantId = profile?.tenant_id?.trim() ?? "";
+  const jobScope = await getHrJobScope(supabase, user.id);
+  const tenantId = jobScope.tenantId ?? "";
   const companyName = profile?.tenants?.name?.trim() || "Your Company";
 
-  const currentJobsQuery = supabase.from("job_postings").select("*, departments(name)").eq("created_by", user.id);
+  const currentJobsQuery = supabase
+    .from("job_postings")
+    .select("*, departments(name)")
+    .or(jobScope.filter);
 
   let legacyJobsQuery = supabase.from("job_listings").select("*, employers(company_name)");
   if (tenantId) {

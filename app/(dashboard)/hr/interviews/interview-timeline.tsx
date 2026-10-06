@@ -98,7 +98,7 @@ export default function InterviewTimeline({ interviews, isRecruiter }: Interview
                           <p className="text-text-secondary font-medium mb-2">Join Video Call</p>
                           {canJoin ? (
                             <button
-                              onClick={() => router.push(`/interviews?id=${interview.id}`)}
+                              onClick={() => router.push(`/hr/interviews?interviewId=${interview.id}`)}
                               className="w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
                             >
                               Join Meeting

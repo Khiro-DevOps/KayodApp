@@ -82,25 +82,6 @@ export default function InterviewRoomPage({ interviewId }: Props) {
     void load();
   }, [interviewId]);
 
-  async function markCompleted() {
-    try {
-      const response = await fetch(`/api/interviews/${interviewId}/complete`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to complete interview");
-      }
-
-      setInterview((prev) => (prev ? { ...prev, status: "completed" } : prev));
-      router.refresh();
-    } catch (err) {
-      console.error("Failed to complete interview:", err);
-      setError("Failed to complete interview.");
-    }
-  }
-
   const handleHRLeave = useCallback(() => {
     setActiveRoom(null);
   }, []);
@@ -194,14 +175,6 @@ export default function InterviewRoomPage({ interviewId }: Props) {
           </div>
         </div>
 
-        {isHR && interview.status === "scheduled" && (
-          <button
-            onClick={() => void markCompleted()}
-            className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90"
-          >
-            Mark as Completed
-          </button>
-        )}
       </div>
     );
   }
@@ -285,14 +258,6 @@ export default function InterviewRoomPage({ interviewId }: Props) {
             {canJoin ? "Join Meeting" : `Opens in ${minutesUntil}m`}
           </button>
 
-          {isHR && interview.status !== "completed" && (
-            <button
-              onClick={() => void markCompleted()}
-              className="w-full rounded-xl border border-border py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-gray-50"
-            >
-              Mark as Completed
-            </button>
-          )}
         </div>
       )}
     </div>

@@ -81,7 +81,7 @@ export default function HRApplicantCard({ app, candidate, resume, fullName }: HR
           {/* Schedule interview button */}
           {["submitted", "under_review", "shortlisted"].includes(app.status) && (
             <button
-              onClick={() => router.push(`/interviews/schedule?applicationId=${app.id}`)}
+              onClick={() => router.push(`/hr/interviews/schedule?applicationId=${app.id}`)}
               className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">

@@ -103,7 +103,7 @@ export default async function HRProfilePage() {
               <span className="text-xs font-medium text-primary">View →</span>
             </Link>
             <Link
-              href="/hr/jobs/manage"
+              href="/hr/jobs"
               className="flex items-center justify-between px-4 py-3.5 text-sm text-text-main hover:bg-surface-bg transition-colors"
             >
               <div className="flex items-center gap-3">

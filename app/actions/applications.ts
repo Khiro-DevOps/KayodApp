@@ -43,63 +43,31 @@ export async function withdrawApplication(applicationId: string): Promise<Withdr
       console.error("Error fetching job_application:", fetchJobAppError);
     }
 
-    if (jobAppRecord) {
-      if (jobAppRecord.applicant_id !== user.id) {
-        return { success: false, error: "Forbidden: You do not own this application." };
-      }
+    if (!jobAppRecord) {
+      return { success: false, error: "Application record not found." };
+    }
 
-      if (jobAppRecord.status === "withdrawn") {
-        return { success: false, error: "Application is already withdrawn." };
-      }
+    if (jobAppRecord.applicant_id !== user.id) {
+      return { success: false, error: "Forbidden: You do not own this application." };
+    }
 
-      const { error: updateError } = await supabase
-        .from("job_applications")
-        .update({
-          status: "withdrawn",
-          withdrawn_at: new Date().toISOString(),
-          status_updated_at: new Date().toISOString(),
-        })
-        .eq("id", applicationId)
-        .eq("applicant_id", user.id);
+    if (jobAppRecord.status === "withdrawn") {
+      return { success: false, error: "Application is already withdrawn." };
+    }
 
-      if (updateError) {
-        console.error("Error updating job_application status:", updateError);
-        return { success: false, error: updateError.message || "Failed to withdraw application." };
-      }
-    } else {
-      // Fallback check on `applications` table if job_applications row was not found
-      const { data: appRecord, error: fetchAppError } = await supabase
-        .from("applications")
-        .select("id, candidate_id, status")
-        .eq("id", applicationId)
-        .maybeSingle();
+    const { error: updateError } = await supabase
+      .from("job_applications")
+      .update({
+        status: "withdrawn",
+        withdrawn_at: new Date().toISOString(),
+        status_updated_at: new Date().toISOString(),
+      })
+      .eq("id", applicationId)
+      .eq("applicant_id", user.id);
 
-      if (fetchAppError || !appRecord) {
-        return { success: false, error: "Application record not found." };
-      }
-
-      if (appRecord.candidate_id !== user.id) {
-        return { success: false, error: "Forbidden: You do not own this application." };
-      }
-
-      if (appRecord.status === "withdrawn") {
-        return { success: false, error: "Application is already withdrawn." };
-      }
-
-      const { error: updateAppError } = await supabase
-        .from("applications")
-        .update({
-          status: "withdrawn",
-          withdrawn_at: new Date().toISOString(),
-          status_updated_at: new Date().toISOString(),
-        })
-        .eq("id", applicationId)
-        .eq("candidate_id", user.id);
-
-      if (updateAppError) {
-        console.error("Error updating applications status:", updateAppError);
-        return { success: false, error: updateAppError.message || "Failed to withdraw application." };
-      }
+    if (updateError) {
+      console.error("Error updating job_application status:", updateError);
+      return { success: false, error: updateError.message || "Failed to withdraw application." };
     }
 
     // 3. Revalidate applicant applications page path

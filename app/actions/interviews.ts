@@ -22,6 +22,18 @@ export interface CreateInvitePayload {
   interviewer_id: string;
   slots: Array<{ start_time: string; end_time: string }>;
   meeting_link?: string;
+  meeting_type?: "online" | "in_person" | "hybrid";
+  office_branch_id?: string | null;
+}
+
+export async function getOfficeBranches(): Promise<{ success: boolean; data?: Array<{ id: string; name: string; address: string | null }>; error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+  const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
+  if (!profile?.tenant_id) return { success: false, error: "Tenant not found" };
+  const { data, error } = await supabase.from("office_branches").select("id, name, address").eq("tenant_id", profile.tenant_id).order("name");
+  return error ? { success: false, error: error.message } : { success: true, data: data ?? [] };
 }
 
 export interface ActionResponse<T = any> {
@@ -73,7 +85,7 @@ export async function createInterviewInvite(
   data: CreateInvitePayload
 ): Promise<ActionResponse> {
   try {
-    const { application_id, interviewer_id, slots, meeting_link } = data;
+    const { application_id, interviewer_id, slots, meeting_link, meeting_type = "online", office_branch_id } = data;
 
     if (!application_id || !interviewer_id || !slots || slots.length < 1 || slots.length > 3) {
       return { success: false, error: "Please provide valid application, interviewer, and 1 to 3 time slots." };
@@ -111,6 +123,11 @@ export async function createInterviewInvite(
     if (!jobApp) {
       return { success: false, error: "Application record not found." };
     }
+    if (meeting_type === "in_person" || meeting_type === "hybrid") {
+      if (!office_branch_id) return { success: false, error: "Office branch required for in-person interviews." };
+      const { data: branch } = await supabase.from("office_branches").select("id").eq("id", office_branch_id).eq("tenant_id", (await supabase.from("profiles").select("tenant_id").eq("id", user.id).single()).data?.tenant_id ?? "").maybeSingle();
+      if (!branch) return { success: false, error: "Office branch is not in your tenant." };
+    }
 
     // Conflict checking for interviewer
     const conflict = await hasInterviewerConflict(supabase, interviewer_id, slots);
@@ -130,8 +147,8 @@ export async function createInterviewInvite(
     }));
 
     // Generate video meeting link if not provided
-    const roomName = `kayod-interview-${crypto.randomUUID()}`;
-    const dynamicMeetingLink = meeting_link || `https://meet.jit.si/${roomName}`;
+    const roomName = meeting_type === "online" || meeting_type === "hybrid" ? `kayod-interview-${crypto.randomUUID()}` : null;
+    const dynamicMeetingLink = meeting_type === "online" || meeting_type === "hybrid" ? (meeting_link || `https://meet.jit.si/${roomName}`) : null;
 
     // Insert into interview_schedules
     const { data: invite, error: insertError } = await supabase
@@ -145,7 +162,9 @@ export async function createInterviewInvite(
         status: "proposed",
         room_name: roomName,
         meeting_link: dynamicMeetingLink,
-        video_provider: "jitsi",
+        video_provider: meeting_type === "online" || meeting_type === "hybrid" ? "jitsi" : null,
+        meeting_type,
+        office_branch_id: meeting_type === "in_person" || meeting_type === "hybrid" ? office_branch_id : null,
         interview_notes: "",
         scorecard: {},
       })
@@ -361,7 +380,6 @@ export async function submitScorecard(
       .from("interview_schedules")
       .update({
         scorecard: scorecardObj,
-        status: "completed",
         updated_at: new Date().toISOString(),
       })
       .eq("id", interviewId);

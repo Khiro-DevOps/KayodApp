@@ -211,7 +211,7 @@ export default function ApplicantDetailDrawer({
       return {
         label: "View Scheduled Interview",
         color: "bg-primary text-white",
-        onClick: () => router.push("/interviews"),
+        onClick: () => router.push("/hr/interviews"),
       };
     }
 
@@ -243,7 +243,7 @@ export default function ApplicantDetailDrawer({
       return {
         label: "Review onboarding docs",
         color: "bg-sky-600 text-white",
-        onClick: () => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/documents`),
+        onClick: () => router.push(`/hr/jobs/${jobId}/applicants/${application.id}/documents`),
       };
     }
 
@@ -719,7 +719,7 @@ export default function ApplicantDetailDrawer({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => router.push(`/jobs/manage/${jobId}/applicants/${application.id}/documents`)}
+                  onClick={() => router.push(`/hr/jobs/${jobId}/applicants/${application.id}/documents`)}
                   className="inline-flex flex-1 items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700"
                 >
                   Open onboarding review

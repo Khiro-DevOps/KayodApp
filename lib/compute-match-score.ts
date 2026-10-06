@@ -5,9 +5,9 @@ const GEMINI_MODEL = "google/gemini-2.0-flash";
 
 type ApplicationRow = {
   id: string;
-  candidate_id: string;
+  applicant_id: string;
   resume_id: string | null;
-  job_posting_id: string;
+  job_id: string;
 };
 
 type JobRow = {
@@ -411,8 +411,8 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
 
   try {
     const { data: application, error: applicationError } = await admin
-      .from("applications")
-      .select("id, candidate_id, resume_id, job_posting_id")
+      .from("job_applications")
+      .select("id, applicant_id, resume_id, job_id")
       .eq("id", applicationId)
       .maybeSingle<ApplicationRow>();
 
@@ -422,7 +422,7 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     const { data: job, error: jobError } = await admin
       .from("job_postings")
       .select("title, description, requirements, required_skills, work_setup, min_experience")
-      .eq("id", application.job_posting_id)
+      .eq("id", application.job_id)
       .maybeSingle<JobRow>();
 
     if (jobError) throw jobError;
@@ -440,7 +440,7 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("work_setup")
-      .eq("id", application.candidate_id)
+      .eq("id", application.applicant_id)
       .maybeSingle<ProfileRow>();
 
     if (profileError) throw profileError;
@@ -448,8 +448,8 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     const { data: cachedRow, error: cacheError } = await admin
       .from("match_scores")
       .select("applicant_id, job_id, score_total, score_skills, score_title, score_experience, score_education, score_setup, reasons, computed_at")
-      .eq("applicant_id", application.candidate_id)
-      .eq("job_id", application.job_posting_id)
+      .eq("applicant_id", application.applicant_id)
+      .eq("job_id", application.job_id)
       .maybeSingle<MatchScoreRow>();
 
     if (cacheError) throw cacheError;
@@ -459,8 +459,13 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
 
     if (!forceRecompute && isFreshCache) {
       await admin
-        .from("applications")
-        .update({ match_score: cachedRow.score_total, updated_at: new Date().toISOString() })
+        .from("job_applications")
+        .update({
+          match_score: cachedRow.score_total,
+          technical_alignment: cachedRow.score_skills,
+          role_fit: Math.round(((cachedRow.score_title ?? 0) * 0.4) + ((cachedRow.score_experience ?? 0) * 0.25) + ((cachedRow.score_education ?? 0) * 0.2) + ((cachedRow.score_setup ?? 0) * 0.15)),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", application.id);
 
       return {
@@ -555,8 +560,8 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     });
 
     const scoreRow = {
-      applicant_id: application.candidate_id,
-      job_id: application.job_posting_id,
+      applicant_id: application.applicant_id,
+      job_id: application.job_id,
       score_total: total,
       score_skills: skillScore,
       score_title: titleScore,
@@ -574,8 +579,13 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     if (upsertError) throw upsertError;
 
     const { error: applicationUpdateError } = await admin
-      .from("applications")
-      .update({ match_score: total, updated_at: new Date().toISOString() })
+      .from("job_applications")
+      .update({
+        match_score: total,
+        technical_alignment: skillScore,
+        role_fit: Math.round((titleScore * 0.4) + (experienceScore * 0.25) + (educationScore * 0.2) + (setupScore * 0.15)),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", application.id);
 
     if (applicationUpdateError) throw applicationUpdateError;
@@ -595,6 +605,12 @@ export async function computeAndStoreMatchScore(applicationId: string, forceReco
     };
   } catch (error) {
     console.error("compute-match-score error:", error);
+    await admin.from("job_applications").update({
+      match_score: null,
+      technical_alignment: null,
+      role_fit: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", applicationId);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to compute match score",

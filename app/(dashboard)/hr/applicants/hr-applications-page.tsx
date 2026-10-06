@@ -193,7 +193,7 @@ export default async function HRApplicationsPage() {
         {totalApps === 0 && (
           <div className="rounded-2xl bg-surface border border-border p-8 text-center space-y-2">
             <p className="text-sm text-text-secondary">No applications yet</p>
-            <Link href="/jobs/manage/new" className="inline-block text-sm font-medium text-primary hover:underline">
+            <Link href="/hr/jobs/new" className="inline-block text-sm font-medium text-primary hover:underline">
               Post a job to get started
             </Link>
           </div>

@@ -94,7 +94,7 @@ export async function sendOfferWithDocuSeal(
       throw new Error(`DocuSeal submission was created, but the job offer record could not be updated: ${updateError.message}`);
     }
 
-    revalidatePath(`/jobs/manage/${jobId}/applicants`);
+    revalidatePath(`/hr/jobs/${jobId}/applicants`);
 
     return {
       success: true,

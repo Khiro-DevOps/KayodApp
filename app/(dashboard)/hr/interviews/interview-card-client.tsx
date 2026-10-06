@@ -1,7 +1,7 @@
 "use client";
 
 import { Interview } from "@/lib/types";
-import { confirmInterviewDone, updateInterviewPreference } from "./actions";
+import { completeInterview, getInterviewRequirements, updateInterviewPreference, type InterviewCompletionOutcome, type InterviewRequirementOption } from "./actions";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -24,6 +24,14 @@ export function InterviewCardClient({
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(interview.status === "completed");
   const [completeError, setCompleteError] = useState<string | null>(null);
+  const [completionWarning, setCompletionWarning] = useState<string | null>(null);
+  const [completionOutcome, setCompletionOutcome] = useState<InterviewCompletionOutcome>("advance");
+  const [completionNotes, setCompletionNotes] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isCompleteOpen, setIsCompleteOpen] = useState(false);
+  const [sendRequirements, setSendRequirements] = useState(false);
+  const [requirements, setRequirements] = useState<InterviewRequirementOption[]>([]);
+  const [requirementIds, setRequirementIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (past) return;
@@ -37,6 +45,16 @@ export function InterviewCardClient({
       return () => clearTimeout(timer);
     }
   }, [past, interview.scheduled_at, router]);
+
+  useEffect(() => {
+    if (!isCompleteOpen) return;
+    void getInterviewRequirements(interview.id).then((result) => {
+      if (result.success) {
+        setRequirements(result.data ?? []);
+        setRequirementIds((result.data ?? []).filter((item) => item.is_required).map((item) => item.id));
+      }
+    });
+  }, [interview.id, isCompleteOpen]);
 
   const app = interview.applications as unknown as {
     id?: string;
@@ -75,7 +93,6 @@ export function InterviewCardClient({
   // - interview window has started (ongoing or expired — i.e. not future)
   const canCompleteInterview =
     isHR &&
-    !past &&
     !isCompletedLocally &&
     interview.status !== "cancelled" &&
     interview.status !== "completed" &&
@@ -100,8 +117,6 @@ export function InterviewCardClient({
   const displayStatus =
     interview.status === "scheduled" && isOngoing
       ? "ongoing"
-      : interview.status === "scheduled" && isExpired
-      ? "completed"
       : interview.status;
 
   const handleTypeSelection = async (type: "online" | "in_person") => {
@@ -114,13 +129,23 @@ export function InterviewCardClient({
   const handleConfirmInterview = async () => {
     setConfirming(true);
     setCompleteError(null);
+    setCompletionWarning(null);
 
     try {
-      const result = await confirmInterviewDone(interview.id);
+      const result = await completeInterview({
+        interviewId: interview.id,
+        outcome: completionOutcome,
+        notes: completionNotes,
+        rejectionReason,
+        sendRequirements,
+        requirementIds,
+      });
       if (!result.success) {
         throw new Error(result.error || "Failed to confirm interview");
       }
 
+      setIsCompleteOpen(false);
+      setCompletionWarning(result.warning ?? null);
       setConfirmed(true);
       setIsCompletedLocally(true);
       router.refresh();
@@ -220,7 +245,7 @@ export function InterviewCardClient({
         <button
           onClick={() => {
             if (isExpired) return;
-            router.push(`/interviews/${interview.id}/room`);
+            router.push(`/hr/interviews/${interview.id}/room`);
           }}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
         >
@@ -233,11 +258,11 @@ export function InterviewCardClient({
 
       {needsConfirmation && (
         <button
-          onClick={() => void handleConfirmInterview()}
+          onClick={() => setIsCompleteOpen(true)}
           disabled={confirming}
           className="mt-3 w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
-          {confirming ? "Confirming..." : "Confirm Interview"}
+          Complete Interview
         </button>
       )}
 
@@ -251,11 +276,11 @@ export function InterviewCardClient({
       {canCompleteInterview && (
         <div className="mt-3">
           <button
-            onClick={() => void handleConfirmInterview()}
+            onClick={() => setIsCompleteOpen(true)}
             disabled={confirming}
             className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {confirming ? "Confirming..." : "Confirm Interview"}
+            Complete Interview
           </button>
         </div>
       )}
@@ -263,6 +288,25 @@ export function InterviewCardClient({
       {completeError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {completeError}
+        </div>
+      )}
+      {completionWarning && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{completionWarning}</div>}
+
+      {isCompleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-text-primary">Complete Interview</h2>
+            <div className="mt-4 space-y-3">
+              <label className="flex items-center gap-3 text-sm text-text-primary"><input type="checkbox" checked={sendRequirements} onChange={(event) => setSendRequirements(event.target.checked)} />Send requirements online to the applicant</label>
+              {sendRequirements && <div className="space-y-2 rounded-lg border border-border p-3">{requirements.map((requirement) => <label key={requirement.id} className="flex items-center gap-3 text-sm text-text-primary"><input type="checkbox" checked={requirementIds.includes(requirement.id)} onChange={(event) => setRequirementIds((current) => event.target.checked ? [...current, requirement.id] : current.filter((id) => id !== requirement.id))} />{requirement.name}{requirement.is_required ? " (required)" : ""}</label>)}</div>}
+              {([["advance", "Advance to Offer & Contract"], ["reject", "Reject"], ["hold", "Keep in Interview stage"]] as const).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-3 text-sm text-text-primary"><input type="radio" name={`completion-${interview.id}`} checked={completionOutcome === value} onChange={() => setCompletionOutcome(value)} />{label}</label>
+              ))}
+              <textarea value={completionNotes} onChange={(event) => setCompletionNotes(event.target.value)} placeholder="Notes (optional)" className="min-h-20 w-full rounded-lg border border-border bg-surface p-3 text-sm" />
+              {completionOutcome === "reject" && <textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} placeholder="Rejection reason (required)" className="min-h-20 w-full rounded-lg border border-border bg-surface p-3 text-sm" />}
+            </div>
+            <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setIsCompleteOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button><button type="button" disabled={confirming} onClick={() => void handleConfirmInterview()} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{confirming ? "Saving..." : "Complete Interview"}</button></div>
+          </div>
         </div>
       )}
 

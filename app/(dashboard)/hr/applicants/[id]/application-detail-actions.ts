@@ -130,12 +130,12 @@ export async function configureInterviewAvailability(formData: FormData) {
     type: "application_status_changed",
     title: "Interview format options updated",
     body: `HR has enabled ${modeLabel} interview format${offeredModes.length > 1 ? "s" : ""} for your application. Please confirm your preferred format.`,
-    action_url: `/interviews/respond/${applicationId}`,
+    action_url: `/hr/interviews/respond/${applicationId}`,
   });
 
   revalidatePath("/applications");
   revalidatePath(`/applications/${applicationId}`);
-  revalidatePath(`/interviews/respond/${applicationId}`);
+  revalidatePath(`/hr/interviews/respond/${applicationId}`);
 }
 
 export async function moveToInterview(formData: FormData) {

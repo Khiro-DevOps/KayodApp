@@ -205,7 +205,7 @@ export default function StatusTracker({ status, interviews, applicationId, offer
                               <div className="mt-2">
                                 {canJoin ? (
                                   <button
-                                    onClick={() => router.push(`/interviews?id=${interview.id}`)}
+                                    onClick={() => router.push(`/hr/interviews?interviewId=${interview.id}`)}
                                     className="mt-2 w-full rounded-xl bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
                                   >
                                     Join Meeting

@@ -15,6 +15,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Home", href: "/employee", icon: "home" },
   { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
+  { label: "Attendance", href: "/employees/attendance", icon: "fact_check" },
   { label: "Payslips", href: "/employee/payslips", icon: "payments" },
   { label: "Profile", href: "/employee/profile", icon: "person" },
 ];

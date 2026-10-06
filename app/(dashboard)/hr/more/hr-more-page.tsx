@@ -50,8 +50,8 @@ export default async function HRMorePage() {
             HR Tools
           </p>
           <div className="rounded-2xl bg-surface border border-border overflow-hidden divide-y divide-border">
-            <MenuLink href="/hr/jobs/manage" label="Manage job postings" emoji="💼" />
-            <MenuLink href="/hr/jobs/manage/new" label="Post a new job" emoji="➕" />
+            <MenuLink href="/hr/jobs" label="Manage job postings" emoji="💼" />
+            <MenuLink href="/hr/jobs/new" label="Post a new job" emoji="➕" />
             <MenuLink href="/hr/payroll" label="Payroll" emoji="💰" />
             <MenuLink href="/hr/schedules" label="Employee schedules" emoji="🗓️" />
             <MenuLink href="/hr/leaves" label="Leave requests" emoji="🏖️" />

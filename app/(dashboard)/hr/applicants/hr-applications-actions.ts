@@ -11,7 +11,7 @@ export async function updateApplicationStatus(formData: FormData) {
 
   const { data: profile } = await supabase
     .from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["hr_manager", "admin"].includes(profile.role)) redirect("/dashboard");
+  if (!profile || !["hr_manager", "admin", "hr"].includes(profile.role)) redirect("/dashboard");
 
   const applicationId = formData.get("application_id") as string;
   const status = formData.get("status") as string;
@@ -101,7 +101,7 @@ export async function updateApplicationStatus(formData: FormData) {
         type: "application_status_changed",
         title: "You've been shortlisted! 🎉",
         body: `Congratulations! You've been selected for an interview for ${jobTitle}. Please choose your preferred interview format.`,
-        action_url: `/interviews/respond/${applicationId}`,
+        action_url: `/hr/interviews/respond/${applicationId}`,
       });
     }
   }
@@ -143,6 +143,8 @@ export async function updateApplicationStatus(formData: FormData) {
   }
 
   revalidatePath("/applications");
+  revalidatePath("/hr/applicants");
+  revalidatePath("/applicant/applications");
   revalidatePath("/employees");
   revalidatePath("/dashboard");
 }
@@ -154,7 +156,7 @@ export async function moveToApplied(formData: FormData) {
 
   const { data: profile } = await supabase
     .from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["hr_manager", "admin"].includes(profile.role)) redirect("/dashboard");
+  if (!profile || !["hr_manager", "admin", "hr"].includes(profile.role)) redirect("/dashboard");
 
   const applicationId = formData.get("application_id") as string;
   if (!applicationId) redirect("/applications");
@@ -189,4 +191,5 @@ export async function moveToApplied(formData: FormData) {
   }
 
   revalidatePath("/applications");
+  revalidatePath("/hr/applicants");
 }

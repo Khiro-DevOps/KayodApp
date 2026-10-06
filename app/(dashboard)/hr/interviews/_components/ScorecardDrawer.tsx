@@ -51,19 +51,19 @@ export function ScorecardDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs">
-      <div className="w-full max-w-lg bg-white h-full shadow-2xl dark:bg-slate-900 flex flex-col min-w-0 overflow-hidden">
+      <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-800">
+        <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Submit Interview Scorecard</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <h3 className="text-base font-bold text-slate-900">Submit Interview Scorecard</h3>
+            <p className="text-xs text-slate-500">
               {candidateName} • {jobTitle}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -74,14 +74,14 @@ export function ScorecardDrawer({
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-5">
           {errorMsg && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
               {errorMsg}
             </div>
           )}
 
           {/* Rating (1 to 5 Stars) */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-xs font-semibold text-slate-700">
               Overall Candidate Rating (1–5 Stars)
             </label>
             <div className="flex items-center gap-2">
@@ -96,7 +96,7 @@ export function ScorecardDrawer({
                     className={`h-7 w-7 transition-colors ${
                       star <= rating
                         ? "text-amber-400 fill-amber-400"
-                        : "text-slate-300 dark:text-slate-700 fill-transparent stroke-current stroke-2"
+                        : "text-slate-300 fill-transparent stroke-current stroke-2"
                     }`}
                     viewBox="0 0 24 24"
                   >
@@ -104,7 +104,7 @@ export function ScorecardDrawer({
                   </svg>
                 </button>
               ))}
-              <span className="ml-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+              <span className="ml-2 text-xs font-bold text-slate-700">
                 {rating} / 5 Stars
               </span>
             </div>
@@ -112,7 +112,7 @@ export function ScorecardDrawer({
 
           {/* Strengths */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-xs font-semibold text-slate-700">
               Key Strengths
             </label>
             <textarea
@@ -120,13 +120,13 @@ export function ScorecardDrawer({
               onChange={(e) => setStrengths(e.target.value)}
               placeholder="Technical competencies, communication, culture fit..."
               rows={3}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
             />
           </div>
 
           {/* Weaknesses */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-xs font-semibold text-slate-700">
               Areas for Improvement / Concerns
             </label>
             <textarea
@@ -134,13 +134,13 @@ export function ScorecardDrawer({
               onChange={(e) => setWeaknesses(e.target.value)}
               placeholder="Gaps in experience, skill concerns..."
               rows={3}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
             />
           </div>
 
           {/* Private Notes */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-xs font-semibold text-slate-700">
               Private HR Notes
             </label>
             <textarea
@@ -148,16 +148,16 @@ export function ScorecardDrawer({
               onChange={(e) => setPrivateNotes(e.target.value)}
               placeholder="Internal recommendation, salary expectations, follow-up items..."
               rows={3}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
             />
           </div>
 
           {/* Footer Submit */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+          <div className="pt-4 border-t border-slate-200 flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
             >
               Cancel
             </button>

@@ -6,6 +6,14 @@ import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
 import { updateApplicationStatus as updateApplicationStatusAction } from "./hr-applications-actions";
+import {
+  getStageForStatus,
+  getNextDbStatus,
+  ACTIVE_STAGES,
+  UI_STAGES,
+  type UiStageKey,
+  type UiStage,
+} from "@/lib/application-stages";
 
 type CandidateProfile = {
   id: string;
@@ -24,8 +32,6 @@ type JobPostingSummary = {
   location: string | null;
   tenant_id?: string | null;
 };
-
-export type PipelineStageKey = "new" | "screening" | "interview" | "offer" | "rejected";
 
 export type ApplicationHubCard = {
   id: string;
@@ -53,85 +59,6 @@ type ApplicationsKanbanBoardProps = {
   tenantJobIds: string[];
 };
 
-type StageConfig = {
-  key: PipelineStageKey;
-  label: string;
-  description: string;
-  tintClassName: string;
-  badgeClassName: string;
-};
-
-const PIPELINE_STAGES: StageConfig[] = [
-  {
-    key: "new",
-    label: "New",
-    description: "Fresh applications",
-    tintClassName: "",
-    badgeClassName: "bg-primary-light text-primary-dark border border-primary/20",
-  },
-  {
-    key: "screening",
-    label: "Screening",
-    description: "Assessment in progress",
-    tintClassName: "",
-    badgeClassName: "bg-warning-bg text-warning border border-warning/20",
-  },
-  {
-    key: "interview",
-    label: "Interview",
-    description: "Interview coordination",
-    tintClassName: "",
-    badgeClassName: "bg-primary-light text-primary-dark border border-primary/20",
-  },
-  {
-    key: "offer",
-    label: "Offer",
-    description: "Offer and negotiation",
-    tintClassName: "",
-    badgeClassName: "bg-success-bg text-success border border-success/20",
-  },
-  {
-    key: "rejected",
-    label: "Rejected",
-    description: "Closed candidates",
-    tintClassName: "",
-    badgeClassName: "bg-error-bg text-error border border-error/20",
-  },
-];
-
-const ACTIVE_STAGE_SEQUENCE: PipelineStageKey[] = ["new", "screening", "interview", "offer"];
-
-const NEXT_STATUS_BY_STAGE: Record<Exclude<PipelineStageKey, "rejected">, string | null> = {
-  new: "screening",
-  screening: "interview",
-  interview: "offer",
-  offer: null,
-};
-
-const STAGE_BY_STATUS: Record<string, PipelineStageKey | null> = {
-  applied: "new",
-  draft: "new",
-  submitted: "new",
-  screening: "screening",
-  under_review: "screening",
-  shortlisted: "screening",
-  interview: "interview",
-  interviewing: "interview",
-  interview_scheduled: "interview",
-  interviewed: "interview",
-  offer: "offer",
-  negotiating: "offer",
-  offer_sent: "offer",
-  offer_accepted: "offer",
-  offer_declined: "offer",
-  offer_expired: "offer",
-  pre_employment: "offer",
-  hired: null,
-  hire_confirmed: null,
-  rejected: "rejected",
-  withdrawn: "rejected",
-};
-
 function normalizeRelation<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -140,11 +67,6 @@ function normalizeRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
-/**
- * Resolves the CandidateProfile from an ApplicationHubCard.
- * The HR query uses aliases: candidate:profiles(*) and job:job_postings(*)
- * so we check both the aliased and legacy property names.
- */
 function resolveProfile(application: ApplicationHubCard | null | undefined): CandidateProfile | null {
   if (!application) return null;
   return (
@@ -154,9 +76,6 @@ function resolveProfile(application: ApplicationHubCard | null | undefined): Can
   );
 }
 
-/**
- * Resolves the JobPostingSummary from an ApplicationHubCard.
- */
 function resolveJob(application: ApplicationHubCard | null | undefined): JobPostingSummary | null {
   if (!application) return null;
   return (
@@ -175,7 +94,6 @@ function getApplicantName(profile: CandidateProfile | null): string {
     return "Unknown Candidate";
   }
 
-  // Support full_name field if present
   const fullNameField = normalizeText((profile as any).full_name);
   if (fullNameField) return fullNameField;
 
@@ -198,35 +116,33 @@ function getApplicantInitials(profile: CandidateProfile | null): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "A";
 }
 
-function getStageKeyFromStatus(status: string): PipelineStageKey | null {
-  return STAGE_BY_STATUS[String(status).toLowerCase()] ?? "new";
+/**
+ * Format match_score for display.
+ * The DB stores match_score as NUMERIC(5,2) which is 0–100 scale.
+ * Returns null when the value is null (shows "Not scored yet").
+ * Returns a rounded integer string like "72" when scored.
+ */
+function formatMatchScore(score: number | null | undefined): string | null {
+  if (score === null || score === undefined) return null;
+  const n = Number(score);
+  if (!Number.isFinite(n)) return null;
+  // Schema: NUMERIC(5,2) → max 999.99. Values ≤ 1.0 suggest a 0–1 scale; multiply.
+  const normalised = n <= 1 ? Math.round(n * 100) : Math.round(n);
+  return String(normalised);
 }
 
-function getNextStatus(stageKey: PipelineStageKey | null): string | null {
-  if (!stageKey || stageKey === "rejected") return null;
-  return NEXT_STATUS_BY_STAGE[stageKey];
-}
-
-function getStageProgress(stageKey: PipelineStageKey | null): number {
-  if (!stageKey) return 100;
-  const activeIndex = ACTIVE_STAGE_SEQUENCE.indexOf(stageKey as (typeof ACTIVE_STAGE_SEQUENCE)[number]);
-  if (activeIndex < 0) {
-    return 0;
-  }
-
-  return Math.round(((activeIndex + 1) / ACTIVE_STAGE_SEQUENCE.length) * 100);
-}
-
-function getScoreClasses(score: number | null): string {
+function getScoreClasses(score: string | null): string {
   if (score === null) {
     return "bg-surface-bg text-text-muted border border-border";
   }
 
-  if (score >= 75) {
+  const n = Number(score);
+
+  if (n >= 75) {
     return "bg-success-bg text-success border border-success/20";
   }
 
-  if (score >= 50) {
+  if (n >= 50) {
     return "bg-warning-bg text-warning border border-warning/20";
   }
 
@@ -255,29 +171,30 @@ function sortApplications(items: ApplicationHubCard[]): ApplicationHubCard[] {
   });
 }
 
-function groupApplicationsByStage(items: ApplicationHubCard[]): Record<PipelineStageKey, ApplicationHubCard[]> {
-  const grouped: Record<PipelineStageKey, ApplicationHubCard[]> = {
-    new: [],
+type GroupedApplications = Record<UiStageKey, ApplicationHubCard[]>;
+
+function groupApplicationsByStage(items: ApplicationHubCard[]): GroupedApplications {
+  const grouped: GroupedApplications = {
+    new:       [],
     screening: [],
     interview: [],
-    offer: [],
-    rejected: [],
+    offer:     [],
+    hired:     [],
+    closed:    [],
+    other:     [],
   };
 
   for (const item of items) {
-    const stageKey = getStageKeyFromStatus(item.status);
-    if (stageKey) {
-      grouped[stageKey].push(item);
-    }
+    const stageKey = getStageForStatus(item.status);
+    grouped[stageKey].push(item);
   }
 
-  return {
-    new: sortApplications(grouped.new),
-    screening: sortApplications(grouped.screening),
-    interview: sortApplications(grouped.interview),
-    offer: sortApplications(grouped.offer),
-    rejected: sortApplications(grouped.rejected),
-  };
+  // Sort each bucket by applied time (newest first)
+  for (const key of Object.keys(grouped) as UiStageKey[]) {
+    grouped[key] = sortApplications(grouped[key]);
+  }
+
+  return grouped;
 }
 
 function mergeRealtimeApplication(
@@ -311,11 +228,11 @@ function getRoleTitle(application: ApplicationHubCard): string {
   return jobPosting?.title?.trim() || "Untitled role";
 }
 
-function getStageLabel(stageKey: PipelineStageKey): string {
-  return PIPELINE_STAGES.find((stage) => stage.key === stageKey)?.label ?? "New";
+function getStageLabel(stageKey: UiStageKey): string {
+  return UI_STAGES.find((stage) => stage.key === stageKey)?.label ?? "New";
 }
 
-function getPrimaryActionLabel(stageKey: PipelineStageKey): string {
+function getPrimaryActionLabel(stageKey: UiStageKey): string {
   switch (stageKey) {
     case "new":
       return "Screen Candidate";
@@ -325,7 +242,9 @@ function getPrimaryActionLabel(stageKey: PipelineStageKey): string {
       return "Schedule Room/Interview";
     case "offer":
       return "Send Offer";
-    case "rejected":
+    case "hired":
+      return "View Employee";
+    case "closed":
       return "Review Candidate";
     default:
       return "View Candidate";
@@ -344,9 +263,9 @@ function ApplicationCard({
   onSchedule: (application: ApplicationHubCard) => void;
 }) {
   const profile = resolveProfile(application);
-  const stageKey = getStageKeyFromStatus(application.status) ?? "new";
+  const stageKey = getStageForStatus(application.status);
   const actionLabel = getPrimaryActionLabel(stageKey);
-  const score = application.match_score !== null ? Math.round(Number(application.match_score)) : null;
+  const scoreDisplay = formatMatchScore(application.match_score);
 
   return (
     <article
@@ -375,8 +294,8 @@ function ApplicationCard({
           </div>
         </div>
 
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(score)}`}>
-          {score !== null ? `${score}% match` : "Calculating..."}
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
+          {scoreDisplay !== null ? `${scoreDisplay}% match` : "Not scored yet"}
         </span>
       </div>
 
@@ -387,7 +306,7 @@ function ApplicationCard({
 
       <div className="flex items-center justify-between text-[10px] font-semibold text-text-muted border-t border-border/40 pt-2 uppercase tracking-wider">
         <span>{getStageLabel(stageKey)}</span>
-        <span>{normalizeRelation(application.job ?? application.job_postings)?.tenant_id ? "Tenant scoped" : "Active pipeline"}</span>
+        <span className="text-text-muted">{application.status}</span>
       </div>
 
       <button
@@ -417,7 +336,7 @@ function PipelineColumn({
   onPrimaryAction,
   onSchedule,
 }: {
-  stage: StageConfig;
+  stage: UiStage;
   applications: ApplicationHubCard[];
   onSelect: (applicationId: string) => void;
   onPrimaryAction: (application: ApplicationHubCard) => void;
@@ -461,6 +380,81 @@ function PipelineColumn({
   );
 }
 
+function ClosedSection({
+  applications,
+  onSelect,
+}: {
+  applications: ApplicationHubCard[];
+  onSelect: (applicationId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (applications.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card-bg shadow-xs">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-text-main hover:bg-surface-bg transition-colors rounded-xl"
+      >
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[18px] text-text-muted">
+            {isOpen ? "expand_less" : "expand_more"}
+          </span>
+          <span>Closed</span>
+          <span className="rounded-full bg-error-bg text-error border border-error/20 px-2 py-0.5 text-[10px] font-bold">
+            {applications.length}
+          </span>
+        </div>
+        <span className="text-[11px] font-normal text-text-muted">Rejected &amp; Withdrawn</span>
+      </button>
+
+      {isOpen && (
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {applications.map((app) => {
+            const profile = resolveProfile(app);
+            const scoreDisplay = formatMatchScore(app.match_score);
+            return (
+              <article
+                key={app.id}
+                className="cursor-pointer rounded-xl border border-border bg-surface-bg p-4 hover:border-primary transition-colors"
+                onClick={() => onSelect(app.id)}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  {profile?.avatar_url ? (
+                    <img
+                      alt={getApplicantName(profile)}
+                      src={profile.avatar_url}
+                      className="h-8 w-8 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-error-bg text-error font-bold text-xs">
+                      {getApplicantInitials(profile)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-text-main">{getApplicantName(profile)}</p>
+                    <p className="text-xs text-text-muted">{getRoleTitle(app)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                    {app.status}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
+                    {scoreDisplay !== null ? `${scoreDisplay}%` : "Not scored"}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApplicationDrawer({
   application,
   isOpen,
@@ -478,12 +472,15 @@ function ApplicationDrawer({
 }) {
   const profile = resolveProfile(application);
   const jobPosting = resolveJob(application);
-  const stageKey = application ? (getStageKeyFromStatus(application.status) ?? "new") : "new";
-  const nextStatus = getNextStatus(stageKey);
-  const matchScore = application?.match_score !== null && application?.match_score !== undefined
-    ? Math.round(Number(application.match_score))
-    : null;
-  const stageProgress = getStageProgress(stageKey);
+  const stageKey = application ? getStageForStatus(application.status) : "new";
+  const nextDbStatus = getNextDbStatus(stageKey);
+  const scoreDisplay = formatMatchScore(application?.match_score);
+  const stageProgress = (() => {
+    const order: UiStageKey[] = ["new", "screening", "interview", "offer", "hired"];
+    const idx = order.indexOf(stageKey);
+    if (idx < 0) return 100;
+    return Math.round(((idx + 1) / order.length) * 100);
+  })();
 
   return (
     <aside
@@ -498,7 +495,7 @@ function ApplicationDrawer({
         </button>
 
         <div className="flex gap-2">
-          {/* Removed non-functional share/more_vert buttons */}
+          {/* Placeholder for future share/options actions */}
         </div>
       </div>
 
@@ -519,8 +516,8 @@ function ApplicationDrawer({
                   </div>
                 )}
 
-                <div className="absolute -bottom-2 right-0 rounded-full border-2 border-white bg-[#E1F5EE] px-3 py-1 text-[12px] font-bold text-[#0F6E56]">
-                  {matchScore !== null ? `${matchScore}% Match` : "No Match Score"}
+                <div className={`absolute -bottom-2 right-0 rounded-full border-2 border-card-bg px-3 py-1 text-[12px] font-bold ${getScoreClasses(scoreDisplay)} `}>
+                  {scoreDisplay !== null ? `${scoreDisplay}% Match` : "Not scored yet"}
                 </div>
               </div>
 
@@ -541,17 +538,22 @@ function ApplicationDrawer({
 
             <section className="rounded-xl border border-card-border bg-surface p-4">
               <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
-                Match Breakdown
+                Match Score
               </h3>
 
               <div className="space-y-4">
                 <div>
                   <div className="mb-1 flex items-center justify-between text-[13px]">
                     <span className="text-on-surface">Match Score</span>
-                    <span className="font-semibold">{matchScore !== null ? `${matchScore}%` : "N/A"}</span>
+                    <span className="font-semibold">
+                      {scoreDisplay !== null ? `${scoreDisplay}%` : "Not scored yet"}
+                    </span>
                   </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E0D9FC]">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${matchScore ?? 0}%` }} />
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-light">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: scoreDisplay !== null ? `${scoreDisplay}%` : "0%" }}
+                    />
                   </div>
                 </div>
 
@@ -560,7 +562,7 @@ function ApplicationDrawer({
                     <span className="text-on-surface">Pipeline Progress</span>
                     <span className="font-semibold">{stageProgress}%</span>
                   </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E0D9FC]">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-light">
                     <div className="h-full rounded-full bg-emerald-600" style={{ width: `${stageProgress}%` }} />
                   </div>
                 </div>
@@ -581,8 +583,8 @@ function ApplicationDrawer({
                 <p className="text-[14px] font-semibold text-on-surface">{formatApplicationTime(application.submitted_at)}</p>
               </div>
               <div className="rounded-lg border border-card-border/70 bg-white p-4">
-                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Tenant Scope</p>
-                <p className="text-[14px] font-semibold text-on-surface">{jobPosting?.tenant_id ? "Locked" : "Inherited"}</p>
+                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Status</p>
+                <p className="text-[14px] font-semibold text-on-surface capitalize">{application.status}</p>
               </div>
             </section>
 
@@ -590,7 +592,7 @@ function ApplicationDrawer({
               <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
                 Resume Preview
               </h3>
-              <div className="flex aspect-[1/1.2] flex-col items-center justify-center rounded-xl border border-dashed border-primary/40 bg-[#F8F6FF] p-8 text-center">
+              <div className="flex aspect-[1/1.2] flex-col items-center justify-center rounded-xl border border-dashed border-primary/40 bg-primary-light p-8 text-center">
                 <span className="material-symbols-outlined mb-3 text-[48px] text-primary">description</span>
                 <p className="mb-4 text-[14px] text-primary-dark">
                   {profile?.first_name || profile?.last_name ? `${getApplicantName(profile)} Resume` : "Application File"}
@@ -631,16 +633,16 @@ function ApplicationDrawer({
 
             onReject(application.id);
           }}
-          className="rounded-lg border border-[#BA1A1A] px-4 py-3 text-[13px] font-semibold text-[#BA1A1A] transition-colors hover:bg-error-container"
+          className="rounded-lg border border-error px-4 py-3 text-[13px] font-semibold text-error transition-colors hover:bg-error/10"
         >
           Reject
         </button>
 
         <button
           type="button"
-          disabled={!application || !nextStatus}
+          disabled={!application || !nextDbStatus}
           onClick={() => {
-            if (!application || !nextStatus) {
+            if (!application || !nextDbStatus) {
               return;
             }
 
@@ -703,7 +705,6 @@ export default function ApplicationsKanbanBoard({
           filter: applicationFilter,
         },
         async (payload: any) => {
-          console.log("DIAG [4] Realtime Payload Received:", payload);
           if (!isMounted) {
             return;
           }
@@ -737,7 +738,7 @@ export default function ApplicationsKanbanBoard({
                 cover_letter,
                 match_score,
                 hr_notes,
-                submitted_at,
+                created_at,
                 updated_at,
                 candidate:profiles ( id, first_name, last_name, email, phone, avatar_url, city, country ),
                 job:job_postings ( id, title, location, tenant_id )
@@ -745,7 +746,12 @@ export default function ApplicationsKanbanBoard({
               .eq("id", changedId)
               .maybeSingle();
 
-            const insertedRow = inserted as ApplicationHubCard | null;
+            const raw = inserted as any;
+            const insertedRow: ApplicationHubCard | null = raw ? {
+              ...raw,
+              submitted_at: raw.created_at ?? new Date().toISOString(),
+            } : null;
+
             if (!isMounted || !insertedRow) {
               return;
             }
@@ -783,10 +789,6 @@ export default function ApplicationsKanbanBoard({
                   : payload?.new?.hr_notes === null
                     ? null
                     : next[existingIndex].hr_notes,
-              submitted_at:
-                typeof payload?.new?.submitted_at === "string"
-                  ? payload.new.submitted_at
-                  : next[existingIndex].submitted_at,
               updated_at:
                 typeof payload?.new?.updated_at === "string"
                   ? payload.new.updated_at
@@ -811,7 +813,7 @@ export default function ApplicationsKanbanBoard({
       isMounted = false;
       void supabase.removeChannel(channel);
     };
-  }, [currentCompanyId, tenantJobIds]);
+  }, [currentCompanyId, router, tenantJobIds]);
 
   const updateApplicationStatus = async (
     applicationId: string,
@@ -870,10 +872,10 @@ export default function ApplicationsKanbanBoard({
   };
 
   const handlePrimaryAction = async (application: ApplicationHubCard) => {
-    const stageKey = getStageKeyFromStatus(application.status);
+    const stageKey = getStageForStatus(application.status);
 
     if (stageKey === "new") {
-      const nextStatus = getNextStatus(stageKey);
+      const nextStatus = getNextDbStatus(stageKey);
       if (nextStatus) {
         await updateApplicationStatus(application.id, nextStatus, { keepDrawerOpen: true });
       }
@@ -886,7 +888,7 @@ export default function ApplicationsKanbanBoard({
       return;
     }
 
-    if (stageKey === "screening" || stageKey === "rejected") {
+    if (stageKey === "screening" || stageKey === "closed" || stageKey === "other") {
       setSelectedApplicationId(application.id);
     }
   };
@@ -905,8 +907,8 @@ export default function ApplicationsKanbanBoard({
       return;
     }
 
-    const stageKey = getStageKeyFromStatus(application.status);
-    const nextStatus = getNextStatus(stageKey);
+    const stageKey = getStageForStatus(application.status);
+    const nextStatus = getNextDbStatus(stageKey);
 
     if (!nextStatus) {
       return;
@@ -919,14 +921,19 @@ export default function ApplicationsKanbanBoard({
     router.push(`/hr/applicants/${encodeURIComponent(applicationId)}`);
   };
 
-  const hasSelectedApplication = Boolean(selectedApplication);
+  // Closed bucket = rejected + withdrawn + other
+  const closedApplications = [
+    ...stageColumns.closed,
+    ...stageColumns.other,
+  ];
 
   return (
     <div className="relative flex h-full w-full flex-1 min-h-0 min-w-0 overflow-hidden">
-      <div className={`flex h-full w-full flex-1 min-h-0 flex-col gap-4 ${hasSelectedApplication ? "xl:pr-[450px]" : ""}`}>
+      <div className="flex h-full w-full flex-1 min-h-0 flex-col gap-4">
+        {/* Active pipeline columns */}
         <div className="flex-1 w-full h-full min-h-0 overflow-x-auto overflow-y-hidden pb-2 modern-scrollbar">
           <div className="inline-flex min-w-full h-full gap-4 p-4 bg-surface-bg border border-border rounded-xl">
-            {PIPELINE_STAGES.map((stage) => (
+            {ACTIVE_STAGES.map((stage) => (
               <PipelineColumn
                 key={stage.key}
                 stage={stage}
@@ -938,6 +945,12 @@ export default function ApplicationsKanbanBoard({
             ))}
           </div>
         </div>
+
+        {/* Collapsed "Closed" section for rejected + withdrawn */}
+        <ClosedSection
+          applications={closedApplications}
+          onSelect={handleSelectApplication}
+        />
       </div>
 
       <ApplicationDrawer

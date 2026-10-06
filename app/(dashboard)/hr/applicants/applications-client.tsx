@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { recalculateMatchScores } from "./actions";
 
 import { withdrawApplication } from "./actions";
 import { createClient } from "@/lib/supabase/client";
@@ -240,38 +241,43 @@ export function ApplicationsHubClient({
   currentCompanyId: string;
   activeJobs: ActiveJobPosting[];
 }) {
-  const [selectedJobId, setSelectedJobId] = useState("");
+  const router = useRouter();
+  const [selectedJobId, setSelectedJobId] = useState("all");
   const [localJobs, setLocalJobs] = useState<ActiveJobPosting[]>(() => activeJobs);
+  const [recalculating, setRecalculating] = useState(false);
 
   useEffect(() => {
     setLocalJobs(activeJobs);
   }, [activeJobs]);
 
   const selectedApplications = useMemo(
-    () => (selectedJobId ? applications.filter((application) => application.job_id === selectedJobId) : []),
+    () => selectedJobId === "all"
+      ? applications
+      : applications.filter((application) => application.job_id === selectedJobId),
     [applications, selectedJobId],
   );
 
-  const hasActiveJobs = localJobs.length > 0;
-
-  useEffect(() => {
-    if (hasActiveJobs && !selectedJobId) {
-      setSelectedJobId(localJobs[0].id);
-    }
-  }, [localJobs, hasActiveJobs, selectedJobId]);
-
   return (
-    <div className="flex h-full w-full flex-col bg-surface-bg text-text-main p-6 space-y-5">
+    <div className="flex w-full min-w-0 flex-col space-y-5 text-text-main">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-main">
             Application Hub
           </h1>
-          <p className="text-xs text-text-muted">Manage candidate pipelines across active roles</p>
+          <p className="text-xs text-text-muted">Manage candidate pipelines across roles</p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button type="button" disabled={recalculating} onClick={async () => {
+            setRecalculating(true);
+            const result = await recalculateMatchScores();
+            setRecalculating(false);
+            if (!result.success) toast.error(result.error);
+            else { toast.success(`Scores: ${result.scored} scored, ${result.skipped} skipped, ${result.failed} failed`); router.refresh(); }
+          }} className="h-8 rounded-lg border border-border bg-card-bg px-3 text-xs font-semibold text-text-main disabled:opacity-50">
+            {recalculating ? "Recalculating..." : "Recalculate scores"}
+          </button>
           <div className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-bold text-primary-dark">
             <span className="mr-1.5">{selectedApplications.length}</span>
             <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
@@ -290,6 +296,17 @@ export function ApplicationsHubClient({
 
       {/* Job Tabs Bar */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setSelectedJobId("all")}
+          className={`flex-shrink-0 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+            selectedJobId === "all"
+              ? "bg-primary text-white shadow-xs"
+              : "bg-card-bg text-text-muted hover:text-text-main hover:bg-surface-bg border border-border/60"
+          }`}
+        >
+          All roles
+        </button>
         {localJobs.map((job) => (
           <button
             key={job.id}
@@ -299,7 +316,7 @@ export function ApplicationsHubClient({
               job.id === selectedJobId
                 ? "bg-primary text-white shadow-xs"
                 : "bg-card-bg text-text-muted hover:text-text-main hover:bg-surface-bg border border-border/60"
-            }`}
+            }`} 
           >
             {job.title}
           </button>

@@ -17,6 +17,8 @@ interface RawJobApplication {
   submitted_at?: string | null;
   created_at?: string | null;
   rejection_reason?: string | null;
+  documentsUrl?: string | null;
+  documentsOpenCount?: number;
   job_postings?: {
     title?: string | null;
     work_setup?: string | null;
@@ -86,8 +88,20 @@ export default async function ApplicantApplicationsPage() {
     .eq("applicant_id", user.id)
     .order("created_at", { ascending: false });
 
+  const { data: legacyApps } = await supabase
+    .from("applications")
+    .select("id, job_posting_id, status")
+    .eq("candidate_id", user.id);
+  const legacyIds = (legacyApps ?? []).map((item) => item.id);
+  const { data: requestedDocuments } = legacyIds.length
+    ? await supabase.from("applicant_documents").select("application_id, file_url, hr_verified").in("application_id", legacyIds)
+    : { data: [] };
+
   if (jobAppsData && jobAppsData.length > 0) {
-    formattedApplications = (jobAppsData as unknown as RawJobApplication[]).map((app) => ({
+    formattedApplications = (jobAppsData as unknown as RawJobApplication[]).map((app) => {
+      const legacy = (legacyApps ?? []).find((item) => item.job_posting_id === app.job_id);
+      const openDocs = (requestedDocuments ?? []).filter((item) => item.application_id === legacy?.id && !item.file_url && !item.hr_verified);
+      return ({
       id: app.id,
       status: app.status || "applied",
       submittedAt: app.created_at || new Date().toISOString(),
@@ -99,42 +113,9 @@ export default async function ApplicantApplicationsPage() {
         workMode: app.job_postings?.work_setup || "onsite",
         locationName: app.job_postings?.location || "Main Office",
       },
-    }));
-  } else {
-    // Fallback: query applications using .eq('candidate_id', user.id)
-    const { data: appsData } = await supabase
-      .from("applications")
-      .select(`
-        id,
-        status,
-        submitted_at,
-        created_at,
-        rejection_reason,
-        job_postings:job_posting_id (
-          title,
-          work_setup,
-          location,
-          departments ( name )
-        )
-      `)
-      .eq("candidate_id", user.id)
-      .order("submitted_at", { ascending: false });
-
-    if (appsData && appsData.length > 0) {
-      formattedApplications = (appsData as unknown as RawJobApplication[]).map((app) => ({
-        id: app.id,
-        status: app.status || "submitted",
-        submittedAt: app.submitted_at || app.created_at || new Date().toISOString(),
-        rejectionReason: app.rejection_reason,
-        interview: null,
-        job: {
-          title: app.job_postings?.title || "Untitled Job",
-          department: app.job_postings?.departments?.name || "General",
-          workMode: app.job_postings?.work_setup || "onsite",
-          locationName: app.job_postings?.location || "Main Office",
-        },
-      }));
-    }
+      documentsUrl: openDocs.length ? `/apply/applications/${app.id}/documents` : null,
+      documentsOpenCount: openDocs.length,
+    });});
   }
 
   // Calculate Overview Stats
