@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
 import { createClient } from "@/lib/supabase/client";
+import { formatPhtDate, formatPhtTime } from "@/lib/interview-date";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
+
 
 type DashboardIdentity = {
   userId: string;
@@ -34,6 +37,18 @@ const initialStats: CandidateStats = {
   resumes: 0,
 };
 
+export interface DashboardInterviewRow {
+  id: string;
+  jobTitle: string;
+  status: string;
+  scheduledAt: string | null;
+  durationMinutes: number | null;
+  meetingType: string | null;
+  meetingLink: string | null;
+  selectedSlot: any;
+  proposedSlots: any;
+}
+
 export default function ApplicantDashboardView({
   identity,
   displayName,
@@ -42,13 +57,7 @@ export default function ApplicantDashboardView({
   displayName: string;
 }) {
   const [stats, setStats] = useState<CandidateStats>(initialStats);
-  const [nextInterview, setNextInterview] = useState<{
-    title: string;
-    scheduledAt: string;
-    interviewType: "online" | "in_person";
-    locationAddress: string | null;
-    locationNotes: string | null;
-  } | null>(null);
+  const [upcomingInterviews, setUpcomingInterviews] = useState<DashboardInterviewRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,58 +70,78 @@ export default function ApplicantDashboardView({
       setError(null);
 
       try {
-        const [applicationsResult, interviewsResult, resumesResult, upcomingInterviewsResult] = await Promise.all([
+        const [applicationsResult, interviewsResult, resumesResult] = await Promise.all([
+          // 1. Total Active Applications
           supabase
-            .from("applications")
+            .from("job_applications")
             .select("*", { count: "exact", head: true })
-            .eq("candidate_id", identity.userId),
+            .eq("applicant_id", identity.userId),
+
+          // 2. All Active Interviews for Applicant
           supabase
             .from("interview_schedules")
-            .select("*", { count: "exact", head: true })
+            .select("id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, job:job_postings(title)")
             .eq("applicant_id", identity.userId)
-            .in("status", ["proposed", "scheduled", "rescheduled"]),
+            .in("status", ["proposed", "pending_selection", "scheduled", "rescheduled", "confirmed"])
+            .order("created_at", { ascending: false }),
+
+          // 3. Resumes
           supabase
             .from("resumes")
             .select("id", { count: "exact", head: true })
             .eq("candidate_id", identity.userId),
-          supabase
-            .from("interview_schedules")
-            .select("id, scheduled_at, duration_minutes, status, room_name, video_provider, job:job_postings(title), application:job_applications(id)")
-            .eq("applicant_id", identity.userId)
-            .in("status", ["proposed", "scheduled", "rescheduled"])
-            .gte("scheduled_at", new Date().toISOString())
-            .order("scheduled_at", { ascending: true })
-            .limit(1),
         ]);
 
-        const candidateInterviews = (upcomingInterviewsResult.data ?? []) as CandidateInterviewRow[];
+        if (!isMounted) return;
 
-        if (!isMounted) {
-          return;
-        }
+        const rawInterviews = (interviewsResult.data ?? []) as any[];
+
+        const mapped: DashboardInterviewRow[] = rawInterviews.map((row) => {
+          const job = Array.isArray(row.job) ? row.job[0] : row.job;
+          return {
+            id: row.id,
+            jobTitle: job?.title ?? "Interview Position",
+            status: row.status,
+            scheduledAt: row.scheduled_at,
+            durationMinutes: row.duration_minutes,
+            meetingType: row.meeting_type,
+            meetingLink: row.meeting_link,
+            selectedSlot: row.selected_slot,
+            proposedSlots: row.proposed_slots,
+          };
+        });
+
+        // Filter: proposed OR (scheduled with date >= now or null)
+        const nowMs = Date.now();
+        const activeUpcoming = mapped.filter((item) => {
+          if (["proposed", "pending_selection"].includes(item.status)) return true;
+          if (!item.scheduledAt) return true;
+          const dur =
+            typeof item.durationMinutes === "number" && item.durationMinutes > 0
+              ? item.durationMinutes
+              : item.selectedSlot?.start_time && item.selectedSlot?.end_time
+              ? Math.round((new Date(item.selectedSlot.end_time).getTime() - new Date(item.selectedSlot.start_time).getTime()) / 60_000)
+              : DEFAULT_DURATION_MINUTES;
+          return new Date(item.scheduledAt).getTime() + (dur + 15) * 60_000 >= nowMs;
+        });
+
+        // Sort: scheduled items first sorted by start_time ascending, then proposed
+        activeUpcoming.sort((a, b) => {
+          const aTime = a.scheduledAt ? new Date(a.scheduledAt).getTime() : (a.proposedSlots?.[0]?.start_time ? new Date(a.proposedSlots[0].start_time).getTime() : Infinity);
+          const bTime = b.scheduledAt ? new Date(b.scheduledAt).getTime() : (b.proposedSlots?.[0]?.start_time ? new Date(b.proposedSlots[0].start_time).getTime() : Infinity);
+          return aTime - bTime;
+        });
+
+        const proposedCount = mapped.filter((i) => ["proposed", "pending_selection"].includes(i.status)).length;
+        const scheduledCount = mapped.filter((i) => ["scheduled", "rescheduled", "confirmed"].includes(i.status)).length;
 
         setStats({
           applications: applicationsResult.count ?? 0,
-          interviews: interviewsResult.count ?? 0,
+          interviews: proposedCount,
           resumes: resumesResult.count ?? 0,
         });
 
-        const upcomingInterview = candidateInterviews?.[0];
-        if (upcomingInterview) {
-          const job = Array.isArray(upcomingInterview.job)
-            ? upcomingInterview.job[0]
-            : upcomingInterview.job;
-
-          setNextInterview({
-            title: job?.title ?? "Interview",
-            scheduledAt: upcomingInterview.scheduled_at ?? new Date().toISOString(),
-            interviewType: upcomingInterview.video_provider === "webrtc" ? "online" : "in_person",
-            locationAddress: null,
-            locationNotes: null,
-          });
-        } else {
-          setNextInterview(null);
-        }
+        setUpcomingInterviews(activeUpcoming.slice(0, 5));
       } catch {
         if (isMounted) {
           setError("Unable to load applicant dashboard data.");
@@ -167,7 +196,7 @@ export default function ApplicantDashboardView({
         <div className="grid grid-cols-4 gap-6">
           <StatCardVision title="Applications" value={stats.applications} />
           <StatCardVision title="Interview pending" value={stats.interviews} />
-          <StatCardVision title="Next Interview" value={nextInterview ? 1 : 0} />
+          <StatCardVision title="Next Interview" value={upcomingInterviews.length > 0 ? 1 : 0} />
           <StatCardVision title="Resumes" value={stats.resumes} />
         </div>
       </div>
@@ -175,55 +204,87 @@ export default function ApplicantDashboardView({
       {/* --- SHARED MAIN CONTENT AREA --- */}
       <div className="pt-6 md:pt-0 space-y-6">
         <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          {nextInterview ? (
-            <Link
-              href="/applicant/applications"
-              className="rounded-[28px] border border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)] transition-transform hover:-translate-y-0.5 hover:bg-[#FCFBFF]"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Upcoming Interview</p>
-                  <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-on-background">
-                    {nextInterview.title}
-                  </h2>
-                  <p className="mt-1 text-sm text-outline">
-                    {new Date(nextInterview.scheduledAt).toLocaleString("en-PH", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                <span className="rounded-full border border-[#E0D9FC] bg-[#F8F6FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5B5784]">
-                  {nextInterview.interviewType === "online" ? "Online" : "In person"}
-                </span>
+          <div className="rounded-[28px] border border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)] space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Upcoming Interviews</p>
+                <h2 className="mt-1 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-on-background">
+                  Scheduled & Proposed Calls
+                </h2>
               </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <InfoChip icon="schedule" label="Scheduled" value={new Date(nextInterview.scheduledAt).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })} />
-                <InfoChip icon="work" label="Source" value="Applications" />
-              </div>
-
-              {nextInterview.interviewType === "in_person" && nextInterview.locationAddress ? (
-                <div className="mt-4 rounded-2xl border border-[#E0D9FC] bg-[#F8F6FF] px-4 py-3 text-sm text-on-background">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b688d]">Location</p>
-                  <p className="mt-1">
-                    {nextInterview.locationAddress}
-                    {nextInterview.locationNotes ? ` — ${nextInterview.locationNotes}` : ""}
-                  </p>
-                </div>
-              ) : null}
-            </Link>
-          ) : (
-            <div className="rounded-[28px] border border-dashed border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b688d]">Upcoming Interview</p>
-              <div className="mt-4 rounded-2xl border border-dashed border-[#E0D9FC] bg-[#FCFBFF] px-4 py-6 text-sm text-outline">
-                No upcoming interview yet. Check Applications for interview status updates.
-              </div>
+              <Link
+                href="/applicant/interviews"
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                View all →
+              </Link>
             </div>
-          )}
+
+            {upcomingInterviews.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#E0D9FC] bg-[#FCFBFF] p-6 text-center text-sm text-outline">
+                No upcoming interviews right now.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingInterviews.map((item) => {
+                  const isProposed = item.status === "proposed" || item.status === "pending_selection";
+                  const modeLabel = item.meetingType === "in_person" ? "In person" : item.meetingType === "hybrid" ? "Hybrid" : "Online";
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-[#E0D9FC] bg-[#FCFBFF] p-4 space-y-3 transition-colors hover:border-primary/40"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-on-background">{item.jobTitle}</h3>
+                          {isProposed ? (
+                            <p className="text-xs font-medium text-amber-700 mt-0.5">
+                              Action Required · {item.meetingType === "hybrid" ? "Choose your time and mode" : "Proposed time slot"}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-outline mt-0.5">
+                              {formatPhtDate(item.scheduledAt)} at {formatPhtTime(item.scheduledAt)}
+                            </p>
+                          )}
+                        </div>
+
+                        <span className="rounded-full border border-[#E0D9FC] bg-[#F8F6FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#5B5784] uppercase tracking-[0.06em]">
+                          {modeLabel}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-[#E0D9FC]/60 pt-3">
+                        <span className="text-xs font-medium text-text-muted">
+                          {isProposed ? "Awaiting your slot confirmation" : `Duration: ${item.durationMinutes || 60} mins`}
+                        </span>
+
+                        {isProposed ? (
+                          <Link
+                            href="/applicant/interviews"
+                            className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors shadow-xs"
+                          >
+                            {item.meetingType === "hybrid" ? "Choose your time & mode" : "Choose your time"}
+                            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                          </Link>
+                        ) : (
+                          <JoinInterviewButton
+                            interviewId={item.id}
+                            meetingLink={item.meetingLink}
+                            scheduledAt={item.scheduledAt}
+                            durationMinutes={item.durationMinutes}
+                            status={item.status}
+                            meetingType={item.meetingType}
+                            selectedSlot={item.selectedSlot}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="space-y-4">
             <div className="rounded-[28px] border border-card-border bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
@@ -249,7 +310,7 @@ export default function ApplicantDashboardView({
             </div>
 
             <div className="rounded-[28px] border border-card-border bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)]">
-              <ActivityCard stats={stats} nextInterview={nextInterview} />
+              <ActivityCard stats={stats} upcomingCount={upcomingInterviews.length} />
             </div>
           </div>
         </section>
@@ -297,16 +358,10 @@ function InfoChip({
 
 function ActivityCard({
   stats,
-  nextInterview,
+  upcomingCount,
 }: {
   stats: CandidateStats;
-  nextInterview: {
-    title: string;
-    scheduledAt: string;
-    interviewType: "online" | "in_person";
-    locationAddress: string | null;
-    locationNotes: string | null;
-  } | null;
+  upcomingCount: number;
 }) {
   return (
     <div>
@@ -322,8 +377,8 @@ function ActivityCard({
 
       <div className="space-y-3">
         <JourneyRow label="Applications" value={`${stats.applications} active`} icon="description" />
-        <JourneyRow label="Interviews" value={`${stats.interviews} scheduled`} icon="event" />
-        <JourneyRow label="Next interview" value={nextInterview ? new Date(nextInterview.scheduledAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" }) : "None yet"} icon="schedule" />
+        <JourneyRow label="Interviews" value={`${stats.interviews} pending`} icon="event" />
+        <JourneyRow label="Upcoming calls" value={`${upcomingCount} scheduled`} icon="schedule" />
         <JourneyRow label="Resume" value="Ready to submit" icon="upload_file" />
       </div>
     </div>

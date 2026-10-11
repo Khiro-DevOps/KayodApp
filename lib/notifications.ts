@@ -8,6 +8,7 @@ interface SendNotificationParams {
   body: string;
   actionUrl?: string;
   senderId?: string;
+  actionName?: string;
 }
 
 export async function sendNotification({
@@ -18,6 +19,7 @@ export async function sendNotification({
   body,
   actionUrl,
   senderId,
+  actionName = "sendNotification",
 }: SendNotificationParams) {
   const { error } = await supabase.from("notifications").insert({
     recipient_id: recipientId,
@@ -30,6 +32,6 @@ export async function sendNotification({
   });
 
   if (error) {
-    console.error("Failed to send notification:", error.message);
+    console.error(`${actionName}: failed to insert notification for recipient ${recipientId}:`, error.message);
   }
 }

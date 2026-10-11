@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { InterviewType, MeetingType } from "@/lib/types";
+import { InterviewType } from "@/lib/types";
+import { normalizeMeetingType, type MeetingType } from "@/lib/meeting-type";
 import { getNextDbStatus } from "@/lib/application-stages";
 import { sendNotification } from "@/lib/notifications";
 
@@ -66,106 +67,44 @@ export async function scheduleInterviewProposal(formData: FormData) {
   if (!user) return { success: false, error: "Not authenticated" };
 
   const rawApplicationId = String(formData.get("application_id") ?? "").trim();
-  const jobId = String(formData.get("job_id") ?? "").trim();
   const scheduledAt = formData.get("scheduled_at") as string;
   const durationMinutes = Number(formData.get("duration_minutes") as string) || 60;
-  const notes = formData.get("notes") as string;
-  const rawModes = formData.getAll("available_modes").map(String).filter((v): v is InterviewType => v === "online" || v === "in_person");
-  const offeredModes = Array.from(new Set(rawModes));
-  const rawMeetingType = String(formData.get("meeting_type") ?? "").toLowerCase();
-  const meetingType: MeetingType = rawMeetingType === "in_person" || rawMeetingType === "hybrid" ? rawMeetingType : "online";
+  const notes = String(formData.get("notes") ?? "").trim();
+  const meetingType = normalizeMeetingType(formData.get("meeting_type"));
   const officeBranchId = String(formData.get("office_branch_id") ?? "").trim() || null;
 
-  if (!rawApplicationId || !jobId || !scheduledAt) return { success: false, error: "Missing required fields" };
+  if (!rawApplicationId || !scheduledAt) return { success: false, error: "Missing required fields" };
   if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) return { success: false, error: "Duration must be positive" };
-  if (offeredModes.length === 0) return { success: false, error: "Please choose at least one interview availability option" };
-  if (["in_person", "hybrid"].includes(meetingType) && !officeBranchId) return { success: false, error: "Office branch required for in-person or hybrid" };
+  if (["in_person", "hybrid"].includes(meetingType) && !officeBranchId) return { success: false, error: "Office branch required for in-person or hybrid interviews." };
 
   try {
-    const { data: application } = await supabase
-      .from("job_applications")
-      .select("id, job_id, applicant_id, status, job_postings!job_applications_job_id_fkey(tenant_id)")
-      .eq("id", rawApplicationId)
-      .single();
-    if (!application) return { success: false, error: "Application not found" };
-    let officeBranchName: string | null = null;
-    if (["in_person", "hybrid"].includes(meetingType)) {
-      const { data: branch } = await supabase
-        .from("office_branches")
-        .select("id, name, address")
-        .eq("id", officeBranchId)
-        .eq("tenant_id", (application.job_postings as { tenant_id?: string } | null)?.tenant_id ?? "")
-        .maybeSingle();
-      if (!branch) return { success: false, error: "Office branch is not in the interview tenant" };
-      officeBranchName = `${branch.name}${branch.address ? `, ${branch.address}` : ""}`;
-    }
+    const { phtInputToUtcIso } = await import("@/lib/interview-date");
+    const startIso = phtInputToUtcIso(scheduledAt);
+    const endIso = new Date(new Date(startIso).getTime() + durationMinutes * 60_000).toISOString();
 
-    const interviewType: InterviewType = offeredModes[0];
-
-    let meetingLink = null;
-    let meetingRoomName = null;
-    if (meetingType === "online" || meetingType === "hybrid") {
-      const room = createWebrtcRoom(application.id);
-      meetingLink = room.url;
-      meetingRoomName = room.name;
-    }
-
-    const { data: existingInterview } = await supabase
-      .from("interview_schedules")
-      .select("id")
-      .eq("application_id", application.id)
-      .maybeSingle();
-
-    if (existingInterview) {
-      await supabase.from("interview_schedules").update({
-        status: "scheduled",
-        scheduled_at: new Date(scheduledAt).toISOString(),
-        duration_minutes: durationMinutes,
-        meeting_link: meetingLink,
-        room_name: meetingRoomName,
-        video_provider: meetingType === "online" || meetingType === "hybrid" ? "webrtc" : null,
-        meeting_type: meetingType,
-        office_branch_id: ["in_person", "hybrid"].includes(meetingType) ? officeBranchId : null,
-        interview_notes: notes?.trim() || "",
-        updated_at: new Date().toISOString(),
-      }).eq("id", existingInterview.id);
-    } else {
-      await supabase.from("interview_schedules").insert({
-        application_id: application.id,
-        job_id: application.job_id,
-        applicant_id: application.applicant_id,
-        interviewer_id: user.id,
-        scheduled_at: new Date(scheduledAt).toISOString(),
-        duration_minutes: durationMinutes,
-        status: "scheduled",
-        meeting_link: meetingLink,
-        room_name: meetingRoomName,
-        video_provider: meetingType === "online" || meetingType === "hybrid" ? "webrtc" : null,
-        interview_notes: notes?.trim() || "",
-      });
-    }
-
-    await supabase.from("job_applications").update({ status: "interview" }).eq("id", application.id);
-    await sendNotification({
-      supabase,
-      recipientId: application.applicant_id,
-      type: "interview_scheduled",
-      title: "Interview Scheduled",
-      body: meetingType === "in_person"
-        ? `Your interview is scheduled in person at ${officeBranchName}.`
-        : meetingType === "hybrid"
-          ? `Your hybrid interview is scheduled at ${officeBranchName}. A meeting room link is also available.`
-          : "Your online interview is scheduled.",
-      actionUrl: "/applicant/interviews",
-      senderId: user.id,
+    const { createInterviewInvite } = await import("@/app/actions/interviews");
+    const result = await createInterviewInvite({
+      application_id: rawApplicationId,
+      interviewer_id: user.id,
+      slots: [{ start_time: startIso, end_time: endIso }],
+      duration_minutes: durationMinutes,
+      meeting_type: meetingType,
+      office_branch_id: ["in_person", "hybrid"].includes(meetingType) ? officeBranchId : null,
+      notes,
     });
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Failed to schedule interview proposal" };
+    }
 
     revalidatePath("/hr/interviews");
     revalidatePath("/hr/applicants");
+    revalidatePath("/hr");
 
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to schedule" };
+    console.error("Error in scheduleInterviewProposal:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Failed to schedule interview proposal" };
   }
 }
 
@@ -182,46 +121,31 @@ export async function scheduleInterview(formData: FormData) {
   if (!await verifyHR(supabase, user.id)) redirect("/hr");
 
   const applicationId   = formData.get("application_id") as string;
-  const interviewType   = formData.get("interview_type") as string;
   const scheduledAt     = formData.get("scheduled_at") as string;
   const durationMinutes = parseInt(formData.get("duration_minutes") as string) || 60;
-  const locationNotes   = formData.get("location_notes") as string | null;
-  const rawMeetingType = String(formData.get("meeting_type") ?? "").toLowerCase();
-  const meetingType: MeetingType = rawMeetingType === "in_person" || rawMeetingType === "hybrid" ? rawMeetingType : "online";
+  const meetingType = normalizeMeetingType(formData.get("meeting_type"));
   const officeBranchId = String(formData.get("office_branch_id") ?? "").trim() || null;
 
   if (!applicationId || !scheduledAt) redirect("/hr/interviews");
   if (["in_person", "hybrid"].includes(meetingType) && !officeBranchId) redirect("/hr/interviews?error=Office%20branch%20required");
 
-  let videoRoomUrl  = null;
-  let videoRoomName = null;
+  const { phtInputToUtcIso } = await import("@/lib/interview-date");
+  const startIso = phtInputToUtcIso(scheduledAt);
+  const endIso = new Date(new Date(startIso).getTime() + durationMinutes * 60_000).toISOString();
 
-  // WebRTC Room Generation (local room id used for signaling)
-  if (meetingType === "online" || meetingType === "hybrid") {
-    videoRoomName = `kayod-${applicationId.slice(0, 8)}-${Date.now()}`;
-    videoRoomUrl = `/hr/interviews/${videoRoomName}/room`;
-  }
-
-  const { error } = await supabase.from("interview_schedules").insert({
-    application_id:   applicationId,
-    interviewer_id:   user.id,
-    status:           "scheduled",
-    scheduled_at:     new Date(scheduledAt).toISOString(),
+  const { createInterviewInvite } = await import("@/app/actions/interviews");
+  const result = await createInterviewInvite({
+    application_id: applicationId,
+    interviewer_id: user.id,
+    slots: [{ start_time: startIso, end_time: endIso }],
     duration_minutes: durationMinutes,
-    meeting_link:     videoRoomUrl,
-    room_name:        videoRoomName,
-    video_provider:   meetingType === "online" || meetingType === "hybrid" ? "webrtc" : null,
-    interview_notes:  locationNotes || "",
     meeting_type: meetingType,
     office_branch_id: ["in_person", "hybrid"].includes(meetingType) ? officeBranchId : null,
   });
 
-  if (error) redirect(`/hr/interviews?error=${encodeURIComponent(error.message)}`);
-
-  await supabase
-    .from("job_applications")
-    .update({ status: "interview" })
-    .eq("id", applicationId);
+  if (!result.success) {
+    redirect(`/hr/interviews?error=${encodeURIComponent(result.error || "Failed to schedule interview")}`);
+  }
 
   revalidatePath("/hr/interviews");
   revalidatePath("/hr/applicants");
@@ -301,7 +225,7 @@ export async function completeInterview(input: {
     return { success: false, error: "Unauthorized" };
   }
 
-  const meetingType = input.meetingType ?? interview.meeting_type ?? "online";
+  const meetingType = normalizeMeetingType(input.meetingType ?? interview.meeting_type);
   const officeBranchId = input.officeBranchId ?? interview.office_branch_id ?? null;
   if (["in_person", "hybrid"].includes(meetingType)) {
     if (!officeBranchId) return { success: false, error: "Office branch required for in-person interview" };
@@ -464,13 +388,13 @@ export async function updateInterviewPreference(formData: FormData) {
   if (!user) redirect("/login");
 
   const interviewId = formData.get("interview_id") as string;
-  const interviewType = formData.get("interview_type") as string;
+  const interviewType = normalizeMeetingType(formData.get("interview_type"));
 
   if (!interviewId || !interviewType) redirect("/hr/interviews");
 
   const { data: interview } = await supabase
     .from("interview_schedules")
-    .select("id, applicant_id")
+    .select("id, applicant_id, meeting_type, office_branch_id")
     .eq("id", interviewId)
     .single();
 
@@ -481,7 +405,7 @@ export async function updateInterviewPreference(formData: FormData) {
   let videoRoomUrl = null;
   let videoRoomName = null;
 
-  if (interviewType === "online") {
+  if (interviewType === "online" || interviewType === "hybrid") {
     videoRoomName = `kayod-${interviewId.slice(0, 8)}-${Date.now()}`;
     videoRoomUrl = `https://meet.jit.si/${videoRoomName}`;
   }
@@ -491,7 +415,9 @@ export async function updateInterviewPreference(formData: FormData) {
     .update({
       meeting_link: videoRoomUrl,
       room_name: videoRoomName,
-      video_provider: interviewType === "online" ? "jitsi" : null,
+      video_provider: interviewType === "online" || interviewType === "hybrid" ? "jitsi" : null,
+      meeting_type: interview.meeting_type,
+      office_branch_id: interview.office_branch_id,
     })
     .eq("id", interviewId);
 

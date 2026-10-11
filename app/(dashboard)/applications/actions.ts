@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -23,7 +24,7 @@ export async function submitApplication(formData: FormData) {
 
   const { data: job } = await supabase
     .from("job_postings")
-    .select("id, tenant_id, is_published, closes_at")
+    .select("id, tenant_id, is_published, closes_at, created_by, title")
     .eq("id", jobId)
     .single();
 
@@ -70,6 +71,23 @@ export async function submitApplication(formData: FormData) {
     console.warn("Match score computation failed:", recomputeError);
   });
 
+  // Notify the HR Manager
+  if (job.created_by) {
+    const admin = getAdminClient();
+    const { error: notifError } = await admin.from("notifications").insert({
+      recipient_id: job.created_by,
+      type: "application_submitted",
+      title: "New Job Application 📄",
+      body: `A new candidate has applied for ${job.title || "your job posting"}.`,
+      action_url: `/hr/jobs/${job.id}/applicants`,
+    });
+
+    if (notifError) {
+      console.error("Failed to insert HR notification:", notifError);
+    }
+  }
+
+  revalidatePath("/applicant/applications");
   revalidatePath("/applicant/applications");
   revalidatePath("/hr/applicants");
   revalidatePath("/applicant/jobs");

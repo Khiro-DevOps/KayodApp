@@ -26,10 +26,10 @@ export default async function ApplicantJobDetailsPage({
   if (!job) notFound();
 
   const { data: existingApplication } = await supabase
-    .from("applications")
+    .from("job_applications")
     .select("id, match_score")
-    .eq("candidate_id", user.id)
-    .eq("job_posting_id", id)
+    .eq("applicant_id", user.id)
+    .eq("job_id", id)
     .maybeSingle();
 
   const hasApplied = !!existingApplication;

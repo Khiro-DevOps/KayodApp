@@ -1,6 +1,7 @@
 import type { Interview } from "@/lib/types";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 
-const DEFAULT_INTERVIEW_DURATION_MINUTES = 60;
+const DEFAULT_INTERVIEW_DURATION_MINUTES = DEFAULT_DURATION_MINUTES;
 
 export function getInterviewEndTime(
   interview: Pick<Interview, "scheduled_at" | "duration_minutes">,

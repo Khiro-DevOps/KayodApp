@@ -1,5 +1,7 @@
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+
 export const JOIN_EARLY_MINUTES = 10;
-export const END_GRACE_MINUTES = 0;
+export const END_GRACE_MINUTES = 15;
 
 export type InterviewRoomAccessState = "too_early" | "open" | "ended" | "closed";
 
@@ -24,10 +26,10 @@ export function getRoomAccess(interview: InterviewRoomSchedule, now = new Date()
 
   const opensAt = new Date(startsAt.getTime() - JOIN_EARLY_MINUTES * 60_000);
   const closesAt = new Date(
-    startsAt.getTime() + (interview.duration_minutes ?? 45) * 60_000 + END_GRACE_MINUTES * 60_000,
+    startsAt.getTime() + (interview.duration_minutes ?? DEFAULT_DURATION_MINUTES) * 60_000 + END_GRACE_MINUTES * 60_000,
   );
 
-  if (["completed", "cancelled", "no_show"].includes(interview.status ?? "") || interview.meeting_type === "in_person") {
+  if (["completed", "cancelled", "no_show"].includes(interview.status ?? "") || interview.meeting_type !== "online") {
     return { state: "closed", opensAt, closesAt };
   }
   if (now < opensAt) return { state: "too_early", opensAt, closesAt };

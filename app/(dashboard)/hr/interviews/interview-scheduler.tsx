@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { moveToInterview } from "../applicants/[id]/application-detail-actions";
+import { getNextAvailableInterviewSlot } from "@/app/actions/interviews";
+import { utcToPhtInputString } from "@/lib/interview-date";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 
 interface InterviewSchedulerProps {
   applicationId: string;
@@ -16,20 +19,46 @@ export default function InterviewScheduler({
 }: InterviewSchedulerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isTouched, setIsTouched] = useState(false);
   const [formData, setFormData] = useState({
     interview_type: "online" as "online" | "in_person",
     scheduled_at: "",
-    duration_minutes: "60",
+    duration_minutes: String(DEFAULT_DURATION_MINUTES),
     timezone: "Asia/Manila",
     location_address: "",
     location_notes: "",
     video_room_name: "",
   });
 
+  useEffect(() => {
+    let isMounted = true;
+    void getNextAvailableInterviewSlot({
+      durationMinutes: Number(formData.duration_minutes) || DEFAULT_DURATION_MINUTES,
+    }).then((res) => {
+      if (isMounted && !isTouched) {
+        setFormData((prev) => ({
+          ...prev,
+          scheduled_at: utcToPhtInputString(res.start_time),
+        }));
+        if (res.movedReason) {
+          setHint(res.movedReason);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [isTouched, formData.duration_minutes]);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+    if (name === "scheduled_at") {
+      setIsTouched(true);
+      setHint(null);
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -107,7 +136,7 @@ export default function InterviewScheduler({
           {/* Date & Time */}
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
-              Interview Date & Time
+              Interview Date & Time (PHT, UTC+8)
             </label>
             <input
               type="datetime-local"
@@ -117,9 +146,15 @@ export default function InterviewScheduler({
               required
               className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <p className="text-xs text-text-secondary mt-2">
-              Select when the interview should take place
-            </p>
+            {hint ? (
+              <p className="text-xs text-amber-600 font-medium mt-2">
+                {hint}
+              </p>
+            ) : (
+              <p className="text-xs text-text-secondary mt-2">
+                Select when the interview should take place
+              </p>
+            )}
           </div>
 
           {/* Duration */}

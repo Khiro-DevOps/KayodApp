@@ -1,127 +1,173 @@
 "use server";
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
 
-export interface ResetApplicantTestDataResult {
-  success: boolean;
-  message?: string;
-  error?: string;
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase admin environment variables are missing.");
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
-export async function resetApplicantTestData(): Promise<ResetApplicantTestDataResult> {
-  try {
-    const supabase = await createClient();
+async function resolveUserId(email?: string) {
+  const normalizedEmail = email?.trim();
+
+  if (normalizedEmail) {
     const admin = getAdminClient();
 
-    // 1. Authenticate caller session
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: profile, error } = await admin
+      .from("profiles")
+      .select("id, email")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
 
-    if (!user) {
-      return { success: false, error: "Authentication required." };
+    if (error) {
+      return {
+        userId: null,
+        error: error.message,
+      };
     }
 
-    const userId = user.id;
+    if (!profile) {
+      return {
+        userId: null,
+        error: `No profile was found for ${normalizedEmail}.`,
+      };
+    }
 
-    // 2. Delete all records for auth.uid() from job_applications
-    // (Explicitly delete interview_schedules or let cascade delete handle it)
-    // First, fetch job_applications IDs to clean up interview_schedules if FK cascade is not set
-    const { data: jobApps } = await admin
+    return {
+      userId: profile.id,
+      error: null,
+    };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return {
+      userId: null,
+      error: "No authenticated user was found.",
+    };
+  }
+
+  return {
+    userId: user.id,
+    error: null,
+  };
+}
+
+export async function resetApplicantTestData(email?: string) {
+  if (process.env.NODE_ENV !== "development") {
+    return {
+      success: false,
+      error: "Developer reset controls are only available in development.",
+    };
+  }
+
+  try {
+    const admin = getAdminClient();
+
+    const result = await resolveUserId(email);
+
+    if (!result.userId) {
+      return {
+        success: false,
+        error: result.error ?? "Unable to resolve user.",
+      };
+    }
+
+    const userId = result.userId;
+
+    const { data: applications, error: applicationsLookupError } = await admin
       .from("job_applications")
       .select("id")
       .eq("applicant_id", userId);
 
-    if (jobApps && jobApps.length > 0) {
-      const jobAppIds = jobApps.map((app) => app.id);
-      await admin
+    if (applicationsLookupError) {
+      return {
+        success: false,
+        error: applicationsLookupError.message,
+      };
+    }
+
+    const applicationIds = (applications ?? [])
+      .map((application) => application.id)
+      .filter(Boolean);
+
+    let deletedInterviewSchedules = 0;
+
+    if (applicationIds.length > 0) {
+      const { data: deletedSchedules, error: schedulesError } = await admin
         .from("interview_schedules")
         .delete()
-        .in("application_id", jobAppIds);
+        .in("application_id", applicationIds)
+        .select("id");
 
+      if (schedulesError) {
+        return {
+          success: false,
+          error: schedulesError.message,
+        };
+      }
+
+      deletedInterviewSchedules = deletedSchedules?.length ?? 0;
+    }
+
+    const { data: deletedApplications, error: applicationsDeleteError } =
       await admin
         .from("job_applications")
         .delete()
-        .eq("applicant_id", userId);
+        .eq("applicant_id", userId)
+        .select("id");
+
+    if (applicationsDeleteError) {
+      return {
+        success: false,
+        error: applicationsDeleteError.message,
+      };
     }
 
-    // Also delete any interviews linked directly by applicant_id or candidate_id if present
-    await admin
-      .from("interview_schedules")
-      .delete()
-      .eq("applicant_id", userId);
+    const deletedApplicationCount = deletedApplications?.length ?? 0;
 
-    // Delete legacy applications table entries if any
-    await admin
-      .from("applications")
-      .delete()
-      .eq("candidate_id", userId);
-
-    // 3. Delete employee_onboarding_documents
-    await admin
-      .from("employee_onboarding_documents")
-      .delete()
-      .eq("employee_id", userId);
-
-    // Also clean up onboarding documents linked via employee ID if record exists
-    const { data: empRecord } = await admin
-      .from("employees")
-      .select("id")
-      .eq("profile_id", userId)
-      .maybeSingle();
-
-    if (empRecord) {
-      await admin
-        .from("employee_onboarding_documents")
-        .delete()
-        .eq("employee_id", empRecord.id);
-
-      // 4. Delete employees record (if created during promotion tests for profile_id = auth.uid())
-      await admin
-        .from("employees")
-        .delete()
-        .eq("id", empRecord.id);
+    if (deletedApplicationCount === 0) {
+      return {
+        success: true,
+        message: "No application data was found for this account.",
+        deletedApplications: 0,
+        deletedInterviewSchedules,
+        profileId: userId,
+      };
     }
-
-    // Ensure any employee record with profile_id is deleted
-    await admin
-      .from("employees")
-      .delete()
-      .eq("profile_id", userId);
-
-    // 5. Reset profiles.role back to 'applicant' if it was changed during promotion testing
-    await admin
-      .from("profiles")
-      .update({ role: "applicant", updated_at: new Date().toISOString() })
-      .eq("id", userId);
-
-    // Update user auth metadata role as well for consistency
-    try {
-      await admin.auth.admin.updateUserById(userId, {
-        user_metadata: {
-          ...user.user_metadata,
-          role: "applicant",
-        },
-      });
-    } catch (metaErr) {
-      console.warn("Failed to update user_metadata role during test reset:", metaErr);
-    }
-
-    // 6. Revalidate specified paths
-    revalidatePath("/applicant/applications");
-    revalidatePath("/applicant/jobs");
-    revalidatePath("/applicant/interviews");
-    revalidatePath("/hr/interviews");
-    revalidatePath("/hr/employees");
 
     return {
       success: true,
-      message: "Test application data wiped successfully!",
+      message: `Deleted ${deletedApplicationCount} application(s) and ${deletedInterviewSchedules} interview schedule(s).`,
+      deletedApplications: deletedApplicationCount,
+      deletedInterviewSchedules,
+      profileId: userId,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to reset test data";
-    return { success: false, error: message };
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to reset applicant test data.",
+    };
   }
 }

@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { getOfficeBranches, scheduleInterviewProposal } from "./actions";
+import { getNextAvailableInterviewSlot } from "@/app/actions/interviews";
+import { checkPhtWorkHoursWarning, utcToPhtInputString } from "@/lib/interview-date";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 import type { InterviewType, MeetingType } from "@/lib/types";
 import { CalendarDays, Check, Clock3, MapPin, Video } from "lucide-react";
 
@@ -20,12 +23,49 @@ export default function InterviewSchedulingForm({
 }: InterviewSchedulingFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online"]);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState<number>(DEFAULT_DURATION_MINUTES);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isTouched, setIsTouched] = useState(false);
+  const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online", "in_person"]);
   const [locationDetails, setLocationDetails] = useState("");
-  const [meetingType, setMeetingType] = useState<MeetingType>("online");
+  const [meetingType, setMeetingType] = useState<MeetingType>("hybrid");
   const [branches, setBranches] = useState<Array<{ id: string; name: string; address: string | null }>>([]);
   const [officeBranchId, setOfficeBranchId] = useState("");
-  useEffect(() => { void getOfficeBranches().then((result) => { if (result.success) setBranches(result.data); }); }, []);
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
+
+  useEffect(() => {
+    void getOfficeBranches().then((result) => {
+      const data = result.success ? (result.data ?? []) : [];
+      setBranches(data);
+      setBranchesLoaded(true);
+      if (data.length === 0) {
+        setOfferedModes(["online"]);
+        setMeetingType("online");
+        setOfficeBranchId("");
+      } else if (data.length === 1) {
+        setOfficeBranchId(data[0].id);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getNextAvailableInterviewSlot({
+      applicationId,
+      durationMinutes,
+    }).then((res) => {
+      if (isMounted && !isTouched) {
+        setScheduledAt(utcToPhtInputString(res.start_time));
+        if (res.movedReason) {
+          setHint(res.movedReason);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [applicationId, isTouched, durationMinutes]);
 
   const allowsInPerson = offeredModes.includes("in_person");
 
@@ -73,15 +113,6 @@ export default function InterviewSchedulingForm({
     }
   };
 
-  const defaultDate = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    d.setHours(10, 0, 0, 0);
-    const offset = d.getTimezoneOffset();
-    const local = new Date(d.getTime() - offset * 60000);
-    return local.toISOString().slice(0, 16);
-  })();
-
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-8">
       {error && (
@@ -93,16 +124,31 @@ export default function InterviewSchedulingForm({
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="w-full">
           <label htmlFor="scheduled_at" className="mb-2 block w-full text-sm font-medium text-text-primary">
-            Date & Time
+            Date & Time (PHT, UTC+8)
           </label>
           <input
             type="datetime-local"
             id="scheduled_at"
             name="scheduled_at"
-            defaultValue={defaultDate}
+            value={scheduledAt}
+            onChange={(e) => {
+              setIsTouched(true);
+              setScheduledAt(e.target.value);
+              setHint(null);
+            }}
             required
             className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/20"
           />
+          {hint && (
+            <p className="mt-1 text-xs text-amber-600 font-medium">
+              {hint}
+            </p>
+          )}
+          {checkPhtWorkHoursWarning(scheduledAt, durationMinutes) && (
+            <p className="mt-1 text-xs text-amber-700 bg-amber-50 rounded p-1.5 border border-amber-200">
+              {checkPhtWorkHoursWarning(scheduledAt, durationMinutes)}
+            </p>
+          )}
         </div>
 
         <div className="w-full">
@@ -112,14 +158,15 @@ export default function InterviewSchedulingForm({
           <select
             id="duration_minutes"
             name="duration_minutes"
-            defaultValue="60"
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(Number(e.target.value))}
             className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/20"
           >
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
-            <option value="90">90 minutes</option>
-            <option value="120">120 minutes</option>
+            <option value={30}>30 minutes</option>
+            <option value={45}>45 minutes</option>
+            <option value={60}>60 minutes</option>
+            <option value={90}>90 minutes</option>
+            <option value={120}>120 minutes</option>
           </select>
         </div>
       </div>
@@ -131,23 +178,28 @@ export default function InterviewSchedulingForm({
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => { toggleMode("online"); setMeetingType("online"); }}
+            onClick={() => { setOfferedModes(["online"]); setMeetingType("online"); }}
             className={`relative rounded-2xl border p-4 text-left transition-all ${
-              offeredModes.includes("online")
+              meetingType === "online"
                 ? "border-success bg-success-bg ring-2 ring-success/20"
                 : "border-border hover:bg-surface-container-low"
             }`}
           >
             <Video className="mb-3 h-5 w-5 text-primary" />
-            {offeredModes.includes("online") && <Check className="absolute right-4 top-4 h-4 w-4 text-green-700" />}
+            {meetingType === "online" && <Check className="absolute right-4 top-4 h-4 w-4 text-green-700" />}
             <p className="w-full text-sm font-semibold text-text-primary">Online</p>
             <p className="w-full text-xs text-text-secondary">WebRTC video interview</p>
           </button>
           <button
             type="button"
+            disabled={branchesLoaded && branches.length === 0}
             onClick={() => { setOfferedModes(["online", "in_person"]); setMeetingType("hybrid"); }}
             className={`relative rounded-2xl border p-4 text-left transition-all ${
-              meetingType === "hybrid" ? "border-success bg-success-bg ring-2 ring-success/20" : "border-border hover:bg-surface-container-low"
+              branchesLoaded && branches.length === 0
+                ? "opacity-50 cursor-not-allowed bg-gray-100 border-border"
+                : meetingType === "hybrid"
+                ? "border-success bg-success-bg ring-2 ring-success/20"
+                : "border-border hover:bg-surface-container-low"
             }`}
           >
             <p className="w-full text-sm font-semibold text-text-primary">Both</p>
@@ -155,19 +207,27 @@ export default function InterviewSchedulingForm({
           </button>
           <button
             type="button"
-            onClick={() => { toggleMode("in_person"); setMeetingType("in_person"); }}
+            disabled={branchesLoaded && branches.length === 0}
+            onClick={() => { setOfferedModes(["in_person"]); setMeetingType("in_person"); }}
             className={`relative rounded-2xl border p-4 text-left transition-all ${
-              offeredModes.includes("in_person")
+              branchesLoaded && branches.length === 0
+                ? "opacity-50 cursor-not-allowed bg-gray-100 border-border"
+                : meetingType === "in_person"
                 ? "border-success bg-success-bg ring-2 ring-success/20"
                 : "border-border hover:bg-surface-container-low"
             }`}
           >
             <MapPin className="mb-3 h-5 w-5 text-primary" />
-            {offeredModes.includes("in_person") && <Check className="absolute right-4 top-4 h-4 w-4 text-green-700" />}
+            {meetingType === "in_person" && <Check className="absolute right-4 top-4 h-4 w-4 text-green-700" />}
             <p className="w-full text-sm font-semibold text-text-primary">In-Person</p>
             <p className="w-full text-xs text-text-secondary">Office/location details required</p>
           </button>
         </div>
+        {branchesLoaded && branches.length === 0 && (
+          <p className="mt-2 w-full text-xs text-amber-600">
+            No office branches configured. Only Online mode is available.
+          </p>
+        )}
         <p className="mt-2 w-full text-xs text-text-secondary">
           Select one or both options. Applicants will only see the settings enabled here.
         </p>

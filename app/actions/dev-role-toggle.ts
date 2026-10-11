@@ -1,131 +1,213 @@
 "use server";
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
 
-export interface DevRoleToggleResult {
-  success: boolean;
-  newRole?: "applicant" | "employee";
-  targetRoute?: string;
-  error?: string;
+type DevRole = "applicant" | "employee" | "hr_manager";
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase admin environment variables are missing.");
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
-export async function toggleDevUserRole(targetRoleOverride?: "applicant" | "employee"): Promise<DevRoleToggleResult> {
-  // Restrict execution strictly to development environment
+export async function toggleDevUserRole(
+  targetRole: DevRole,
+  email?: string
+) {
   if (process.env.NODE_ENV !== "development") {
     return {
       success: false,
-      error: "Dev role toggle is strictly allowed in development mode only.",
+      error: "Developer role controls are only available in development.",
     };
   }
 
   try {
-    const supabase = await createClient();
     const admin = getAdminClient();
-
+    const normalizedEmail = email?.trim();
+    const supabase = await createClient();
     const {
-      data: { user },
+      data: { user: currentUser },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      return { success: false, error: "Authentication required" };
+    if (userError || !currentUser) {
+      return {
+        success: false,
+        error: "No authenticated user was found.",
+      };
     }
 
-    const { data: profile } = await admin
+    let userId: string;
+
+    if (normalizedEmail) {
+      const { data: profile, error: profileError } = await admin
+        .from("profiles")
+        .select("id, email, role")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+
+      if (profileError) {
+        return {
+          success: false,
+          error: profileError.message,
+        };
+      }
+
+      if (!profile) {
+        return {
+          success: false,
+          error: `No profile was found for ${normalizedEmail}.`,
+        };
+      }
+
+      userId = profile.id;
+    } else {
+      // Explicit intent: target current user when email is omitted/empty
+      userId = currentUser.id;
+    }
+
+    const isCurrentUser = currentUser.id === userId;
+    const dbRole = targetRole === "applicant" ? "candidate" : targetRole;
+
+    const { data: updatedProfiles, error: updateError } = await admin
       .from("profiles")
-      .select("id, role, tenant_id")
-      .eq("id", user.id)
-      .maybeSingle();
+      .update({
+        role: dbRole,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId)
+      .select("id, email, role");
 
-    const currentRole = profile?.role ?? user.user_metadata?.role ?? "candidate";
+    if (updateError) {
+      return {
+        success: false,
+        error: updateError.message,
+      };
+    }
 
-    // Determine target role: switch between applicant/candidate <-> employee
-    const newRole: "applicant" | "employee" =
-      targetRoleOverride ?? (["employee", "hr_manager", "admin"].includes(currentRole) ? "applicant" : "employee");
+    if (!updatedProfiles || updatedProfiles.length === 0) {
+      return {
+        success: false,
+        error: "No rows updated",
+      };
+    }
 
-    const tenantId = profile?.tenant_id ?? user.user_metadata?.tenant_id ?? "00000000-0000-0000-0000-000000000001";
+    const updatedProfile = updatedProfiles[0];
 
-    // 1. Execute DB updates via Admin Client or RPC Function
-    const { data: rpcData, error: rpcError } = await admin.rpc("dev_toggle_user_role", {
-      target_user_id: user.id,
-      target_tenant_id: tenantId,
-      new_role: newRole,
-    });
+    const { error: metadataError } = await admin.auth.admin.updateUserById(
+      userId,
+      {
+        user_metadata: { role: targetRole },
+      }
+    );
 
-    // Fallback if RPC is not yet executed in Supabase instance
-    if (rpcError) {
-      if (newRole === "employee") {
-        await admin
-          .from("profiles")
-          .update({ role: "employee", updated_at: new Date().toISOString() })
-          .eq("id", user.id);
+    if (metadataError) {
+      // Rollback profile role change if metadata update fails
+      await admin
+        .from("profiles")
+        .update({
+          role: "candidate",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
 
-        const { data: emp } = await admin.from("employees").select("id").eq("profile_id", user.id).maybeSingle();
+      return {
+        success: false,
+        error: metadataError.message,
+      };
+    }
 
-        if (emp) {
-          await admin
-            .from("employees")
-            .update({ employment_status: "active", updated_at: new Date().toISOString() })
-            .eq("id", emp.id);
-        } else {
-          await admin.from("employees").insert({
-            tenant_id: tenantId,
-            profile_id: user.id,
-            employee_number: `EMP-${user.id.slice(0, 8)}`,
-            job_title: "Staff Employee",
+    if (targetRole === "employee") {
+      const { data: existingEmployee, error: employeeLookupError } = await admin
+        .from("employees")
+        .select("id")
+        .eq("profile_id", userId)
+        .maybeSingle();
+
+      if (employeeLookupError) {
+        // Rollback profile/metadata
+        await admin.from("profiles").update({ role: "candidate", updated_at: new Date().toISOString() }).eq("id", userId);
+        await admin.auth.admin.updateUserById(userId, { user_metadata: { role: "applicant" } });
+        return {
+          success: false,
+          error: employeeLookupError.message,
+        };
+      }
+
+      if (existingEmployee) {
+        const { error: employeeUpdateError } = await admin
+          .from("employees")
+          .update({
+            employment_status: "active",
+            end_date: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingEmployee.id);
+
+        if (employeeUpdateError) {
+          await admin.from("profiles").update({ role: "candidate", updated_at: new Date().toISOString() }).eq("id", userId);
+          await admin.auth.admin.updateUserById(userId, { user_metadata: { role: "applicant" } });
+          return {
+            success: false,
+            error: employeeUpdateError.message,
+          };
+        }
+      } else {
+        const { error: employeeInsertError } = await admin
+          .from("employees")
+          .insert({
+            profile_id: userId,
+            job_title: "Development Employee",
             employment_type: "full_time",
             employment_status: "active",
             start_date: new Date().toISOString().split("T")[0],
-            base_salary: 30000.0,
-            salary: 30000.0,
-            pay_frequency: "monthly",
-            currency: "PHP",
-            updated_at: new Date().toISOString(),
+            base_salary: 0,
           });
+
+        if (employeeInsertError) {
+          await admin.from("profiles").update({ role: "candidate", updated_at: new Date().toISOString() }).eq("id", userId);
+          await admin.auth.admin.updateUserById(userId, { user_metadata: { role: "applicant" } });
+          return {
+            success: false,
+            error: employeeInsertError.message,
+          };
         }
-      } else {
-        await admin
-          .from("profiles")
-          .update({ role: "candidate", updated_at: new Date().toISOString() })
-          .eq("id", user.id);
-
-        await admin
-          .from("employees")
-          .update({ employment_status: "separated", updated_at: new Date().toISOString() })
-          .eq("profile_id", user.id);
-
-        await admin
-          .from("applications")
-          .update({ status: "submitted", updated_at: new Date().toISOString() })
-          .eq("candidate_id", user.id);
       }
     }
 
-    // 2. Update Auth metadata role
-    try {
-      await admin.auth.admin.updateUserById(user.id, {
-        user_metadata: {
-          ...user.user_metadata,
-          role: newRole === "employee" ? "employee" : "candidate",
-        },
-      });
-    } catch (metaErr) {
-      console.warn("Failed to update auth metadata in dev role toggle:", metaErr);
-    }
-
-    // 3. Revalidate path across all server components
-    revalidatePath("/", "layout");
-
-    const targetRoute = newRole === "employee" ? "/employee/dashboard" : "/applicant/jobs";
+    const targetRoute =
+      targetRole === "employee"
+        ? "/employee/dashboard"
+        : targetRole === "hr_manager"
+          ? "/hr/dashboard"
+          : "/applicant/jobs";
 
     return {
       success: true,
-      newRole,
+      message: `Account role changed to ${targetRole}.`,
+      newRole: targetRole,
       targetRoute,
+      isCurrentUser,
+      profile: updatedProfile,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to toggle role";
-    return { success: false, error: message };
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to change account role.",
+    };
   }
 }

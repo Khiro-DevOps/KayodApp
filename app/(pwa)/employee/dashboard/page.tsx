@@ -55,7 +55,7 @@ export default async function EmployeeDashboardPage() {
     .eq("id", user.id)
     .single<Pick<Profile, "role" | "first_name" | "last_name">>();
 
-  if (!profile || profile.role !== "employee") redirect("/applicant/dashboard");
+  if (profile && profile.role !== "employee") redirect("/applicant/dashboard");
 
   const { data: employee } = await supabase
     .from("employees")
@@ -64,7 +64,18 @@ export default async function EmployeeDashboardPage() {
     .eq("employment_status", "active")
     .single();
 
-  if (!employee) redirect("/applicant/dashboard");
+  if (!employee) {
+    return (
+      <PageContainer>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+          <h1 className="text-lg font-semibold">Employee profile unavailable</h1>
+          <p className="mt-2 text-sm">
+            Your employee profile is not active yet. Please contact HR for assistance.
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
 
   const [balanceResult, payslipResult, leaveResult, timeLogResult] = await Promise.all([
     supabase
@@ -103,7 +114,7 @@ export default async function EmployeeDashboardPage() {
 
   const totalLeaveRemaining = balances.reduce((sum, balance) => sum + balance.remaining, 0);
   const latestTimeLog = recentTimeLogs[0] ?? null;
-  const firstName = profile.first_name || "there";
+  const firstName = profile?.first_name || "there";
   const todayLabel = formatLongDate(new Date().toISOString());
 
   return (

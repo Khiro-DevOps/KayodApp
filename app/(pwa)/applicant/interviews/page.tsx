@@ -70,7 +70,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
       proposed_slots: item.proposed_slots || [],
       selected_slot: item.selected_slot,
       scheduled_at: item.scheduled_at,
-      duration_minutes: item.duration_minutes || 45,
+      duration_minutes: item.duration_minutes || 60,
       status: item.status,
       reschedule_reason: item.reschedule_reason,
       meeting_link: item.meeting_link,
@@ -86,7 +86,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
   const filteredSchedules = formattedSchedules.filter((s) => `${s.jobTitle} ${s.interviewerName ?? ""}`.toLowerCase().includes(query));
   const visibleSchedules = filteredSchedules.filter((s) => view === "history" ? isHistory(s) : !isHistory(s));
   const groupedSchedules = visibleSchedules.reduce<Record<string, InterviewScheduleItem[]>>((groups, item) => {
-    const key = getPhtDateGroup(item.scheduled_at ?? item.selected_slot?.start_time);
+    const key = getPhtDateGroup(item.scheduled_at ?? item.selected_slot?.start_time ?? item.proposed_slots?.[0]?.start_time);
     groups[key] = [...(groups[key] ?? []), item];
     return groups;
   }, {});

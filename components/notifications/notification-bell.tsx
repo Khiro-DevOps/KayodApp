@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Notification } from "@/lib/types";
+import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
+import { getInterviewJoinState } from "@/lib/interview-join";
 
 function getNotificationIcon(type: string) {
   switch (type) {
@@ -52,6 +54,7 @@ function getRelativeTime(dateString: string): string {
 export default function NotificationBell({ userId }: { userId?: string | null }) {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [schedulesMap, setSchedulesMap] = useState<Record<string, any>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(userId ?? null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -92,6 +95,27 @@ export default function NotificationBell({ userId }: { userId?: string | null })
             items = items.filter((n) => employeeTypes.includes(n.type));
           }
           setNotifications(items);
+
+          const interviewIds = items
+            .filter((n) => n.type === "interview_scheduled" || n.type === "interview_rescheduled")
+            .map((n) => {
+              const match = n.action_url?.match(/(?:interview=|\/interviews\/)([a-f0-9-]+)/i);
+              return match ? match[1] : null;
+            })
+            .filter(Boolean) as string[];
+
+          if (interviewIds.length > 0) {
+            const { data: schedData } = await supabase
+              .from("interview_schedules")
+              .select("id, status, scheduled_at, duration_minutes, meeting_type, meeting_link")
+              .in("id", interviewIds);
+
+            if (schedData && isMounted) {
+              const map: Record<string, any> = {};
+              for (const s of schedData) map[s.id] = s;
+              setSchedulesMap(map);
+            }
+          }
         }
       } catch {
         // fail silently if notifications table non-existent or restricted
@@ -254,12 +278,31 @@ export default function NotificationBell({ userId }: { userId?: string | null })
                 const iconName = getNotificationIcon(item.type);
                 const relativeTime = getRelativeTime(item.created_at);
 
+                const match = item.action_url?.match(/(?:interview=|\/interviews\/)([a-f0-9-]+)/i);
+                const interviewId = match ? match[1] : null;
+                const schedule = interviewId ? schedulesMap[interviewId] : null;
+                const isInterviewNotif = item.type === "interview_scheduled" || item.type === "interview_rescheduled";
+                const joinState = schedule ? getInterviewJoinState(schedule.scheduled_at, schedule.duration_minutes) : null;
+                const showJoinButton =
+                  isInterviewNotif &&
+                  schedule &&
+                  schedule.status !== "cancelled" &&
+                  joinState !== "ended" &&
+                  schedule.meeting_type === "online" &&
+                  ["scheduled", "confirmed", "rescheduled"].includes(schedule.status);
+
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleMarkAsRead(item)}
-                    className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 ${
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        handleMarkAsRead(item);
+                      }
+                    }}
+                    className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 cursor-pointer ${
                       !item.is_read ? "bg-blue-50/30" : ""
                     }`}
                   >
@@ -277,12 +320,24 @@ export default function NotificationBell({ userId }: { userId?: string | null })
                       <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
                         {item.body}
                       </p>
+                      {showJoinButton && (
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <JoinInterviewButton
+                            interviewId={schedule.id}
+                            meetingLink={schedule.meeting_link}
+                            scheduledAt={schedule.scheduled_at}
+                            durationMinutes={schedule.duration_minutes}
+                            status={schedule.status}
+                            meetingType={schedule.meeting_type}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {!item.is_read && (
                       <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />
                     )}
-                  </button>
+                  </div>
                 );
               })
             )}

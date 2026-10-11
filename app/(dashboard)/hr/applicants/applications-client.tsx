@@ -283,10 +283,7 @@ export function ApplicationsHubClient({
             <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
           </div>
 
-          <button className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card-bg px-3 text-xs font-semibold text-text-main hover:bg-surface-bg transition-colors shadow-xs">
-            <span className="material-symbols-outlined text-[18px]">filter_list</span>
-            Filter
-          </button>
+
 
           <button className="h-8 rounded-lg bg-primary hover:bg-primary-hover px-3.5 text-xs font-semibold text-white transition-colors shadow-xs">
             + Add Candidate

@@ -52,27 +52,13 @@ export default async function EmployeeSchedulePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Fetch employee record with office_branches join
-  let { data: employee, error: empError } = await supabase
+  // Keep this lookup independent of optional branch tables/relationships so a
+  // newly provisioned development employee can still view the schedule.
+  const { data: employee, error: empError } = await supabase
     .from("employees")
-    .select(`
-      *,
-      office_branches ( id, name, address, latitude, longitude, radius_meters )
-    `)
+    .select("*")
     .eq("profile_id", user.id)
     .maybeSingle();
-
-  if (!employee && user.email) {
-    const { data: empByEmail } = await supabase
-      .from("employees")
-      .select(`
-        *,
-        office_branches ( id, name, address, latitude, longitude, radius_meters )
-      `)
-      .eq("email", user.email)
-      .maybeSingle();
-    employee = empByEmail;
-  }
 
   if (!employee) {
     return (
@@ -99,9 +85,19 @@ export default async function EmployeeSchedulePage() {
     .eq("employee_id", employee.id)
     .maybeSingle();
 
-  const assignedBranch = Array.isArray((employee as any)?.office_branches)
-    ? (employee as any)?.office_branches[0]
-    : (employee as any)?.office_branches;
+  type OfficeBranch = {
+    name?: string;
+    address?: string;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    radius_meters?: number | null;
+  };
+  const branchRelation = (
+    employee as { office_branches?: OfficeBranch | OfficeBranch[] | null }
+  ).office_branches;
+  const assignedBranch = Array.isArray(branchRelation)
+    ? branchRelation[0]
+    : branchRelation;
 
   const hasOfficeCoordinates = Boolean(
     assignedBranch && assignedBranch.latitude != null && assignedBranch.longitude != null

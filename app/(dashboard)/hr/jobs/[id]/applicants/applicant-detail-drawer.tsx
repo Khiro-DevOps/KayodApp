@@ -10,6 +10,8 @@ import InterviewSchedulingForm from "./interview-scheduling-form";
 import { createClient } from "@/lib/supabase/client";
 import { moveToScreening, confirmInterviewScheduled } from "./pipeline-actions";
 import { getCurrentStage } from "@/lib/pipeline";
+import HRInterviewCardSection, { type InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
+
 
 type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email" | "phone" | "city" | "country">;
 
@@ -133,6 +135,22 @@ export default function ApplicantDetailDrawer({
   const [loadingMatchScore, setLoadingMatchScore] = useState(false);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [interviewNotes, setInterviewNotes] = useState<InterviewNotes | null>(null);
+  const [interviewSchedule, setInterviewSchedule] = useState<InterviewScheduleItem | null>(null);
+
+  useEffect(() => {
+    if (!application?.id || !isOpen) return;
+    const supabase = createClient();
+    supabase
+      .from("interview_schedules")
+      .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, office_branches(name, address)")
+      .eq("application_id", application.id)
+      .order("created_at", { ascending: false })
+      .maybeSingle()
+      .then(({ data }: { data: any }) => {
+        setInterviewSchedule((data as any) ?? null);
+      });
+  }, [application?.id, isOpen]);
+
 
   const candidate = application?.profiles;
   const resume = (Array.isArray(application?.resumes)
@@ -624,6 +642,27 @@ export default function ApplicantDetailDrawer({
                 Match score has not been computed yet.
               </p>
             )}
+          </div>
+
+          {/* Interview Section */}
+          <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+            <h3 className="text-sm font-semibold text-text-primary">Interview Schedule</h3>
+            <HRInterviewCardSection
+              interview={interviewSchedule}
+              applicationId={application.id}
+              compact={false}
+              onReschedule={() => setShowScheduleForm(true)}
+              onCancelSuccess={() => {
+                const supabase = createClient();
+                supabase
+                  .from("interview_schedules")
+                  .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, office_branches(name, address)")
+                  .eq("application_id", application.id)
+                  .order("created_at", { ascending: false })
+                  .maybeSingle()
+                  .then(({ data }: { data: any }) => setInterviewSchedule((data as any) ?? null));
+              }}
+            />
           </div>
 
           {interviewNotes && (

@@ -10,8 +10,8 @@ const publicRoutes = ["/", "/login", "/register", "/auth/callback"];
 const publicPrefixes = ["/api/webhooks", "/register", "/api/register"];
 
 // In development, also allow dev routes to bypass auth
-const devPrefixes = process.env.NODE_ENV === "development" ? ["/api/dev", "/dev"] : [];
-
+const devPrefixes =
+  process.env.NODE_ENV === "development"  ? ["/api/dev", "/dev", "/dev-tools"] : [];
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,

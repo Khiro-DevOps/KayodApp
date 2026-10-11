@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { getOfficeBranches, scheduleInterviewProposal } from "../actions";
+import { getNextAvailableInterviewSlot } from "@/app/actions/interviews";
+import { checkPhtWorkHoursWarning, utcToPhtInputString } from "@/lib/interview-date";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 import type { OfficeBranchOption } from "../actions";
 import type { InterviewType, MeetingType } from "@/lib/types";
 
@@ -25,14 +29,48 @@ export default function ScheduleInterviewClient({ application, error: initialErr
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
-  const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online"]);
-  const [meetingType, setMeetingType] = useState<MeetingType>("online");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState<number>(DEFAULT_DURATION_MINUTES);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isTouched, setIsTouched] = useState(false);
+  const [offeredModes, setOfferedModes] = useState<InterviewType[]>(["online", "in_person"]);
+  const [meetingType, setMeetingType] = useState<MeetingType>("hybrid");
   const [branches, setBranches] = useState<OfficeBranchOption[]>([]);
   const [officeBranchId, setOfficeBranchId] = useState("");
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
 
   useEffect(() => {
-    void getOfficeBranches().then((result) => { if (result.success) setBranches(result.data ?? []); });
+    void getOfficeBranches().then((result) => {
+      const data = result.success ? (result.data ?? []) : [];
+      setBranches(data);
+      setBranchesLoaded(true);
+      if (data.length === 0) {
+        setOfferedModes(["online"]);
+        setMeetingType("online");
+        setOfficeBranchId("");
+      } else if (data.length === 1) {
+        setOfficeBranchId(data[0].id);
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getNextAvailableInterviewSlot({
+      applicationId: application?.id,
+      durationMinutes,
+    }).then((res) => {
+      if (isMounted && !isTouched) {
+        setScheduledAt(utcToPhtInputString(res.start_time));
+        if (res.movedReason) {
+          setHint(res.movedReason);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [application?.id, isTouched, durationMinutes]);
 
   const allowsInPerson = offeredModes.includes("in_person");
 
@@ -51,15 +89,6 @@ export default function ScheduleInterviewClient({ application, error: initialErr
       setOfferedModes([choice]);
     }
   };
-
-  const defaultDate = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    d.setHours(10, 0, 0, 0);
-    const offset = d.getTimezoneOffset();
-    const local = new Date(d.getTime() - offset * 60000);
-    return local.toISOString().slice(0, 16);
-  })();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -82,6 +111,7 @@ export default function ScheduleInterviewClient({ application, error: initialErr
       const response = await scheduleInterviewProposal(formData);
 
       if (response.success) {
+        toast.success("Interview scheduled successfully!");
         router.push("/hr/interviews");
       } else {
         setError(response.error || "Failed to schedule interview.");
@@ -147,16 +177,31 @@ export default function ScheduleInterviewClient({ application, error: initialErr
               {/* Date & Time */}
               <div className="space-y-2">
                 <label htmlFor="scheduled_at" className="block text-label-caps font-medium text-on-surface-variant uppercase tracking-wider">
-                  Date &amp; Time
+                  Date &amp; Time (PHT, UTC+8)
                 </label>
                 <input
                   type="datetime-local"
                   id="scheduled_at"
                   name="scheduled_at"
-                  defaultValue={defaultDate}
+                  value={scheduledAt}
+                  onChange={(e) => {
+                    setIsTouched(true);
+                    setScheduledAt(e.target.value);
+                    setHint(null);
+                  }}
                   required
                   className="w-full rounded-xl border border-outline-variant bg-background px-4 py-2.5 text-body text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
                 />
+                {hint && (
+                  <p className="text-xs text-amber-600 font-medium">
+                    {hint}
+                  </p>
+                )}
+                {checkPhtWorkHoursWarning(scheduledAt, durationMinutes) && (
+                  <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 border border-amber-200">
+                    {checkPhtWorkHoursWarning(scheduledAt, durationMinutes)}
+                  </p>
+                )}
               </div>
 
               {/* Duration */}
@@ -167,14 +212,15 @@ export default function ScheduleInterviewClient({ application, error: initialErr
                 <select
                   id="duration_minutes"
                   name="duration_minutes"
-                  defaultValue="60"
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
                   className="w-full rounded-xl border border-outline-variant bg-background px-4 py-2.5 text-body text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
                 >
-                  <option value="30">30 minutes</option>
-                  <option value="45">45 minutes</option>
-                  <option value="60">1 hour</option>
-                  <option value="90">1.5 hours</option>
-                  <option value="120">2 hours</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={45}>45 minutes</option>
+                  <option value={60}>1 hour</option>
+                  <option value={90}>1.5 hours</option>
+                  <option value={120}>2 hours</option>
                 </select>
               </div>
 
@@ -191,13 +237,17 @@ export default function ScheduleInterviewClient({ application, error: initialErr
                     { key: "both", icon: "switch_access", label: "Both", sub: "Applicant chooses" },
                   ] as const).map(({ key, icon, label, sub }) => {
                     const active = modeSelection === key;
+                    const isDisabled = branchesLoaded && branches.length === 0 && (key === "in_person" || key === "both");
                     return (
                       <button
                         key={key}
                         type="button"
+                        disabled={isDisabled}
                         onClick={() => { selectMode(key); setMeetingType(key === "both" ? "hybrid" : key); }}
                         className={`rounded-xl border-2 p-3 text-left transition-all ${
-                          active
+                          isDisabled
+                            ? "opacity-50 cursor-not-allowed border-outline-variant bg-surface-container"
+                            : active
                             ? "border-primary bg-primary/5 shadow-sm"
                             : "border-outline-variant bg-background hover:border-primary/40 hover:bg-surface-container"
                         }`}
@@ -213,6 +263,11 @@ export default function ScheduleInterviewClient({ application, error: initialErr
                     );
                   })}
                 </div>
+                {branchesLoaded && branches.length === 0 && (
+                  <p className="text-xs text-amber-600">
+                    No office branches configured. Only Online mode is available.
+                  </p>
+                )}
               </div>
 
               {/* In-Person Location */}

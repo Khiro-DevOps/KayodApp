@@ -21,8 +21,6 @@ export const metadata: Metadata = {
     "Streamline hiring and onboarding with AI-powered resume tailoring and job matching.",
 };
 
-import { DevRoleToggle } from "@/components/dev/dev-role-toggle";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,7 +43,6 @@ export default function RootLayout({
         <LayoutProvider>
           <AuthProvider>
             {children}
-            <DevRoleToggle />
           </AuthProvider>
         </LayoutProvider>
       </body>

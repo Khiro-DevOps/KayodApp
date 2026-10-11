@@ -78,6 +78,16 @@ export default function DashboardPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!identity) return;
+
+    if (identity.role === "employee") {
+      router.replace("/employee/dashboard");
+    } else if (identity.role === "hr_manager" || identity.role === "admin") {
+      router.replace("/hr");
+    }
+  }, [identity, router]);
+
   if (isLoading || !identity) {
     return (
       <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-4 px-6 py-6 text-sm text-outline">
@@ -86,13 +96,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (identity.role === "employee") {
-    router.replace("/employee/dashboard");
-    return null;
-  }
-
-  if (identity.role === "hr_manager" || identity.role === "admin") {
-    router.replace("/hr");
+  if (identity.role === "employee" || identity.role === "hr_manager" || identity.role === "admin") {
     return null;
   }
 

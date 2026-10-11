@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Notification } from "@/lib/types";
 import { markNotificationRead, markAllNotificationsRead } from "./actions";
+import { createClient } from "@/lib/supabase/client";
+import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
+import { getInterviewJoinState } from "@/lib/interview-join";
 
 const typeConfig: Record<string, { icon: string; bg: string }> = {
   // Existing
@@ -47,6 +51,36 @@ export default function NotificationsClient({
   notifications: Notification[];
 }) {
   const router = useRouter();
+  const [schedulesMap, setSchedulesMap] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    const supabase = createClient();
+    const fetchSchedules = async () => {
+      const interviewIds = notifications
+        .filter(n => n.type === "interview_scheduled" || n.type === "interview_rescheduled")
+        .map(n => {
+          const match = n.action_url?.match(/(?:interview=|\/interviews\/)([a-f0-9-]+)/i);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean) as string[];
+
+      if (interviewIds.length === 0) return;
+
+      const { data } = await supabase
+        .from("interview_schedules")
+        .select("id, status, scheduled_at, duration_minutes, meeting_type, meeting_link")
+        .in("id", interviewIds);
+
+      if (data) {
+        const map: Record<string, any> = {};
+        for (const item of data) {
+          map[item.id] = item;
+        }
+        setSchedulesMap(map);
+      }
+    };
+    void fetchSchedules();
+  }, [notifications]);
 
   const resolveActionUrl = (notif: Notification): string | null => {
     if (!notif.action_url) return null;
@@ -90,6 +124,19 @@ export default function NotificationsClient({
         const isUnread = !notif.is_read;
         const actionUrl = resolveActionUrl(notif);
 
+        const match = notif.action_url?.match(/(?:interview=|\/interviews\/)([a-f0-9-]+)/i);
+        const interviewId = match ? match[1] : null;
+        const schedule = interviewId ? schedulesMap[interviewId] : null;
+        const isInterviewNotif = notif.type === "interview_scheduled" || notif.type === "interview_rescheduled";
+        const joinState = schedule ? getInterviewJoinState(schedule.scheduled_at, schedule.duration_minutes) : null;
+        const showJoinButton =
+          isInterviewNotif &&
+          schedule &&
+          schedule.status !== "cancelled" &&
+          joinState !== "ended" &&
+          schedule.meeting_type === "online" &&
+          ["scheduled", "confirmed", "rescheduled"].includes(schedule.status);
+
         const handleClick = async () => {
           if (isUnread) {
             const formData = new FormData();
@@ -112,11 +159,17 @@ export default function NotificationsClient({
         };
 
         return (
-          <button
+          <div
             key={notif.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => void handleClick()}
-            className={`w-full rounded-xl border p-4 text-left transition-colors ${
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                void handleClick();
+              }
+            }}
+            className={`w-full rounded-xl border p-4 text-left transition-colors cursor-pointer ${
               isUnread
                 ? "bg-primary-light/40 border-primary/20 hover:bg-primary-light/60"
                 : "bg-card-bg border-border hover:bg-surface-bg"
@@ -135,22 +188,35 @@ export default function NotificationsClient({
                 <p className={`text-sm ${isUnread ? "text-text-main" : "text-text-muted"}`}>
                   {notif.body}
                 </p>
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                   <p className="text-xs text-text-muted">
                     {timeAgo(notif.created_at)}
                   </p>
-                  {actionUrl && (
-                    <span className="text-xs font-medium text-primary">
-                      View →
-                    </span>
-                  )}
+
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    {showJoinButton && (
+                      <JoinInterviewButton
+                        interviewId={schedule.id}
+                        meetingLink={schedule.meeting_link}
+                        scheduledAt={schedule.scheduled_at}
+                        durationMinutes={schedule.duration_minutes}
+                        status={schedule.status}
+                        meetingType={schedule.meeting_type}
+                      />
+                    )}
+                    {actionUrl && !showJoinButton && (
+                      <span className="text-xs font-medium text-primary">
+                        View →
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               {isUnread && (
                 <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
               )}
             </div>
-          </button>
+          </div>
         );
       })}
     </div>

@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { WithdrawModal } from "./WithdrawModal";
+import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+
 
 export interface ApplicationTrackerCardData {
   id: string;
@@ -86,7 +89,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
   const scheduledInterview = application.interview?.status === "scheduled" ? application.interview : null;
   const scheduledStart = scheduledInterview?.scheduled_at ? new Date(scheduledInterview.scheduled_at) : null;
   const scheduledEnd = scheduledStart
-    ? new Date(scheduledStart.getTime() + (scheduledInterview?.duration_minutes ?? 45) * 60_000)
+    ? new Date(scheduledStart.getTime() + (scheduledInterview?.duration_minutes ?? DEFAULT_DURATION_MINUTES) * 60_000)
     : null;
 
   // Formatting date
@@ -284,12 +287,15 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
                   {scheduledEnd && ` - ${scheduledEnd.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}`}
                 </p>
               </div>
-              <Link
-                href={`/applicant/interviews/${scheduledInterview.id}/room`}
-                className="inline-flex items-center justify-center rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-violet-800"
-              >
-                Join Interview Call
-              </Link>
+              <JoinInterviewButton
+                interviewId={scheduledInterview.id}
+                meetingLink={(scheduledInterview as any).meeting_link}
+                scheduledAt={scheduledInterview.scheduled_at}
+                durationMinutes={scheduledInterview.duration_minutes}
+                status={scheduledInterview.status}
+                meetingType={(scheduledInterview as any).meeting_type}
+                selectedSlot={(scheduledInterview as any).selected_slot}
+              />
             </div>
           </div>
         )}

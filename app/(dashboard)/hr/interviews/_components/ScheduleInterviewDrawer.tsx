@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { createInterviewInvite, getOfficeBranches } from "@/app/actions/interviews";
+import { createInterviewInvite, getOfficeBranches, getNextAvailableInterviewSlot } from "@/app/actions/interviews";
+import { checkPhtWorkHoursWarning, phtInputToUtcIso, utcToPhtInputString } from "@/lib/interview-date";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 
 interface ApplicationOption {
   id: string;
@@ -31,19 +33,65 @@ export function ScheduleInterviewDrawer({
 }: ScheduleInterviewDrawerProps) {
   const [applicationId, setApplicationId] = useState<string>(defaultApplicationId);
   const [interviewerId, setInterviewerId] = useState<string>(interviewers[0]?.id || "");
+  const [durationMinutes, setDurationMinutes] = useState<number>(DEFAULT_DURATION_MINUTES);
   const [meetingLink, setMeetingLink] = useState<string>("");
-  const [meetingType, setMeetingType] = useState<"online" | "in_person" | "hybrid">("online");
+  const [meetingType, setMeetingType] = useState<"online" | "in_person" | "hybrid">("hybrid");
   const [branches, setBranches] = useState<Array<{ id: string; name: string; address: string | null }>>([]);
   const [officeBranchId, setOfficeBranchId] = useState("");
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
   const [slots, setSlots] = useState<Array<{ start_time: string; end_time: string }>>([
     { start_time: "", end_time: "" },
   ]);
+  const [slotHints, setSlotHints] = useState<Record<number, string | null>>({});
+  const [touchedStarts, setTouchedStarts] = useState<Record<number, boolean>>({});
+  const [touchedEnds, setTouchedEnds] = useState<Record<number, boolean>>({});
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   React.useEffect(() => {
-    void getOfficeBranches().then((result) => { if (result.success) setBranches(result.data ?? []); });
+    void getOfficeBranches().then((result) => {
+      const data = result.success ? (result.data ?? []) : [];
+      setBranches(data);
+      setBranchesLoaded(true);
+      if (data.length === 0) {
+        setMeetingType("online");
+        setOfficeBranchId("");
+      } else if (data.length === 1) {
+        setOfficeBranchId(data[0].id);
+      }
+    });
   }, []);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    void getNextAvailableInterviewSlot({
+      applicationId: applicationId || undefined,
+      interviewerId: interviewerId || undefined,
+      durationMinutes,
+    }).then((res) => {
+      if (isMounted) {
+        setSlots((prev) => {
+          if (touchedStarts[0]) return prev;
+          const newSlots = [...prev];
+          newSlots[0] = {
+            start_time: utcToPhtInputString(res.start_time),
+            end_time: utcToPhtInputString(res.end_time),
+          };
+          return newSlots;
+        });
+        if (!touchedStarts[0]) {
+          setSlotHints((prev) => ({
+            ...prev,
+            0: res.movedReason ?? null,
+          }));
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, applicationId, interviewerId, durationMinutes, touchedStarts]);
 
   if (!isOpen) return null;
 
@@ -55,12 +103,56 @@ export function ScheduleInterviewDrawer({
   const handleRemoveSlot = (index: number) => {
     if (slots.length <= 1) return;
     setSlots(slots.filter((_, i) => i !== index));
+    setSlotHints((prev) => {
+      const copy = { ...prev };
+      delete copy[index];
+      return copy;
+    });
+  };
+
+  const handleDurationChange = (newDuration: number) => {
+    setDurationMinutes(newDuration);
+    setSlots((prev) =>
+      prev.map((slot, idx) => {
+        if (slot.start_time && !touchedEnds[idx]) {
+          try {
+            const startIso = phtInputToUtcIso(slot.start_time);
+            const endIso = new Date(new Date(startIso).getTime() + newDuration * 60_000).toISOString();
+            return {
+              ...slot,
+              end_time: utcToPhtInputString(endIso),
+            };
+          } catch {
+            return slot;
+          }
+        }
+        return slot;
+      })
+    );
   };
 
   const handleSlotChange = (index: number, field: "start_time" | "end_time", value: string) => {
-    const newSlots = [...slots];
-    newSlots[index][field] = value;
-    setSlots(newSlots);
+    if (field === "start_time") {
+      setTouchedStarts((prev) => ({ ...prev, [index]: true }));
+      setSlotHints((prev) => ({ ...prev, [index]: null }));
+    } else {
+      setTouchedEnds((prev) => ({ ...prev, [index]: true }));
+    }
+
+    setSlots((prev) => {
+      const newSlots = [...prev];
+      newSlots[index] = { ...newSlots[index], [field]: value };
+      if (field === "start_time" && value && !touchedEnds[index]) {
+        try {
+          const startIso = phtInputToUtcIso(value);
+          const endIso = new Date(new Date(startIso).getTime() + durationMinutes * 60_000).toISOString();
+          newSlots[index].end_time = utcToPhtInputString(endIso);
+        } catch {
+          // ignore parsing error during typing
+        }
+      }
+      return newSlots;
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -78,28 +170,37 @@ export function ScheduleInterviewDrawer({
       return;
     }
 
-    // Convert local datetime-local format to ISO string
-    const isoSlots = slots.map((s) => ({
-      start_time: new Date(s.start_time).toISOString(),
-      end_time: new Date(s.end_time).toISOString(),
-    }));
+    // Convert PHT datetime-local format to UTC ISO strings
+    try {
+      const isoSlots = slots.map((s) => ({
+        start_time: phtInputToUtcIso(s.start_time),
+        end_time: phtInputToUtcIso(s.end_time),
+      }));
 
-    startTransition(async () => {
-      const res = await createInterviewInvite({
-        application_id: applicationId,
-        interviewer_id: interviewerId,
-        slots: isoSlots,
-        meeting_link: meetingLink.trim() || undefined,
-        meeting_type: meetingType,
-        office_branch_id: meetingType === "in_person" || meetingType === "hybrid" ? officeBranchId : null,
+      startTransition(async () => {
+        try {
+          const res = await createInterviewInvite({
+            application_id: applicationId,
+            interviewer_id: interviewerId,
+            slots: isoSlots,
+            duration_minutes: durationMinutes,
+            meeting_link: meetingLink.trim() || undefined,
+            meeting_type: meetingType,
+            office_branch_id: meetingType === "in_person" || meetingType === "hybrid" ? officeBranchId : null,
+          });
+
+          if (!res.success) {
+            setErrorMsg(res.error || "Failed to schedule interview.");
+          } else {
+            onClose();
+          }
+        } catch (err: unknown) {
+          setErrorMsg(err instanceof Error ? err.message : "An unexpected error occurred.");
+        }
       });
-
-      if (!res.success) {
-        setErrorMsg(res.error || "Failed to schedule interview.");
-      } else {
-        onClose();
-      }
-    });
+    } catch (parseErr) {
+      setErrorMsg(parseErr instanceof Error ? parseErr.message : "Invalid date/time format.");
+    }
   };
 
   return (
@@ -172,34 +273,116 @@ export function ScheduleInterviewDrawer({
             </select>
           </div>
 
-          {/* Video Meeting Link */}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setMeetingType("online")} className={`rounded-xl border p-3 text-xs ${meetingType === "online" ? "border-purple-600 bg-purple-50" : "border-slate-200"}`}>Online (WebRTC)</button>
-            <button type="button" onClick={() => setMeetingType("in_person")} className={`rounded-xl border p-3 text-xs ${meetingType === "in_person" ? "border-purple-600 bg-purple-50" : "border-slate-200"}`}>In-Person (Office)</button>
-            <button type="button" onClick={() => setMeetingType("hybrid")} className={`rounded-xl border p-3 text-xs ${meetingType === "hybrid" ? "border-purple-600 bg-purple-50" : "border-slate-200"}`}>Both (Hybrid)</button>
-          </div>
-          {(meetingType === "in_person" || meetingType === "hybrid") && <select value={officeBranchId} onChange={(e) => setOfficeBranchId(e.target.value)} required className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"><option value="">Select office branch</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} — {branch.address}</option>)}</select>}
-          {meetingType === "online" && (
+          {/* Duration */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">
-              Meeting Link (Optional)
+              Interview Duration
             </label>
-            <input
-              type="url"
-              value={meetingLink}
-              onChange={(e) => setMeetingLink(e.target.value)}
-              placeholder="https://meet.google.com/xyz or leave blank for auto-generated room"
+            <select
+              value={durationMinutes}
+              onChange={(e) => handleDurationChange(Number(e.target.value))}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
-            />
+            >
+              <option value={30}>30 minutes</option>
+              <option value={45}>45 minutes</option>
+              <option value={60}>60 minutes (1 hour)</option>
+              <option value={90}>90 minutes (1.5 hours)</option>
+              <option value={120}>120 minutes (2 hours)</option>
+            </select>
           </div>
+
+          {/* Video Meeting Link */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Interview Mode</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setMeetingType("online")}
+                className={`rounded-xl border p-2.5 text-xs text-center ${
+                  meetingType === "online" ? "border-purple-600 bg-purple-50 text-purple-700 font-semibold" : "border-slate-200 text-slate-700"
+                }`}
+              >
+                Online
+              </button>
+              <button
+                type="button"
+                disabled={branchesLoaded && branches.length === 0}
+                onClick={() => setMeetingType("in_person")}
+                className={`rounded-xl border p-2.5 text-xs text-center ${
+                  branchesLoaded && branches.length === 0
+                    ? "opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200"
+                    : meetingType === "in_person"
+                    ? "border-purple-600 bg-purple-50 text-purple-700 font-semibold"
+                    : "border-slate-200 text-slate-700"
+                }`}
+              >
+                In-Person
+              </button>
+              <button
+                type="button"
+                disabled={branchesLoaded && branches.length === 0}
+                onClick={() => setMeetingType("hybrid")}
+                className={`rounded-xl border p-2.5 text-xs text-center ${
+                  branchesLoaded && branches.length === 0
+                    ? "opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200"
+                    : meetingType === "hybrid"
+                    ? "border-purple-600 bg-purple-50 text-purple-700 font-semibold"
+                    : "border-slate-200 text-slate-700"
+                }`}
+              >
+                Both (Hybrid)
+              </button>
+            </div>
+            {branchesLoaded && branches.length === 0 && (
+              <p className="text-[11px] text-amber-600">
+                No office branches configured. Only Online mode is available.
+              </p>
+            )}
+          </div>
+          {(meetingType === "in_person" || meetingType === "hybrid") && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Office Branch</label>
+              <select
+                value={officeBranchId}
+                onChange={(e) => setOfficeBranchId(e.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
+              >
+                <option value="">Select office branch</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name} — {branch.address}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {meetingType === "online" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">
+                Meeting Link (Optional)
+              </label>
+              <input
+                type="url"
+                value={meetingLink}
+                onChange={(e) => setMeetingLink(e.target.value)}
+                placeholder="https://meet.google.com/xyz or leave blank for auto-generated room"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+              />
+            </div>
           )}
 
           {/* Time Slots (1-3) */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700">
-                Proposed Time Slots ({slots.length}/3)
-              </label>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Proposed Time Slots ({slots.length}/3)
+                </label>
+                <span className="text-[11px] text-slate-500">
+                  Times in Philippine Standard Time (PHT, UTC+8)
+                </span>
+              </div>
               {slots.length < 3 && (
                 <button
                   type="button"
@@ -230,7 +413,7 @@ export function ScheduleInterviewDrawer({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Start Time</label>
+                    <label className="block text-[10px] text-slate-500 mb-1">Start Time (PHT)</label>
                     <input
                       type="datetime-local"
                       value={slot.start_time}
@@ -238,9 +421,19 @@ export function ScheduleInterviewDrawer({
                       required
                       className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900"
                     />
+                    {slotHints[index] && (
+                      <p className="mt-1 text-[11px] text-amber-600 font-medium leading-tight">
+                        {slotHints[index]}
+                      </p>
+                    )}
+                    {checkPhtWorkHoursWarning(slot.start_time, durationMinutes) && (
+                      <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 rounded p-1 leading-tight border border-amber-200">
+                        {checkPhtWorkHoursWarning(slot.start_time, durationMinutes)}
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">End Time</label>
+                    <label className="block text-[10px] text-slate-500 mb-1">End Time (PHT)</label>
                     <input
                       type="datetime-local"
                       value={slot.end_time}

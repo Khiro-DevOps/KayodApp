@@ -146,9 +146,32 @@ export default async function JobsPage({ searchParams }: Props) {
   const filteredJobs = (jobs ?? []).filter((job) => filterByPayRange(job as JobPosting, payMin, payMax));
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
 
+  // Fetch candidate application statuses for all jobs shown from canonical table
+  const { data: userApplications } = await supabase
+    .from("job_applications")
+    .select("job_id, match_score")
+    .eq("applicant_id", user.id);
+
+  const applicationsMap: Record<string, { hasApplied: boolean; matchScore: number | null }> = {};
+  if (userApplications) {
+    for (const app of userApplications) {
+      if (app.job_id) {
+        applicationsMap[app.job_id] = {
+          hasApplied: true,
+          matchScore: app.match_score as number | null,
+        };
+      }
+    }
+  }
+
   const shortlistedJobs: Array<{ job: JobPosting; score: number }> = selectedResume
     ? filteredJobs.map((job) => {
       const j = job as JobPosting;
+      const appliedInfo = applicationsMap[j.id];
+      if (appliedInfo?.hasApplied && appliedInfo.matchScore !== null) {
+        return { job: j, score: appliedInfo.matchScore };
+      }
+
       const semanticScore = computeMatchScore(resumeText, {
         title: j.title,
         description: j.description,
@@ -216,22 +239,6 @@ export default async function JobsPage({ searchParams }: Props) {
   const allJobs: JobPosting[] = selectedResume
     ? [...shortlistedJobs].sort((a, b) => b.score - a.score).map((s) => s.job)
     : (filteredJobs as JobPosting[]);
-
-  // Fetch candidate application statuses for all jobs shown
-  const { data: userApplications } = await supabase
-    .from("applications")
-    .select("job_posting_id, match_score")
-    .eq("candidate_id", user.id);
-
-  const applicationsMap: Record<string, { hasApplied: boolean; matchScore: number | null }> = {};
-  if (userApplications) {
-    for (const app of userApplications) {
-      applicationsMap[app.job_posting_id] = {
-        hasApplied: true,
-        matchScore: app.match_score as number | null,
-      };
-    }
-  }
 
   const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
   const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
@@ -376,4 +383,4 @@ export default async function JobsPage({ searchParams }: Props) {
       />
     </div>
   );
-}
+}

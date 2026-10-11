@@ -5,6 +5,9 @@ import Link from "next/link";
 import { selectInterviewSlot, requestReschedule, TimeSlot } from "@/app/actions/interviews";
 import { CalendarExportButton } from "./CalendarExportButton";
 import { getRoomAccess } from "@/lib/interview-room-access";
+import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+
 
 export interface InterviewScheduleItem {
   id: string;
@@ -33,6 +36,7 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
   const [selectedSlotId, setSelectedSlotId] = useState<string>(
     interview.selected_slot?.slot_id || interview.proposed_slots[0]?.slot_id || ""
   );
+  const [chosenMode, setChosenMode] = useState<"online" | "in_person">("online");
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,7 +67,11 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
     if (!selectedSlotId) return;
     setErrorMessage(null);
     startTransition(async () => {
-      const res = await selectInterviewSlot(interview.id, selectedSlotId);
+      const res = await selectInterviewSlot(
+        interview.id,
+        selectedSlotId,
+        interview.meeting_type === "hybrid" ? chosenMode : undefined
+      );
       if (!res.success) {
         setErrorMessage(res.error || "Failed to confirm time slot.");
       }
@@ -87,7 +95,7 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
 
   const formatSlotTime = (isoStr: string) => {
     const d = new Date(isoStr);
-    return d.toLocaleString("en-US", {
+    return d.toLocaleString("en-PH", {
       timeZone: "Asia/Manila",
       weekday: "short",
       month: "short",
@@ -96,6 +104,26 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
       minute: "2-digit",
       hour12: true,
     });
+  };
+
+  const formatSlotEndTime = (isoStr: string) => {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString("en-PH", {
+      timeZone: "Asia/Manila",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const getSlotDuration = (startTime?: string | null, endTime?: string | null) => {
+    if (typeof interview.duration_minutes === "number" && interview.duration_minutes > 0) {
+      return interview.duration_minutes;
+    }
+    if (startTime && endTime) {
+      return Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60_000);
+    }
+    return DEFAULT_DURATION_MINUTES;
   };
 
   return (
@@ -107,11 +135,18 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
           {interview.interviewerName && (
             <p className="text-xs text-slate-500 dark:text-slate-400">Interviewer: {interview.interviewerName}</p>
           )}
+          <p className="mt-1 text-xs text-purple-600 font-medium">
+            {interview.meeting_type === "hybrid"
+              ? `Both (applicant chooses)${interview.branchName ? ` · ${interview.branchName}` : ""}`
+              : interview.meeting_type === "in_person"
+              ? `In-Person · ${interview.branchName ?? "Office"}`
+              : "Online"}
+          </p>
         </div>
         <div>
-          {interview.status === "pending_selection" && (
+          {(interview.status === "pending_selection" || interview.status === "proposed") && (
             <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-              Pending Time Selection
+              Pending Selection
             </span>
           )}
           {interview.status === "confirmed" && (
@@ -144,39 +179,94 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
       )}
 
       {/* Pending Selection Options */}
-      {interview.status === "pending_selection" && (
-        <div className="space-y-3 pt-2">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Please choose 1 preferred time slot:
-          </p>
-          <div className="space-y-2">
-            {interview.proposed_slots.map((slot) => {
-              const isSelected = selectedSlotId === slot.slot_id;
-              return (
+      {(interview.status === "pending_selection" || interview.status === "proposed") && (
+        <div className="space-y-4 pt-2">
+          {interview.meeting_type === "hybrid" && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Choose interview mode:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
                 <label
-                  key={slot.slot_id}
-                  onClick={() => setSelectedSlotId(slot.slot_id)}
-                  className={`flex cursor-pointer items-center justify-between rounded-xl border p-3 text-xs transition-all ${
-                    isSelected
+                  onClick={() => setChosenMode("online")}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-all ${
+                    chosenMode === "online"
                       ? "border-purple-600 bg-purple-50/60 ring-2 ring-purple-600 dark:border-purple-500 dark:bg-purple-950/30"
-                      : "border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800"
+                      : "border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`slot_${interview.id}`}
-                      checked={isSelected}
-                      onChange={() => setSelectedSlotId(slot.slot_id)}
-                      className="h-4 w-4 text-purple-600 focus:ring-purple-500"
-                    />
-                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {formatSlotTime(slot.start_time)} – {new Date(slot.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>
+                  <input
+                    type="radio"
+                    name={`mode_${interview.id}`}
+                    checked={chosenMode === "online"}
+                    onChange={() => setChosenMode("online")}
+                    className="mt-0.5 h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">Online Video Call</span>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Join via web browser</p>
                   </div>
                 </label>
-              );
-            })}
+
+                <label
+                  onClick={() => setChosenMode("in_person")}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-all ${
+                    chosenMode === "in_person"
+                      ? "border-purple-600 bg-purple-50/60 ring-2 ring-purple-600 dark:border-purple-500 dark:bg-purple-950/30"
+                      : "border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`mode_${interview.id}`}
+                    checked={chosenMode === "in_person"}
+                    onChange={() => setChosenMode("in_person")}
+                    className="mt-0.5 h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">In-Person Office Visit</span>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      {interview.branchName ?? "Office"}{interview.branchAddress ? `, ${interview.branchAddress}` : ""}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Please choose 1 preferred time slot:
+            </p>
+            <div className="space-y-2">
+              {interview.proposed_slots.map((slot) => {
+                const isSelected = selectedSlotId === slot.slot_id;
+                return (
+                  <label
+                    key={slot.slot_id}
+                    onClick={() => setSelectedSlotId(slot.slot_id)}
+                    className={`flex cursor-pointer items-center justify-between rounded-xl border p-3 text-xs transition-all ${
+                      isSelected
+                        ? "border-purple-600 bg-purple-50/60 ring-2 ring-purple-600 dark:border-purple-500 dark:bg-purple-950/30"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name={`slot_${interview.id}`}
+                        checked={isSelected}
+                        onChange={() => setSelectedSlotId(slot.slot_id)}
+                        className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {formatSlotTime(slot.start_time)} – {formatSlotEndTime(slot.end_time)} ({getSlotDuration(slot.start_time, slot.end_time)} mins)
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
@@ -204,33 +294,22 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
         <div className="space-y-3 pt-2">
           <div className="rounded-xl bg-purple-50 p-3 text-xs text-purple-900 dark:bg-purple-950/40 dark:text-purple-200">
             <span className="font-bold">Scheduled Time: </span>
-            {formatSlotTime(interview.selected_slot.start_time)} – {new Date(interview.selected_slot.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            {formatSlotTime(interview.selected_slot.start_time)} – {formatSlotEndTime(interview.selected_slot.end_time)} ({getSlotDuration(interview.selected_slot.start_time, interview.selected_slot.end_time)} mins)
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {interview.meeting_type === "in_person" || interview.meeting_type === "hybrid" ? (
+            {interview.meeting_type === "in_person" ? (
               <p className="text-xs text-amber-800 dark:text-amber-300">In-Person at {interview.branchName ?? "office"}{interview.branchAddress ? `, ${interview.branchAddress}` : ""}</p>
-            ) : activeLink ? (
-              <Link
-                href={`/applicant/interviews/${interview.id}/room`}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-purple-700 transition-colors"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Join Video Call
-              </Link>
             ) : (
-              <button
-                disabled
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-400 cursor-not-allowed dark:border-slate-800 dark:bg-slate-800 dark:text-slate-500"
-                title="Link activates 10 minutes prior to scheduled interview time"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                Video Link (Active 10m Prior)
-              </button>
+              <JoinInterviewButton
+                interviewId={interview.id}
+                meetingLink={interview.meeting_link}
+                scheduledAt={interview.scheduled_at ?? interview.selected_slot?.start_time}
+                durationMinutes={interview.duration_minutes}
+                status={interview.status}
+                meetingType={interview.meeting_type}
+                selectedSlot={interview.selected_slot}
+              />
             )}
 
             <CalendarExportButton

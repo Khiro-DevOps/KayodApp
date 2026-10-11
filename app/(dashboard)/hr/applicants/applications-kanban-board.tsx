@@ -14,6 +14,8 @@ import {
   type UiStageKey,
   type UiStage,
 } from "@/lib/application-stages";
+import HRInterviewCardSection, { type InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
+
 
 type CandidateProfile = {
   id: string;
@@ -253,11 +255,13 @@ function getPrimaryActionLabel(stageKey: UiStageKey): string {
 
 function ApplicationCard({
   application,
+  interviewSchedule,
   onSelect,
   onPrimaryAction,
   onSchedule,
 }: {
   application: ApplicationHubCard;
+  interviewSchedule?: InterviewScheduleItem | null;
   onSelect: (applicationId: string) => void;
   onPrimaryAction: (application: ApplicationHubCard) => void;
   onSchedule: (application: ApplicationHubCard) => void;
@@ -309,22 +313,27 @@ function ApplicationCard({
         <span className="text-text-muted">{application.status}</span>
       </div>
 
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-
-          if (stageKey === "interview") {
-            onSchedule(application);
-            return;
-          }
-
-          onPrimaryAction(application);
-        }}
-        className="w-full rounded-lg bg-primary hover:bg-primary-hover px-3 py-2 text-xs font-semibold text-white transition-colors shadow-xs"
-      >
-        {actionLabel}
-      </button>
+      {stageKey === "interview" ? (
+        <div onClick={(e) => e.stopPropagation()}>
+          <HRInterviewCardSection
+            interview={interviewSchedule}
+            applicationId={application.id}
+            compact={true}
+            onReschedule={() => onSchedule(application)}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPrimaryAction(application);
+          }}
+          className="w-full rounded-lg bg-primary hover:bg-primary-hover px-3 py-2 text-xs font-semibold text-white transition-colors shadow-xs"
+        >
+          {actionLabel}
+        </button>
+      )}
     </article>
   );
 }
@@ -332,12 +341,14 @@ function ApplicationCard({
 function PipelineColumn({
   stage,
   applications,
+  interviewMap,
   onSelect,
   onPrimaryAction,
   onSchedule,
 }: {
   stage: UiStage;
   applications: ApplicationHubCard[];
+  interviewMap: Record<string, InterviewScheduleItem>;
   onSelect: (applicationId: string) => void;
   onPrimaryAction: (application: ApplicationHubCard) => void;
   onSchedule: (application: ApplicationHubCard) => void;
@@ -369,6 +380,7 @@ function PipelineColumn({
             <ApplicationCard
               key={application.id}
               application={application}
+              interviewSchedule={interviewMap[application.id]}
               onSelect={onSelect}
               onPrimaryAction={onPrimaryAction}
               onSchedule={onSchedule}
@@ -675,9 +687,36 @@ export default function ApplicationsKanbanBoard({
   const stageColumns = useMemo(() => groupApplicationsByStage(applications), [applications]);
   const totalApplications = applications.length;
 
+  const [interviewMap, setInterviewMap] = useState<Record<string, InterviewScheduleItem>>({});
+  const applicationIds = useMemo(() => applications.map((a) => a.id), [applications]);
+
   useEffect(() => {
     setApplications(sortApplications(initialApplications));
   }, [initialApplications]);
+
+  useEffect(() => {
+    if (applicationIds.length === 0) {
+      setInterviewMap({});
+      return;
+    }
+
+    const supabase = createClient();
+    supabase
+      .from("interview_schedules")
+      .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, office_branches(name, address)")
+      .in("application_id", applicationIds)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }: { data: any; error: any }) => {
+        if (error || !data) return;
+        const map: Record<string, InterviewScheduleItem> = {};
+        for (const row of data as any[]) {
+          if (!map[row.application_id]) {
+            map[row.application_id] = row;
+          }
+        }
+        setInterviewMap(map);
+      });
+  }, [applicationIds]);
 
   useEffect(() => {
     if (selectedApplicationId && !selectedApplication) {
@@ -938,6 +977,7 @@ export default function ApplicationsKanbanBoard({
                 key={stage.key}
                 stage={stage}
                 applications={stageColumns[stage.key]}
+                interviewMap={interviewMap}
                 onSelect={handleSelectApplication}
                 onPrimaryAction={handlePrimaryAction}
                 onSchedule={handleScheduleInterview}
