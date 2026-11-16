@@ -1,6 +1,6 @@
 "use server";
 
-import { getAdminClient } from "@/lib/supabase/admin";
+import { notifyJobCreator } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -73,18 +73,15 @@ export async function submitApplication(formData: FormData) {
 
   // Notify the HR Manager
   if (job.created_by) {
-    const admin = getAdminClient();
-    const { error: notifError } = await admin.from("notifications").insert({
-      recipient_id: job.created_by,
+    await notifyJobCreator({
+      jobId: job.id,
       type: "application_submitted",
       title: "New Job Application 📄",
       body: `A new candidate has applied for ${job.title || "your job posting"}.`,
-      action_url: `/hr/jobs/${job.id}/applicants`,
+      link: `/hr/jobs/${job.id}/applicants`,
+      metadata: { applicationId: createdJA.id },
+      senderId: user.id,
     });
-
-    if (notifError) {
-      console.error("Failed to insert HR notification:", notifError);
-    }
   }
 
   revalidatePath("/applicant/applications");

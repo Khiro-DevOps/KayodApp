@@ -94,6 +94,8 @@ export default function NotificationBell({ userId }: { userId?: string | null })
             ];
             items = items.filter((n) => employeeTypes.includes(n.type));
           }
+          const seen = new Set<string>();
+          items = items.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
           setNotifications(items);
 
           const interviewIds = items
@@ -137,11 +139,11 @@ export default function NotificationBell({ userId }: { userId?: string | null })
       void fetchNotifications(activeUserId);
 
       const channel = supabase
-        .channel(`realtime-hr-notifications-${activeUserId}`)
+        .channel(`realtime-notifications-${activeUserId}-${Math.random().toString(36).slice(2)}`)
         .on(
           "postgres_changes",
           {
-            event: "*",
+            event: "INSERT",
             schema: "public",
             table: "notifications",
             filter: `recipient_id=eq.${activeUserId}`,
@@ -150,6 +152,22 @@ export default function NotificationBell({ userId }: { userId?: string | null })
             if (activeUserId) {
               void fetchNotifications(activeUserId);
             }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "notifications",
+            filter: `recipient_id=eq.${activeUserId}`,
+          },
+          (payload: { new: unknown }) => {
+            const updated = payload.new as Notification;
+            if (!isMounted || !updated?.id) return;
+            setNotifications((prev) =>
+              prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n))
+            );
           }
         )
         .subscribe();
@@ -161,6 +179,10 @@ export default function NotificationBell({ userId }: { userId?: string | null })
 
     let cleanupFn: (() => void) | undefined;
     initUserAndFetch().then((cleanup) => {
+      if (!isMounted) {
+        cleanup?.();
+        return;
+      }
       cleanupFn = cleanup;
     });
 

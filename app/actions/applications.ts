@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { notifyJobCreator } from "@/lib/notifications";
 
 export interface WithdrawApplicationResponse {
   success: boolean;
@@ -35,7 +36,7 @@ export async function withdrawApplication(applicationId: string): Promise<Withdr
     // First try job_applications table
     const { data: jobAppRecord, error: fetchJobAppError } = await supabase
       .from("job_applications")
-      .select("id, applicant_id, status")
+      .select("id, applicant_id, status, job_id")
       .eq("id", applicationId)
       .maybeSingle();
 
@@ -68,6 +69,20 @@ export async function withdrawApplication(applicationId: string): Promise<Withdr
     if (updateError) {
       console.error("Error updating job_application status:", updateError);
       return { success: false, error: updateError.message || "Failed to withdraw application." };
+    }
+
+    if (jobAppRecord.job_id) {
+      await notifyJobCreator({
+        jobId: jobAppRecord.job_id,
+        type: "application_status_changed",
+        title: "Application Withdrawn",
+        body: "A candidate has withdrawn their application.",
+        link: `/hr/jobs/${jobAppRecord.job_id}/applicants`,
+        metadata: { applicationId },
+        senderId: user.id,
+      });
+    } else {
+      console.error(`withdrawApplication: application ${applicationId} has no job_id; HR notification skipped`);
     }
 
     // 3. Revalidate applicant applications page path

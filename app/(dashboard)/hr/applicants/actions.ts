@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
+import { notifyJobCreator } from "@/lib/notifications";
 
 export async function recalculateMatchScores() {
   const supabase = await createClient();
@@ -41,7 +42,7 @@ export async function submitApplication(formData: FormData) {
 
   const { data: job } = await supabase
     .from("job_postings")
-    .select("id, tenant_id, is_published, closes_at")
+    .select("id, tenant_id, is_published, closes_at, title")
     .eq("id", jobId)
     .single();
 
@@ -89,6 +90,16 @@ export async function submitApplication(formData: FormData) {
   } catch (recomputeError) {
     console.warn("Match score computation failed:", recomputeError);
   }
+
+  await notifyJobCreator({
+    jobId: job.id,
+    type: "application_submitted",
+    title: "New Job Application 📄",
+    body: `A new candidate has applied for ${job.title || "your job posting"}.`,
+    link: `/hr/jobs/${job.id}/applicants`,
+    metadata: { applicationId: createdJA.id },
+    senderId: user.id,
+  });
 
   revalidatePath("/applicant/applications");
   revalidatePath("/hr/applicants");

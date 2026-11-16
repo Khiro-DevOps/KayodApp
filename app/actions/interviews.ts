@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { notifyJobCreator } from "@/lib/notifications";
 import { normalizeMeetingType, type MeetingType } from "@/lib/meeting-type";
 import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
 import {
@@ -494,6 +495,20 @@ export async function selectInterviewSlot(
     if (updateError) {
       console.error("Error confirming slot:", updateError);
       return { success: false, error: updateError.message || "Failed to confirm slot." };
+    }
+
+    if (schedule.job_id) {
+      await notifyJobCreator({
+        jobId: schedule.job_id,
+        type: "interview_scheduled",
+        title: "Interview Slot Confirmed",
+        body: `A candidate confirmed an interview slot for ${new Date(finalSelectedSlot.start_time).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.`,
+        link: `/hr/interviews`,
+        metadata: { interviewId, applicationId: schedule.application_id },
+        senderId: user.id,
+      });
+    } else {
+      console.error(`selectInterviewSlot: interview ${interviewId} has no job_id; HR notification skipped`);
     }
 
     revalidatePath("/applicant/interviews");
