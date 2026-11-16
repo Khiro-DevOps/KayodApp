@@ -339,3 +339,46 @@ export function calculateWeightedMatchScore(
   // Return rounded to avoid floating point issues
   return Math.round(finalScore);
 }
+
+export interface DisplayMatchScoreInput {
+  applied: boolean;
+  stored?: number | null;
+  estimate?: number | null;
+}
+
+export interface DisplayMatchScoreResult {
+  value: number | null;
+  kind: "stored" | "estimate";
+}
+
+function normalizeScoreValue(raw: number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 0 && n <= 1 ? Math.round(n * 100) : Math.round(n);
+  return Math.max(0, Math.min(100, scaled));
+}
+
+/**
+ * Single match-score selector:
+ * - applied job -> stored job_applications.match_score (kind: 'stored')
+ * - not applied -> analyzeJobFit estimate (kind: 'estimate')
+ * Never falls back from a null stored score to an estimate, and never substitutes a 75 fallback.
+ */
+export function getDisplayMatchScore({
+  applied,
+  stored,
+  estimate,
+}: DisplayMatchScoreInput): DisplayMatchScoreResult {
+  if (applied) {
+    return {
+      value: normalizeScoreValue(stored),
+      kind: "stored",
+    };
+  }
+
+  return {
+    value: normalizeScoreValue(estimate),
+    kind: "estimate",
+  };
+}

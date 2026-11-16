@@ -5,6 +5,7 @@ import { useState } from "react";
 import { WithdrawModal } from "./WithdrawModal";
 import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
 import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+import { getDisplayMatchScore } from "@/lib/match-score";
 
 
 export interface ApplicationTrackerCardData {
@@ -99,12 +100,17 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
     year: "numeric",
   });
 
+  const displayScore = getDisplayMatchScore({
+    applied: true,
+    stored: application.matchScore,
+  });
+
   const matchScoreClasses =
-    application.matchScore === null
+    displayScore.value === null
       ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-      : application.matchScore >= 70
+      : displayScore.value >= 70
         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
-        : application.matchScore >= 40
+        : displayScore.value >= 40
           ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400"
           : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
 
@@ -162,7 +168,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
           <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-slate-400 dark:text-slate-500">
             <span>Applied {formattedDate}</span>
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${matchScoreClasses}`}>
-              {application.matchScore === null ? "Not scored yet" : `${Math.round(application.matchScore)}% match`}
+              {displayScore.value === null ? "—" : `${displayScore.value}% match`}
             </span>
           </div>
         </div>

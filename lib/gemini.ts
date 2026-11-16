@@ -217,11 +217,12 @@ export interface JobFitAnalysisInput {
 }
 
 export interface JobFitAnalysisOutput {
-  fit_score: number;
+  fit_score: number | null;
   match_level: "High" | "Medium" | "Low";
   top_reasons: string[];
   gap_analysis: string;
   card_color_hex: string;
+  is_fallback?: boolean;
 }
 
 // ─── SYSTEM PROMPTS ───────────────────────────────────────────────────────────

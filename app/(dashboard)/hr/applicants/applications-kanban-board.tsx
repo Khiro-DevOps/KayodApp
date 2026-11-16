@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
+import { getDisplayMatchScore } from "@/lib/match-score";
 import { updateApplicationStatus as updateApplicationStatusAction } from "./hr-applications-actions";
 import {
   getStageForStatus,
@@ -132,12 +133,8 @@ function getApplicantInitials(profile: CandidateProfile | null): string {
  * Returns a rounded integer string like "72" when scored.
  */
 function formatMatchScore(score: number | null | undefined): string | null {
-  if (score === null || score === undefined) return null;
-  const n = Number(score);
-  if (!Number.isFinite(n)) return null;
-  // Schema: NUMERIC(5,2) → max 999.99. Values ≤ 1.0 suggest a 0–1 scale; multiply.
-  const normalised = n <= 1 ? Math.round(n * 100) : Math.round(n);
-  return String(normalised);
+  const { value } = getDisplayMatchScore({ applied: true, stored: score ?? null });
+  return value !== null ? String(value) : null;
 }
 
 function getScoreClasses(score: string | null): string {
@@ -306,7 +303,7 @@ function ApplicationCard({
         </div>
 
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
-          {scoreDisplay !== null ? `${scoreDisplay}% match` : "Not scored yet"}
+          {scoreDisplay !== null ? `${scoreDisplay}% match` : "—"}
         </span>
       </div>
 
@@ -462,7 +459,7 @@ function ClosedSection({
                     {app.status}
                   </span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
-                    {scoreDisplay !== null ? `${scoreDisplay}%` : "Not scored"}
+                    {scoreDisplay !== null ? `${scoreDisplay}%` : "—"}
                   </span>
                 </div>
               </article>

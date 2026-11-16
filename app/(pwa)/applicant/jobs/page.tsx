@@ -5,7 +5,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { JobPosting, Profile, Resume } from "@/lib/types";
-import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore } from "@/lib/match-score";
+import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore, getDisplayMatchScore } from "@/lib/match-score";
 import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
 import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
@@ -202,29 +202,45 @@ export default async function JobsPage({ searchParams }: Props) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 8)
         .map(async ({ job, score }) => {
+          const appliedInfo = applicationsMap[job.id];
+          const isApplied = Boolean(appliedInfo?.hasApplied);
           try {
-            return {
-              job,
-              fit: await analyzeJobFit({
-                resumeData: resumeText,
-                jobRequirements: {
-                  title: job.title,
-                  description: job.description,
-                  requirements: job.requirements,
-                  required_skills: job.required_skills ?? [],
-                  industry: job.industry,
-                  job_category: job.job_category,
-                  employment_type: job.employment_type,
-                },
-                fallbackScore: score,
-              }),
-            };
-          } catch (e) {
-            console.error(`AI Analysis failed for job ${job.id}, using UI-level fallback:`, e);
+            const fit = await analyzeJobFit({
+              resumeData: resumeText,
+              jobRequirements: {
+                title: job.title,
+                description: job.description,
+                requirements: job.requirements,
+                required_skills: job.required_skills ?? [],
+                industry: job.industry,
+                job_category: job.job_category,
+                employment_type: job.employment_type,
+              },
+              fallbackScore: score,
+            });
+            const displayScore = getDisplayMatchScore({
+              applied: isApplied,
+              stored: appliedInfo?.matchScore ?? null,
+              estimate: fit.fit_score,
+            });
             return {
               job,
               fit: {
-                fit_score: 75,
+                ...fit,
+                fit_score: displayScore.value,
+              },
+            };
+          } catch (e) {
+            console.error(`AI Analysis failed for job ${job.id}, using UI-level fallback:`, e);
+            const displayScore = getDisplayMatchScore({
+              applied: isApplied,
+              stored: appliedInfo?.matchScore ?? null,
+              estimate: null,
+            });
+            return {
+              job,
+              fit: {
+                fit_score: displayScore.value,
                 match_level: "High" as const,
                 top_reasons: ["Good alignment with your profile"],
                 gap_analysis: "Stitch was able to find a likely match based on your saved resume data.",

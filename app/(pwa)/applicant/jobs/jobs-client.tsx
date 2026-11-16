@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { JobPosting } from "@/lib/types";
 import type { JobFitAnalysisOutput } from "@/lib/gemini";
+import { getDisplayMatchScore } from "@/lib/match-score";
 import JobDetailModal from "@/components/jobs/job-detail-modal";
 
 interface ApplicantJobsClientProps {
@@ -102,6 +103,18 @@ export default function ApplicantJobsClient({
             {recommendedJobs.map(({ job, fit }) => {
               const dept = job.departments as unknown as { name: string } | null;
               const salaryRange = formatSalaryRange(job);
+              const appliedInfo = applicationsMap[job.id];
+              const displayScore = getDisplayMatchScore({
+                applied: Boolean(appliedInfo?.hasApplied),
+                stored: appliedInfo?.matchScore ?? null,
+                estimate: fit.is_fallback ? null : fit.fit_score,
+              });
+              const badgeLabel =
+                displayScore.value === null
+                  ? "—"
+                  : displayScore.kind === "estimate"
+                    ? `Estimated · ${fit.match_level} ${displayScore.value}%`
+                    : `${fit.match_level} ${displayScore.value}%`;
               return (
                 <article
                   key={job.id}
@@ -116,7 +129,7 @@ export default function ApplicantJobsClient({
                       className="px-3 py-1 rounded-full text-label-caps font-label-caps"
                       style={{ backgroundColor: `${fit.card_color_hex}18`, color: fit.card_color_hex }}
                     >
-                      {(fit as any).is_fallback ? "ANALYSIS PENDING" : `${fit.match_level} ${fit.fit_score}%`}
+                      {badgeLabel}
                     </div>
                   </div>
                   <h3 className="text-title-lg font-title-lg text-on-surface group-hover:text-primary transition-colors">

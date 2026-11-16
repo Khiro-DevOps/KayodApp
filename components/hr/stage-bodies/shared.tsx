@@ -2,6 +2,7 @@
 
 import type { ApplicationHubCard } from "@/app/(dashboard)/hr/applicants/applications-kanban-board";
 import { UI_STAGES, type UiStageKey } from "@/lib/application-stages";
+import { getDisplayMatchScore } from "@/lib/match-score";
 
 export type CandidateProfile = {
   id: string;
@@ -107,11 +108,8 @@ export function formatApplicationTime(value: string): string {
 }
 
 export function formatMatchScore(score: number | null | undefined): string | null {
-  if (score === null || score === undefined) return null;
-  const n = Number(score);
-  if (!Number.isFinite(n)) return null;
-  const normalised = n <= 1 ? Math.round(n * 100) : Math.round(n);
-  return String(normalised);
+  const { value } = getDisplayMatchScore({ applied: true, stored: score ?? null });
+  return value !== null ? String(value) : null;
 }
 
 export function getScoreClasses(score: string | null): string {
