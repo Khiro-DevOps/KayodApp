@@ -109,7 +109,6 @@ export default function HRApplicantCard({ app, candidate, resume, fullName }: HR
               <option value="interview_scheduled">Interview scheduled</option>
               <option value="interviewed">Interviewed</option>
               <option value="offer_sent">Offer sent</option>
-              <option value="hired">Hired</option>
               <option value="rejected">Rejected</option>
             </select>
           </form>

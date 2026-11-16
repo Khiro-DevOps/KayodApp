@@ -134,7 +134,6 @@ export default function EvaluationSidebar({
       color: "text-green-700",
       bgColor: "bg-green-50",
       nextActions: [
-        { label: "Mark as Hired", status: "hired", color: "bg-green-600" },
         { label: "Reject", status: "rejected", color: "bg-red-500" },
       ],
     },

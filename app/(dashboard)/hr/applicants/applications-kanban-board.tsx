@@ -46,6 +46,7 @@ export type ApplicationHubCard = {
   job_id: string;
   candidate_id?: string;
   applicant_id?: string;
+  employee_id?: string | null;
   resume_id: string;
   status: string;
   cover_letter: string | null;
@@ -614,6 +615,8 @@ export default function ApplicationsKanbanBoard({
   const totalApplications = applications.length;
 
   const [interviewMap, setInterviewMap] = useState<Record<string, InterviewScheduleItem>>({});
+  const [employeeIdByAppId, setEmployeeIdByAppId] = useState<Record<string, string>>({});
+  const [employeeIdByProfileId, setEmployeeIdByProfileId] = useState<Record<string, string>>({});
   const [interviewRefreshTick, setInterviewRefreshTick] = useState(0);
   const applicationIds = useMemo(() => applications.map((a) => a.id), [applications]);
 
@@ -624,6 +627,8 @@ export default function ApplicationsKanbanBoard({
   useEffect(() => {
     if (applicationIds.length === 0) {
       setInterviewMap({});
+      setEmployeeIdByAppId({});
+      setEmployeeIdByProfileId({});
       return;
     }
 
@@ -643,7 +648,36 @@ export default function ApplicationsKanbanBoard({
         }
         setInterviewMap(map);
       });
-  }, [applicationIds, interviewRefreshTick]);
+
+    const profileIds = Array.from(
+      new Set(
+        applications
+          .map((a) => a.applicant_id ?? a.candidate_id ?? resolveProfile(a)?.id)
+          .filter((v): v is string => Boolean(v)),
+      ),
+    );
+    if (profileIds.length > 0) {
+      supabase
+        .from("employees")
+        .select("id, application_id, profile_id")
+        .in("profile_id", profileIds)
+        .then(({ data, error }: { data: Array<{ id: string; application_id?: string | null; profile_id?: string | null }> | null; error: unknown }) => {
+          if (error || !data) return;
+          const byApp: Record<string, string> = {};
+          const byProfile: Record<string, string> = {};
+          for (const row of data) {
+            if (row.application_id && !byApp[row.application_id]) {
+              byApp[row.application_id] = row.id;
+            }
+            if (row.profile_id && !byProfile[row.profile_id]) {
+              byProfile[row.profile_id] = row.id;
+            }
+          }
+          setEmployeeIdByAppId(byApp);
+          setEmployeeIdByProfileId(byProfile);
+        });
+    }
+  }, [applicationIds, applications, interviewRefreshTick]);
 
   useEffect(() => {
     if (selectedApplicationId && !selectedApplication) {
@@ -837,6 +871,19 @@ export default function ApplicationsKanbanBoard({
     setSelectedApplicationId(applicationId);
   };
 
+  const handleViewEmployee = (application: ApplicationHubCard) => {
+    const profileId = application.applicant_id ?? application.candidate_id ?? resolveProfile(application)?.id;
+    const employeeId =
+      application.employee_id ||
+      employeeIdByAppId[application.id] ||
+      (profileId ? employeeIdByProfileId[profileId] : undefined);
+    if (employeeId) {
+      router.push(`/hr/employees/${encodeURIComponent(employeeId)}`);
+    } else {
+      router.push("/hr/employees");
+    }
+  };
+
   const handlePrimaryAction = async (application: ApplicationHubCard) => {
     const stageKey = getStageForStatus(application.status);
 
@@ -851,6 +898,11 @@ export default function ApplicationsKanbanBoard({
 
     if (stageKey === "offer") {
       router.push(`/job-offer/${encodeURIComponent(application.id)}`);
+      return;
+    }
+
+    if (stageKey === "hired") {
+      handleViewEmployee(application);
       return;
     }
 
@@ -929,7 +981,7 @@ export default function ApplicationsKanbanBoard({
         onAdvance={handleAdvanceApplication}
         onOpenFullApplication={handleOpenFullApplication}
         onSchedule={handleScheduleInterview}
-        onViewEmployee={() => router.push("/hr/employees")}
+        onViewEmployee={handleViewEmployee}
         onInterviewUpdated={() => {
           setInterviewRefreshTick((t) => t + 1);
           router.refresh();

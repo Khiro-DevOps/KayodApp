@@ -146,7 +146,6 @@ const NEXT_STAGE: Partial<Record<UiStageKey, UiStageKey>> = {
   new:        "screening",
   screening:  "interview",
   interview:  "offer",
-  offer:      "hired",
 };
 
 /** Returns the DB status string for the next stage, or null when at end of pipe */
