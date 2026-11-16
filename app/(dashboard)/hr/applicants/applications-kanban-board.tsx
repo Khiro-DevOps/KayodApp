@@ -15,6 +15,12 @@ import {
   type UiStage,
 } from "@/lib/application-stages";
 import HRInterviewCardSection, { type InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
+import NewStageBody from "@/components/hr/stage-bodies/NewStageBody";
+import ScreeningStageBody from "@/components/hr/stage-bodies/ScreeningStageBody";
+import InterviewStageBody from "@/components/hr/stage-bodies/InterviewStageBody";
+import OfferStageBody from "@/components/hr/stage-bodies/OfferStageBody";
+import HiredStageBody from "@/components/hr/stage-bodies/HiredStageBody";
+import RejectedStageBody from "@/components/hr/stage-bodies/RejectedStageBody";
 
 
 type CandidateProfile = {
@@ -469,30 +475,95 @@ function ClosedSection({
 
 function ApplicationDrawer({
   application,
+  interview,
   isOpen,
   onClose,
   onReject,
   onAdvance,
   onOpenFullApplication,
+  onSchedule,
+  onViewEmployee,
+  onInterviewUpdated,
 }: {
   application: ApplicationHubCard | null;
+  interview?: InterviewScheduleItem | null;
   isOpen: boolean;
   onClose: () => void;
   onReject: (applicationId: string) => void;
   onAdvance: (applicationId: string) => void;
   onOpenFullApplication: (applicationId: string) => void;
+  onSchedule: (application: ApplicationHubCard) => void;
+  onViewEmployee: (application: ApplicationHubCard) => void;
+  onInterviewUpdated?: () => void;
 }) {
-  const profile = resolveProfile(application);
-  const jobPosting = resolveJob(application);
   const stageKey = application ? getStageForStatus(application.status) : "new";
-  const nextDbStatus = getNextDbStatus(stageKey);
   const scoreDisplay = formatMatchScore(application?.match_score);
-  const stageProgress = (() => {
-    const order: UiStageKey[] = ["new", "screening", "interview", "offer", "hired"];
-    const idx = order.indexOf(stageKey);
-    if (idx < 0) return 100;
-    return Math.round(((idx + 1) / order.length) * 100);
-  })();
+
+  const renderStageBody = (app: ApplicationHubCard) => {
+    switch (stageKey) {
+      case "new":
+        return (
+          <NewStageBody
+            application={app}
+            scoreDisplay={scoreDisplay}
+            onReject={onReject}
+            onAdvance={onAdvance}
+            onOpenFullApplication={onOpenFullApplication}
+          />
+        );
+      case "screening":
+        return (
+          <ScreeningStageBody
+            application={app}
+            scoreDisplay={scoreDisplay}
+            onReject={onReject}
+            onOpenFullApplication={onOpenFullApplication}
+            onInterviewScheduled={onInterviewUpdated}
+          />
+        );
+      case "interview":
+        return (
+          <InterviewStageBody
+            application={app}
+            interview={interview}
+            scoreDisplay={scoreDisplay}
+            onReject={onReject}
+            onAdvance={onAdvance}
+            onOpenFullApplication={onOpenFullApplication}
+            onSchedule={onSchedule}
+            onInterviewUpdated={onInterviewUpdated}
+          />
+        );
+      case "offer":
+        return (
+          <OfferStageBody
+            application={app}
+            scoreDisplay={scoreDisplay}
+            onReject={onReject}
+            onOpenFullApplication={onOpenFullApplication}
+          />
+        );
+      case "hired":
+        return (
+          <HiredStageBody
+            application={app}
+            scoreDisplay={scoreDisplay}
+            onViewEmployee={onViewEmployee}
+            onOpenFullApplication={onOpenFullApplication}
+          />
+        );
+      case "closed":
+      case "other":
+      default:
+        return (
+          <RejectedStageBody
+            application={app}
+            scoreDisplay={scoreDisplay}
+            onOpenFullApplication={onOpenFullApplication}
+          />
+        );
+    }
+  };
 
   return (
     <aside
@@ -511,160 +582,15 @@ function ApplicationDrawer({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 modern-scrollbar">
-        {application ? (
-          <div className="space-y-8">
-            <section className="flex flex-col items-center text-center">
-              <div className="relative mb-4">
-                {profile?.avatar_url ? (
-                  <img
-                    alt={getApplicantName(profile)}
-                    src={profile.avatar_url}
-                    className="h-24 w-24 rounded-full border-4 border-surface object-cover"
-                  />
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-surface bg-primary/10 text-2xl font-bold text-primary">
-                    {getApplicantInitials(profile)}
-                  </div>
-                )}
-
-                <div className={`absolute -bottom-2 right-0 rounded-full border-2 border-card-bg px-3 py-1 text-[12px] font-bold ${getScoreClasses(scoreDisplay)} `}>
-                  {scoreDisplay !== null ? `${scoreDisplay}% Match` : "Not scored yet"}
-                </div>
-              </div>
-
-              <h2 className="text-[22px] font-semibold text-on-surface">{getApplicantName(profile)}</h2>
-              <p className="text-[14px] text-secondary">
-                {getRoleTitle(application)} • {getCandidateLocation(application)}
-              </p>
-
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <span className="rounded-full bg-surface-container-low px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary">
-                  {getStageLabel(stageKey)}
-                </span>
-                <span className="rounded-full bg-surface-container-low px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary">
-                  Applied {formatApplicationTime(application.submitted_at)}
-                </span>
-              </div>
-            </section>
-
-            <section className="rounded-xl border border-card-border bg-surface p-4">
-              <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
-                Match Score
-              </h3>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-[13px]">
-                    <span className="text-on-surface">Match Score</span>
-                    <span className="font-semibold">
-                      {scoreDisplay !== null ? `${scoreDisplay}%` : "Not scored yet"}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-light">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: scoreDisplay !== null ? `${scoreDisplay}%` : "0%" }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-[13px]">
-                    <span className="text-on-surface">Pipeline Progress</span>
-                    <span className="font-semibold">{stageProgress}%</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-light">
-                    <div className="h-full rounded-full bg-emerald-600" style={{ width: `${stageProgress}%` }} />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-card-border/70 bg-white p-4">
-                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Role Title</p>
-                <p className="text-[14px] font-semibold text-on-surface">{getRoleTitle(application)}</p>
-              </div>
-              <div className="rounded-lg border border-card-border/70 bg-white p-4">
-                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Location</p>
-                <p className="text-[14px] font-semibold text-on-surface">{getCandidateLocation(application)}</p>
-              </div>
-              <div className="rounded-lg border border-card-border/70 bg-white p-4">
-                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Application Time</p>
-                <p className="text-[14px] font-semibold text-on-surface">{formatApplicationTime(application.submitted_at)}</p>
-              </div>
-              <div className="rounded-lg border border-card-border/70 bg-white p-4">
-                <p className="mb-1 text-[11px] uppercase tracking-[0.06em] text-outline">Status</p>
-                <p className="text-[14px] font-semibold text-on-surface capitalize">{application.status}</p>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
-                Resume Preview
-              </h3>
-              <div className="flex aspect-[1/1.2] flex-col items-center justify-center rounded-xl border border-dashed border-primary/40 bg-primary-light p-8 text-center">
-                <span className="material-symbols-outlined mb-3 text-[48px] text-primary">description</span>
-                <p className="mb-4 text-[14px] text-primary-dark">
-                  {profile?.first_name || profile?.last_name ? `${getApplicantName(profile)} Resume` : "Application File"}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onOpenFullApplication(application.id)}
-                  className="rounded-lg border border-card-border bg-white px-5 py-2 text-[13px] font-semibold text-primary transition-colors hover:bg-surface"
-                >
-                  Open Full Application
-                </button>
-              </div>
-            </section>
-
-            {application.cover_letter ? (
-              <section className="rounded-xl border border-card-border bg-surface p-4">
-                <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
-                  Cover Letter
-                </h3>
-                <p className="whitespace-pre-wrap text-[14px] leading-6 text-secondary">{application.cover_letter}</p>
-              </section>
-            ) : null}
-          </div>
-        ) : (
+      {application ? (
+        renderStageBody(application)
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6 modern-scrollbar">
           <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-card-border bg-surface p-6 text-center text-[14px] text-secondary">
             Select a candidate to inspect their application details.
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 border-t border-card-border p-6">
-        <button
-          type="button"
-          onClick={() => {
-            if (!application) {
-              return;
-            }
-
-            onReject(application.id);
-          }}
-          className="rounded-lg border border-error px-4 py-3 text-[13px] font-semibold text-error transition-colors hover:bg-error/10"
-        >
-          Reject
-        </button>
-
-        <button
-          type="button"
-          disabled={!application || !nextDbStatus}
-          onClick={() => {
-            if (!application || !nextDbStatus) {
-              return;
-            }
-
-            onAdvance(application.id);
-          }}
-          className="rounded-lg bg-primary px-4 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Move to Next Stage
-        </button>
-      </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -688,6 +614,7 @@ export default function ApplicationsKanbanBoard({
   const totalApplications = applications.length;
 
   const [interviewMap, setInterviewMap] = useState<Record<string, InterviewScheduleItem>>({});
+  const [interviewRefreshTick, setInterviewRefreshTick] = useState(0);
   const applicationIds = useMemo(() => applications.map((a) => a.id), [applications]);
 
   useEffect(() => {
@@ -716,7 +643,7 @@ export default function ApplicationsKanbanBoard({
         }
         setInterviewMap(map);
       });
-  }, [applicationIds]);
+  }, [applicationIds, interviewRefreshTick]);
 
   useEffect(() => {
     if (selectedApplicationId && !selectedApplication) {
@@ -995,11 +922,18 @@ export default function ApplicationsKanbanBoard({
 
       <ApplicationDrawer
         application={selectedApplication}
+        interview={selectedApplication ? interviewMap[selectedApplication.id] : null}
         isOpen={Boolean(selectedApplication)}
         onClose={() => setSelectedApplicationId(null)}
         onReject={handleRejectApplication}
         onAdvance={handleAdvanceApplication}
         onOpenFullApplication={handleOpenFullApplication}
+        onSchedule={handleScheduleInterview}
+        onViewEmployee={() => router.push("/hr/employees")}
+        onInterviewUpdated={() => {
+          setInterviewRefreshTick((t) => t + 1);
+          router.refresh();
+        }}
       />
 
       {isSavingId ? (
