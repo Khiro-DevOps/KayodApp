@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { InterviewType } from "@/lib/types";
@@ -125,13 +126,16 @@ export async function configureInterviewAvailability(formData: FormData) {
     .map((mode) => (mode === "online" ? "Online" : "In-Person"))
     .join(" or ");
 
-  await supabase.from("notifications").insert({
+  const { error: notifError } = await getAdminClient().from("notifications").insert({
     recipient_id: existing.candidate_id,
     type: "application_status_changed",
     title: "Interview format options updated",
     body: `HR has enabled ${modeLabel} interview format${offeredModes.length > 1 ? "s" : ""} for your application. Please confirm your preferred format.`,
     action_url: `/hr/interviews/respond/${applicationId}`,
   });
+  if (notifError) {
+    console.error("configureInterviewAvailability: notification insert failed:", notifError.message);
+  }
 
   revalidatePath("/applications");
   revalidatePath(`/applications/${applicationId}`);

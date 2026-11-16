@@ -3,6 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -92,13 +93,16 @@ export async function POST(request: Request) {
 
     const preferenceLabel = preference === "online" ? "Online" : "In-Person";
 
-    await supabase.from("notifications").insert({
+    const { error: notifError } = await getAdminClient().from("notifications").insert({
       recipient_id: hrId,
       type: "application_status_changed",
       title: `Interview Preference Set`,
       body: `${candidateName} has chosen ${preferenceLabel} for the ${jobTitle} interview. You can now schedule the interview.`,
       action_url: `/applications/${applicationId}`,
     });
+    if (notifError) {
+      console.error("set-preference: notification insert failed:", notifError.message);
+    }
   }
 
   return NextResponse.json({ success: true });

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -68,7 +69,7 @@ export async function updateApplicationStatus(formData: FormData) {
   if (appData) {
     const jobTitle = (appData.job as unknown as { title: string } | null)?.title ?? "the position";
 
-    await supabase.from("notifications").insert({
+    const { error: notifError } = await getAdminClient().from("notifications").insert({
       recipient_id: appData.applicant_id,
       title: "Application Stage Updated",
       body: `Your application for ${jobTitle} moved to ${dbStatus}.`,
@@ -76,6 +77,9 @@ export async function updateApplicationStatus(formData: FormData) {
       is_read: false,
       created_at: new Date().toISOString(),
     });
+    if (notifError) {
+      console.error("updateApplicationStatus: notification insert failed:", notifError.message);
+    }
   }
 
   // When shortlisted: notify candidate to choose interview format
@@ -96,13 +100,16 @@ export async function updateApplicationStatus(formData: FormData) {
         .eq("id", applicationId);
 
       // Send notification to candidate
-      await supabase.from("notifications").insert({
+      const { error: shortlistNotifError } = await getAdminClient().from("notifications").insert({
         recipient_id: app.applicant_id,
         type: "application_status_changed",
         title: "You've been shortlisted! 🎉",
         body: `Congratulations! You've been selected for an interview for ${jobTitle}. Please choose your preferred interview format.`,
         action_url: `/hr/interviews/respond/${applicationId}`,
       });
+      if (shortlistNotifError) {
+        console.error("updateApplicationStatus: shortlist notification insert failed:", shortlistNotifError.message);
+      }
     }
   }
 
@@ -162,13 +169,17 @@ export async function moveToApplied(formData: FormData) {
   if (!applicationId) redirect("/applications");
 
   // Move application to "submitted" status (applied)
-  await supabase
+  const { error: moveError } = await supabase
     .from("job_applications")
     .update({ 
       status: "submitted",
       updated_at: new Date().toISOString()
     })
     .eq("id", applicationId);
+
+  if (moveError) {
+    console.error("moveToApplied: update failed:", moveError.message);
+  }
 
   // Fetch application to send notification
   const { data: app } = await supabase
@@ -177,17 +188,20 @@ export async function moveToApplied(formData: FormData) {
     .eq("id", applicationId)
     .single();
 
-  if (app) {
+  if (app && !moveError) {
     const jobTitle = (app.job as unknown as { title: string })?.title ?? "a position";
     
     // Send notification to candidate
-    await supabase.from("notifications").insert({
+    const { error: notifError } = await getAdminClient().from("notifications").insert({
       recipient_id: app.applicant_id,
       type: "application_status_changed",
       title: "Your application has been reconsidered",
       body: `Great news! Your application for ${jobTitle} has been moved back to active consideration.`,
       action_url: `/applications`,
     });
+    if (notifError) {
+      console.error("moveToApplied: notification insert failed:", notifError.message);
+    }
   }
 
   revalidatePath("/applications");

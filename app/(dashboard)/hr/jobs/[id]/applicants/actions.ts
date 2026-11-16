@@ -172,14 +172,16 @@ export async function submitInterviewPreference(formData: FormData) {
 
     if (interview.scheduled_by) {
       void Promise.resolve(
-        supabase.from("notifications").insert({
+        getAdminClient().from("notifications").insert({
           recipient_id: interview.scheduled_by,
           type: "application_status_changed",
           title: "Interview Preference Submitted",
           body: `${candidateName} has submitted their interview format preference (${preferredType}).`,
           action_url: `/hr/interviews`,
         })
-      ).catch((err: unknown) => {
+      ).then(({ error: notifError }) => {
+      if (notifError) console.error("Notification insert failed:", notifError.message);
+    }).catch((err: unknown) => {
         console.error("Failed to insert preference notification:", err);
       });
     }
@@ -338,14 +340,16 @@ export async function sendJobOffer(formData: FormData) {
 
     // Create notification for candidate
     void Promise.resolve(
-      supabase.from("notifications").insert({
+      getAdminClient().from("notifications").insert({
         recipient_id: application.candidate_id,
         type: "offer_letter",
         title: "Job Offer Received 🎉",
         body: `You have received a job offer for ${jobTitle}. Please review and sign the contract.`,
         action_url: `/applications/${applicationId}`,
       })
-    ).catch((err: unknown) => {
+    ).then(({ error: notifError }) => {
+      if (notifError) console.error("Notification insert failed:", notifError.message);
+    }).catch((err: unknown) => {
       console.error("Failed to insert offer notification:", err);
     });
 
@@ -437,14 +441,16 @@ export async function withdrawJobOffer(formData: FormData) {
 
     // Notify candidate
     void Promise.resolve(
-      supabase.from("notifications").insert({
+      getAdminClient().from("notifications").insert({
         recipient_id: application.candidate_id,
         type: "application_status_changed",
         title: "Job Offer Withdrawn",
         body: reason ? `Your job offer has been withdrawn. Reason: ${reason}` : "Your job offer has been withdrawn.",
         action_url: `/applications/${applicationId}`,
       })
-    ).catch((err: unknown) => {
+    ).then(({ error: notifError }) => {
+      if (notifError) console.error("Notification insert failed:", notifError.message);
+    }).catch((err: unknown) => {
       console.error("Failed to insert withdrawal notification:", err);
     });
 
@@ -535,14 +541,16 @@ export async function acceptJobOffer(formData: FormData) {
 
     if (jobData?.created_by) {
       void Promise.resolve(
-        supabase.from("notifications").insert({
+        getAdminClient().from("notifications").insert({
           recipient_id: jobData.created_by,
           type: "application_status_changed",
           title: "Offer Accepted ✅",
           body: `Candidate has accepted the job offer for ${jobData.title}.`,
           action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
         })
-      ).catch((err: unknown) => {
+      ).then(({ error: notifError }) => {
+      if (notifError) console.error("Notification insert failed:", notifError.message);
+    }).catch((err: unknown) => {
         console.error("Failed to insert acceptance notification:", err);
       });
     }
@@ -627,7 +635,7 @@ export async function declineJobOffer(formData: FormData) {
 
     if (jobData?.created_by) {
       void Promise.resolve(
-        supabase.from("notifications").insert({
+        getAdminClient().from("notifications").insert({
           recipient_id: jobData.created_by,
           type: "application_status_changed",
           title: "Offer Declined ❌",
@@ -636,7 +644,9 @@ export async function declineJobOffer(formData: FormData) {
             : `Candidate declined the offer for ${jobData.title}.`,
           action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
         })
-      ).catch((err: unknown) => {
+      ).then(({ error: notifError }) => {
+      if (notifError) console.error("Notification insert failed:", notifError.message);
+    }).catch((err: unknown) => {
         console.error("Failed to insert decline notification:", err);
       });
     }
