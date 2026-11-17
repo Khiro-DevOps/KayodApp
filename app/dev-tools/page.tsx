@@ -4,16 +4,40 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { toggleDevUserRole } from "@/app/actions/dev-role-toggle";
 import { resetApplicantTestData } from "@/app/actions/debug";
-import { getStatusesForStage, UI_STAGES } from "@/lib/application-stages";
+import {
+  getStageForStatus,
+  getStatusesForStage,
+  UI_STAGES,
+  type UiStageKey,
+} from "@/lib/application-stages";
 
-const DB_STATUSES = UI_STAGES.flatMap((stage) =>
-  getStatusesForStage(stage.key).map((status) => ({
-    value: status,
-    label: `${status} (${stage.label})`,
-  }))
+const ALL_STATUSES = UI_STAGES.flatMap((stage) =>
+  getStatusesForStage(stage.key)
 );
 
-type Stage = string;
+const OPEN_STAGES = UI_STAGES.slice(
+  0,
+  UI_STAGES.findIndex(
+    (stage) => stage.key === "hired" || stage.key === "closed"
+  )
+);
+
+const PRESET_STATUS_KEYS = [
+  "offer_declined",
+  "offer_expired",
+  "withdrawn",
+] as const;
+
+const PRESET_STATUSES = PRESET_STATUS_KEYS.filter((status) =>
+  ALL_STATUSES.includes(status)
+);
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getCanonicalStatus(stageKey: UiStageKey): string | undefined {
+  return getStatusesForStage(stageKey)[0];
+}
 
 type Role = "applicant" | "employee" | "hr_manager";
 
@@ -21,7 +45,8 @@ export default function DevToolsPage() {
   const [isPending, startTransition] = useTransition();
   const [applicationId, setApplicationId] = useState("");
   const [email, setEmail] = useState("");
-  const [selectedStage, setSelectedStage] = useState<Stage>("applied");
+  const [activeStage, setActiveStage] = useState<UiStageKey | null>(null);
+  const [activeStatus, setActiveStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -29,16 +54,20 @@ export default function DevToolsPage() {
     return null;
   }
 
+  const trimmedAppId = applicationId.trim();
+  const isValidUuid = UUID_REGEX.test(trimmedAppId);
+  const controlsDisabled = !isValidUuid || isPending;
+
   const clearMessages = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
   };
 
-  const handleStageChange = () => {
+  const postStatus = (targetStatus: string, targetStageKey?: UiStageKey) => {
     clearMessages();
 
-    if (!applicationId.trim()) {
-      const message = "Enter an application UUID first.";
+    if (!isValidUuid) {
+      const message = "Enter a valid application UUID first.";
       setErrorMsg(message);
       toast.error(message);
       return;
@@ -53,8 +82,8 @@ export default function DevToolsPage() {
           },
           body: JSON.stringify({
             action: "update_stage",
-            applicationId: applicationId.trim(),
-            stage: selectedStage,
+            applicationId: trimmedAppId,
+            stage: targetStatus,
           }),
         });
 
@@ -69,9 +98,14 @@ export default function DevToolsPage() {
           return;
         }
 
+        const resolvedStage =
+          targetStageKey ?? getStageForStatus(targetStatus);
+        setActiveStage(resolvedStage);
+        setActiveStatus(targetStatus);
+
         const message =
           result.message ??
-          `Application moved to ${selectedStage}.`;
+          `Application moved to ${targetStatus}.`;
 
         setSuccessMsg(message);
         toast.success(message);
@@ -85,6 +119,18 @@ export default function DevToolsPage() {
         toast.error(message);
       }
     });
+  };
+
+  const handleNextStage = () => {
+    if (OPEN_STAGES.length === 0) return;
+    const currentIndex = activeStage
+      ? OPEN_STAGES.findIndex((stage) => stage.key === activeStage)
+      : -1;
+    const nextStage =
+      OPEN_STAGES[(currentIndex + 1) % OPEN_STAGES.length];
+    const canonical = getCanonicalStatus(nextStage.key);
+    if (!canonical) return;
+    postStatus(canonical, nextStage.key);
   };
 
   const handleRoleChange = (targetRole: Role) => {
@@ -175,18 +221,6 @@ export default function DevToolsPage() {
           </p>
         </div>
 
-        {errorMsg && (
-          <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {errorMsg}
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-            {successMsg}
-          </div>
-        )}
-
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
           <h2 className="text-xl font-semibold">
             1. Set Application Stage
@@ -212,30 +246,123 @@ export default function DevToolsPage() {
 
           <div className="mt-5">
             <label className="mb-2 block text-sm font-medium text-slate-300">
-              DB Status
+              Stage
             </label>
-            <select
-              value={selectedStage}
-              disabled={isPending}
-              onChange={(event) => setSelectedStage(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {DB_STATUSES.map((stage) => (
-                <option key={stage.value} value={stage.value}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {UI_STAGES.map((stage) => {
+                const canonical = getCanonicalStatus(stage.key);
+                const isActive = activeStage === stage.key;
+                return (
+                  <button
+                    key={stage.key}
+                    type="button"
+                    disabled={controlsDisabled || !canonical}
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      if (canonical) {
+                        postStatus(canonical, stage.key);
+                      }
+                    }}
+                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isActive
+                        ? "border-purple-500 bg-purple-600 text-white"
+                        : "border-slate-700 bg-slate-950 text-slate-200 hover:border-purple-500/60 hover:bg-slate-800"
+                    }`}
+                  >
+                    {stage.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={handleStageChange}
-            className="mt-5 rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isPending ? "Updating..." : "Set Application Stage"}
-          </button>
+          <div className="mt-5">
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Sub-status
+            </label>
+            {activeStage ? (
+              <div className="flex flex-wrap gap-2">
+                {getStatusesForStage(activeStage).map((status) => {
+                  const canonical = getCanonicalStatus(activeStage);
+                  const isDefault = status === canonical;
+                  const isSelected = activeStatus === status;
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      disabled={controlsDisabled}
+                      aria-pressed={isSelected}
+                      onClick={() => postStatus(status, activeStage)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isSelected
+                          ? "border-purple-400 bg-purple-600 text-white"
+                          : "border-slate-700 bg-slate-950 text-slate-300 hover:border-purple-500/60 hover:bg-slate-800"
+                      }`}
+                    >
+                      <span>{status}</span>
+                      {isDefault && (
+                        <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                          default
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                No stage selected yet. Set a stage to choose a sub-status.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-5">
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Presets
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={controlsDisabled}
+                onClick={handleNextStage}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next stage
+              </button>
+
+              {PRESET_STATUSES.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  disabled={controlsDisabled}
+                  onClick={() => postStatus(status)}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    activeStatus === status
+                      ? "border-purple-500 bg-purple-600 text-white"
+                      : "border-slate-700 bg-slate-950 text-slate-200 hover:border-purple-500/60 hover:bg-slate-800"
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {errorMsg}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+              {successMsg}
+            </div>
+          )}
+
+          <p className="mt-4 text-xs text-slate-400">
+            Raw status write only. No employee or offer rows are created, no notifications are sent, no hire or offer logic runs.
+          </p>
         </section>
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">

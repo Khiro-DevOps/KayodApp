@@ -30,28 +30,31 @@ interface QueuedRequest {
   execute: () => Promise<string>;
   retries: number;
   maxRetries: number;
+  resolve: (value: string) => void;
+  reject: (reason?: unknown) => void;
 }
 
 class RequestQueue {
   private queue: QueuedRequest[] = [];
   private processing = false;
-  private maxConcurrent = 1; // Process one request at a time to avoid rate limits
 
   async enqueue(
     execute: () => Promise<string>,
     maxRetries = 3
   ): Promise<string> {
     const id = `${Date.now()}_${Math.random()}`;
-    const request: QueuedRequest = { id, execute, retries: 0, maxRetries };
 
     return new Promise<string>((resolve, reject) => {
+      const request: QueuedRequest = {
+        id,
+        execute,
+        retries: 0,
+        maxRetries,
+        resolve,
+        reject,
+      };
       this.queue.push(request);
-      this.processQueue().then(() => {}).catch(err => console.error("Queue start error:", err));
-      
-      // Execute this request with retry logic
-      this.executeWithBackoff(request)
-        .then(resolve)
-        .catch(reject);
+      void this.processQueue();
     });
   }
 
@@ -83,13 +86,20 @@ class RequestQueue {
     if (this.processing) return;
     this.processing = true;
 
-    while (this.queue.length > 0) {
-      const request = this.queue.shift();
-      // Just remove from queue; the actual execution happens in enqueue's promise
-      if (!request) break;
+    try {
+      while (this.queue.length > 0) {
+        const request = this.queue.shift();
+        if (!request) break;
+        try {
+          const result = await this.executeWithBackoff(request);
+          request.resolve(result);
+        } catch (err) {
+          request.reject(err);
+        }
+      }
+    } finally {
+      this.processing = false;
     }
-
-    this.processing = false;
   }
 }
 
@@ -99,19 +109,69 @@ const requestQueue = new RequestQueue();
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Fixed the model string to the correct OpenRouter model ID
-export const GEMINI_MODEL = "google/gemini-2.5-flash-lite"; 
+export const GEMINI_MODEL = "google/gemini-2.5-flash-lite";
+
+let openRouterAuthFailed = false;
+let lastCheckedRawKey: string | undefined;
+
+function getOpenRouterApiKey(): string | null {
+  const raw = process.env.OPENROUTER_API_KEY;
+  if (raw !== lastCheckedRawKey) {
+    lastCheckedRawKey = raw;
+    openRouterAuthFailed = false;
+  }
+  if (openRouterAuthFailed || !raw) {
+    return null;
+  }
+  const cleaned = raw
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+  if (
+    !cleaned ||
+    cleaned === "undefined" ||
+    cleaned === "null" ||
+    cleaned.startsWith("your_") ||
+    cleaned.startsWith("YOUR_")
+  ) {
+    return null;
+  }
+  return cleaned;
+}
 
 async function callOpenRouter(
   systemPrompt: string,
   userMessage: string,
   temperature = 0.7
 ): Promise<string> {
+  if (!getOpenRouterApiKey()) {
+    throw new OpenRouterError(
+      401,
+      false,
+      false,
+      undefined,
+      "OpenRouter API key is missing or invalid."
+    );
+  }
+
   return requestQueue.enqueue(async () => {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+      throw new OpenRouterError(
+        401,
+        false,
+        false,
+        undefined,
+        "OpenRouter API key is missing or invalid."
+      );
+    }
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       signal: AbortSignal.timeout(30000), // 30s — adjust to your needs
       headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
         "X-Title": "Resume Generator",
@@ -129,6 +189,9 @@ async function callOpenRouter(
 
     if (!response.ok) {
       const err = await response.text();
+      if (response.status === 401 || response.status === 403) {
+        openRouterAuthFailed = true;
+      }
       const isRateLimited = response.status === 429;
       const isTransient = isTransientError(response.status);
       
@@ -549,7 +612,7 @@ function fallbackJobFit(
 export async function analyzeJobFit(
   input: JobFitAnalysisInput
 ): Promise<JobFitAnalysisOutput> {
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!getOpenRouterApiKey()) {
     return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 
@@ -572,7 +635,8 @@ ${toPromptText(input.jobRequirements)}
 
     return normalizeJobFitOutput(parsed, input.fallbackScore);
   } catch (error) {
-    console.error("OpenRouter API error caught inside analyzeJobFit:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`OpenRouter API unavailable in analyzeJobFit, using fallback: ${msg}`);
     return fallbackJobFit(input.resumeData, input.jobRequirements, input.fallbackScore);
   }
 }
@@ -838,7 +902,7 @@ export async function generateContractBody(input: {
   salary?: string | number;
 }): Promise<string> {
   // If OpenRouter key not configured, return empty to fall back to static templates
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!getOpenRouterApiKey()) {
     return "";
   }
 
@@ -856,7 +920,8 @@ Please return a concise HTML fragment (no full document) suitable for inclusion 
     const raw = await callOpenRouter(systemPrompt, userMessage, 0.2);
     return raw.trim();
   } catch (error) {
-    console.error("generateContractBody failed:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`generateContractBody fallback: ${msg}`);
     return "";
   }
 }

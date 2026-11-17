@@ -127,9 +127,13 @@ export default function NotificationBell({ userId }: { userId?: string | null })
     const initUserAndFetch = async () => {
       let activeUserId = userId;
       if (!activeUserId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          activeUserId = user.id;
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            activeUserId = user.id;
+          }
+        } catch {
+          return;
         }
       }
 
@@ -178,13 +182,17 @@ export default function NotificationBell({ userId }: { userId?: string | null })
     };
 
     let cleanupFn: (() => void) | undefined;
-    initUserAndFetch().then((cleanup) => {
-      if (!isMounted) {
-        cleanup?.();
-        return;
-      }
-      cleanupFn = cleanup;
-    });
+    initUserAndFetch()
+      .then((cleanup) => {
+        if (!isMounted) {
+          cleanup?.();
+          return;
+        }
+        cleanupFn = cleanup;
+      })
+      .catch(() => {
+        // Ignore transient auth/lock errors during mount/unmount
+      });
 
     return () => {
       isMounted = false;
