@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { getStatusesForStage, UI_STAGES } from "@/lib/application-stages";
+import { createClient } from "@/lib/supabase/server";
 
 const STAGES = UI_STAGES.flatMap((s) => getStatusesForStage(s.key));
 
@@ -49,6 +50,15 @@ export async function POST(request: NextRequest) {
       "Developer control endpoints are only available in development mode.",
       404
     );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return jsonError("Authentication required.", 401);
   }
 
   const admin = getAdminClient();
