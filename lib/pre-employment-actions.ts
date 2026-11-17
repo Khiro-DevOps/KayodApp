@@ -5,6 +5,140 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { sendNotification } from "@/lib/notifications";
+import type { OnboardingDocumentStatus } from "@/lib/types";
+
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
+export type PreEmploymentChecklistItem = {
+  label: string;
+  status: OnboardingDocumentStatus;
+};
+
+export type PreEmploymentChecklistResult = {
+  success: boolean;
+  items: PreEmploymentChecklistItem[];
+  completed: number;
+  total: number;
+  error?: string;
+};
+
+export async function getPreEmploymentChecklist(
+  applicationId: string
+): Promise<PreEmploymentChecklistResult> {
+  const trimmedId = String(applicationId ?? "").trim();
+  if (!trimmedId) {
+    return { success: false, items: [], completed: 0, total: 0, error: "Application ID is required" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, items: [], completed: 0, total: 0, error: "Unauthorized" };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, tenant_id")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string | null; tenant_id?: string | null }>();
+
+  if (!isHRRole(effectiveRole(profile?.role, (user.user_metadata?.role as string | undefined) ?? null))) {
+    return { success: false, items: [], completed: 0, total: 0, error: "Forbidden" };
+  }
+
+  const admin = getAdminClient();
+  const { data: jobApp } = await admin
+    .from("job_applications")
+    .select("id, job_id, applicant_id, job_postings!job_applications_job_id_fkey(id, tenant_id)")
+    .eq("id", trimmedId)
+    .maybeSingle<{
+      id: string;
+      job_id: string;
+      applicant_id: string;
+      job_postings?:
+        | { id: string; tenant_id?: string | null }
+        | Array<{ id: string; tenant_id?: string | null }>
+        | null;
+    }>();
+
+  if (!jobApp) {
+    return { success: false, items: [], completed: 0, total: 0, error: "Application not found" };
+  }
+
+  const jobPosting = Array.isArray(jobApp.job_postings)
+    ? jobApp.job_postings[0]
+    : jobApp.job_postings;
+  const jobTenantId = jobPosting?.tenant_id ?? null;
+
+  if (!jobPosting || (profile?.tenant_id && jobTenantId && profile.tenant_id !== jobTenantId)) {
+    return { success: false, items: [], completed: 0, total: 0, error: "Forbidden" };
+  }
+
+  let { data: targetEmployee } = await admin
+    .from("employees")
+    .select("id, tenant_id")
+    .eq("application_id", trimmedId)
+    .maybeSingle<{ id: string; tenant_id?: string | null }>();
+
+  if (!targetEmployee && jobApp.applicant_id) {
+    const { data: empByProfile } = await admin
+      .from("employees")
+      .select("id, tenant_id")
+      .eq("profile_id", jobApp.applicant_id)
+      .maybeSingle<{ id: string; tenant_id?: string | null }>();
+    targetEmployee = empByProfile;
+  }
+
+  const tenantId = jobTenantId || targetEmployee?.tenant_id || profile?.tenant_id || DEFAULT_TENANT_ID;
+
+  let { data: requirements } = await admin
+    .from("onboarding_document_requirements")
+    .select("id, document_name")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: true })
+    .returns<Array<{ id: string; document_name: string }>>();
+
+  if (!requirements || requirements.length === 0) {
+    const { data: defaultReqs } = await admin
+      .from("onboarding_document_requirements")
+      .select("id, document_name")
+      .eq("tenant_id", DEFAULT_TENANT_ID)
+      .order("created_at", { ascending: true })
+      .returns<Array<{ id: string; document_name: string }>>();
+    requirements = defaultReqs || [];
+  }
+
+  const statusByReqId = new Map<string, OnboardingDocumentStatus>();
+  if (targetEmployee?.id) {
+    const { data: submittedDocs } = await admin
+      .from("employee_onboarding_documents")
+      .select("requirement_id, status")
+      .eq("employee_id", targetEmployee.id)
+      .returns<Array<{ requirement_id: string; status: OnboardingDocumentStatus }>>();
+
+    for (const doc of submittedDocs ?? []) {
+      statusByReqId.set(doc.requirement_id, doc.status);
+    }
+  }
+
+  const items: PreEmploymentChecklistItem[] = (requirements ?? []).map((req) => ({
+    label: req.document_name,
+    status: statusByReqId.get(req.id) ?? "pending",
+  }));
+
+  const total = items.length;
+  const completed = items.filter((item) => item.status === "approved").length;
+
+  return {
+    success: true,
+    items,
+    completed,
+    total,
+  };
+}
 
 export type RequiredDocumentDraft = {
   id?: string;
