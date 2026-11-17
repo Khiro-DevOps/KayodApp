@@ -9,7 +9,18 @@ const NOMINATIM_HEADERS = { "User-Agent": "Kayod HR branch picker/1.0 (support@k
 function MapEvents({ onLocationChange, radius, target }: { onLocationChange: (lat: number, lng: number, address: string) => void; radius: number; target: [number, number] | null }) {
   const map = useMap();
   const [center, setCenter] = useState(map.getCenter());
-  useMapEvents({ moveend: () => { const next = map.getCenter(); setCenter(next); void fetch(`/api/geocode/reverse?lat=${next.lat}&lon=${next.lng}`, { headers: NOMINATIM_HEADERS }).then((response) => response.ok ? response.json() : null).then((data) => onLocationChange(next.lat, next.lng, data?.display_name ?? "")); } });
+  useMapEvents({
+    click: (event) => {
+      map.panTo(event.latlng);
+    },
+    moveend: () => {
+      const next = map.getCenter();
+      setCenter(next);
+      void fetch(`/api/geocode/reverse?lat=${next.lat}&lon=${next.lng}`, { headers: NOMINATIM_HEADERS })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => onLocationChange(next.lat, next.lng, data?.display_name ?? ""));
+    },
+  });
   useEffect(() => { map.invalidateSize(); }, [map]);
   useEffect(() => { if (target) map.flyTo(target, Math.max(map.getZoom(), 15)); }, [map, target]);
   return <Circle center={center} radius={radius} pathOptions={{ color: "#6d28d9", fillOpacity: 0.12 }} />;
