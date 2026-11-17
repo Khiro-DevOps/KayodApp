@@ -387,6 +387,7 @@ export async function createInterviewInvite(
       .eq("id", application_id);
 
     revalidatePath("/hr/interviews");
+    revalidatePath("/hr", "layout");
     revalidatePath("/applicant/interviews");
 
     return { success: true, data: invite };
@@ -513,6 +514,7 @@ export async function selectInterviewSlot(
 
     revalidatePath("/applicant/interviews");
     revalidatePath("/hr/interviews");
+    revalidatePath("/hr", "layout");
 
     return { success: true };
   } catch (err: unknown) {
@@ -574,6 +576,7 @@ export async function requestReschedule(
 
     revalidatePath("/applicant/interviews");
     revalidatePath("/hr/interviews");
+    revalidatePath("/hr", "layout");
 
     return { success: true };
   } catch (err: unknown) {

@@ -87,6 +87,7 @@ export async function withdrawApplication(applicationId: string): Promise<Withdr
 
     // 3. Revalidate applicant applications page path
     revalidatePath("/applicant/applications");
+    revalidatePath("/hr", "layout");
 
     return { success: true };
   } catch (err: unknown) {

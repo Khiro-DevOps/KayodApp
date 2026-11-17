@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { getStatusesForStage } from "@/lib/application-stages";
+import { getHrJobScope } from "@/lib/hr-job-scope";
 import NotificationBell from "@/components/notifications/notification-bell";
 
 type NavItem = {
@@ -58,6 +60,7 @@ export default function DashboardLayout({
   const displayRole = "HR Manager"; // Standardized to "HR Manager" everywhere
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [applicantsBadge, setApplicantsBadge] = useState<string | null>(null);
+  const [interviewsBadge, setInterviewsBadge] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const isActive = (item: NavItem) => {
@@ -123,26 +126,57 @@ export default function DashboardLayout({
         setDisplayName(nextName);
         setAvatarUrl(profile.avatar_url ?? null);
 
-        const jobsQuery = profile.tenant_id
-          ? supabase
-              .from("job_postings")
-              .select("id")
-              .or(`tenant_id.eq.${profile.tenant_id},created_by.eq.${user.id}`)
-          : supabase.from("job_postings").select("id").eq("created_by", user.id);
-        const { data: jobs } = await jobsQuery;
+        const jobScope = await getHrJobScope(supabase, user.id);
+        const { data: jobs } = await supabase
+          .from("job_postings")
+          .select("id")
+          .or(jobScope.filter);
         const jobIds = (jobs ?? []).map((job: { id: string }) => job.id);
 
         if (jobIds.length === 0) {
           setApplicantsBadge(null);
         } else {
+          const excludedStatuses = [
+            ...getStatusesForStage("hired"),
+            ...getStatusesForStage("closed"),
+          ];
           const { count } = await supabase
             .from("job_applications")
             .select("id", { count: "exact", head: true })
-            .in("job_id", jobIds);
+            .in("job_id", jobIds)
+            .not("status", "in", `(${excludedStatuses.join(",")})`);
           setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
         }
-      } catch (err) {
+
+        if (jobScope.tenantId) {
+          const { data: scheduleRows } = await supabase
+            .from("interview_schedules")
+            .select(
+              "id, job_postings!interview_schedules_job_id_fkey(tenant_id), job_applications!interview_schedules_application_id_fkey(job_postings!job_applications_job_id_fkey(tenant_id))"
+            )
+            .eq("status", "scheduled")
+            .gte("scheduled_at", new Date().toISOString());
+          const interviewCount = (scheduleRows ?? []).filter((row: {
+            job_postings?: { tenant_id?: string | null } | { tenant_id?: string | null }[] | null;
+            job_applications?: {
+              job_postings?: { tenant_id?: string | null } | { tenant_id?: string | null }[] | null;
+            } | {
+              job_postings?: { tenant_id?: string | null } | { tenant_id?: string | null }[] | null;
+            }[] | null;
+          }) => {
+            const directJob = Array.isArray(row.job_postings) ? row.job_postings[0] : row.job_postings;
+            const app = Array.isArray(row.job_applications) ? row.job_applications[0] : row.job_applications;
+            const appJob = Array.isArray(app?.job_postings) ? app?.job_postings[0] : app?.job_postings;
+            const rowTenantId = directJob?.tenant_id ?? appJob?.tenant_id ?? null;
+            return rowTenantId === jobScope.tenantId;
+          }).length;
+          setInterviewsBadge(interviewCount > 0 ? String(interviewCount) : null);
+        } else {
+          setInterviewsBadge(null);
+        }
+      } catch {
         setApplicantsBadge(null);
+        setInterviewsBadge(null);
         // swallow
       }
     };
@@ -280,7 +314,12 @@ export default function DashboardLayout({
                 <div className="space-y-0.5">
                   {group.items.map((item) => {
                     const active = isActive(item);
-                    const badge = item.label === "Applicants" ? applicantsBadge : item.badge;
+                    const badge =
+                      item.label === "Applicants"
+                        ? applicantsBadge
+                        : item.label === "Interviews"
+                          ? interviewsBadge
+                          : item.badge;
 
                     if (active) {
                       return (

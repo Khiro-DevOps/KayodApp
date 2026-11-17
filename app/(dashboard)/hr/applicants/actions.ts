@@ -145,6 +145,7 @@ export async function withdrawApplication(formData: FormData) {
     .eq("applicant_id", user.id);
 
   revalidatePath("/hr/applicants");
+  revalidatePath("/hr", "layout");
   revalidatePath("/applicant/applications");
   redirect("/applicant/applications?success=Application+withdrawn+successfully");
 }

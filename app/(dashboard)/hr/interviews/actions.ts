@@ -372,6 +372,7 @@ export async function completeInterview(input: {
 
   revalidatePath("/hr/interviews");
   revalidatePath("/hr/applicants");
+  revalidatePath("/hr", "layout");
   revalidatePath("/applicant/applications");
 
   return { success: true, warning: requirementsWarning };

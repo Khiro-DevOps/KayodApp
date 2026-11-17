@@ -151,6 +151,7 @@ export async function updateApplicationStatus(formData: FormData) {
 
   revalidatePath("/applications");
   revalidatePath("/hr/applicants");
+  revalidatePath("/hr", "layout");
   revalidatePath("/applicant/applications");
   revalidatePath("/employees");
   revalidatePath("/dashboard");
