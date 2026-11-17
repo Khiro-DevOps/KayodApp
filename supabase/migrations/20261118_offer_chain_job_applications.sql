@@ -337,7 +337,7 @@ BEGIN
         'offer_letter',
         'Job Offer for ' || COALESCE(v_job_title, 'position'),
         'You have received a job offer. Review the contract and accept or decline.',
-        '/applications/' || new.application_id,
+        '/applicant/applications/' || new.application_id,
         false
       );
     END IF;
@@ -354,11 +354,11 @@ BEGIN
     -- Notify HR/recruiter (job creator) that offer was accepted
     INSERT INTO public.notifications (recipient_id, type, title, body, action_url, is_read)
     VALUES (
-      (SELECT jp.created_by FROM public.job_postings jp WHERE jp.id = new.job_posting_id),
+      (SELECT jp.created_by FROM public.job_postings jp WHERE jp.id = new.job_id),
       'offer_letter',
       'Offer Accepted for ' || COALESCE(v_job_title, 'position'),
       'The candidate has accepted the job offer.',
-      '/jobs/manage/' || new.job_posting_id || '/applicants/' || new.application_id,
+      '/hr/offers/' || new.application_id,
       false
     );
   END IF;
@@ -374,11 +374,11 @@ BEGIN
     -- Notify HR/recruiter that offer was declined
     INSERT INTO public.notifications (recipient_id, type, title, body, action_url, is_read)
     VALUES (
-      (SELECT jp.created_by FROM public.job_postings jp WHERE jp.id = new.job_posting_id),
+      (SELECT jp.created_by FROM public.job_postings jp WHERE jp.id = new.job_id),
       'offer_letter',
       'Offer Declined for ' || COALESCE(v_job_title, 'position'),
       'The candidate has declined the job offer.',
-      '/jobs/manage/' || new.job_posting_id || '/applicants/' || new.application_id,
+      '/hr/offers/' || new.application_id,
       false
     );
   END IF;
