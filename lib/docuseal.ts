@@ -41,8 +41,12 @@ type DocusealFormWebhookPayload = {
 
 import { generateContractBody } from "@/lib/gemini";
 
-function getDocusealBaseUrl() {
-  return (process.env.DOCUSEAL_BASE_URL?.trim() || "https://api.docuseal.com").replace(/\/$/, "");
+export function getDocusealBaseUrl() {
+  return (
+    process.env.DOCUSEAL_BASE_URL?.trim() ||
+    process.env.DOCUSEAL_API_URL?.trim() ||
+    "https://api.docuseal.com"
+  ).replace(/\/+$/, "");
 }
 
 export function getDocusealApiBaseUrl() {

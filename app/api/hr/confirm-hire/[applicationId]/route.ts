@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -154,7 +155,7 @@ export async function POST(_request: NextRequest, ctx: any) {
           /\/(?:embed\/)?s\/([^/?#]+)/i
         )?.[1];
         if (slug) {
-          const apiUrl = process.env.DOCUSEAL_API_URL || "https://api.docuseal.com";
+          const apiUrl = getDocusealBaseUrl();
           const apiKey = process.env.DOCUSEAL_API_KEY;
           if (apiKey) {
             const dsRes = await fetch(

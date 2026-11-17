@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ url: null });
   }
 
-  const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+  const apiUrl = getDocusealBaseUrl();
   const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({ url: null });

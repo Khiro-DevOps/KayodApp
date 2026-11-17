@@ -1,6 +1,7 @@
 import PageContainer from "@/components/ui/page-container";
 import ApplicantContractCard from "@/components/hr/ApplicantContractCard";
 import HireConfirmationModal from "@/components/hr/HireConfirmationModal";
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -113,7 +114,7 @@ async function resolveSignedPdfUrl(source: {
   docuseal_submission_url?: string | null;
   latest_docuseal_url?: string | null;
 }) {
-  const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+  const apiUrl = getDocusealBaseUrl();
   const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
 
   if (!apiKey) {

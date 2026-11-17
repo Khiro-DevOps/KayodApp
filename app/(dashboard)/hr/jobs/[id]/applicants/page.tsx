@@ -1,3 +1,4 @@
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
@@ -195,7 +196,7 @@ export default async function ApplicantsPage({
       }
 
       try {
-        const apiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+        const apiUrl = getDocusealBaseUrl();
         const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
         if (!apiKey) {
           return jobOffer;

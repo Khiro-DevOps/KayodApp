@@ -1,5 +1,6 @@
 "use server";
 
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 type JobOfferRow = {
@@ -26,7 +27,7 @@ type DocusealResponsePayload =
 const DOCUSEAL_REQUEST_TIMEOUT_MS = 8000;
 
 function getDocusealApiUrl() {
-  return process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+  return getDocusealBaseUrl();
 }
 
 async function fetchDocusealWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DOCUSEAL_REQUEST_TIMEOUT_MS) {

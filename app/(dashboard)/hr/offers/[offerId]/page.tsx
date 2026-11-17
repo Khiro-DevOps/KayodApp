@@ -17,6 +17,7 @@ import JobOfferTermsPanel from "@/components/job-offer/job-offer-terms-panel";
 import JobOfferPdfPanel from "@/components/job-offer/job-offer-pdf-panel";
 import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel";
 import HRActionPanel from "@/components/job-offer/hr-action-panel";
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
@@ -822,7 +823,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
   if (!isAlreadySigned && signingUrl) {
     try {
-      const docusealApiUrl = process.env.DOCUSEAL_API_URL?.trim() || "https://api.docuseal.com";
+      const docusealApiUrl = getDocusealBaseUrl();
       const slug = extractDocusealSlug(signingUrl);
 
       if (slug) {
