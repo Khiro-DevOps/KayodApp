@@ -16,12 +16,12 @@ import JobOfferHeader from "@/components/job-offer/job-offer-header";
 import JobOfferTermsPanel from "@/components/job-offer/job-offer-terms-panel";
 import JobOfferPdfPanel from "@/components/job-offer/job-offer-pdf-panel";
 import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel";
-import HRActionPanel, { CreateOfferButton } from "@/components/job-offer/hr-action-panel";
+import HRActionPanel from "@/components/job-offer/hr-action-panel";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
-import type { EmploymentType, JobOffer, Profile, WorkSetup } from "@/lib/types";
+import type { JobOffer, Profile } from "@/lib/types";
 
 type OfferPageParams = {
   params: Promise<Record<string, string | undefined>>;
@@ -735,19 +735,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       <PageContainer>
         <div className="rounded-2xl border border-border bg-surface p-6 text-center space-y-4">
           <p className="text-sm text-text-main">No offer yet for this candidate</p>
-          <CreateOfferButton
-            applicationId={application?.id ?? offerId}
-            defaultTerms={{
-              salary: application?.job_postings?.salary_min ?? 0,
-              currency: application?.job_postings?.currency ?? "PHP",
-              employmentType: (application?.job_postings?.employment_type as EmploymentType) ?? "full_time",
-              startDate: new Date().toISOString().split("T")[0],
-              workArrangement: (application?.job_postings?.work_setup as WorkSetup) ?? "onsite",
-              department: application?.job_postings?.department_id ?? "General",
-              manager: "HR Manager",
-              benefits: [],
-            }}
-          />
         </div>
       </PageContainer>
     );
