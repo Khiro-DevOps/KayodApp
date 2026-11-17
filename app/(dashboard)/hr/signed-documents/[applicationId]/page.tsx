@@ -56,7 +56,6 @@ type SignedDocumentRow = {
   application_id: string;
   status: string;
   docuseal_submission_url: string | null;
-  latest_docuseal_url: string | null;
   pdf_file_path: string | null;
   metadata: Record<string, unknown> | null;
 };
@@ -249,12 +248,12 @@ export default async function SignedDocumentReviewPage({
   const signedDocumentQuery = application.contract_offer_id
     ? await admin
         .from("signed_documents")
-        .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+        .select("id, application_id, status, docuseal_submission_url, pdf_file_path, metadata")
         .eq("id", application.contract_offer_id)
         .maybeSingle<SignedDocumentRow>()
     : await admin
         .from("signed_documents")
-        .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+        .select("id, application_id, status, docuseal_submission_url, pdf_file_path, metadata")
         .eq("application_id", applicationId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -264,7 +263,7 @@ export default async function SignedDocumentReviewPage({
   const signedPdfUrl = await resolveSignedPdfUrl({
     metadata: signedDocument?.metadata ?? offer.job_metadata,
     docuseal_submission_url: signedDocument?.docuseal_submission_url ?? null,
-    latest_docuseal_url: signedDocument?.latest_docuseal_url ?? offer.latest_docuseal_url,
+    latest_docuseal_url: offer.latest_docuseal_url ?? null,
   });
 
   const startDate = offer.start_date ?? (typeof offer.job_metadata?.start_date === "string" ? offer.job_metadata.start_date : null);

@@ -100,13 +100,13 @@ export async function GET(request: NextRequest) {
   const signedDocument = application?.contract_offer_id
     ? await admin
         .from("signed_documents")
-        .select("id, application_id, docuseal_submitter_id, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+        .select("id, application_id, docuseal_submitter_id, docuseal_submission_url, pdf_file_path, metadata")
         .eq("id", application.contract_offer_id)
         .maybeSingle()
     : offer?.application_id
       ? await admin
           .from("signed_documents")
-          .select("id, application_id, docuseal_submitter_id, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata")
+          .select("id, application_id, docuseal_submitter_id, docuseal_submission_url, pdf_file_path, metadata")
           .eq("application_id", offer.application_id)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -126,7 +126,6 @@ export async function GET(request: NextRequest) {
 
   const sourceUrl =
     (signedDocument?.data?.docuseal_submission_url as string | null | undefined) ||
-    (signedDocument?.data?.latest_docuseal_url as string | null | undefined) ||
     (typeof metadata?.docuseal_submission_url === "string" && metadata.docuseal_submission_url) ||
     (typeof metadata?.docuseal_embed_src === "string" && metadata.docuseal_embed_src) ||
     offer?.latest_docuseal_url ||

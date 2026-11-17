@@ -138,7 +138,7 @@ export default async function ApplicantsPage({
   const { data: signedDocuments } = applicationIds.length
     ? await supabase
         .from("signed_documents")
-        .select("id, application_id, status, docuseal_submitter_id, docuseal_submission_url, latest_docuseal_url, pdf_file_path, metadata, updated_at")
+        .select("id, application_id, status, docuseal_submitter_id, docuseal_submission_url, pdf_file_path, metadata, updated_at")
         .in("application_id", applicationIds)
         .order("created_at", { ascending: false })
     : { data: [] as SignedDocumentRow[] };
@@ -146,7 +146,13 @@ export default async function ApplicantsPage({
   const signedDocumentMap = Object.fromEntries(
     (signedDocuments ?? []).reduce((accumulator, signedDocument) => {
       if (!accumulator.some((entry) => entry[0] === signedDocument.application_id)) {
-        accumulator.push([signedDocument.application_id, signedDocument]);
+        const fallbackDocusealUrl =
+          (jobOffers ?? []).find((offer) => offer.application_id === signedDocument.application_id)
+            ?.latest_docuseal_url ?? null;
+        accumulator.push([
+          signedDocument.application_id,
+          { ...signedDocument, latest_docuseal_url: fallbackDocusealUrl },
+        ]);
       }
       return accumulator;
     }, [] as Array<[string, SignedDocumentRow]>)
