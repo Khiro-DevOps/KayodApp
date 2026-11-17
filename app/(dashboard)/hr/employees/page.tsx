@@ -19,16 +19,24 @@ export default async function EmployeesPage() {
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (!isHR) redirect("/dashboard");
 
-  const { data: employees } = await supabase
-    .from("employees")
-    .select(`
-      *,
-      profiles ( first_name, last_name, email, phone, avatar_url ),
-      departments ( name ),
-      office_branches ( name )
-    `)
-    .order("created_at", { ascending: false })
-    .returns<any[]>();
+  const [{ data: employees }, { data: officeBranches }] = await Promise.all([
+    supabase
+      .from("employees")
+      .select(`
+        *,
+        profiles ( first_name, last_name, email, phone, avatar_url ),
+        departments ( name )
+      `)
+      .order("created_at", { ascending: false })
+      .returns<Employee[]>(),
+    supabase
+      .from("office_branches")
+      .select("id, name")
+      .returns<Array<{ id: string; name: string }>>(),
+  ]);
+  const branchNameById = new Map(
+    (officeBranches ?? []).map((b) => [b.id, b.name])
+  );
 
   return (
     <PageContainer>
@@ -73,7 +81,7 @@ export default async function EmployeesPage() {
                 email: string;
               };
               const dept = emp.departments as unknown as { name: string } | null;
-              const branch = emp.office_branches?.name || "Main HQ";
+              const branch = (emp.work_location_id ? branchNameById.get(emp.work_location_id) : undefined) || "Main HQ";
               const fullName = p ? `${p.first_name} ${p.last_name}` : "Employee";
               const initial = fullName.charAt(0).toUpperCase();
               const displaySalary = (emp.salary || emp.base_salary || 0);
