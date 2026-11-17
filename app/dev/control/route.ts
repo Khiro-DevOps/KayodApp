@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { getStatusesForStage, UI_STAGES } from "@/lib/application-stages";
 
-const STAGES = [
-  "applied",
-  "screening",
-  "interview",
-  "offer",
-  "hired",
-  "rejected",
-] as const;
+const STAGES = UI_STAGES.flatMap((s) => getStatusesForStage(s.key));
 
-type Stage = (typeof STAGES)[number];
+type Stage = string;
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json(
@@ -50,7 +44,7 @@ function getAdminClient() {
 }
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.NODE_ENV === "production") {
     return jsonError(
       "Developer control endpoints are only available in development mode.",
       404

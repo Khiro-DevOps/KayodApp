@@ -4,35 +4,16 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { toggleDevUserRole } from "@/app/actions/dev-role-toggle";
 import { resetApplicantTestData } from "@/app/actions/debug";
+import { getStatusesForStage, UI_STAGES } from "@/lib/application-stages";
 
-const STAGES = [
-  {
-    value: "applied",
-    label: "1 — Applied / Submitted",
-  },
-  {
-    value: "screening",
-    label: "2 — Screening / Under Review",
-  },
-  {
-    value: "interview",
-    label: "3 — Interview Scheduled",
-  },
-  {
-    value: "offer",
-    label: "4 — Offer & Contract",
-  },
-  {
-    value: "hired",
-    label: "5 — Hired / Employee",
-  },
-  {
-    value: "rejected",
-    label: "6 — Rejected",
-  },
-] as const;
+const DB_STATUSES = UI_STAGES.flatMap((stage) =>
+  getStatusesForStage(stage.key).map((status) => ({
+    value: status,
+    label: `${status} (${stage.label})`,
+  }))
+);
 
-type Stage = (typeof STAGES)[number]["value"];
+type Stage = string;
 
 type Role = "applicant" | "employee" | "hr_manager";
 
@@ -44,7 +25,7 @@ export default function DevToolsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.NODE_ENV === "production") {
     return null;
   }
 
@@ -65,7 +46,7 @@ export default function DevToolsPage() {
 
     startTransition(async () => {
       try {
-        const response = await fetch("/api/dev/control", {
+        const response = await fetch("/dev/control", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -208,7 +189,7 @@ export default function DevToolsPage() {
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
           <h2 className="text-xl font-semibold">
-            1. Application Stage Switcher
+            1. Set Application Stage
           </h2>
 
           <p className="mt-1 text-sm text-slate-400">
@@ -229,22 +210,22 @@ export default function DevToolsPage() {
             />
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {STAGES.map((stage) => (
-              <button
-                key={stage.value}
-                type="button"
-                disabled={isPending}
-                onClick={() => setSelectedStage(stage.value)}
-                className={`rounded-lg border px-4 py-3 text-left text-sm font-medium transition ${
-                  selectedStage === stage.value
-                    ? "border-purple-500 bg-purple-500/20 text-purple-200"
-                    : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                {stage.label}
-              </button>
-            ))}
+          <div className="mt-5">
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              DB Status
+            </label>
+            <select
+              value={selectedStage}
+              disabled={isPending}
+              onChange={(event) => setSelectedStage(event.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {DB_STATUSES.map((stage) => (
+                <option key={stage.value} value={stage.value}>
+                  {stage.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <button
@@ -253,7 +234,7 @@ export default function DevToolsPage() {
             onClick={handleStageChange}
             className="mt-5 rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isPending ? "Updating..." : "Update Application Stage"}
+            {isPending ? "Updating..." : "Set Application Stage"}
           </button>
         </section>
 
