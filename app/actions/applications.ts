@@ -77,7 +77,7 @@ export async function withdrawApplication(applicationId: string): Promise<Withdr
         type: "application_status_changed",
         title: "Application Withdrawn",
         body: "A candidate has withdrawn their application.",
-        link: `/hr/jobs/${jobAppRecord.job_id}/applicants`,
+        link: "/hr/applicants",
         metadata: { applicationId },
         senderId: user.id,
       });

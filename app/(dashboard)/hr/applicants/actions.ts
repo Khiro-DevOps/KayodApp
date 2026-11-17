@@ -96,7 +96,7 @@ export async function submitApplication(formData: FormData) {
     type: "application_submitted",
     title: "New Job Application 📄",
     body: `A new candidate has applied for ${job.title || "your job posting"}.`,
-    link: `/hr/jobs/${job.id}/applicants`,
+    link: "/hr/applicants",
     metadata: { applicationId: createdJA.id },
     senderId: user.id,
   });
