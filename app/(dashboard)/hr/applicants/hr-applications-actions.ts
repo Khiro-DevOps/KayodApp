@@ -198,7 +198,7 @@ export async function moveToApplied(formData: FormData) {
       type: "application_status_changed",
       title: "Your application has been reconsidered",
       body: `Great news! Your application for ${jobTitle} has been moved back to active consideration.`,
-      action_url: `/applications`,
+      action_url: "/applicant/applications",
     });
     if (notifError) {
       console.error("moveToApplied: notification insert failed:", notifError.message);

@@ -446,7 +446,7 @@ export async function withdrawJobOffer(formData: FormData) {
         type: "application_status_changed",
         title: "Job Offer Withdrawn",
         body: reason ? `Your job offer has been withdrawn. Reason: ${reason}` : "Your job offer has been withdrawn.",
-        action_url: `/applications/${applicationId}`,
+        action_url: "/applicant/applications",
       })
     ).then(({ error: notifError }) => {
       if (notifError) console.error("Notification insert failed:", notifError.message);

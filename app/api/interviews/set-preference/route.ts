@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       type: "application_status_changed",
       title: `Interview Preference Set`,
       body: `${candidateName} has chosen ${preferenceLabel} for the ${jobTitle} interview. You can now schedule the interview.`,
-      action_url: `/applications/${applicationId}`,
+      action_url: "/hr/applicants",
     });
     if (notifError) {
       console.error("set-preference: notification insert failed:", notifError.message);

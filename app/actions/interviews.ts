@@ -504,7 +504,7 @@ export async function selectInterviewSlot(
         type: "interview_scheduled",
         title: "Interview Slot Confirmed",
         body: `A candidate confirmed an interview slot for ${new Date(finalSelectedSlot.start_time).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.`,
-        link: "/hr/applicants",
+        link: "/hr/interviews",
         metadata: { interviewId, applicationId: schedule.application_id },
         senderId: user.id,
       });
