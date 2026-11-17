@@ -139,6 +139,9 @@ export default function DashboardLayout({
           const excludedStatuses = [
             ...getStatusesForStage("hired"),
             ...getStatusesForStage("closed"),
+            ...getStatusesForStage("offer").filter(
+              (status) => status.endsWith("_declined") || status.endsWith("_expired")
+            ),
           ];
           const { count } = await supabase
             .from("job_applications")
