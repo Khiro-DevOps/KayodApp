@@ -270,13 +270,12 @@ export function computeMatchScore(
     return resumeSetup === jobSetup ? 1 : 0;
   })();
 
-  const score = (
+  const score =
     skillScore * 40 +
     titleScore * 25 +
     experienceScore * 15 +
     educationScore * 10 +
-    setupScore * 10
-  ) * 100;
+    setupScore * 10;
 
   return Math.max(0, Math.min(100, Math.round(score)));
 }
