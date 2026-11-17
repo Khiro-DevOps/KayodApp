@@ -16,12 +16,12 @@ import JobOfferHeader from "@/components/job-offer/job-offer-header";
 import JobOfferTermsPanel from "@/components/job-offer/job-offer-terms-panel";
 import JobOfferPdfPanel from "@/components/job-offer/job-offer-pdf-panel";
 import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel";
-import HRActionPanel from "@/components/job-offer/hr-action-panel";
+import HRActionPanel, { CreateOfferButton } from "@/components/job-offer/hr-action-panel";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
-import type { JobOffer, Profile } from "@/lib/types";
+import type { EmploymentType, JobOffer, Profile, WorkSetup } from "@/lib/types";
 
 type OfferPageParams = {
   params: Promise<Record<string, string | undefined>>;
@@ -252,7 +252,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     signing_method,
     status,
     docuseal_submission_url,
-    latest_docuseal_url,
     job_id,
     signed_at,
     pdf_file_path,
@@ -327,8 +326,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     .limit(1)
     .maybeSingle();
 
-  console.log("[JobOfferDebug] jobOfferByApplicationId result:", jobOfferByApplicationId);
-
   if (jobOfferByApplicationId) {
     jobOfferRow = jobOfferByApplicationId;
   } else {
@@ -337,8 +334,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       .select(jobOfferSelect)
       .eq("id", offerId)
       .maybeSingle();
-
-    console.log("[JobOfferDebug] jobOfferById result:", jobOfferById);
 
     if (jobOfferById) {
       jobOfferRow = jobOfferById;
@@ -351,8 +346,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         .limit(1)
         .maybeSingle();
 
-      console.log("[JobOfferDebug] latestAnyRes:", latestAnyRes);
-      console.log("[JobOfferDebug] latestAnyRes.error:", latestAnyRes?.error);
       if (latestAnyRes?.data) {
         jobOfferRow = latestAnyRes.data;
       }
@@ -423,9 +416,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       .eq("id", offerId)
       .maybeSingle();
 
-    console.log("[SignedDocDebug] directOfferById result:", directOfferById);
-    console.log("[SignedDocDebug] directOfferById.error:", (directOfferById as { error?: unknown } | null)?.error ?? null);
-
     if (directOfferById) {
       directOffer = directOfferById as SignedDocumentRow;
     } else {
@@ -437,8 +427,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         .limit(1)
         .maybeSingle();
 
-      console.log("[SignedDocDebug] latestDirectRes:", latestDirectRes);
-      console.log("[SignedDocDebug] latestDirectRes.error:", latestDirectRes?.error);
       if (latestDirectRes?.data) {
         directOffer = latestDirectRes.data as SignedDocumentRow;
       }
@@ -745,8 +733,21 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
     return (
       <PageContainer>
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-700">Offer not found or you do not have access to this offer.</p>
+        <div className="rounded-2xl border border-border bg-surface p-6 text-center space-y-4">
+          <p className="text-sm text-text-main">No offer yet for this candidate</p>
+          <CreateOfferButton
+            applicationId={application?.id ?? offerId}
+            defaultTerms={{
+              salary: application?.job_postings?.salary_min ?? 0,
+              currency: application?.job_postings?.currency ?? "PHP",
+              employmentType: (application?.job_postings?.employment_type as EmploymentType) ?? "full_time",
+              startDate: new Date().toISOString().split("T")[0],
+              workArrangement: (application?.job_postings?.work_setup as WorkSetup) ?? "onsite",
+              department: application?.job_postings?.department_id ?? "General",
+              manager: "HR Manager",
+              benefits: [],
+            }}
+          />
         </div>
       </PageContainer>
     );
@@ -754,19 +755,6 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
   const isApplicant = application.candidate_id === user.id;
   const isHR = application.job_postings?.created_by === user.id;
-
-  // Debug logging to help diagnose rendering/access issues
-  console.log("[JobOfferPage] Debug:", {
-    offerIdParam: offerId,
-    userId: user.id,
-    applicationId: application?.id,
-    applicationCandidateId: application?.candidate_id,
-    candidateMatchesUser: application?.candidate_id === user.id,
-    jobOfferResolvedId: offer?.id,
-    offerStatus: offer?.status,
-    isApplicant,
-    isHR,
-  });
 
   if (!isApplicant && !isHR) {
     return (
@@ -893,7 +881,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   if (application?.contract_offer_id) {
     const { data: linkedSignedDocument } = await admin
       .from("signed_documents")
-      .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
+      .select("id, application_id, status, docuseal_submission_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
       .eq("id", application.contract_offer_id)
       .maybeSingle();
 
@@ -905,7 +893,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   if (!completedSignedDocument) {
     const { data: latestSignedDocument } = await admin
       .from("signed_documents")
-      .select("id, application_id, status, docuseal_submission_url, latest_docuseal_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
+      .select("id, application_id, status, docuseal_submission_url, signed_at, pdf_file_path, metadata, created_at, updated_at")
       .eq("application_id", application.id)
       .order("created_at", { ascending: false })
       .limit(1)

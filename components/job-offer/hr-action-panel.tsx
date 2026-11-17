@@ -1,11 +1,49 @@
 "use client";
 
-import type { JobOffer } from "@/lib/types";
+import type { JobOffer, JobOfferTerms } from "@/lib/types";
 import { useState } from "react";
-import { revokeOffer } from "@/app/(dashboard)/hr/offers/actions";
+import { createJobOffer, revokeOffer } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
 import NegotiationResponsePanel from "./negotiation-response-panel";
 import { Download, ChevronDown, ChevronUp } from "lucide-react";
+
+export function CreateOfferButton({
+  applicationId,
+  defaultTerms,
+}: {
+  applicationId: string;
+  defaultTerms: JobOfferTerms;
+}) {
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleCreate = async () => {
+    setIsCreating(true);
+    try {
+      const result = await createJobOffer(applicationId, defaultTerms);
+      if (result.success) {
+        toast.success("Offer created");
+        window.location.reload();
+      } else {
+        toast.error(result.error || "Failed to create offer");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create offer");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCreate}
+      disabled={isCreating}
+      className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+    >
+      {isCreating ? "Creating..." : "Create offer"}
+    </button>
+  );
+}
 
 interface Props {
   offer: JobOffer & { applications: any };
