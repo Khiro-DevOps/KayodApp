@@ -8,6 +8,15 @@ export interface PayrollAttendanceLog {
   clock_in?: string | null;
   clock_out?: string | null;
   late_minutes?: number | null;
+  overbreak_minutes?: number | null;
+  total_lunch_minutes?: number | null;
+  total_break_minutes?: number | null;
+}
+
+export interface ContractCompItem {
+  label: string;
+  amount: number;
+  type?: "attendance" | "performance" | "custom";
 }
 
 export interface ComputeEmployeeDemoPayslipInput {
@@ -15,6 +24,7 @@ export interface ComputeEmployeeDemoPayslipInput {
   payFrequency?: string | null;
   periodStart: string;
   periodEnd: string;
+  startDate?: string | null;
   shiftStart?: string | null;
   shiftEnd?: string | null;
   workDays?: string[] | null;
@@ -22,6 +32,8 @@ export interface ComputeEmployeeDemoPayslipInput {
   approvedLeaves: ApprovedLeaveLike[];
   contractMonthlyAllowance?: number;
   contractAttendanceIncentive?: number;
+  contractAllowances?: Array<{ label: string; amount: number }>;
+  contractIncentives?: ContractCompItem[];
   allowances?: number;
   hrBonuses?: number;
   hrOtherDeductions?: number;
@@ -52,11 +64,16 @@ export interface ComputedDemoPayslip {
     nightDiffPay: number;
     totalLateMinutes: number;
     lateDeduction: number;
+    totalOverbreakMinutes: number;
+    overbreakDeduction: number;
     unexcusedAbsentDays: number;
     absenceDeduction: number;
     periodContractAllowance: number;
     attendanceIncentiveAwarded: number;
     attendanceIncentiveForfeited: boolean;
+    performanceIncentivesAwarded: number;
+    isProrated: boolean;
+    prorateFactor: number;
     hrBonuses: number;
     hrOtherDeductions: number;
   };
@@ -122,23 +139,76 @@ function computeNightDiffMinutes(clockInMs: number, clockOutMs: number): number 
   return totalMinutes;
 }
 
+const DAY_NUM_TO_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function countScheduledWorkdays(
+  startIso: string,
+  endIso: string,
+  workDays: string[] | null | undefined
+): number {
+  const startMs = Date.parse(`${startIso}T00:00:00Z`);
+  const endMs = Date.parse(`${endIso}T00:00:00Z`);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) return 0;
+
+  const allowed = new Set(
+    (Array.isArray(workDays) && workDays.length > 0
+      ? workDays
+      : ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    ).map((d) => d.trim().slice(0, 3).toLowerCase())
+  );
+
+  let count = 0;
+  const cursor = new Date(startMs);
+  while (cursor.getTime() <= endMs) {
+    const short = DAY_NUM_TO_SHORT[cursor.getUTCDay()].toLowerCase();
+    if (allowed.has(short)) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
 export function computeEmployeeDemoPayslip(
   input: ComputeEmployeeDemoPayslipInput
 ): ComputedDemoPayslip {
   const monthlyBase = Math.max(0, Number(input.monthlyBaseSalary || 0));
   const freq = String(input.payFrequency ?? "monthly").toLowerCase();
   const isSemiOrBiweekly = freq === "semi_monthly" || freq === "biweekly";
+  const freqDivisor = isSemiOrBiweekly ? 2 : 1;
+
+  // Mid-cutoff pro-rata calculation
+  const startDateIso = input.startDate ? String(input.startDate).slice(0, 10) : null;
+  let isProrated = false;
+  let prorateFactor = 1;
+  if (startDateIso && startDateIso > input.periodStart) {
+    isProrated = true;
+    if (startDateIso > input.periodEnd) {
+      prorateFactor = 0;
+    } else {
+      const totalScheduled = countScheduledWorkdays(
+        input.periodStart,
+        input.periodEnd,
+        input.workDays
+      );
+      const fromStartScheduled = countScheduledWorkdays(
+        startDateIso,
+        input.periodEnd,
+        input.workDays
+      );
+      prorateFactor = totalScheduled > 0 ? fromStartScheduled / totalScheduled : 1;
+    }
+  }
 
   const dailyRate = monthlyBase / 22;
   const hourlyRate = dailyRate / 8;
-  const basicPay = round2(isSemiOrBiweekly ? monthlyBase / 2 : monthlyBase);
+  const basicPay = round2((monthlyBase / freqDivisor) * prorateFactor);
 
-  const [shiftStartH, shiftStartM] = parseHm(input.shiftStart, 9, 0);
-  const [shiftEndH, shiftEndM] = parseHm(input.shiftEnd, 18, 0);
+  const [shiftStartH, shiftStartM] = parseHm(input.shiftStart, 8, 0);
+  const [shiftEndH, shiftEndM] = parseHm(input.shiftEnd, 17, 0);
 
   let eligibleOtMinutes = 0;
   let nightDiffMinutes = 0;
   let totalLateMinutes = 0;
+  let totalOverbreakMinutes = 0;
 
   for (const log of input.attendanceLogs) {
     if (!log.clock_in) continue;
@@ -155,6 +225,15 @@ export function computeEmployeeDemoPayslip(
       if (diffLate > 5) {
         totalLateMinutes += diffLate;
       }
+    }
+
+    const explicitOverbreak = Number(log.overbreak_minutes ?? 0);
+    if (explicitOverbreak > 0) {
+      totalOverbreakMinutes += Math.floor(explicitOverbreak);
+    } else {
+      const lunchOver = Math.max(0, Number(log.total_lunch_minutes ?? 0) - 60);
+      const shortOver = Math.max(0, Number(log.total_break_minutes ?? 0) - 30);
+      totalOverbreakMinutes += Math.floor(lunchOver + shortOver);
     }
 
     if (!log.clock_out) continue;
@@ -180,13 +259,14 @@ export function computeEmployeeDemoPayslip(
   const overtimePay = round2((eligibleOtMinutes / 60) * hourlyRate * 1.25);
   const nightDiffPay = round2((nightDiffMinutes / 60) * hourlyRate * 0.10);
 
-  const contractMonthlyAllowance = Math.max(0, Number(input.contractMonthlyAllowance ?? 0));
-  const contractAttendanceIncentive = Math.max(0, Number(input.contractAttendanceIncentive ?? 0));
+  const itemizedAllowances = (input.contractAllowances ?? []).filter((a) => a.amount > 0);
+  const allowanceSumMonthly =
+    itemizedAllowances.length > 0
+      ? itemizedAllowances.reduce((sum, a) => sum + Math.max(0, a.amount), 0)
+      : Math.max(0, Number(input.contractMonthlyAllowance ?? 0));
+
   const periodContractAllowance = round2(
-    isSemiOrBiweekly ? contractMonthlyAllowance / 2 : contractMonthlyAllowance
-  );
-  const periodAttendanceIncentive = round2(
-    isSemiOrBiweekly ? contractAttendanceIncentive / 2 : contractAttendanceIncentive
+    (allowanceSumMonthly / freqDivisor) * prorateFactor
   );
 
   const oneTimeAllowances = round2(Math.max(0, Number(input.allowances ?? 0)));
@@ -202,19 +282,53 @@ export function computeEmployeeDemoPayslip(
     approvedLeaves: input.approvedLeaves,
   });
 
+  const itemizedIncentives = (input.contractIncentives ?? []).filter((i) => i.amount > 0);
   let attendanceIncentiveAwarded = 0;
   let attendanceIncentiveForfeited = false;
-  if (periodAttendanceIncentive > 0) {
-    if (totalLateMinutes === 0 && unexcusedAbsentDays === 0) {
-      attendanceIncentiveAwarded = periodAttendanceIncentive;
-    } else {
-      attendanceIncentiveForfeited = true;
+  let performanceIncentivesAwarded = 0;
+  const awardedIncentiveLabels: string[] = [];
+
+  if (itemizedIncentives.length > 0) {
+    for (const inc of itemizedIncentives) {
+      const periodAmt = round2((inc.amount / freqDivisor) * prorateFactor);
+      const isAttendanceType =
+        inc.type === "attendance" ||
+        inc.label.toLowerCase().includes("attendance");
+      if (isAttendanceType) {
+        if (totalLateMinutes === 0 && unexcusedAbsentDays === 0 && periodAmt > 0) {
+          attendanceIncentiveAwarded = round2(attendanceIncentiveAwarded + periodAmt);
+          awardedIncentiveLabels.push(`${inc.label} (+₱${periodAmt.toFixed(2)})`);
+        } else {
+          attendanceIncentiveForfeited = true;
+        }
+      } else if (periodAmt > 0) {
+        performanceIncentivesAwarded = round2(performanceIncentivesAwarded + periodAmt);
+        awardedIncentiveLabels.push(`${inc.label} (+₱${periodAmt.toFixed(2)})`);
+      }
+    }
+  } else {
+    const contractAttendanceIncentive = Math.max(0, Number(input.contractAttendanceIncentive ?? 0));
+    const periodAttendanceIncentive = round2(
+      (contractAttendanceIncentive / freqDivisor) * prorateFactor
+    );
+    if (periodAttendanceIncentive > 0) {
+      if (totalLateMinutes === 0 && unexcusedAbsentDays === 0) {
+        attendanceIncentiveAwarded = periodAttendanceIncentive;
+        awardedIncentiveLabels.push(
+          `Attendance Incentive (+₱${attendanceIncentiveAwarded.toFixed(2)})`
+        );
+      } else {
+        attendanceIncentiveForfeited = true;
+      }
     }
   }
 
-  const bonuses = round2(nightDiffPay + hrBonuses + attendanceIncentiveAwarded);
+  const bonuses = round2(
+    nightDiffPay + hrBonuses + attendanceIncentiveAwarded + performanceIncentivesAwarded
+  );
 
   const lateDeduction = round2((totalLateMinutes / 60) * hourlyRate);
+  const overbreakDeduction = round2((totalOverbreakMinutes / 60) * hourlyRate);
   const absenceDeduction = round2(unexcusedAbsentDays * dailyRate);
   const hrOtherDeductions = round2(Math.max(0, Number(input.hrOtherDeductions ?? 0)));
 
@@ -223,7 +337,7 @@ export function computeEmployeeDemoPayslip(
   const sssCap = isSemiOrBiweekly ? 675 : 1_350;
   const sss = round2(Math.min(basicPay * 0.045, sssCap));
   const philhealth = round2(basicPay * 0.025);
-  const pagibig = isSemiOrBiweekly ? 100 : 200;
+  const pagibig = basicPay > 0 ? (isSemiOrBiweekly ? 100 : 200) : 0;
 
   const taxableBase = Math.max(0, grossPay - sss - philhealth - pagibig);
   const taxThreshold = isSemiOrBiweekly ? 20_833 / 2 : 20_833;
@@ -231,7 +345,9 @@ export function computeEmployeeDemoPayslip(
     taxableBase > taxThreshold ? (taxableBase - taxThreshold) * 0.15 : 0
   );
 
-  const otherDeductions = round2(lateDeduction + absenceDeduction + hrOtherDeductions);
+  const otherDeductions = round2(
+    lateDeduction + overbreakDeduction + absenceDeduction + hrOtherDeductions
+  );
   const totalDeductions = round2(
     sss + philhealth + pagibig + withholdingTax + otherDeductions
   );
@@ -244,12 +360,24 @@ export function computeEmployeeDemoPayslip(
     `Late: ${totalLateMinutes}m (-₱${lateDeduction.toFixed(2)})`,
     `Absent: ${unexcusedAbsentDays}d (-₱${absenceDeduction.toFixed(2)})`,
   ];
-  if (periodContractAllowance > 0) {
+  if (isProrated && startDateIso) {
+    remarksParts.push(`Prorated from start date ${startDateIso}`);
+  }
+  if (totalOverbreakMinutes > 0) {
+    remarksParts.push(`Overbreak deduction: ${totalOverbreakMinutes}m (-₱${overbreakDeduction.toFixed(2)})`);
+  }
+  if (itemizedAllowances.length > 0) {
+    const itemizedText = itemizedAllowances
+      .map((a) => `${a.label} (+₱${round2((a.amount / freqDivisor) * prorateFactor).toFixed(2)})`)
+      .join(", ");
+    remarksParts.push(`Allowances: ${itemizedText}`);
+  } else if (periodContractAllowance > 0) {
     remarksParts.push(`Allowance: +₱${periodContractAllowance.toFixed(2)}`);
   }
-  if (attendanceIncentiveAwarded > 0) {
-    remarksParts.push(`Attendance Incentive earned (+₱${attendanceIncentiveAwarded.toFixed(2)})`);
-  } else if (attendanceIncentiveForfeited) {
+  if (awardedIncentiveLabels.length > 0) {
+    remarksParts.push(`Incentives: ${awardedIncentiveLabels.join(", ")}`);
+  }
+  if (attendanceIncentiveForfeited) {
     remarksParts.push("Attendance Incentive forfeited (late/absent)");
   }
   if (input.customRemarks?.trim()) {
@@ -280,11 +408,16 @@ export function computeEmployeeDemoPayslip(
       nightDiffPay,
       totalLateMinutes,
       lateDeduction,
+      totalOverbreakMinutes,
+      overbreakDeduction,
       unexcusedAbsentDays,
       absenceDeduction,
       periodContractAllowance,
       attendanceIncentiveAwarded,
       attendanceIncentiveForfeited,
+      performanceIncentivesAwarded,
+      isProrated,
+      prorateFactor: round2(prorateFactor),
       hrBonuses,
       hrOtherDeductions,
     },

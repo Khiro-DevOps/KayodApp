@@ -5,6 +5,8 @@ import Link from "next/link";
 import PageContainer from "@/components/ui/page-container";
 import type { PayrollPeriod, Payslip, Employee, Profile } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
+import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
+import { resolveOfferCompensation, type OfferSalarySource } from "@/lib/offer-salary";
 import {
   createPayrollPeriod,
   generatePayslips,
@@ -89,13 +91,188 @@ export default async function HRPayrollPage({
   }
 
   let reviewPayslips: Payslip[] = [];
+  let preRunRoster: Array<{
+    employeeId: string;
+    name: string;
+    role: string;
+    baseSalary: number;
+    allowancesLabel: string;
+    incentivesLabel: string;
+    otHours: number;
+    nightDiffHours: number;
+    lateMinutes: number;
+    overbreakMinutes: number;
+    absentDays: number;
+    isProrated: boolean;
+    projectedNet: number;
+  }> = [];
+
   if (reviewPeriod) {
-    const { data: slips } = await admin
-      .from("payslips")
-      .select("*, employees(profiles(first_name, last_name))")
-      .eq("payroll_period_id", reviewPeriod.id)
-      .returns<Payslip[]>();
+    const [{ data: slips }, { data: periodLogs }, { data: periodLeaves }] = await Promise.all([
+      admin
+        .from("payslips")
+        .select("*, employees(profiles(first_name, last_name))")
+        .eq("payroll_period_id", reviewPeriod.id)
+        .returns<Payslip[]>(),
+      admin
+        .from("attendance_logs")
+        .select(
+          "employee_id, date, clock_in, clock_out, late_minutes, overbreak_minutes, total_lunch_minutes, total_break_minutes"
+        )
+        .gte("clock_in", `${reviewPeriod.period_start}T00:00:00Z`)
+        .lte("clock_in", `${reviewPeriod.period_end}T23:59:59Z`),
+      admin
+        .from("leave_requests")
+        .select("employee_id, start_date, end_date, status")
+        .eq("status", "approved")
+        .lte("start_date", reviewPeriod.period_end)
+        .gte("end_date", reviewPeriod.period_start),
+    ]);
     reviewPayslips = slips ?? [];
+
+    const activeEmpList = employees ?? [];
+    const offerIds = activeEmpList
+      .map((e) => (e as { job_offer_id?: string | null }).job_offer_id)
+      .filter((id): id is string => Boolean(id));
+    const appIds = activeEmpList
+      .map((e) => (e as { application_id?: string | null }).application_id)
+      .filter((id): id is string => Boolean(id));
+
+    const offerById = new Map<string, OfferSalarySource>();
+    const offerByAppId = new Map<string, OfferSalarySource>();
+
+    if (offerIds.length > 0) {
+      const { data: offersById } = await admin
+        .from("job_offers")
+        .select("id, application_id, salary, financial_package, job_metadata, metadata")
+        .in("id", offerIds);
+      for (const row of offersById ?? []) {
+        offerById.set(row.id, row as OfferSalarySource);
+        if (row.application_id && !offerByAppId.has(row.application_id)) {
+          offerByAppId.set(row.application_id, row as OfferSalarySource);
+        }
+      }
+    }
+    if (appIds.length > 0) {
+      const { data: offersByApp } = await admin
+        .from("job_offers")
+        .select("id, application_id, salary, financial_package, job_metadata, metadata")
+        .in("application_id", appIds)
+        .order("created_at", { ascending: false });
+      for (const row of offersByApp ?? []) {
+        if (row.application_id && !offerByAppId.has(row.application_id)) {
+          offerByAppId.set(row.application_id, row as OfferSalarySource);
+        }
+      }
+    }
+
+    preRunRoster = activeEmpList.map((emp) => {
+      const empRec = emp as unknown as {
+        id: string;
+        job_title?: string | null;
+        base_salary?: number | null;
+        salary?: number | null;
+        start_date?: string | null;
+        pay_frequency?: string | null;
+        shift_start?: string | null;
+        shift_end?: string | null;
+        work_days?: string[] | null;
+        monthly_allowance?: number | string | null;
+        attendance_incentive?: number | string | null;
+        job_offer_id?: string | null;
+        application_id?: string | null;
+        profiles?: { first_name?: string | null; last_name?: string | null } | null;
+      };
+      const baseSalary = Number(empRec.base_salary ?? empRec.salary ?? 0);
+      const linkedOffer =
+        (empRec.job_offer_id ? offerById.get(empRec.job_offer_id) : undefined) ??
+        (empRec.application_id ? offerByAppId.get(empRec.application_id) : undefined) ??
+        null;
+      const comp = resolveOfferCompensation(linkedOffer, null, baseSalary);
+      const contractMonthlyAllowance =
+        empRec.monthly_allowance !== null &&
+        empRec.monthly_allowance !== undefined &&
+        Number(empRec.monthly_allowance) > 0
+          ? Number(empRec.monthly_allowance)
+          : comp.monthlyAllowance;
+      const contractAttendanceIncentive =
+        empRec.attendance_incentive !== null &&
+        empRec.attendance_incentive !== undefined &&
+        Number(empRec.attendance_incentive) > 0
+          ? Number(empRec.attendance_incentive)
+          : comp.attendanceIncentive;
+
+      const contractIncentives =
+        comp.itemizedIncentives.length > 0
+          ? comp.itemizedIncentives.map((item) => ({
+              label: item.label,
+              amount: item.amount,
+              type:
+                item.key === "attendance_incentive"
+                  ? ("attendance" as const)
+                  : ("performance" as const),
+            }))
+          : contractAttendanceIncentive > 0
+            ? [
+                {
+                  label: "Perfect Attendance Incentive",
+                  amount: contractAttendanceIncentive,
+                  type: "attendance" as const,
+                },
+              ]
+            : [];
+
+      const computed = computeEmployeeDemoPayslip({
+        monthlyBaseSalary: baseSalary,
+        payFrequency: empRec.pay_frequency,
+        periodStart: reviewPeriod.period_start,
+        periodEnd: reviewPeriod.period_end,
+        startDate: empRec.start_date ?? null,
+        shiftStart: empRec.shift_start,
+        shiftEnd: empRec.shift_end,
+        workDays: Array.isArray(empRec.work_days) ? empRec.work_days : null,
+        attendanceLogs: (periodLogs ?? []).filter((l) => l.employee_id === empRec.id),
+        approvedLeaves: (periodLeaves ?? []).filter((lr) => lr.employee_id === empRec.id),
+        contractMonthlyAllowance,
+        contractAttendanceIncentive,
+        contractAllowances: comp.itemizedAllowances,
+        contractIncentives,
+      });
+
+      const name =
+        [empRec.profiles?.first_name, empRec.profiles?.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "Employee";
+
+      const allowancesLabel =
+        comp.itemizedAllowances.length > 0
+          ? comp.itemizedAllowances.map((a) => `${a.label} ₱${a.amount.toLocaleString()}`).join(", ")
+          : contractMonthlyAllowance > 0
+            ? `₱${contractMonthlyAllowance.toLocaleString()}/mo`
+            : "None";
+
+      const incentivesLabel =
+        contractIncentives.length > 0
+          ? contractIncentives.map((i) => `${i.label} ₱${i.amount.toLocaleString()}`).join(", ")
+          : "None";
+
+      return {
+        employeeId: empRec.id,
+        name,
+        role: empRec.job_title || "Staff",
+        baseSalary,
+        allowancesLabel,
+        incentivesLabel,
+        otHours: computed.breakdown.eligibleOtHours,
+        nightDiffHours: computed.breakdown.nightDiffHours,
+        lateMinutes: computed.breakdown.totalLateMinutes,
+        overbreakMinutes: computed.breakdown.totalOverbreakMinutes,
+        absentDays: computed.breakdown.unexcusedAbsentDays,
+        isProrated: computed.breakdown.isProrated,
+        projectedNet: computed.net_pay,
+      };
+    });
   }
 
   const unpublishedCount = reviewPayslips.filter((s) => {
@@ -264,49 +441,145 @@ export default async function HRPayrollPage({
             </div>
 
             {reviewPayslips.length === 0 && (
-              <form action={generatePayslips} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                <input type="hidden" name="period_id" value={reviewPeriod.id} />
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                  Generate Payslips for Selected Period — Optional Adjustments
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <input
-                    type="number"
-                    name="allowances"
-                    min="0"
-                    step="0.01"
-                    placeholder="Allowances (₱)"
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+              <div className="space-y-4">
+                {/* Pre-Run Employee Compensation & Attendance Roster */}
+                {preRunRoster.length > 0 && (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Pre-Run Employee Compensation &amp; Attendance Roster ({preRunRoster.length})
+                      </p>
+                      <span className="text-[11px] font-medium text-slate-500">
+                        Auto-hydrated from Contracts &amp; Attendance Logs
+                      </span>
+                    </div>
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2.5">Employee &amp; Role</th>
+                          <th className="px-3 py-2.5">Base Salary</th>
+                          <th className="px-3 py-2.5">Allowances &amp; Incentives</th>
+                          <th className="px-3 py-2.5">Attendance Deltas</th>
+                          <th className="px-3 py-2.5 text-right">Est. Net</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-800">
+                        {preRunRoster.map((row) => (
+                          <tr key={row.employeeId} className="hover:bg-slate-50/70">
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-900">{row.name}</span>
+                                {row.isProrated && (
+                                  <span className="rounded-full bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
+                                    Prorated
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500">{row.role}</p>
+                            </td>
+                            <td className="px-3 py-2.5 font-semibold whitespace-nowrap">
+                              ₱{row.baseSalary.toLocaleString()}/mo
+                            </td>
+                            <td className="px-3 py-2.5 max-w-[240px]">
+                              <p className="text-[11px] text-slate-700 truncate" title={row.allowancesLabel}>
+                                Allow: {row.allowancesLabel}
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate" title={row.incentivesLabel}>
+                                Inc: {row.incentivesLabel}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex flex-wrap gap-1 text-[10px] font-semibold">
+                                {row.otHours > 0 && (
+                                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                                    OT {row.otHours}h
+                                  </span>
+                                )}
+                                {row.nightDiffHours > 0 && (
+                                  <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">
+                                    ND {row.nightDiffHours}h
+                                  </span>
+                                )}
+                                {row.lateMinutes > 0 && (
+                                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                                    Late {row.lateMinutes}m
+                                  </span>
+                                )}
+                                {row.overbreakMinutes > 0 && (
+                                  <span className="rounded bg-rose-50 px-1.5 py-0.5 text-rose-700">
+                                    Overbreak {row.overbreakMinutes}m
+                                  </span>
+                                )}
+                                {row.absentDays > 0 && (
+                                  <span className="rounded bg-rose-100 px-1.5 py-0.5 text-rose-800">
+                                    Absent {row.absentDays}d
+                                  </span>
+                                )}
+                                {row.otHours === 0 &&
+                                  row.nightDiffHours === 0 &&
+                                  row.lateMinutes === 0 &&
+                                  row.overbreakMinutes === 0 &&
+                                  row.absentDays === 0 && (
+                                    <span className="text-slate-400 font-normal">Clean attendance</span>
+                                  )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-bold text-emerald-700 whitespace-nowrap">
+                              ₱{row.projectedNet.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <form action={generatePayslips} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <input type="hidden" name="period_id" value={reviewPeriod.id} />
+                  <PayrollSubmitButton
+                    label={`Compute & Generate Batch Payslips (${activeEmployeeCount} active employees)`}
+                    pendingLabel="Computing & Generating Payslips..."
+                    className="w-full rounded-xl bg-[#1e1b4b] py-3 text-xs font-bold text-white hover:bg-[#2d2b68] transition-colors shadow-sm disabled:opacity-60"
                   />
-                  <input
-                    type="number"
-                    name="bonuses"
-                    min="0"
-                    step="0.01"
-                    placeholder="Bonuses (₱)"
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                  />
-                  <input
-                    type="number"
-                    name="other_deductions"
-                    min="0"
-                    step="0.01"
-                    placeholder="Other deductions (₱)"
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                  />
-                  <input
-                    type="text"
-                    name="remarks"
-                    placeholder="Remarks (optional)"
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                  />
-                </div>
-                <PayrollSubmitButton
-                  label={`Generate Payslips (${activeEmployeeCount} active employees)`}
-                  pendingLabel="Generating Payslips..."
-                  className="w-full rounded-lg bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
-                />
-              </form>
+                  <details className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900 select-none">
+                      + Add Optional One-Time Period Adjustment
+                    </summary>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3">
+                      <input
+                        type="number"
+                        name="allowances"
+                        min="0"
+                        step="0.01"
+                        placeholder="Allowances (₱)"
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                      />
+                      <input
+                        type="number"
+                        name="bonuses"
+                        min="0"
+                        step="0.01"
+                        placeholder="Bonuses (₱)"
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                      />
+                      <input
+                        type="number"
+                        name="other_deductions"
+                        min="0"
+                        step="0.01"
+                        placeholder="Other deductions (₱)"
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                      />
+                      <input
+                        type="text"
+                        name="remarks"
+                        placeholder="Remarks (optional)"
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </details>
+                </form>
+              </div>
             )}
 
             {/* Summary totals */}
@@ -466,13 +739,18 @@ export default async function HRPayrollPage({
                   </Link>
 
                   {period.status === "draft" && (
-                    <form action={generatePayslips} className="space-y-3 pt-1">
+                    <form action={generatePayslips} className="space-y-2.5 pt-1">
                       <input type="hidden" name="period_id" value={period.id} />
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                          Demo Payroll Computation (non-statutory) — Optional Adjustments
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <PayrollSubmitButton
+                        label={`Compute & Generate Batch Payslips (${activeEmployeeCount} active employees)`}
+                        pendingLabel="Generating payslips..."
+                        className="w-full rounded-xl bg-[#1e1b4b] py-2.5 text-xs font-bold text-white hover:bg-[#2d2b68] transition-colors shadow-xs disabled:opacity-60"
+                      />
+                      <details className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
+                        <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900 select-none">
+                          + Add Optional One-Time Period Adjustment
+                        </summary>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5">
                           <input
                             type="number"
                             name="allowances"
@@ -504,12 +782,7 @@ export default async function HRPayrollPage({
                             className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
                           />
                         </div>
-                      </div>
-                      <PayrollSubmitButton
-                        label={`Generate payslips for ${activeEmployeeCount} employees`}
-                        pendingLabel="Generating payslips..."
-                        className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
-                      />
+                      </details>
                     </form>
                   )}
 

@@ -1,3 +1,9 @@
+import {
+  computeCompensationTotals,
+  parseCompensationPackage,
+  type ItemizedCompEntry,
+} from "@/lib/compensation-package";
+
 type RecordLike = Record<string, unknown> | null | undefined;
 
 export interface OfferSalarySource {
@@ -50,6 +56,9 @@ export interface OfferCompensation {
   baseSalary: number;
   monthlyAllowance: number;
   attendanceIncentive: number;
+  performanceBonus: number;
+  itemizedAllowances: ItemizedCompEntry[];
+  itemizedIncentives: ItemizedCompEntry[];
 }
 
 const ALLOWANCE_KEYS = [
@@ -104,25 +113,43 @@ export function resolveOfferCompensation(
       baseSalary,
       monthlyAllowance: 0,
       attendanceIncentive: 0,
+      performanceBonus: 0,
+      itemizedAllowances: [],
+      itemizedIncentives: [],
     };
   }
+
+  const rawCompPkg =
+    offer.financial_package?.compensation_package ??
+    offer.job_metadata?.compensation_package ??
+    offer.metadata?.compensation_package;
+
+  const pkg = parseCompensationPackage(rawCompPkg, {
+    ...(offer.metadata ?? {}),
+    ...(offer.job_metadata ?? {}),
+    ...(offer.financial_package ?? {}),
+  });
+  const totals = computeCompensationTotals(pkg, baseSalary);
 
   const monthlyAllowance =
     pickNonNegativeFromRecord(offer.financial_package, ALLOWANCE_KEYS) ??
     pickNonNegativeFromRecord(offer.job_metadata, ALLOWANCE_KEYS) ??
     pickNonNegativeFromRecord(offer.metadata, ALLOWANCE_KEYS) ??
-    0;
+    totals.monthlyAllowancesTotal;
 
   const attendanceIncentive =
     pickNonNegativeFromRecord(offer.financial_package, INCENTIVE_KEYS) ??
     pickNonNegativeFromRecord(offer.job_metadata, INCENTIVE_KEYS) ??
     pickNonNegativeFromRecord(offer.metadata, INCENTIVE_KEYS) ??
-    0;
+    totals.attendanceIncentiveAmount;
 
   return {
     baseSalary,
     monthlyAllowance,
     attendanceIncentive,
+    performanceBonus: totals.performanceBonusAmount,
+    itemizedAllowances: totals.itemizedAllowances,
+    itemizedIncentives: totals.itemizedIncentives,
   };
 }
 

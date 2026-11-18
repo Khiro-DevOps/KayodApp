@@ -138,7 +138,9 @@ export async function generatePayslips(formData: FormData) {
   // 3. Get attendance_logs and approved leave_requests for this period
   const { data: attendanceLogs } = await admin
     .from("attendance_logs")
-    .select("employee_id, date, clock_in, clock_out, late_minutes")
+    .select(
+      "employee_id, date, clock_in, clock_out, late_minutes, overbreak_minutes, total_lunch_minutes, total_break_minutes"
+    )
     .gte("clock_in", `${period.period_start}T00:00:00Z`)
     .lte("clock_in", `${period.period_end}T23:59:59Z`);
 
@@ -151,10 +153,23 @@ export async function generatePayslips(formData: FormData) {
     .lte("start_date", period.period_end)
     .gte("end_date", period.period_start);
 
+  // 3b. Protect already-published or paid payslips from being overwritten
+  const { data: existingLockedSlips } = await admin
+    .from("payslips")
+    .select("employee_id, status")
+    .eq("payroll_period_id", periodId)
+    .in("status", ["published", "paid"]);
+
+  const protectedEmployeeIds = new Set(
+    (existingLockedSlips ?? []).map((row) => row.employee_id)
+  );
+
   // 4. Build payslips matching exact public.payslips columns in supabase/schema.sql
-  const payslips = employees.map((emp) => {
+  const targetEmployees = employees.filter((emp) => !protectedEmployeeIds.has(emp.id));
+  const payslips = targetEmployees.map((emp) => {
     const monthlySalary = Number(emp.base_salary ?? emp.salary ?? 0);
     const empRecord = emp as {
+      start_date?: string | null;
       monthly_allowance?: number | string | null;
       attendance_incentive?: number | string | null;
       job_offer_id?: string | null;
@@ -169,16 +184,38 @@ export async function generatePayslips(formData: FormData) {
     const contractMonthlyAllowance =
       empRecord.monthly_allowance !== null &&
       empRecord.monthly_allowance !== undefined &&
-      Number.isFinite(Number(empRecord.monthly_allowance))
+      Number.isFinite(Number(empRecord.monthly_allowance)) &&
+      Number(empRecord.monthly_allowance) > 0
         ? Math.max(0, Number(empRecord.monthly_allowance))
         : resolvedOfferComp.monthlyAllowance;
 
     const contractAttendanceIncentive =
       empRecord.attendance_incentive !== null &&
       empRecord.attendance_incentive !== undefined &&
-      Number.isFinite(Number(empRecord.attendance_incentive))
+      Number.isFinite(Number(empRecord.attendance_incentive)) &&
+      Number(empRecord.attendance_incentive) > 0
         ? Math.max(0, Number(empRecord.attendance_incentive))
         : resolvedOfferComp.attendanceIncentive;
+
+    const contractIncentives =
+      resolvedOfferComp.itemizedIncentives.length > 0
+        ? resolvedOfferComp.itemizedIncentives.map((item) => ({
+            label: item.label,
+            amount: item.amount,
+            type:
+              item.key === "attendance_incentive"
+                ? ("attendance" as const)
+                : ("performance" as const),
+          }))
+        : contractAttendanceIncentive > 0
+          ? [
+              {
+                label: "Perfect Attendance Incentive",
+                amount: contractAttendanceIncentive,
+                type: "attendance" as const,
+              },
+            ]
+          : [];
 
     const empLogs = (attendanceLogs ?? []).filter((l) => l.employee_id === emp.id);
     const empLeaves = (approvedLeaves ?? []).filter((lr) => lr.employee_id === emp.id);
@@ -188,6 +225,7 @@ export async function generatePayslips(formData: FormData) {
       payFrequency: emp.pay_frequency,
       periodStart: period.period_start,
       periodEnd: period.period_end,
+      startDate: empRecord.start_date ?? null,
       shiftStart: emp.shift_start,
       shiftEnd: emp.shift_end,
       workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
@@ -195,6 +233,8 @@ export async function generatePayslips(formData: FormData) {
       approvedLeaves: empLeaves,
       contractMonthlyAllowance,
       contractAttendanceIncentive,
+      contractAllowances: resolvedOfferComp.itemizedAllowances,
+      contractIncentives,
       allowances: customAllowances,
       hrBonuses: customBonuses,
       hrOtherDeductions: customOtherDeductions,
@@ -219,6 +259,7 @@ export async function generatePayslips(formData: FormData) {
   });
 
   // 5. Delete existing draft / pending_approval payslips for this period before inserting fresh rows
+  // (Never delete already-published or paid payslips)
   const { error: deleteError } = await admin
     .from("payslips")
     .delete()
@@ -229,15 +270,11 @@ export async function generatePayslips(formData: FormData) {
     redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(deleteError.message)}`);
   }
 
-  // Also clear any leftover payslips for this period so unique(payroll_period_id, employee_id) never conflicts
-  await admin
-    .from("payslips")
-    .delete()
-    .eq("payroll_period_id", periodId);
-
-  const { error: insertError } = await admin.from("payslips").insert(payslips);
-  if (insertError) {
-    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(insertError.message)}`);
+  if (payslips.length > 0) {
+    const { error: insertError } = await admin.from("payslips").insert(payslips);
+    if (insertError) {
+      redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(insertError.message)}`);
+    }
   }
 
   // 6. Advance period status to pending_approval
