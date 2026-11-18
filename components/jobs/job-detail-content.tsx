@@ -25,6 +25,16 @@ function formatWorkSetup(workSetup: JobPosting["work_setup"]): string {
   return "Onsite";
 }
 
+function getWorkSetupPillClass(workSetup: JobPosting["work_setup"]): string {
+  if (workSetup === "remote" || workSetup === "wfh") {
+    return "border-sky-200/80 bg-sky-50/80 text-sky-700";
+  }
+  if (workSetup === "hybrid") {
+    return "border-indigo-200/80 bg-indigo-50/80 text-indigo-700";
+  }
+  return "border-amber-200/80 bg-amber-50/80 text-amber-700";
+}
+
 function resolveCompanyName(job: JobPosting): string {
   if (job.companyName && job.companyName.trim()) {
     return job.companyName.trim();
@@ -241,26 +251,26 @@ export default function JobDetailContent({
       {/* Metadata Strip */}
       <div className="px-6 py-3.5 border-b border-slate-100 flex flex-wrap gap-2 shrink-0 bg-white">
         {job.location && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
             <MapPin className="h-3.5 w-3.5 text-slate-500" />
             {job.location}
           </span>
         )}
         {salaryLabel && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-            <Wallet className="h-3.5 w-3.5 text-slate-500" />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+            <Wallet className="h-3.5 w-3.5" />
             {salaryLabel}
           </span>
         )}
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-          <Laptop className="h-3.5 w-3.5 text-slate-500" />
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getWorkSetupPillClass(job.work_setup)}`}>
+          <Laptop className="h-3.5 w-3.5" />
           {formatWorkSetup(job.work_setup)}
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-          <Briefcase className="h-3.5 w-3.5 text-slate-500" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E0D9FC] bg-[#F4F1FF] px-2.5 py-1 text-xs font-semibold text-[#1F195E]">
+          <Briefcase className="h-3.5 w-3.5" />
           {formatEmploymentType(job.employment_type)}
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
           <Calendar className="h-3.5 w-3.5 text-slate-500" />
           Posted {new Date(job.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
         </span>

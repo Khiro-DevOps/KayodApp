@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Building2, Sparkles } from "lucide-react";
+import { Briefcase, Building2, Laptop, Sparkles, Wallet } from "lucide-react";
 import type { JobPosting } from "@/lib/types";
 import type { JobFitAnalysisOutput } from "@/lib/gemini";
 import { getDisplayMatchScore } from "@/lib/match-score";
@@ -34,6 +34,16 @@ function formatWorkSetup(workSetup: JobPosting["work_setup"]): string {
   if (workSetup === "remote" || workSetup === "wfh") return "Remote / WFH";
   if (workSetup === "hybrid") return "Hybrid";
   return "Onsite";
+}
+
+function getWorkSetupPillClass(workSetup: JobPosting["work_setup"]): string {
+  if (workSetup === "remote" || workSetup === "wfh") {
+    return "border-sky-200/80 bg-sky-50/80 text-sky-700";
+  }
+  if (workSetup === "hybrid") {
+    return "border-indigo-200/80 bg-indigo-50/80 text-indigo-700";
+  }
+  return "border-amber-200/80 bg-amber-50/80 text-amber-700";
 }
 
 function formatEmploymentType(employmentType: JobPosting["employment_type"]): string {
@@ -239,7 +249,7 @@ export default function ApplicantJobsClient({
                   <article
                     key={job.id}
                     onClick={() => openJobModal(job)}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
+                    className="rounded-2xl border border-[#E8E4F8] bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(31,25,94,0.04)] hover:border-[#1F195E]/35 hover:shadow-[0_8px_24px_rgba(31,25,94,0.08)] transition-all cursor-pointer group flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-3">
                       {/* Top Row */}
@@ -254,7 +264,7 @@ export default function ApplicantJobsClient({
                             {job.location ? <span className="truncate text-slate-500">• {job.location}</span> : null}
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold">
+                        <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-semibold">
                           {badgeLabel}
                         </span>
                       </div>
@@ -262,14 +272,17 @@ export default function ApplicantJobsClient({
                       {/* Middle Row */}
                       <div className="flex flex-wrap gap-2">
                         {salaryRange ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            <Wallet className="h-3.5 w-3.5 shrink-0" />
                             {salaryRange}
                           </span>
                         ) : null}
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getWorkSetupPillClass(job.work_setup)}`}>
+                          <Laptop className="h-3.5 w-3.5 shrink-0" />
                           {formatWorkSetup(job.work_setup)}
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E0D9FC] bg-[#F4F1FF] px-2.5 py-1 text-xs font-semibold text-[#1F195E]">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
                           {formatEmploymentType(job.employment_type)}
                         </span>
                       </div>
@@ -280,7 +293,7 @@ export default function ApplicantJobsClient({
                     </div>
 
                     {/* Bottom Row */}
-                    <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <div className="flex items-center justify-between gap-3 border-t border-[#F0ECFF] pt-3">
                       <span className="text-xs text-slate-500">{formatPostedRelative(job.created_at)}</span>
                       <button
                         type="button"
@@ -326,7 +339,7 @@ export default function ApplicantJobsClient({
             return (
               <article
                 key={job.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
+                className="rounded-2xl border border-[#E8E4F8] bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(31,25,94,0.04)] hover:border-[#1F195E]/35 hover:shadow-[0_8px_24px_rgba(31,25,94,0.08)] transition-all cursor-pointer group flex flex-col justify-between gap-4"
                 onClick={() => openJobModal(job)}
               >
                 <div className="space-y-3">
@@ -343,7 +356,7 @@ export default function ApplicantJobsClient({
                       </p>
                     </div>
                     {appliedInfo?.hasApplied ? (
-                      <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold">
+                      <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-semibold">
                         Applied
                       </span>
                     ) : null}
@@ -352,14 +365,17 @@ export default function ApplicantJobsClient({
                   {/* Middle Row */}
                   <div className="flex flex-wrap gap-2">
                     {salaryRange ? (
-                      <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <Wallet className="h-3.5 w-3.5 shrink-0" />
                         {salaryRange}
                       </span>
                     ) : null}
-                    <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getWorkSetupPillClass(job.work_setup)}`}>
+                      <Laptop className="h-3.5 w-3.5 shrink-0" />
                       {formatWorkSetup(job.work_setup)}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E0D9FC] bg-[#F4F1FF] px-2.5 py-1 text-xs font-semibold text-[#1F195E]">
+                      <Briefcase className="h-3.5 w-3.5 shrink-0" />
                       {formatEmploymentType(job.employment_type)}
                     </span>
                   </div>
@@ -370,7 +386,7 @@ export default function ApplicantJobsClient({
                 </div>
 
                 {/* Bottom Row */}
-                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <div className="flex items-center justify-between gap-3 border-t border-[#F0ECFF] pt-3">
                   <span className="text-xs text-slate-500">{formatPostedRelative(job.created_at)}</span>
                   <button
                     type="button"
