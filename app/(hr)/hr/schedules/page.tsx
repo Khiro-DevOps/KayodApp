@@ -21,34 +21,26 @@ export default async function HRSchedulesPage() {
     .eq("id", user.id)
     .single();
 
-  if (!profile || (profile.role !== "hr_manager" && profile.role !== "admin")) {
+  if (!profile || (profile.role !== "hr_manager" && profile.role !== "admin" && profile.role !== "hr")) {
     redirect("/login");
   }
 
-  let employeesQuery = supabase
-    .from("employees")
-    .select(`
-      id,
-      job_title,
-      work_mode,
-      hybrid_onsite_days,
-      shift_start,
-      shift_end,
-      employment_status,
-      tenant_id,
-      profiles (
-        first_name,
-        last_name
-      )
-    `);
-
-  if (profile.tenant_id) {
-    employeesQuery = employeesQuery.or(`tenant_id.eq.${profile.tenant_id},tenant_id.is.null`);
-  }
-
-  const { data: employees } = await employeesQuery.order("created_at", { ascending: false });
-
-  const allowedStatuses = new Set(["active", "probation", "onboarding"]);
+  const [{ data: employees }, { count: pendingLeaveCount }] = await Promise.all([
+    supabase
+      .from("employees")
+      .select(`
+        *,
+        profiles (
+          first_name,
+          last_name
+        )
+      `)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("leave_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending"),
+  ]);
 
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -63,11 +55,7 @@ export default async function HRSchedulesPage() {
   const weekStartStr = weekIsoDates[0];
   const weekEndStr = weekIsoDates[6];
 
-  const activeEmployeeIds = (employees ?? [])
-    .filter((emp) =>
-      allowedStatuses.has(String(emp.employment_status ?? "active").toLowerCase())
-    )
-    .map((emp) => emp.id);
+  const activeEmployeeIds = (employees ?? []).map((emp) => emp.id);
 
   const leaveDaysByEmp = new Map<string, number[]>();
   if (activeEmployeeIds.length > 0) {
@@ -102,9 +90,6 @@ export default async function HRSchedulesPage() {
   };
 
   const formattedEmployees: HRScheduleEmployee[] = ((employees ?? []) as RawEmployeeRow[])
-    .filter((emp) =>
-      allowedStatuses.has(String(emp.employment_status ?? "active").toLowerCase())
-    )
     .map((emp) => {
       const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
@@ -126,5 +111,11 @@ export default async function HRSchedulesPage() {
 
   const todayDayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
 
-  return <HRSchedulesClient initialEmployees={formattedEmployees} todayDayName={todayDayName} />;
+  return (
+    <HRSchedulesClient
+      initialEmployees={formattedEmployees}
+      todayDayName={todayDayName}
+      pendingLeaveCount={pendingLeaveCount ?? 0}
+    />
+  );
 }

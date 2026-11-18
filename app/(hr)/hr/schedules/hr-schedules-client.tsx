@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { saveAndPublishEmployeeSchedule } from "./actions";
@@ -18,6 +19,7 @@ export type HRScheduleEmployee = {
 type HRSchedulesClientProps = {
   initialEmployees: HRScheduleEmployee[];
   todayDayName: string;
+  pendingLeaveCount?: number;
 };
 
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -34,7 +36,11 @@ function getCurrentMondayIso(): string {
   return `${year}-${month}-${date}`;
 }
 
-export default function HRSchedulesClient({ initialEmployees, todayDayName }: HRSchedulesClientProps) {
+export default function HRSchedulesClient({
+  initialEmployees,
+  todayDayName,
+  pendingLeaveCount = 0,
+}: HRSchedulesClientProps) {
   const [employees, setEmployees] = useState<HRScheduleEmployee[]>(initialEmployees);
   const [searchTerm, setSearchTerm] = useState("");
   const [modelFilter, setModelFilter] = useState<"All" | "Onsite" | "WFH" | "Hybrid">("All");
@@ -214,6 +220,17 @@ export default function HRSchedulesClient({ initialEmployees, todayDayName }: HR
             Manage employee shifts, onsite days, and hybrid arrangements
           </p>
         </div>
+        <Link
+          href="/hr/leaves"
+          className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-colors ${
+            pendingLeaveCount > 0
+              ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              : "border-border bg-card-bg text-text-main hover:bg-surface-bg"
+          }`}
+        >
+          <span className="material-symbols-outlined text-[16px]">event_busy</span>
+          <span>Pending Leave Requests ({pendingLeaveCount})</span>
+        </Link>
       </div>
 
       {/* Quick Summary Stat Cards */}
