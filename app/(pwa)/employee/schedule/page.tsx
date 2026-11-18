@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import PageContainer from "@/components/ui/page-container";
 import ScheduleClient from "./schedule-client";
 import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
+import {
+  DAYS_FULL,
+  getPhtDayInfo,
+  normalizeDaysToFull,
+  parseHybridScheduleNotes,
+} from "@/lib/hybrid-schedule";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -127,25 +132,49 @@ export default async function EmployeeSchedulePage() {
       : rawWorkMode === "hybrid"
         ? "hybrid"
         : "onsite";
-  const hybridDays: string[] = Array.isArray(employee?.hybrid_onsite_days)
-    ? employee.hybrid_onsite_days
+  const parsedHybrid = parseHybridScheduleNotes(publishedSchedule?.notes);
+  const fallbackOnsiteDays: string[] = Array.isArray(employee?.hybrid_onsite_days)
+    ? normalizeDaysToFull(employee.hybrid_onsite_days)
     : Array.isArray(employee?.work_days)
-    ? employee.work_days
+    ? normalizeDaysToFull(employee.work_days)
     : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const hybridOnsiteDays = parsedHybrid ? parsedHybrid.onsiteDays : fallbackOnsiteDays;
+  const hybridWfhDays = parsedHybrid
+    ? parsedHybrid.wfhDays
+    : workModel === "hybrid"
+      ? DAYS_FULL.slice(0, 5).filter((d) => !hybridOnsiteDays.includes(d))
+      : [];
+  const hybridDays =
+    workModel === "hybrid"
+      ? normalizeDaysToFull([...hybridOnsiteDays, ...hybridWfhDays])
+      : fallbackOnsiteDays;
   const shiftStart = publishedSchedule?.shift_start || employee?.shift_start || "09:00";
   const shiftEnd = publishedSchedule?.shift_end || employee?.shift_end || "18:00";
 
-  const todayDayName = todayDate.toLocaleDateString("en-US", { weekday: "long" });
+  const { full: todayDayName } = getPhtDayInfo(todayDate);
   const todayDateStr = todayDate.toISOString().split("T")[0];
 
-  const isDayOnsite = (dayName: string) => {
-    if (workModel === "onsite") return true;
-    if (workModel === "wfh") return false;
-    const normDays = hybridDays.map((d) => d.trim().toLowerCase());
-    return normDays.includes(dayName.toLowerCase());
+  const getDayWorkMode = (dayName: string, dayIndex: number): "onsite" | "wfh" | "off" => {
+    const isWeekend = dayIndex >= 5;
+    const norm = dayName.trim().toLowerCase();
+    if (workModel === "onsite") {
+      return isWeekend ? "off" : "onsite";
+    }
+    if (workModel === "wfh") {
+      return isWeekend ? "off" : "wfh";
+    }
+    if (hybridOnsiteDays.some((d) => d.toLowerCase() === norm)) return "onsite";
+    if (parsedHybrid) {
+      return hybridWfhDays.some((d) => d.toLowerCase() === norm) ? "wfh" : "off";
+    }
+    return isWeekend ? "off" : "wfh";
   };
 
-  const isTodayOnsite = isDayOnsite(todayDayName);
+  const todayIdx = Math.max(
+    0,
+    DAYS_FULL.findIndex((d) => d.toLowerCase() === todayDayName.toLowerCase())
+  );
+  const isTodayOnsite = getDayWorkMode(todayDayName, todayIdx) === "onsite";
 
   const weekDates = getWeekDates(thisWeekMonday);
   const weekStartStr = thisWeekMondayStr;
@@ -244,8 +273,9 @@ export default async function EmployeeSchedulePage() {
                   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
                   const isToday = dateStr === todayDateStr;
                   const dayName = DAYS_LONG[i];
-                  const isOnsite = isDayOnsite(dayName);
-                  const isWeekend = i >= 5;
+                  const dayMode = getDayWorkMode(dayName, i);
+                  const isOnsite = dayMode === "onsite";
+                  const isOff = dayMode === "off";
                   const leaveEntry = getLeaveForDate(dateStr);
 
                   return (
@@ -256,19 +286,29 @@ export default async function EmployeeSchedulePage() {
                           ? "bg-[#1e1b4b] text-white shadow-sm ring-2 ring-[#1e1b4b]/20"
                           : leaveEntry
                           ? "bg-amber-50 border border-amber-200 text-amber-800"
-                          : isWeekend
+                          : isOff
                           ? "bg-[#f7f6fc] border border-[#e6e4f0] text-text-secondary opacity-75"
                           : isOnsite
-                          ? "bg-blue-50 border border-blue-200 text-blue-800"
-                          : "bg-sky-50 border border-sky-200 text-sky-800"
+                          ? "bg-indigo-50 border border-indigo-200 text-indigo-800"
+                          : "bg-emerald-50 border border-emerald-200 text-emerald-800"
                       }`}
                     >
                       <span className="font-semibold">{DAYS_SHORT[i]}</span>
                       <span className={`mt-0.5 text-[11px] ${isToday ? "text-white/80" : "opacity-75"}`}>
                         {date.getDate()}
                       </span>
-                      <span className="mt-1 text-[10px] font-bold">
-                        {leaveEntry ? "On Leave" : isWeekend ? "Off" : isOnsite ? "Onsite" : "WFH"}
+                      <span
+                        className={`mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          isToday
+                            ? isOff
+                              ? "bg-white/15 text-white"
+                              : isOnsite
+                              ? "bg-indigo-500/40 text-white"
+                              : "bg-emerald-500/40 text-white"
+                            : ""
+                        }`}
+                      >
+                        {leaveEntry ? "On Leave" : isOff ? "Off" : isOnsite ? "Onsite" : "WFH"}
                       </span>
                     </div>
                   );
@@ -282,20 +322,21 @@ export default async function EmployeeSchedulePage() {
                   const isToday = dateStr === todayDateStr;
                   const isPast = date < new Date(todayDateStr);
                   const dayName = DAYS_LONG[i];
-                  const isOnsite = isDayOnsite(dayName);
-                  const isWeekend = i >= 5;
+                  const dayMode = getDayWorkMode(dayName, i);
+                  const isOnsite = dayMode === "onsite";
+                  const isOff = dayMode === "off";
                   const leaveEntry = getLeaveForDate(dateStr);
 
                   const shiftTitle = leaveEntry
                     ? `On Leave (${leaveEntry.leave_type})`
-                    : isWeekend
+                    : isOff
                     ? "No Shift"
                     : isOnsite
                     ? "Standard Shift"
                     : "Remote Work";
                   const statusLabel = leaveEntry
                     ? "On Leave"
-                    : isWeekend
+                    : isOff
                     ? "OFF"
                     : isToday
                     ? "ACTIVE"
@@ -304,7 +345,7 @@ export default async function EmployeeSchedulePage() {
                     : "UPCOMING";
                   const statusStyle = leaveEntry
                     ? "bg-amber-100 text-amber-800 border-amber-200"
-                    : isWeekend
+                    : isOff
                     ? "bg-gray-100 text-gray-600 border-gray-200"
                     : isToday
                     ? "bg-[#1e1b4b] text-white border-[#1e1b4b]"
@@ -336,14 +377,20 @@ export default async function EmployeeSchedulePage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-bold text-text-primary">{shiftTitle}</p>
-                            {!isWeekend && !leaveEntry && (
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isOnsite ? "bg-blue-50 text-blue-700" : "bg-sky-50 text-sky-700"}`}>
+                            {!isOff && !leaveEntry && (
+                              <span
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  isOnsite
+                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                }`}
+                              >
                                 {isOnsite ? "Onsite" : "WFH"}
                               </span>
                             )}
                           </div>
                           <p className="mt-0.5 text-xs text-text-secondary font-medium">
-                            {leaveEntry ? "Approved Leave" : isWeekend ? "Scheduled Rest Day" : formattedShiftRange}
+                            {leaveEntry ? "Approved Leave" : isOff ? "Scheduled Rest Day" : formattedShiftRange}
                           </p>
                         </div>
                       </div>

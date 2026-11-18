@@ -11,10 +11,14 @@ export type HRScheduleEmployee = {
   role: string;
   work_model: "onsite" | "wfh" | "hybrid";
   hybrid_onsite_days: string[];
+  hybrid_wfh_days?: string[];
+  schedule_notes?: string;
   shift_start: string;
   shift_end: string;
   leave_days?: number[];
 };
+
+type HybridDayMode = "onsite" | "wfh" | "off";
 
 type HRSchedulesClientProps = {
   initialEmployees: HRScheduleEmployee[];
@@ -51,8 +55,27 @@ export default function HRSchedulesClient({
   const [shiftEnd, setShiftEnd] = useState<string>("18:00");
   const [workModel, setWorkModel] = useState<"onsite" | "wfh" | "hybrid">("onsite");
   const [workDays, setWorkDays] = useState<string[]>(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
+  const [hybridDayModes, setHybridDayModes] = useState<Record<string, HybridDayMode>>({});
   const [notes, setNotes] = useState<string>("");
   const [isPending, startTransition] = useTransition();
+
+  const buildHybridModesForEmployee = (emp: HRScheduleEmployee): Record<string, HybridDayMode> => {
+    const onsiteNorm = (emp.hybrid_onsite_days || []).map((d) => d.trim().toLowerCase());
+    const hasExplicitWfh = Array.isArray(emp.hybrid_wfh_days);
+    const wfhNorm = (emp.hybrid_wfh_days || []).map((d) => d.trim().toLowerCase());
+    const map: Record<string, HybridDayMode> = {};
+    DAYS_FULL.forEach((dayFull, idx) => {
+      const lower = dayFull.toLowerCase();
+      if (onsiteNorm.includes(lower)) {
+        map[dayFull] = "onsite";
+      } else if (hasExplicitWfh ? wfhNorm.includes(lower) : idx < 5) {
+        map[dayFull] = "wfh";
+      } else {
+        map[dayFull] = "off";
+      }
+    });
+    return map;
+  };
 
   const openEditor = (emp: HRScheduleEmployee) => {
     setEditingEmp(emp);
@@ -65,7 +88,8 @@ export default function HRSchedulesClient({
         ? emp.hybrid_onsite_days
         : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     );
-    setNotes("");
+    setHybridDayModes(buildHybridModesForEmployee(emp));
+    setNotes(emp.schedule_notes || "");
   };
 
   const toggleWorkDay = (dayFull: string) => {
@@ -74,9 +98,22 @@ export default function HRSchedulesClient({
     );
   };
 
+  const setHybridDayMode = (dayFull: string, mode: HybridDayMode) => {
+    setHybridDayModes((prev) => ({ ...prev, [dayFull]: mode }));
+  };
+
   const handleSaveAndPublish = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEmp) return;
+
+    const isHybrid = workModel === "hybrid";
+    const onsiteDays = isHybrid
+      ? DAYS_FULL.filter((d) => hybridDayModes[d] === "onsite")
+      : workDays;
+    const wfhDays = isHybrid
+      ? DAYS_FULL.filter((d) => hybridDayModes[d] === "wfh")
+      : [];
+    const combinedWorkDays = isHybrid ? [...onsiteDays, ...wfhDays] : workDays;
 
     startTransition(async () => {
       const res = await saveAndPublishEmployeeSchedule({
@@ -84,7 +121,9 @@ export default function HRSchedulesClient({
         weekStart,
         shiftStart,
         shiftEnd,
-        workDays,
+        workDays: combinedWorkDays,
+        onsiteDays,
+        wfhDays,
         workModel,
         notes: notes.trim() || null,
       });
@@ -102,7 +141,9 @@ export default function HRSchedulesClient({
                 shift_start: shiftStart,
                 shift_end: shiftEnd,
                 work_model: workModel,
-                hybrid_onsite_days: workDays,
+                hybrid_onsite_days: onsiteDays,
+                hybrid_wfh_days: wfhDays,
+                schedule_notes: notes.trim(),
               }
             : emp
         )
@@ -114,16 +155,34 @@ export default function HRSchedulesClient({
 
   const totalEmployees = employees.length;
 
-  const isEmployeeOnsiteOnDay = (emp: HRScheduleEmployee, dayName: string) => {
-    if (emp.work_model === "onsite") return true;
-    if (emp.work_model === "wfh") return false;
-    // Hybrid
-    const normalizedDays = (emp.hybrid_onsite_days || []).map((d) => d.trim().toLowerCase());
-    return normalizedDays.includes(dayName.toLowerCase());
+  const getEmployeeDayMode = (emp: HRScheduleEmployee, dayIndex: number): HybridDayMode => {
+    const isWeekend = dayIndex >= 5;
+    const dayName = DAYS_FULL[dayIndex].toLowerCase();
+    if (emp.work_model === "onsite") {
+      return isWeekend ? "off" : "onsite";
+    }
+    if (emp.work_model === "wfh") {
+      return isWeekend ? "off" : "wfh";
+    }
+    const onsiteNorm = (emp.hybrid_onsite_days || []).map((d) => d.trim().toLowerCase());
+    if (onsiteNorm.includes(dayName)) return "onsite";
+    if (Array.isArray(emp.hybrid_wfh_days)) {
+      const wfhNorm = emp.hybrid_wfh_days.map((d) => d.trim().toLowerCase());
+      return wfhNorm.includes(dayName) ? "wfh" : "off";
+    }
+    return isWeekend ? "off" : "wfh";
   };
 
-  const onsiteTodayCount = employees.filter((emp) => isEmployeeOnsiteOnDay(emp, todayDayName)).length;
-  const wfhTodayCount = employees.filter((emp) => !isEmployeeOnsiteOnDay(emp, todayDayName)).length;
+  const todayIndex = Math.max(
+    0,
+    DAYS_FULL.findIndex((d) => d.toLowerCase() === todayDayName.trim().toLowerCase())
+  );
+  const onsiteTodayCount = employees.filter(
+    (emp) => getEmployeeDayMode(emp, todayIndex) === "onsite"
+  ).length;
+  const wfhTodayCount = employees.filter(
+    (emp) => getEmployeeDayMode(emp, todayIndex) === "wfh"
+  ).length;
   const hybridTotalCount = employees.filter((emp) => emp.work_model === "hybrid").length;
 
   const filteredEmployees = employees.filter((emp) => {
@@ -152,60 +211,24 @@ export default function HRSchedulesClient({
       );
     }
 
-    const isWeekend = dayIndex >= 5; // Sat, Sun
-    const dayName = DAYS_FULL[dayIndex];
-
-    if (emp.work_model === "onsite") {
-      if (isWeekend) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200">
-            <span>🛑</span> Off
-          </span>
-        );
-      }
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 border border-blue-200">
-          <span>🏢</span> Onsite
-        </span>
-      );
-    }
-
-    if (emp.work_model === "wfh") {
-      if (isWeekend) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200">
-            <span>🛑</span> Off
-          </span>
-        );
-      }
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-[11px] font-semibold text-purple-700 border border-purple-200">
-          <span>🏠</span> WFH
-        </span>
-      );
-    }
-
-    // Hybrid
-    const isOnsiteDay = isEmployeeOnsiteOnDay(emp, dayName);
-    if (isWeekend && !isOnsiteDay) {
+    const mode = getEmployeeDayMode(emp, dayIndex);
+    if (mode === "off") {
       return (
         <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200">
-          <span>🛑</span> Off
+          Off
         </span>
       );
     }
-
-    if (isOnsiteDay) {
+    if (mode === "onsite") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 border border-blue-200">
-          <span>🏢</span> Onsite
+        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 border border-indigo-200">
+          Onsite
         </span>
       );
     }
-
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-[11px] font-semibold text-purple-700 border border-purple-200">
-        <span>🏠</span> WFH
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+        WFH
       </span>
     );
   };
@@ -295,7 +318,7 @@ export default function HRSchedulesClient({
           <span className="text-xs font-semibold text-text-muted whitespace-nowrap">Work Model:</span>
           <select
             value={modelFilter}
-            onChange={(e) => setModelFilter(e.target.value as any)}
+            onChange={(e) => setModelFilter(e.target.value as "All" | "Onsite" | "WFH" | "Hybrid")}
             className="rounded-lg border border-border bg-surface-bg px-3 py-2 text-xs font-semibold text-text-main outline-none focus:border-primary focus:bg-card-bg"
           >
             <option value="All">All Models</option>
@@ -450,30 +473,87 @@ export default function HRSchedulesClient({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Work / Onsite Days
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {DAYS_FULL.map((dayFull, idx) => {
-                    const active = workDays.includes(dayFull);
-                    return (
-                      <button
-                        key={dayFull}
-                        type="button"
-                        onClick={() => toggleWorkDay(dayFull)}
-                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                          active
-                            ? "border-purple-600 bg-purple-600 text-white"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:border-purple-300"
-                        }`}
-                      >
-                        {DAYS_SHORT[idx]}
-                      </button>
-                    );
-                  })}
+              {workModel === "hybrid" ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Per-Day Hybrid Assignment (Mon–Sun)
+                    </label>
+                    <span className="text-[11px] font-medium text-slate-500">
+                      {DAYS_FULL.filter((d) => hybridDayModes[d] === "onsite").length} Onsite ·{" "}
+                      {DAYS_FULL.filter((d) => hybridDayModes[d] === "wfh").length} WFH
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                    {DAYS_FULL.map((dayFull, idx) => {
+                      const mode = hybridDayModes[dayFull] ?? (idx < 5 ? "wfh" : "off");
+                      return (
+                        <div
+                          key={dayFull}
+                          className="flex items-center justify-between rounded-lg bg-white px-3 py-1.5 border border-slate-200/80"
+                        >
+                          <span className="text-xs font-semibold text-slate-800 w-24">
+                            {DAYS_SHORT[idx]}
+                            <span className="text-[11px] font-normal text-slate-400 ml-1">
+                              ({dayFull.slice(0, 3)})
+                            </span>
+                          </span>
+                          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 gap-0.5">
+                            {(["onsite", "wfh", "off"] as const).map((opt) => {
+                              const active = mode === opt;
+                              const activeStyle =
+                                opt === "onsite"
+                                  ? "bg-indigo-600 text-white shadow-xs"
+                                  : opt === "wfh"
+                                    ? "bg-emerald-600 text-white shadow-xs"
+                                    : "bg-slate-600 text-white shadow-xs";
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setHybridDayMode(dayFull, opt)}
+                                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                                    active
+                                      ? activeStyle
+                                      : "text-slate-600 hover:text-slate-900"
+                                  }`}
+                                >
+                                  {opt === "onsite" ? "Onsite" : opt === "wfh" ? "WFH" : "Off"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Work Days
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAYS_FULL.map((dayFull, idx) => {
+                      const active = workDays.includes(dayFull);
+                      return (
+                        <button
+                          key={dayFull}
+                          type="button"
+                          onClick={() => toggleWorkDay(dayFull)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            active
+                              ? "border-purple-600 bg-purple-600 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-700 hover:border-purple-300"
+                          }`}
+                        >
+                          {DAYS_SHORT[idx]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

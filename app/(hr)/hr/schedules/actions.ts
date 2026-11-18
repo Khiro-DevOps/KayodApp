@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
+import {
+  buildHybridScheduleNotes,
+  normalizeDaysToFull,
+  stripHybridScheduleTag,
+} from "@/lib/hybrid-schedule";
 
 export interface SaveAndPublishScheduleInput {
   employeeId: string;
@@ -11,6 +16,8 @@ export interface SaveAndPublishScheduleInput {
   shiftStart: string;
   shiftEnd: string;
   workDays: string[];
+  onsiteDays?: string[];
+  wfhDays?: string[];
   workModel?: "onsite" | "wfh" | "hybrid";
   location?: string | null;
   notes?: string | null;
@@ -68,6 +75,18 @@ export async function saveAndPublishEmployeeSchedule(
     input.location ??
     (input.workModel === "wfh" ? "remote" : input.workModel === "hybrid" ? "hybrid" : "office");
 
+  const isHybrid = input.workModel === "hybrid";
+  const normalizedOnsite = isHybrid
+    ? normalizeDaysToFull(input.onsiteDays ?? input.workDays)
+    : normalizeDaysToFull(input.workDays);
+  const normalizedWfh = isHybrid ? normalizeDaysToFull(input.wfhDays ?? []) : [];
+  const combinedWorkDays = isHybrid
+    ? normalizeDaysToFull([...normalizedOnsite, ...normalizedWfh])
+    : normalizedOnsite;
+  const resolvedNotes = isHybrid
+    ? buildHybridScheduleNotes(input.notes, normalizedOnsite, normalizedWfh)
+    : stripHybridScheduleTag(input.notes);
+
   const { error: upsertErr } = await admin.from("schedules").upsert(
     {
       employee_id: input.employeeId,
@@ -75,7 +94,7 @@ export async function saveAndPublishEmployeeSchedule(
       shift_start: input.shiftStart,
       shift_end: input.shiftEnd,
       location: resolvedLocation,
-      notes: input.notes ?? null,
+      notes: resolvedNotes,
       is_published: true,
       created_by: user.id,
       updated_at: nowIso,
@@ -90,8 +109,8 @@ export async function saveAndPublishEmployeeSchedule(
   const employeeUpdate: Record<string, unknown> = {
     shift_start: input.shiftStart,
     shift_end: input.shiftEnd,
-    work_days: input.workDays,
-    hybrid_onsite_days: input.workDays,
+    work_days: combinedWorkDays,
+    hybrid_onsite_days: normalizedOnsite,
     updated_at: nowIso,
   };
   if (input.workModel) {

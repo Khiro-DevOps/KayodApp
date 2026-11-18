@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  getPhtDayInfo,
+  normalizeDaysToFull,
+  parseHybridScheduleNotes,
+} from "@/lib/hybrid-schedule";
 
 export type ResolvedGeofence =
   | {
@@ -26,6 +31,8 @@ export interface GeofenceEmployeeInput {
   work_location_id?: string | null;
   hybrid_onsite_days?: string[] | null;
   work_days?: string[] | null;
+  onsite_days?: string[] | null;
+  wfh_days?: string[] | null;
 }
 
 type BranchRow = {
@@ -117,17 +124,49 @@ export async function resolveEmployeeGeofence(
         ? "remote"
         : "onsite";
 
-  const todayDayName = new Date()
-    .toLocaleDateString("en-US", { weekday: "long" })
-    .toLowerCase();
-  const hybridOnsiteDays = Array.isArray(employee.hybrid_onsite_days)
-    ? employee.hybrid_onsite_days
-    : Array.isArray(employee.work_days)
-      ? employee.work_days
-      : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const isHybridRemoteDay =
-    workMode === "hybrid" &&
-    !hybridOnsiteDays.some((d) => d.trim().toLowerCase() === todayDayName);
+  const { full: todayPhtDayName } = getPhtDayInfo();
+  const todayLower = todayPhtDayName.toLowerCase();
+
+  let isHybridRemoteDay = false;
+  if (workMode === "hybrid") {
+    let onsiteDays = normalizeDaysToFull(
+      employee.onsite_days ??
+        (Array.isArray(employee.hybrid_onsite_days)
+          ? employee.hybrid_onsite_days
+          : Array.isArray(employee.work_days)
+            ? employee.work_days
+            : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    );
+    let wfhDays = normalizeDaysToFull(employee.wfh_days);
+
+    if (!employee.onsite_days && !employee.wfh_days) {
+      const { data: latestSchedule } = await supabase
+        .from("schedules")
+        .select("notes")
+        .eq("employee_id", employee.id)
+        .eq("is_published", true)
+        .order("week_start", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ notes?: string | null }>();
+
+      const parsed = parseHybridScheduleNotes(latestSchedule?.notes);
+      if (parsed) {
+        onsiteDays = parsed.onsiteDays;
+        wfhDays = parsed.wfhDays;
+      }
+    }
+
+    const isTodayWfh = wfhDays.some((d) => d.toLowerCase() === todayLower);
+    const isTodayOnsite = onsiteDays.some((d) => d.toLowerCase() === todayLower);
+
+    if (wfhDays.length > 0) {
+      isHybridRemoteDay = isTodayWfh || !isTodayOnsite;
+    } else {
+      isHybridRemoteDay = !isTodayOnsite;
+    }
+  }
+
   const isRemoteDay = workMode === "remote" || isHybridRemoteDay;
 
   if (isRemoteDay) {

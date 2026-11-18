@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
+import {
+  DAYS_FULL,
+  getPhtDayInfo,
+  normalizeDaysToFull,
+  parseHybridScheduleNotes,
+} from "@/lib/hybrid-schedule";
 
 export const metadata = {
   title: "Schedules & Work Models | Kayod HR",
@@ -58,14 +64,27 @@ export default async function HRSchedulesPage() {
   const activeEmployeeIds = (employees ?? []).map((emp) => emp.id);
 
   const leaveDaysByEmp = new Map<string, number[]>();
+  const hybridScheduleByEmp = new Map<
+    string,
+    { onsiteDays: string[]; wfhDays: string[]; cleanNotes: string }
+  >();
   if (activeEmployeeIds.length > 0) {
-    const { data: approvedLeaves } = await supabase
-      .from("leave_requests")
-      .select("employee_id, start_date, end_date")
-      .in("employee_id", activeEmployeeIds)
-      .eq("status", "approved")
-      .lte("start_date", weekEndStr)
-      .gte("end_date", weekStartStr);
+    const [{ data: approvedLeaves }, { data: publishedSchedules }] = await Promise.all([
+      supabase
+        .from("leave_requests")
+        .select("employee_id, start_date, end_date")
+        .in("employee_id", activeEmployeeIds)
+        .eq("status", "approved")
+        .lte("start_date", weekEndStr)
+        .gte("end_date", weekStartStr),
+      supabase
+        .from("schedules")
+        .select("employee_id, week_start, notes, updated_at")
+        .in("employee_id", activeEmployeeIds)
+        .eq("is_published", true)
+        .order("week_start", { ascending: false })
+        .order("updated_at", { ascending: false }),
+    ]);
 
     for (const lr of approvedLeaves ?? []) {
       const indices = leaveDaysByEmp.get(lr.employee_id) ?? [];
@@ -76,12 +95,21 @@ export default async function HRSchedulesPage() {
       });
       leaveDaysByEmp.set(lr.employee_id, indices);
     }
+
+    for (const sched of publishedSchedules ?? []) {
+      if (hybridScheduleByEmp.has(sched.employee_id)) continue;
+      const parsed = parseHybridScheduleNotes(sched.notes);
+      if (parsed) {
+        hybridScheduleByEmp.set(sched.employee_id, parsed);
+      }
+    }
   }
 
   type RawEmployeeRow = {
     id: string;
     job_title: string | null;
     work_mode: string | null;
+    work_days: string[] | null;
     hybrid_onsite_days: string[] | null;
     shift_start: string | null;
     shift_end: string | null;
@@ -94,22 +122,32 @@ export default async function HRSchedulesPage() {
       const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
       const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
+      const parsedHybrid = hybridScheduleByEmp.get(emp.id);
+      const defaultOnsite = Array.isArray(emp.hybrid_onsite_days)
+        ? normalizeDaysToFull(emp.hybrid_onsite_days)
+        : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+      const onsiteDays = parsedHybrid ? parsedHybrid.onsiteDays : defaultOnsite;
+      const wfhDays = parsedHybrid
+        ? parsedHybrid.wfhDays
+        : rawModel === "hybrid"
+          ? DAYS_FULL.slice(0, 5).filter((d) => !onsiteDays.includes(d))
+          : [];
 
       return {
         id: emp.id,
         name,
         role: emp.job_title || "Staff",
         work_model: rawModel as HRScheduleEmployee["work_model"],
-        hybrid_onsite_days: Array.isArray(emp.hybrid_onsite_days)
-          ? emp.hybrid_onsite_days
-          : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        hybrid_onsite_days: onsiteDays,
+        hybrid_wfh_days: wfhDays,
+        schedule_notes: parsedHybrid?.cleanNotes || "",
         shift_start: emp.shift_start || "09:00",
         shift_end: emp.shift_end || "18:00",
         leave_days: leaveDaysByEmp.get(emp.id) ?? [],
       };
     });
 
-  const todayDayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const { full: todayDayName } = getPhtDayInfo();
 
   return (
     <HRSchedulesClient
