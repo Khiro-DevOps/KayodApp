@@ -278,8 +278,21 @@ export default function OfferPageClient({
   const normalizedStatus = offer.status.toLowerCase();
   const isSignedStatus = ["signed", "accepted", "hired"].includes(normalizedStatus);
   const [hasSigned, setHasSigned] = useState(isAlreadySigned || isSignedStatus);
+  const [signToastMessage, setSignToastMessage] = useState<string | null>(null);
   const pollableStatuses = ["sent", "pending_signature", "negotiating"];
   const shouldPollOffer = !hasSigned && pollableStatuses.includes(normalizedStatus);
+
+  useEffect(() => {
+    if (!signToastMessage) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setSignToastMessage(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timerId);
+  }, [signToastMessage]);
 
   useEffect(() => {
     if (isAlreadySigned || isSignedStatus) {
@@ -380,9 +393,10 @@ export default function OfferPageClient({
 
   const handleSigningComplete = async (data?: unknown) => {
     setHasSigned(true);
+    setSignToastMessage("Contract signed successfully! HR has been notified to confirm your hire.");
 
     try {
-      const response = await fetch(`/api/job-offers/${token}/sign`, {
+      const response = await fetch(`/api/job-offers/${encodeURIComponent(token)}/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "signed", docusealData: data }),
@@ -400,13 +414,26 @@ export default function OfferPageClient({
 
   const status = normalizedStatus;
   const displayStatus = hasSigned ? "signed" : status;
-  const canSign = Boolean(resolvedEmbedSrc) && !hasSigned;
+  const isNegotiatingLocked = normalizedStatus === "negotiating" && !hasSigned;
+  const canSign = Boolean(resolvedEmbedSrc) && !hasSigned && !isNegotiatingLocked;
   const showSignedBanner = hasSigned;
   const salaryText = formatSalaryRange(salaryMin, salaryMax, currency);
 
-  if (normalizedApplicationStatus === "pre_employment") {
+  const toastBanner = signToastMessage ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed right-4 top-4 z-50 flex max-w-md items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg"
+    >
+      <CheckCircle className="h-5 w-5 shrink-0 text-emerald-600" />
+      <span>{signToastMessage}</span>
+    </div>
+  ) : null;
+
+  if (!isHR && normalizedApplicationStatus === "pre_employment") {
     return (
       <div className="w-full">
+        {toastBanner}
         <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
           <div className="space-y-6">
             <section className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 p-6 shadow-sm sm:p-8">
@@ -461,7 +488,7 @@ export default function OfferPageClient({
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => router.push(`/apply/applications/${encodeURIComponent(applicationId)}/documents`)}
+                  onClick={() => router.push(`/applicant/applications/${encodeURIComponent(applicationId)}`)}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
                 >
                   Open onboarding documents
@@ -486,6 +513,7 @@ export default function OfferPageClient({
 
   return (
     <div className="w-full">
+      {toastBanner}
       <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
         <div className="space-y-6">
           <section className="py-10 text-center">
@@ -579,6 +607,10 @@ export default function OfferPageClient({
                       Download signed contract
                     </a>
                   ) : null}
+                </div>
+              ) : isNegotiatingLocked ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                  Negotiation in progress — signing will unlock once HR sends the updated offer.
                 </div>
               ) : canSign && resolvedEmbedSrc ? (
                 <div className="space-y-4">

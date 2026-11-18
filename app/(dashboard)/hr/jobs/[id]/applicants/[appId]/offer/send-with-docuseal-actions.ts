@@ -118,14 +118,13 @@ export async function sendOfferWithDocuSeal(
     );
 
     const companyLogoUrl = await resolveCompanyLogoUrlForUser(user.id);
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim() || "http://localhost:3000";
     const submission = await createDocusealSubmission({
       templateId,
       submitterName: candidateName,
       submitterEmail: candidateEmail,
       externalId: offerId,
       sendEmail: true,
-      redirectUrl: `${appUrl}/applications/${applicationId}`,
+      redirectUrl: undefined,
       companyLogoUrl,
       prefillFields,
     });

@@ -87,6 +87,7 @@ const getApplicantStageKey = (status: string | null | undefined): string => {
         case "pre-employment":
         case "pre_employment":
         case "negotiation_pending":
+        case "hired":
             return "offer";
 
         case "rejected":
@@ -129,10 +130,15 @@ export default function ApplicationDetailView({
     }).profiles;
     const jobTitle = jobPosting?.title ?? "Senior Data Analytics & Business Intelligence Lead";
 
+    const offerSectionRef = React.useRef<HTMLDivElement>(null);
     const rawStatus = String(application.status ?? "new").toLowerCase().trim();
     const normalizedOfferStatus = String(activeContractOffer?.status ?? "").toUpperCase();
+    const isAlreadySignedOffer =
+        normalizedOfferStatus === "SIGNED" || normalizedOfferStatus === "HIRED";
     const isSentJobOffer =
-        normalizedOfferStatus === "SENT" || normalizedOfferStatus === "NEGOTIATING";
+        normalizedOfferStatus === "SENT" ||
+        normalizedOfferStatus === "NEGOTIATING" ||
+        isAlreadySignedOffer;
     const currentStageKey = isSentJobOffer ? "offer" : getApplicantStageKey(application.status);
     const isRejected = currentStageKey === "rejected";
 
@@ -280,8 +286,8 @@ export default function ApplicationDetailView({
                                                     : "Pending"}
                                         </p>
 
-                                        {/* Offer Section Document Submission URL Injector Component */}
-                                        {stage.key === "offer" && isActive && activeContractOffer?.docuseal_submission_url && (
+                                        {/* Offer Section In-App Scroll Trigger */}
+                                        {stage.key === "offer" && isActive && activeContractOffer && (
                                             <div className="mt-4 bg-surface-container-high rounded-xl p-4 border border-indigo-100 shadow-sm max-w-md animate-fadeIn">
                                                 <div className="flex items-center gap-3 mb-3">
                                                     <span className="material-symbols-outlined text-indigo-600" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -291,14 +297,13 @@ export default function ApplicationDetailView({
                                                         Onboarding document package ready
                                                     </p>
                                                 </div>
-                                                <a
-                                                    href={activeContractOffer.docuseal_submission_url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
+                                                <button
+                                                    type="button"
+                                                    onClick={() => offerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                                                     className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-body-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm active:scale-95"
                                                 >
-                                                    Open documents ↗
-                                                </a>
+                                                    {isAlreadySignedOffer ? "View Signed Offer" : "Sign Offer"}
+                                                </button>
                                             </div>
                                         )}
                                     </div>
@@ -430,12 +435,12 @@ export default function ApplicationDetailView({
             </div>
 
             {isSentJobOffer && activeContractOffer && (
-                <div className="mt-8">
+                <div ref={offerSectionRef} className="mt-8">
                     <OfferPageClient
                         token={activeContractOffer.id}
                         applicationId={application.id}
                         offer={{ status: String(activeContractOffer.status || "sent").toLowerCase() }}
-                        isAlreadySigned={false}
+                        isAlreadySigned={isAlreadySignedOffer}
                         applicationStatus={application.status}
                         companyName={activeContractOffer.company_name || "Hiring Company"}
                         candidateFirstName={candidateProfile?.first_name?.trim() || "Candidate"}
