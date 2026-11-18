@@ -9,6 +9,7 @@ import type { JobPosting } from "@/lib/types";
 import type { RequiredDocumentDraft } from "@/lib/pre-employment-actions";
 import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 import JobForm, { type JobFormValues } from "@/components/job-form";
+import { parseCompensationPackage } from "@/lib/compensation-package";
 
 export default function EditJobPage({
   params,
@@ -80,6 +81,10 @@ function EditJobForm({ jobId }: { jobId: string }) {
     );
   }
 
+  const settings = ((job as { offer_letter_settings?: Record<string, unknown> | null }).offer_letter_settings ??
+    null) as Record<string, unknown> | null;
+  const compensationPackage = parseCompensationPackage(settings?.compensation_package, settings);
+
   const initialValues: JobFormValues = {
     title: job.title,
     industry: job.industry ?? undefined,
@@ -98,6 +103,21 @@ function EditJobForm({ jobId }: { jobId: string }) {
     requirements: job.requirements ?? undefined,
     skills: job.required_skills ?? [],
     isPublished: job.is_published,
+    phDepartment: typeof settings?.phDepartment === "string" ? settings.phDepartment : undefined,
+    phSupervisorName:
+      typeof settings?.phSupervisorName === "string" ? settings.phSupervisorName : undefined,
+    phSupervisorTitle:
+      typeof settings?.phSupervisorTitle === "string" ? settings.phSupervisorTitle : undefined,
+    phEmploymentStatus:
+      typeof settings?.phEmploymentStatus === "string" ? settings.phEmploymentStatus : undefined,
+    phProbationPeriodDays:
+      settings?.phProbationPeriodDays != null ? String(settings.phProbationPeriodDays) : undefined,
+    phStartDate: typeof settings?.phStartDate === "string" ? settings.phStartDate : undefined,
+    phMonthlyBasicSalary:
+      settings?.phMonthlyBasicSalary != null ? String(settings.phMonthlyBasicSalary) : undefined,
+    scheduleType: ((job as any).schedule_type as JobFormValues["scheduleType"]) ?? undefined,
+    restDaysType: ((job as any).rest_days_type as JobFormValues["restDaysType"]) ?? undefined,
+    compensationPackage,
   };
 
   return (
@@ -111,6 +131,7 @@ function EditJobForm({ jobId }: { jobId: string }) {
       initialValues={initialValues}
       initialDocuments={requiredDocuments}
       workLocations={workLocations}
+      showOfferLetterSettings
       showPublicationStatus
     />
   );

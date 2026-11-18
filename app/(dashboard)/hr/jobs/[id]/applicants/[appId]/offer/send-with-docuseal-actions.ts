@@ -35,7 +35,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("id, title, location, currency, docuseal_template_id, created_by")
+      .select("id, title, location, currency, docuseal_template_id, created_by, shift_start, shift_end, work_days")
       .eq("id", jobId)
       .single();
 
@@ -72,7 +72,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: offerRow, error: offerError } = await admin
       .from("job_offers")
-      .select("id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, financial_package, job_metadata, metadata")
+      .select("id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, shift_start, shift_end, work_days, financial_package, job_metadata, metadata")
       .eq("id", offerId)
       .single();
 
@@ -112,6 +112,9 @@ export async function sendOfferWithDocuSeal(
         currency: job.currency,
         location: job.location,
         company_name: tenantRow?.name ?? null,
+        shift_start: job.shift_start ?? null,
+        shift_end: job.shift_end ?? null,
+        work_days: job.work_days ?? null,
       },
       candidate,
       branchRow

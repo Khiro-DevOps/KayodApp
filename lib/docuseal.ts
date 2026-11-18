@@ -40,6 +40,12 @@ type DocusealFormWebhookPayload = {
 };
 
 import { generateContractBody } from "@/lib/gemini";
+import {
+  computeCompensationTotals,
+  formatCompensationSummaryText,
+  parseCompensationPackage,
+  type PhilippineCompensationPackage,
+} from "@/lib/compensation-package";
 
 export function getDocusealBaseUrl() {
   return (
@@ -265,6 +271,9 @@ export interface OfferLetterSettings {
   phSssEnrolled?: boolean;
   phPhilhealthEnrolled?: boolean;
   phPagibigEnrolled?: boolean;
+  compensation_package?: PhilippineCompensationPackage;
+  monthly_allowance?: number;
+  attendance_incentive?: number;
 }
 
 export interface JobOfferInput {
@@ -313,8 +322,19 @@ export type OfferPrefillFields = {
   company_name: string;
   department: string;
   salary: string;
+  base_salary?: string;
   monthly_allowance?: string;
+  rice_allowance?: string;
+  transport_allowance?: string;
+  internet_allowance?: string;
+  meal_allowance?: string;
+  clothing_allowance?: string;
   attendance_incentive?: string;
+  performance_bonus?: string;
+  total_monthly_package?: string;
+  work_schedule_and_breaks?: string;
+  probation_terms?: string;
+  compensation_and_benefits_summary?: string;
   start_date: string;
   work_setup: string;
   work_location: string;
@@ -342,6 +362,9 @@ export function buildOfferPrefillFields(
     work_mode?: string | null;
     department?: string | null;
     probation_days?: number | string | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    work_days?: string[] | null;
     financial_package?: Record<string, unknown> | null;
     job_metadata?: Record<string, unknown> | null;
     metadata?: Record<string, unknown> | null;
@@ -352,6 +375,9 @@ export function buildOfferPrefillFields(
     location?: string | null;
     company_name?: string | null;
     tenant_name?: string | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    work_days?: string[] | null;
   } | null | undefined,
   applicant: {
     first_name?: string | null;
@@ -443,12 +469,58 @@ export function buildOfferPrefillFields(
     }).format(parsed);
   };
 
+  const compPkg = parseCompensationPackage(
+    offerPkg.compensation_package ?? offerMeta.compensation_package,
+    { ...offerMeta, ...offerPkg }
+  );
+  const compTotals = computeCompensationTotals(compPkg, numericSalary ?? 0);
+
   const monthlyAllowance = formatOptionalAmount(
-    offerPkg.monthly_allowance ?? offerMeta.monthly_allowance
+    offerPkg.monthly_allowance ?? offerMeta.monthly_allowance ?? compTotals.monthlyAllowancesTotal
+  );
+  const riceAllowance = formatOptionalAmount(
+    compPkg.rice_allowance.enabled ? compPkg.rice_allowance.amount : 0
+  );
+  const transportAllowance = formatOptionalAmount(
+    compPkg.transport_allowance.enabled ? compPkg.transport_allowance.amount : 0
+  );
+  const internetAllowance = formatOptionalAmount(
+    compPkg.internet_allowance.enabled ? compPkg.internet_allowance.amount : 0
+  );
+  const mealAllowance = formatOptionalAmount(
+    compPkg.meal_allowance.enabled ? compPkg.meal_allowance.amount : 0
+  );
+  const clothingAllowance = formatOptionalAmount(
+    compPkg.clothing_allowance.enabled ? compPkg.clothing_allowance.amount : 0
   );
   const attendanceIncentive = formatOptionalAmount(
-    offerPkg.attendance_incentive ?? offerMeta.attendance_incentive
+    offerPkg.attendance_incentive ??
+      offerMeta.attendance_incentive ??
+      compTotals.attendanceIncentiveAmount
   );
+  const performanceBonus = formatOptionalAmount(
+    compPkg.performance_bonus.enabled ? compPkg.performance_bonus.amount : 0
+  );
+  const totalMonthlyPackage = formatOptionalAmount(compTotals.totalMonthlyPackage);
+
+  const shiftStartStr = (offer?.shift_start ?? job?.shift_start ?? "08:00").slice(0, 5);
+  const shiftEndStr = (offer?.shift_end ?? job?.shift_end ?? "17:00").slice(0, 5);
+  const workDaysArr =
+    Array.isArray(offer?.work_days) && offer.work_days.length > 0
+      ? offer.work_days
+      : Array.isArray(job?.work_days) && job.work_days.length > 0
+        ? job.work_days
+        : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const workScheduleAndBreaks = `${workDaysArr.join(", ")} · ${shiftStartStr} – ${shiftEndStr} PHT (8 hrs paid + 1 hr unpaid lunch, 2 × 15-min paid breaks)`;
+
+  const probationTerms = probationDays
+    ? `${probationDays} days probationary period (Art. 281, Labor Code of the Philippines)`
+    : "Regular employment terms";
+
+  const compensationSummary =
+    numericSalary !== null && Number.isFinite(numericSalary)
+      ? formatCompensationSummaryText(compPkg, numericSalary, currency)
+      : "";
 
   return {
     candidate_name: candidateName,
@@ -456,8 +528,19 @@ export function buildOfferPrefillFields(
     company_name: companyName,
     department,
     salary,
+    ...(salary ? { base_salary: salary } : {}),
     ...(monthlyAllowance ? { monthly_allowance: monthlyAllowance } : {}),
+    ...(riceAllowance ? { rice_allowance: riceAllowance } : {}),
+    ...(transportAllowance ? { transport_allowance: transportAllowance } : {}),
+    ...(internetAllowance ? { internet_allowance: internetAllowance } : {}),
+    ...(mealAllowance ? { meal_allowance: mealAllowance } : {}),
+    ...(clothingAllowance ? { clothing_allowance: clothingAllowance } : {}),
     ...(attendanceIncentive ? { attendance_incentive: attendanceIncentive } : {}),
+    ...(performanceBonus ? { performance_bonus: performanceBonus } : {}),
+    ...(totalMonthlyPackage ? { total_monthly_package: totalMonthlyPackage } : {}),
+    work_schedule_and_breaks: workScheduleAndBreaks,
+    probation_terms: probationTerms,
+    ...(compensationSummary ? { compensation_and_benefits_summary: compensationSummary } : {}),
     start_date: startDate,
     work_setup: workSetup,
     work_location: workLocation,

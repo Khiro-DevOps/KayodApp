@@ -33,7 +33,7 @@ export default async function NewJobPage() {
     <JobForm
       action={createJob}
       title="Post New Job"
-      submitLabel="Create Job"
+      submitLabel="Publish Job Posting"
       backHref="/hr/jobs"
       initialDocuments={DEFAULT_REQUIRED_DOCUMENTS}
       showOfferLetterSettings

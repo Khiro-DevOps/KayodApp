@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { sendOfferWithDocuSeal } from "../../(dashboard)/hr/jobs/[id]/applicants/[appId]/offer/send-with-docuseal-actions";
 import { createSignedDocumentPlaceholderWithTemplateFallback } from "@/lib/contract-template-compat";
+import {
+  computeCompensationTotals,
+  parseCompensationPackage,
+} from "@/lib/compensation-package";
 
 export async function sendHydratedOffer(jobId: string, applicationId: string) {
   const supabase = await createClient();
@@ -66,24 +70,34 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
   // 2. Hydrate the initial Offer Record and set state to DRAFT
   const baseSalary = Number(job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0) || 0;
+  const offerSettings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
+  const compensationPackage = parseCompensationPackage(
+    offerSettings?.compensation_package,
+    offerSettings
+  );
+  const compTotals = computeCompensationTotals(compensationPackage, baseSalary);
   const monthlyAllowance =
-    Math.max(
-      0,
-      Number(
-        job.offer_letter_settings?.monthly_allowance ??
-          job.offer_letter_settings?.phMonthlyAllowance ??
-          0
-      ) || 0
-    );
+    compTotals.monthlyAllowancesTotal > 0
+      ? compTotals.monthlyAllowancesTotal
+      : Math.max(
+          0,
+          Number(
+            job.offer_letter_settings?.monthly_allowance ??
+              job.offer_letter_settings?.phMonthlyAllowance ??
+              0
+          ) || 0
+        );
   const attendanceIncentive =
-    Math.max(
-      0,
-      Number(
-        job.offer_letter_settings?.attendance_incentive ??
-          job.offer_letter_settings?.phAttendanceIncentive ??
-          0
-      ) || 0
-    );
+    compTotals.attendanceIncentiveAmount > 0
+      ? compTotals.attendanceIncentiveAmount
+      : Math.max(
+          0,
+          Number(
+            job.offer_letter_settings?.attendance_incentive ??
+              job.offer_letter_settings?.phAttendanceIncentive ??
+              0
+          ) || 0
+        );
 
   const { data: offer, error: offerError } = await admin
     .from("job_offers")
@@ -108,13 +122,21 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
         offered_salary: baseSalary,
         monthly_allowance: monthlyAllowance,
         attendance_incentive: attendanceIncentive,
+        performance_bonus: compTotals.performanceBonusAmount,
+        compensation_package: compensationPackage,
       },
       job_metadata: {
         company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
+        benefits:
+          compTotals.selectedBenefitLabels.length > 0
+            ? compTotals.selectedBenefitLabels
+            : job.offer_letter_settings?.selectedBenefits ?? null,
         monthly_allowance: monthlyAllowance,
         attendance_incentive: attendanceIncentive,
+        performance_bonus: compTotals.performanceBonusAmount,
+        compensation_package: compensationPackage,
       },
     })
     .select()
@@ -364,24 +386,33 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
     const baseSalary = Number(job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0) || 0;
+    const compensationPackage = parseCompensationPackage(
+      settings?.compensation_package,
+      settings
+    );
+    const compTotals = computeCompensationTotals(compensationPackage, baseSalary);
     const monthlyAllowance =
-      Math.max(
-        0,
-        Number(
-          settings?.monthly_allowance ??
-            settings?.phMonthlyAllowance ??
-            0
-        ) || 0
-      );
+      compTotals.monthlyAllowancesTotal > 0
+        ? compTotals.monthlyAllowancesTotal
+        : Math.max(
+            0,
+            Number(
+              settings?.monthly_allowance ??
+                settings?.phMonthlyAllowance ??
+                0
+            ) || 0
+          );
     const attendanceIncentive =
-      Math.max(
-        0,
-        Number(
-          settings?.attendance_incentive ??
-            settings?.phAttendanceIncentive ??
-            0
-        ) || 0
-      );
+      compTotals.attendanceIncentiveAmount > 0
+        ? compTotals.attendanceIncentiveAmount
+        : Math.max(
+            0,
+            Number(
+              settings?.attendance_incentive ??
+                settings?.phAttendanceIncentive ??
+                0
+            ) || 0
+          );
 
     const draftPayload = {
       application_id: applicationId,
@@ -406,15 +437,22 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
         offered_salary: baseSalary,
         monthly_allowance: monthlyAllowance,
         attendance_incentive: attendanceIncentive,
+        performance_bonus: compTotals.performanceBonusAmount,
+        compensation_package: compensationPackage,
       },
       job_metadata: {
         company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
         // include any selected benefits if present in job.offer_letter_settings
-        benefits: job.offer_letter_settings?.selectedBenefits ?? null,
+        benefits:
+          compTotals.selectedBenefitLabels.length > 0
+            ? compTotals.selectedBenefitLabels
+            : job.offer_letter_settings?.selectedBenefits ?? null,
         monthly_allowance: monthlyAllowance,
         attendance_incentive: attendanceIncentive,
+        performance_bonus: compTotals.performanceBonusAmount,
+        compensation_package: compensationPackage,
       },
     };
 

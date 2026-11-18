@@ -7,6 +7,10 @@ import { revalidatePath } from "next/cache";
 import { createJobOfferTemplate, type OfferLetterSettings } from "@/lib/docuseal";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { saveJobRequiredDocuments } from "@/lib/pre-employment-actions";
+import {
+  computeCompensationTotals,
+  parseCompensationPackage,
+} from "@/lib/compensation-package";
 
 async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>, id: string}): Promise<boolean> {
   const authRole =
@@ -77,6 +81,21 @@ export async function createJob(formData: FormData) {
   const offerNotes = formData.get("offer_notes") as string;
   const requirementsToProceed = formData.get("requirements_to_proceed") as string;
   const requiredDocumentsJson = formData.get("required_documents_json");
+  const compensationPackageRaw = formData.get("compensation_package_json");
+
+  let parsedCompensationRaw: unknown = null;
+  if (typeof compensationPackageRaw === "string" && compensationPackageRaw.trim()) {
+    try {
+      parsedCompensationRaw = JSON.parse(compensationPackageRaw);
+    } catch {
+      parsedCompensationRaw = null;
+    }
+  }
+  const compensationPackage = parseCompensationPackage(parsedCompensationRaw);
+  const compTotals = computeCompensationTotals(
+    compensationPackage,
+    ph_monthly_basic_salary ? parseFloat(ph_monthly_basic_salary) : 0
+  );
 
   // Process skills
   const skills = skillsRaw ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -97,20 +116,42 @@ export async function createJob(formData: FormData) {
     phMonthlyBasicSalary: ph_monthly_basic_salary ? parseFloat(ph_monthly_basic_salary) : undefined,
     phPayFrequency: ph_pay_frequency || undefined,
     phSigningBonus: ph_signing_bonus ? parseFloat(ph_signing_bonus) : undefined,
-    phTransportAllowance: ph_transport_allowance ? parseFloat(ph_transport_allowance) : undefined,
-    phInternetAllowance: ph_internet_allowance ? parseFloat(ph_internet_allowance) : undefined,
-    phMealAllowance: ph_meal_allowance ? parseFloat(ph_meal_allowance) : undefined,
+    phTransportAllowance: compensationPackage.transport_allowance.enabled
+      ? compensationPackage.transport_allowance.amount
+      : ph_transport_allowance
+        ? parseFloat(ph_transport_allowance)
+        : undefined,
+    phInternetAllowance: compensationPackage.internet_allowance.enabled
+      ? compensationPackage.internet_allowance.amount
+      : ph_internet_allowance
+        ? parseFloat(ph_internet_allowance)
+        : undefined,
+    phMealAllowance: compensationPackage.meal_allowance.enabled
+      ? compensationPackage.meal_allowance.amount
+      : ph_meal_allowance
+        ? parseFloat(ph_meal_allowance)
+        : undefined,
     phNightDifferential: ph_night_differential ? parseFloat(ph_night_differential) : undefined,
     phServiceIncentiveLeave: ph_service_incentive_leave ? parseInt(ph_service_incentive_leave, 10) : undefined,
     phVacationLeaveDays: ph_vacation_leave_days ? parseInt(ph_vacation_leave_days, 10) : undefined,
     phSickLeaveDays: ph_sick_leave_days ? parseInt(ph_sick_leave_days, 10) : undefined,
-    phHmoProvider: ph_hmo_provider || undefined,
-    phMandatory13thMonth: true, // Always true per PH law
+    phHmoProvider: compensationPackage.hmo_coverage.enabled
+      ? `HMO (${compensationPackage.hmo_coverage.timing === "day_1" ? "Day 1" : "Upon Regularization"})`
+      : ph_hmo_provider || undefined,
+    phMandatory13thMonth: compensationPackage.thirteenth_month_pay,
     phSssEnrolled: true,
     phPhilhealthEnrolled: true,
     phPagibigEnrolled: true,
+    compensation_package: compensationPackage,
+    monthly_allowance: compTotals.monthlyAllowancesTotal,
+    attendance_incentive: compTotals.attendanceIncentiveAmount,
     // New offer defaults
-    selectedBenefits: selectedBenefits && selectedBenefits.length > 0 ? selectedBenefits : undefined,
+    selectedBenefits:
+      compTotals.selectedBenefitLabels.length > 0
+        ? compTotals.selectedBenefitLabels
+        : selectedBenefits && selectedBenefits.length > 0
+          ? selectedBenefits
+          : undefined,
     offerExpiryDays: offerExpiryDays ? parseInt(offerExpiryDays, 10) : undefined,
     negotiationAllowed: negotiationAllowed ? true : undefined,
     counterOfferAllowed: counterOfferAllowed ? true : undefined,
@@ -242,6 +283,14 @@ export async function updateJob(formData: FormData) {
   const job_category = formData.get("job_category") as string;
   const is_published = formData.get("is_published") === "true";
   const requiredDocumentsJson = formData.get("required_documents_json");
+  const compensationPackageRaw = formData.get("compensation_package_json");
+  const ph_department = formData.get("ph_department") as string;
+  const ph_supervisor_name = formData.get("ph_supervisor_name") as string;
+  const ph_supervisor_title = formData.get("ph_supervisor_title") as string;
+  const ph_employment_status = formData.get("ph_employment_status") as string;
+  const ph_probation_period_days = formData.get("ph_probation_period_days") as string;
+  const ph_start_date = formData.get("ph_start_date") as string;
+  const ph_monthly_basic_salary = formData.get("ph_monthly_basic_salary") as string;
 
   const skills = skillsRaw
     ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean)
@@ -255,6 +304,52 @@ export async function updateJob(formData: FormData) {
     : null;
 
   const adminClient = getAdminClient();
+  const { data: existingJob } = await adminClient
+    .from("job_postings")
+    .select("offer_letter_settings")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  let parsedCompensationRaw: unknown = null;
+  if (typeof compensationPackageRaw === "string" && compensationPackageRaw.trim()) {
+    try {
+      parsedCompensationRaw = JSON.parse(compensationPackageRaw);
+    } catch {
+      parsedCompensationRaw = null;
+    }
+  }
+  const existingSettings = (existingJob?.offer_letter_settings ?? {}) as Record<string, unknown>;
+  const compensationPackage = parseCompensationPackage(
+    parsedCompensationRaw ?? existingSettings.compensation_package,
+    existingSettings
+  );
+  const compTotals = computeCompensationTotals(
+    compensationPackage,
+    ph_monthly_basic_salary
+      ? parseFloat(ph_monthly_basic_salary)
+      : Number(existingSettings.phMonthlyBasicSalary ?? salaryMin ?? 0) || 0
+  );
+
+  const updatedOfferLetterSettings: OfferLetterSettings = {
+    ...(existingSettings as OfferLetterSettings),
+    ...(ph_department ? { phDepartment: ph_department } : {}),
+    ...(ph_supervisor_name ? { phSupervisorName: ph_supervisor_name } : {}),
+    ...(ph_supervisor_title ? { phSupervisorTitle: ph_supervisor_title } : {}),
+    ...(ph_employment_status ? { phEmploymentStatus: ph_employment_status } : {}),
+    ...(ph_probation_period_days
+      ? { phProbationPeriodDays: parseInt(ph_probation_period_days, 10) }
+      : {}),
+    ...(ph_start_date ? { phStartDate: ph_start_date } : {}),
+    ...(ph_monthly_basic_salary
+      ? { phMonthlyBasicSalary: parseFloat(ph_monthly_basic_salary) }
+      : {}),
+    phMandatory13thMonth: compensationPackage.thirteenth_month_pay,
+    compensation_package: compensationPackage,
+    monthly_allowance: compTotals.monthlyAllowancesTotal,
+    attendance_incentive: compTotals.attendanceIncentiveAmount,
+    selectedBenefits: compTotals.selectedBenefitLabels,
+  };
+
   const { error } = await adminClient
     .from("job_postings")
     .update({
@@ -274,6 +369,7 @@ export async function updateJob(formData: FormData) {
       industry: industry || null,
       job_category: job_category || null,
       is_published,
+      offer_letter_settings: updatedOfferLetterSettings,
       updated_at: new Date().toISOString(),
     })
     .eq("id", jobId);

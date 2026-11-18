@@ -8,6 +8,12 @@ import {
   updateOfferDraft,
   sendDraftOffer,
 } from "@/app/(auth)/actions/offer-actions";
+import PhilippineCompensationChecklist from "@/components/jobs/PhilippineCompensationChecklist";
+import {
+  computeCompensationTotals,
+  parseCompensationPackage,
+  type PhilippineCompensationPackage,
+} from "@/lib/compensation-package";
 
 export interface OfficeBranchItem {
   id: string;
@@ -117,6 +123,22 @@ export default function OfferDraftForm({
     Array.isArray(initialOffer?.work_days) ? initialOffer.work_days : []
   );
   const [benefits, setBenefits] = useState<string>(formatBenefitsValue(initialOffer));
+  const [compensationPackage, setCompensationPackage] = useState<PhilippineCompensationPackage>(() => {
+    const pkg = (initialOffer?.financial_package ?? {}) as Record<string, unknown>;
+    const meta = (initialOffer?.job_metadata ?? initialOffer?.metadata ?? {}) as Record<string, unknown>;
+    return parseCompensationPackage(pkg.compensation_package ?? meta.compensation_package, {
+      ...meta,
+      ...pkg,
+    });
+  });
+
+  const handleCompensationPackageChange = (nextPkg: PhilippineCompensationPackage) => {
+    setCompensationPackage(nextPkg);
+    const totals = computeCompensationTotals(nextPkg, Number(salary) || 0);
+    setMonthlyAllowance(String(totals.monthlyAllowancesTotal));
+    setAttendanceIncentive(String(totals.attendanceIncentiveAmount));
+    setBenefits(totals.selectedBenefitLabels.join(", "));
+  };
 
   const syncFormFromOffer = (nextOffer: OfferDraftRecord) => {
     setOffer(nextOffer);
@@ -132,6 +154,14 @@ export default function OfferDraftForm({
     setShiftEnd(nextOffer.shift_end ?? "");
     setWorkDays(Array.isArray(nextOffer.work_days) ? nextOffer.work_days : []);
     setBenefits(formatBenefitsValue(nextOffer));
+    const pkg = (nextOffer.financial_package ?? {}) as Record<string, unknown>;
+    const meta = (nextOffer.job_metadata ?? nextOffer.metadata ?? {}) as Record<string, unknown>;
+    setCompensationPackage(
+      parseCompensationPackage(pkg.compensation_package ?? meta.compensation_package, {
+        ...meta,
+        ...pkg,
+      })
+    );
   };
 
   const handleStartDraft = async () => {
@@ -186,6 +216,10 @@ export default function OfferDraftForm({
         offered_salary: Number(salary) || 0,
         monthly_allowance: parsedMonthlyAllowance,
         attendance_incentive: parsedAttendanceIncentive,
+        performance_bonus: compensationPackage.performance_bonus.enabled
+          ? compensationPackage.performance_bonus.amount
+          : 0,
+        compensation_package: compensationPackage,
       },
       job_metadata: {
         ...existingMeta,
@@ -193,6 +227,10 @@ export default function OfferDraftForm({
         benefits: parsedBenefits,
         monthly_allowance: parsedMonthlyAllowance,
         attendance_incentive: parsedAttendanceIncentive,
+        performance_bonus: compensationPackage.performance_bonus.enabled
+          ? compensationPackage.performance_bonus.amount
+          : 0,
+        compensation_package: compensationPackage,
       },
     };
   };
@@ -317,6 +355,18 @@ export default function OfferDraftForm({
         <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
           Draft
         </span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-white/60 p-4 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Philippine Allowances &amp; Incentives
+        </p>
+        <PhilippineCompensationChecklist
+          value={compensationPackage}
+          onChange={handleCompensationPackageChange}
+          allowCustomItems
+          baseSalary={Number(salary) || 0}
+        />
       </div>
 
       <div className="rounded-xl border border-border bg-white/60 p-4 space-y-3">

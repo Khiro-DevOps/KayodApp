@@ -5,6 +5,10 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Building2, Calendar, CheckCircle2, MapPin, Wallet, Briefcase, Laptop, X } from "lucide-react";
 import type { JobPosting, Resume } from "@/lib/types";
+import {
+  computeCompensationTotals,
+  parseCompensationPackage,
+} from "@/lib/compensation-package";
 import ApplyFormClient from "@/app/(dashboard)/jobs/[id]/apply/apply-form-client";
 import { submitApplication } from "@/app/(dashboard)/hr/applicants/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -315,6 +319,36 @@ export default function JobDetailContent({
             </div>
           </section>
         )}
+
+        {(() => {
+          const settings =
+            (
+              job as JobPosting & {
+                offer_letter_settings?: Record<string, unknown> | null;
+              }
+            ).offer_letter_settings ?? null;
+          if (!settings) return null;
+          const pkg = parseCompensationPackage(settings.compensation_package, settings);
+          const { selectedBenefitLabels } = computeCompensationTotals(pkg);
+          if (selectedBenefitLabels.length === 0) return null;
+          return (
+            <section className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Allowances &amp; Benefits
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedBenefitLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
       </div>
 
       {/* Sticky Footer */}
