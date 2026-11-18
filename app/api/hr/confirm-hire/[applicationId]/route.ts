@@ -350,28 +350,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       return NextResponse.json({ error: applicationUpdateError.message }, { status: 500 });
     }
 
-    // 3) Update profile role -> employee
-    const { error: profileUpdateError } = await admin
-      .from("profiles")
-      .update({ role: "employee", updated_at: now })
-      .eq("id", application.applicant_id);
-
-    if (profileUpdateError) {
-      try {
-        await admin
-          .from("job_applications")
-          .update({ status: application.status, updated_at: application.updated_at })
-          .eq("id", applicationId);
-        await admin
-          .from("job_offers")
-          .update({ status: offer.status, updated_at: offer.updated_at })
-          .eq("id", offer.id);
-      } catch (rollbackErr) {
-        console.warn("[Confirm Hire] failed to rollback after profile update failure", rollbackErr);
-      }
-      return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
-    }
-
     const extractedWorkMode = normalizeWorkMode(
       offer.work_mode ??
         offer.work_setup ??
@@ -450,10 +428,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     if (employeeInsertError) {
       try {
         await admin
-          .from("profiles")
-          .update({ role: "applicant", updated_at: application.updated_at })
-          .eq("id", application.applicant_id);
-        await admin
           .from("job_applications")
           .update({ status: application.status, updated_at: application.updated_at })
           .eq("id", applicationId);
@@ -471,9 +445,9 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     await sendNotification({
       recipientId: application.applicant_id,
       type: "hire_confirmed",
-      title: "Hire Confirmed",
-      body: `Congratulations on joining Kayod as ${jobTitle}! Review your schedule and profile to get started.`,
-      actionUrl: "/employee/dashboard",
+      title: "Hiring Confirmed — Welcome Aboard!",
+      body: `HR has confirmed your hire for ${jobTitle}. Click here to open your Employee Dashboard and complete your pre-employment requirements.`,
+      actionUrl: `/api/applicant/activate-employee?applicationId=${encodeURIComponent(applicationId)}`,
       actionName: "confirmHire",
     });
 
