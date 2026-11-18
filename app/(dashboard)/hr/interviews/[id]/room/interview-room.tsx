@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { acquireMediaStream, parseMediaDeviceError } from "@/lib/media-devices";
+import { DEFAULT_STUN_URL } from "@/lib/webrtc-ice";
 
 interface InterviewRoomProps {
   roomId: string;
@@ -35,6 +36,8 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const joinPingRef = useRef<number | null>(null);
   const autosaveRef = useRef<number | null>(null);
   const offerSentRef = useRef(false);
+  const iceConfigRef = useRef<RTCConfiguration>({ iceServers: [{ urls: DEFAULT_STUN_URL }] });
+  const reconnectRef = useRef<(() => Promise<void>) | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -186,16 +189,113 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
 
     };
 
-    const setup = async () => {
+    const loadIceConfig = async (): Promise<RTCConfiguration> => {
+      const fallback: RTCConfiguration = { iceServers: [{ urls: DEFAULT_STUN_URL }] };
       try {
-        const iceResponse = await fetch("/api/turn-credentials");
+        const iceResponse = await fetch("/api/turn-credentials", { cache: "no-store" });
+        if (!iceResponse.ok) return fallback;
+        const data = (await iceResponse.json()) as Partial<RTCConfiguration>;
+        if (!Array.isArray(data?.iceServers) || data.iceServers.length === 0) {
+          return fallback;
+        }
+        return { iceServers: data.iceServers };
+      } catch {
+        return fallback;
+      }
+    };
+
+    const createPeerConnection = (iceConfig: RTCConfiguration, stream: MediaStream) => {
+      const pc = new RTCPeerConnection(iceConfig);
+      pcRef.current = pc;
+
+      stream.getTracks().forEach((track) => {
+        if (track.readyState === "live") {
+          pc.addTrack(track, stream);
+        }
+      });
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (!active || !candidate || !channelRef.current) return;
+
+        void channelRef.current.send({
+          type: "broadcast",
+          event: "ice-candidate",
+          payload: { candidate },
+        });
+      };
+
+      pc.ontrack = (event) => {
         if (!active) return;
-        if (!iceResponse.ok) {
-          throw new Error("Failed to load ICE servers");
+        const remoteStream = event.streams[0];
+        if (!remoteStream) return;
+
+        void safePlayVideo(remoteVideoRef.current, remoteStream);
+        setHasRemoteStream(true);
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (!active) return;
+        const state = pc.connectionState;
+        if (state === "connected") {
+          clearJoinPing();
         }
 
-        const iceConfig = (await iceResponse.json()) as RTCConfiguration;
+        setConnectionState(
+          state === "connected"
+            ? "connected"
+            : state === "failed"
+              ? "failed"
+              : state === "disconnected" || state === "closed"
+                ? "disconnected"
+                : "connecting"
+        );
+      };
+
+      return pc;
+    };
+
+    const startJoinSignaling = async () => {
+      await sendJoinSignal();
+
+      if (!isHR) {
+        clearJoinPing();
+        joinPingRef.current = window.setInterval(() => {
+          if (!active || pcRef.current?.connectionState === "connected") {
+            clearJoinPing();
+            return;
+          }
+
+          void sendJoinSignal();
+        }, 2500);
+      }
+    };
+
+    const reconnectPeer = async () => {
+      if (!active || !localStreamRef.current) return;
+      offerSentRef.current = false;
+      clearJoinPing();
+      pendingIceCandidates.length = 0;
+
+      const previousPc = pcRef.current;
+      pcRef.current = null;
+      previousPc?.close();
+
+      setHasRemoteStream(false);
+      setConnectionState("connecting");
+
+      createPeerConnection(iceConfigRef.current, localStreamRef.current);
+      if (channelRef.current) {
+        await startJoinSignaling();
+      }
+    };
+
+    reconnectRef.current = reconnectPeer;
+
+    const setup = async () => {
+      try {
+        const iceConfig = await loadIceConfig();
         if (!active) return;
+        iceConfigRef.current = iceConfig;
 
         // Gracefully acquire media devices with fallback strategy
         const mediaResult = await acquireMediaStream({
@@ -225,22 +325,16 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         localStreamRef.current = stream;
         setLocalPreview(stream);
 
-        const pc = new RTCPeerConnection(iceConfig);
-        pcRef.current = pc;
-
-        stream.getTracks().forEach((track) => {
-          if (track.readyState === "live") {
-            pc.addTrack(track, stream);
-          }
-        });
+        createPeerConnection(iceConfig, stream);
 
         const channel = supabase.channel(`interview-room-${roomId}`);
         channelRef.current = channel;
 
         const applyRemoteDescription = async (description: RTCSessionDescriptionInit) => {
-          await pc.setRemoteDescription(description);
+          if (!pcRef.current) return;
+          await pcRef.current.setRemoteDescription(description);
           for (const candidate of pendingIceCandidates.splice(0)) {
-            await pc.addIceCandidate(candidate);
+            await pcRef.current.addIceCandidate(candidate);
           }
         };
 
@@ -302,65 +396,9 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           }
         });
 
-        pc.onicecandidate = ({ candidate }) => {
-          if (!active || !candidate || !channelRef.current) return;
-
-          void channelRef.current.send({
-            type: "broadcast",
-            event: "ice-candidate",
-            payload: { candidate },
-          });
-        };
-
-        pc.ontrack = (event) => {
-          if (!active) return;
-          const remoteStream = event.streams[0];
-          if (!remoteStream) return;
-
-          void safePlayVideo(remoteVideoRef.current, remoteStream);
-
-          setHasRemoteStream(true);
-        };
-
-        pc.onconnectionstatechange = () => {
-          if (!active) return;
-          const state = pc.connectionState;
-          if (state === "connected") {
-            clearJoinPing();
-          }
-
-          setConnectionState(
-            state === "connected"
-              ? "connected"
-              : state === "failed"
-                ? "failed"
-                : state === "disconnected" || state === "closed"
-                  ? "disconnected"
-                  : "connecting"
-          );
-        };
-
         await channel.subscribe(async (status: string) => {
           if (!active || status !== "SUBSCRIBED") return;
-
-          await sendJoinSignal();
-
-          if (!isHR) {
-            clearJoinPing();
-            joinPingRef.current = window.setInterval(() => {
-              if (!active || pcRef.current?.connectionState === "connected") {
-                clearJoinPing();
-                return;
-              }
-
-              void sendJoinSignal();
-            }, 2500);
-            return;
-          }
-
-          if (pc.connectionState === "connected") {
-            clearJoinPing();
-          }
+          await startJoinSignaling();
         });
 
       } catch (error) {
@@ -408,6 +446,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
       stopStream(localStreamRef.current);
       localStreamRef.current = null;
 
+      reconnectRef.current = null;
       if (channelRef.current) {
         void supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -579,20 +618,15 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     );
   }
 
-  if (connectionState === "failed") {
+  if (connectionState === "failed" && deviceError) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-950 px-4">
         <div className="w-full max-w-sm space-y-4 rounded-2xl border border-gray-800 bg-gray-900 p-8 text-center shadow-2xl">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-900/30">
             <span className="text-2xl">📵</span>
           </div>
-          <h2 className="font-semibold text-white">
-            {deviceError ? "Camera/Microphone Error" : "Interview room unavailable"}
-          </h2>
-          <p className="text-sm text-gray-400">
-            {deviceError ||
-              "We could not initialize the video call. Please check camera/microphone permissions and try again."}
-          </p>
+          <h2 className="font-semibold text-white">Camera/Microphone Error</h2>
+          <p className="text-sm text-gray-400">{deviceError}</p>
           <div className="flex flex-col gap-2 pt-2">
             <button
               type="button"
@@ -616,6 +650,22 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   return (
     <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950 text-white">
       {showEndingWarning && <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 rounded-full bg-amber-100 px-4 py-2 text-xs font-semibold text-amber-900">Interview ends in less than 5 minutes</div>}
+      {(connectionState === "disconnected" || connectionState === "failed") && (
+        <div className="absolute left-1/2 top-4 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-rose-400/50 bg-rose-950/90 px-4 py-2 text-xs font-semibold text-rose-100 shadow-lg backdrop-blur-md">
+          <span>
+            {connectionState === "failed"
+              ? "Connection lost. Click Reconnect to restore the call."
+              : "Peer disconnected. Waiting or click Reconnect."}
+          </span>
+          <button
+            type="button"
+            onClick={() => void reconnectRef.current?.()}
+            className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-900 transition-colors hover:bg-rose-100"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
       <div className="relative h-full w-full overflow-hidden bg-slate-950">
         <video
           ref={remoteVideoRef}
