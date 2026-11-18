@@ -23,6 +23,9 @@ type WorkspaceJob = {
   description: string;
   requirements: string | null;
   employment_type: JobPosting["employment_type"];
+  work_setup: string | null;
+  work_location_id: string | null;
+  branch_name: string | null;
   location: string | null;
   salary_min: number | null;
   salary_max: number | null;
@@ -112,6 +115,26 @@ export default async function ManageJobsPage() {
 
   const jobIds = currentJobs?.map((job) => job.id) ?? [];
   const legacyJobIds = legacyJobs?.map((job) => job.id) ?? [];
+  const branchIds = Array.from(
+    new Set(
+      (currentJobs ?? [])
+        .map((job) => job.work_location_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const branchMap: Record<string, string> = {};
+  if (branchIds.length) {
+    const { data: branches } = await supabase
+      .from("office_branches")
+      .select("id, name")
+      .in("id", branchIds);
+    branches?.forEach((branch) => {
+      if (branch.id && branch.name) {
+        branchMap[branch.id] = branch.name;
+      }
+    });
+  }
 
   const countMap: Record<string, number> = {};
   const legacyCountMap: Record<string, number> = {};
@@ -173,6 +196,9 @@ export default async function ManageJobsPage() {
       description: job.description,
       requirements: job.requirements,
       employment_type: job.employment_type,
+      work_setup: (job.work_setup ?? (job as { work_mode?: string | null }).work_mode ?? null) as string | null,
+      work_location_id: job.work_location_id ?? null,
+      branch_name: job.work_location_id ? (branchMap[job.work_location_id] ?? null) : null,
       location: job.location,
       salary_min: job.salary_min,
       salary_max: job.salary_max,
@@ -193,6 +219,9 @@ export default async function ManageJobsPage() {
         description: job.description,
         requirements: job.requirements,
         employment_type: job.employment_type,
+        work_setup: job.work_setup ?? null,
+        work_location_id: null,
+        branch_name: null,
         location: job.location,
         salary_min: null,
         salary_max: null,

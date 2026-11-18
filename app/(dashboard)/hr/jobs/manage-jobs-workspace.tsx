@@ -9,6 +9,9 @@ type ManageJobPosting = {
   description: string;
   requirements: string | null;
   employment_type: string;
+  work_setup?: string | null;
+  work_location_id?: string | null;
+  branch_name?: string | null;
   location: string | null;
   salary_min: number | null;
   salary_max: number | null;
@@ -29,6 +32,23 @@ type ManageJobsWorkspaceProps = {
 
 function formatEmploymentType(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function formatWorkSetup(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = value.toLowerCase().trim();
+  if (normalized === "onsite" || normalized === "on_site" || normalized === "on-site") {
+    return "Onsite";
+  }
+  if (normalized === "hybrid") {
+    return "Hybrid";
+  }
+  if (normalized === "remote" || normalized === "wfh") {
+    return "Remote";
+  }
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatCurrencyRange(job: ManageJobPosting) {
@@ -180,6 +200,8 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
               visibleJobs.map((job) => {
                 const departmentName = job.departments?.name?.trim() || "General";
                 const isActive = selectedJob?.id === job.id;
+                const workSetupLabel = formatWorkSetup(job.work_setup);
+                const locationLabel = job.branch_name || job.location || "Location not set";
 
                 return (
                   <button
@@ -212,8 +234,13 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                     </div>
 
                     <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-text-muted">
+                      {workSetupLabel && (
+                        <span className="rounded-md bg-primary-light/60 px-2 py-0.5 border border-primary/20 font-medium text-primary-dark">
+                          {workSetupLabel}
+                        </span>
+                      )}
                       <span className="rounded-md bg-surface-bg px-2 py-0.5 border border-border/60">
-                        {job.location ?? "Location not set"}
+                        {locationLabel}
                       </span>
                       <span className="rounded-md bg-surface-bg px-2 py-0.5 border border-border/60">
                         {formatCurrencyRange(job)}
@@ -245,6 +272,11 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                       <span className="rounded-full bg-primary-light px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-dark">
                         {selectedJob.departments?.name?.trim() || "General"}
                       </span>
+                      {formatWorkSetup(selectedJob.work_setup) && (
+                        <span className="rounded-full bg-surface-bg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-main border border-border">
+                          {formatWorkSetup(selectedJob.work_setup)}
+                        </span>
+                      )}
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                           selectedJob.is_published
@@ -288,7 +320,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                     Location
                   </p>
                   <p className="mt-1 text-xs font-semibold text-text-main">
-                    {selectedJob.location ?? "Not specified"}
+                    {selectedJob.branch_name || selectedJob.location || "Not specified"}
                   </p>
                 </div>
                 <div className="rounded-lg bg-surface-bg p-3 border border-border/60 min-w-0">
