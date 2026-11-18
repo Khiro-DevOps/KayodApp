@@ -1,39 +1,11 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { downloadDocusealDocument, normalizeDocusealWebhook } from "@/lib/docuseal";
+import { verifyDocusealSignature } from "@/lib/docuseal-webhook";
 import { sendNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
-
-function verifyDocusealSignature(rawBody: string, signatureHeader: string) {
-  const secret = process.env.DOCUSEAL_WEBHOOK_SECRET?.trim();
-
-  if (!secret) {
-    return true;
-  }
-
-  if (!signatureHeader) {
-    return false;
-  }
-
-  const receivedSignature = signatureHeader.replace(/^sha256=/i, "");
-  const expectedSignature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-
-  if (receivedSignature.length !== expectedSignature.length) {
-    return false;
-  }
-
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, "hex"),
-      Buffer.from(receivedSignature, "hex")
-    );
-  } catch {
-    return false;
-  }
-}
 
 function formatName(profile: { first_name?: string | null; last_name?: string | null } | null | undefined) {
   return [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
@@ -43,8 +15,9 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const signatureHeader = request.headers.get("x-docuseal-signature") ?? "";
 
-  if (!verifyDocusealSignature(rawBody, signatureHeader)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  const verification = verifyDocusealSignature(rawBody, signatureHeader);
+  if (!verification.ok) {
+    return NextResponse.json({ error: verification.error }, { status: 401 });
   }
 
   let rawPayload: unknown;
