@@ -61,11 +61,16 @@ export default function EmployeePayslipsClient({
   return (
     <div className="w-full max-w-xl min-w-0 flex flex-col mx-auto px-4 py-6 space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[#171542]">My Payslips</h1>
-        <p className="mt-1 text-xs text-[#5d5a75]">
-          View your itemized paystubs, statutory contributions, and net earnings history.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[#171542]">My Payslips</h1>
+          <p className="mt-1 text-xs text-[#5d5a75]">
+            View your itemized paystubs, statutory contributions, and net earnings history.
+          </p>
+        </div>
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+          Demo Computation
+        </span>
       </div>
 
       {payslips.length === 0 ? (

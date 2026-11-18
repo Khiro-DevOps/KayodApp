@@ -109,9 +109,14 @@ export default function PayslipDetailModal({
               <p className="text-xs text-[#5d5a75]">Official Itemized Employee Payslip</p>
             </div>
             <div className="sm:text-right">
-              <span className="inline-block rounded-full bg-purple-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-900 border border-purple-200">
-                {payslip.status === "published" ? "PUBLISHED" : "DRAFT"}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                <span className="inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 border border-amber-200">
+                  Demo Computation
+                </span>
+                <span className="inline-block rounded-full bg-purple-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-900 border border-purple-200">
+                  {String(payslip.status) === "published" || String(payslip.status) === "paid" ? "PUBLISHED" : "DRAFT"}
+                </span>
+              </div>
               <p className="mt-1 text-xs text-[#5d5a75]">
                 Pay Date: <span className="font-semibold text-gray-900">{formatDate(payslip.pay_date)}</span>
               </p>

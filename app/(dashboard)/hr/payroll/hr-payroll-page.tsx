@@ -81,10 +81,15 @@ export default async function HRPayrollPage() {
       <div className="space-y-6">
 
         {/* Header */}
-        <div className="flex items-end justify-between border-b border-border pb-5">
-          <h1 className="font-h1 text-2xl font-bold text-text-main">
-            Payroll
-          </h1>
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-5">
+          <div>
+            <h1 className="font-h1 text-2xl font-bold text-text-main">
+              Payroll
+            </h1>
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              Demo Payroll Computation (non-statutory)
+            </p>
+          </div>
           <span className="text-xs text-text-muted">
             {activeEmployeeCount} active employees
           </span>
@@ -293,8 +298,45 @@ export default async function HRPayrollPage() {
                 </div>
 
                 {period.status === "draft" && (
-                  <form action={generatePayslips}>
+                  <form action={generatePayslips} className="space-y-3 pt-1">
                     <input type="hidden" name="period_id" value={period.id} />
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+                        Demo Payroll Computation (non-statutory) — Optional Adjustments
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <input
+                          type="number"
+                          name="allowances"
+                          min="0"
+                          step="0.01"
+                          placeholder="Allowances (₱)"
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                        />
+                        <input
+                          type="number"
+                          name="bonuses"
+                          min="0"
+                          step="0.01"
+                          placeholder="Bonuses (₱)"
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                        />
+                        <input
+                          type="number"
+                          name="other_deductions"
+                          min="0"
+                          step="0.01"
+                          placeholder="Other deductions (₱)"
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                        />
+                        <input
+                          type="text"
+                          name="remarks"
+                          placeholder="Remarks (optional)"
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
                     <button
                       type="submit"
                       className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"

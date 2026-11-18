@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { sendNotification } from "@/lib/notifications";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -13,7 +15,7 @@ async function verifyHR(
     .select("role")
     .eq("id", userId)
     .single();
-  return profile && ["hr_manager", "admin"].includes(profile.role);
+  return profile && ["hr", "hr_manager", "admin"].includes(profile.role);
 }
 
 // ─── Philippines withholding tax (simplified TRAIN law brackets) ───────────
@@ -44,10 +46,10 @@ export async function createPayrollPeriod(formData: FormData) {
     created_by:   user.id,
   });
 
-  if (error) redirect(`/payroll?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/hr/payroll?error=${encodeURIComponent(error.message)}`);
 
-  revalidatePath("/payroll");
-  redirect("/payroll");
+  revalidatePath("/hr/payroll");
+  redirect("/hr/payroll");
 }
 
 export async function generatePayslips(formData: FormData) {
@@ -57,6 +59,10 @@ export async function generatePayslips(formData: FormData) {
   if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
 
   const periodId = formData.get("period_id") as string;
+  const customAllowances = Math.max(0, Number(formData.get("allowances") ?? 0) || 0);
+  const customBonuses = Math.max(0, Number(formData.get("bonuses") ?? 0) || 0);
+  const customOtherDeductions = Math.max(0, Number(formData.get("other_deductions") ?? 0) || 0);
+  const customRemarks = String(formData.get("remarks") ?? "").trim();
 
   // 1. Get the period dates
   const { data: period } = await supabase
@@ -65,7 +71,7 @@ export async function generatePayslips(formData: FormData) {
     .eq("id", periodId)
     .single();
 
-  if (!period) redirect("/payroll?error=Period not found");
+  if (!period) redirect("/hr/payroll?error=Period+not+found");
 
   // 2. Get all active employees
   const { data: employees } = await supabase
@@ -74,7 +80,7 @@ export async function generatePayslips(formData: FormData) {
     .eq("employment_status", "active");
 
   if (!employees || employees.length === 0) {
-    redirect("/payroll?error=No active employees found");
+    redirect("/hr/payroll?error=No+active+employees+found");
   }
 
   // 3. Get all time records (attendance_logs or legacy time_logs) for this period
@@ -113,52 +119,57 @@ export async function generatePayslips(formData: FormData) {
 
   // 4. Build payslips
   const payslips = employees.map((emp) => {
-    const baseSalary  = Number(emp.base_salary);
+    const monthlySalary = Number(emp.base_salary || 0);
+    const freq = String(emp.pay_frequency ?? "monthly").toLowerCase();
+    const isSemiOrBiweekly = freq === "semi_monthly" || freq === "biweekly";
+    const periodSalary = isSemiOrBiweekly ? monthlySalary / 2 : monthlySalary;
     const hoursWorked = hoursMap[emp.id] ?? 0;
     const otHours     = otHoursMap[emp.id] ?? 0;
 
     // For hourly/part-time: pay based on hours punched
-    // For salaried/full-time: pay full base_salary regardless of hours
+    // For salaried/full-time: pay periodSalary based on pay_frequency
     const isHourly =
       emp.employment_type === "part_time" ||
       emp.employment_type === "contract" ||
       emp.employment_type === "intern";
 
     // Derive hourly rate from monthly salary (÷ 173.33 = PH standard monthly hours)
-    const hourlyRate = baseSalary / 173.33;
+    const hourlyRate = monthlySalary / 173.33;
     const basicPay   = isHourly
       ? Math.round(hourlyRate * hoursWorked * 100) / 100
-      : baseSalary;
+      : periodSalary;
 
     // Calculate Overtime (OT) pay (1.25x hourly rate for hours > 8)
     const overtimePay = Math.round(hourlyRate * 1.25 * otHours * 100) / 100;
 
-    // Philippines statutory deductions
+    // Demo statutory-style deductions (non-statutory demo computation)
     const sss        = Math.min(basicPay * 0.045, 1_125);
     const philhealth = basicPay * 0.02;
     const pagibig    = Math.min(basicPay * 0.02, 200);
 
     // Withholding tax on taxable income (gross - SSS - PhilHealth - Pagibig)
-    const taxable        = Math.max(0, basicPay + overtimePay - sss - philhealth - pagibig);
+    const taxable        = Math.max(0, basicPay + overtimePay + customAllowances + customBonuses - sss - philhealth - pagibig);
     const withholdingTax = computeWithholdingTax(taxable);
+
+    const baseNote = isHourly
+      ? `Demo Computation (${freq}) | Hours: ${hoursWorked.toFixed(2)}h @ ₱${hourlyRate.toFixed(2)}/hr | OT: ${otHours.toFixed(2)}h`
+      : `Demo Computation (${freq}) | Hours logged: ${hoursWorked.toFixed(2)}h | OT: ${otHours.toFixed(2)}h`;
+    const remarks = customRemarks ? `${baseNote} | ${customRemarks}` : baseNote;
 
     return {
       payroll_period_id:  periodId,
       employee_id:        emp.id,
       basic_pay:          Number(basicPay.toFixed(2)),
       overtime_pay:       Number(overtimePay.toFixed(2)),
-      allowances:         0,
-      bonuses:            0,
+      allowances:         Number(customAllowances.toFixed(2)),
+      bonuses:            Number(customBonuses.toFixed(2)),
       sss_contribution:   Number(sss.toFixed(2)),
       philhealth_contrib: Number(philhealth.toFixed(2)),
       pagibig_contrib:    Number(pagibig.toFixed(2)),
       withholding_tax:    Number(withholdingTax.toFixed(2)),
-      other_deductions:   0,
+      other_deductions:   Number(customOtherDeductions.toFixed(2)),
       status:             "pending_approval",
-      // Store hours worked and OT in remarks for transparency
-      remarks: isHourly
-        ? `Hours worked: ${hoursWorked.toFixed(2)}h @ ₱${hourlyRate.toFixed(2)}/hr | OT: ${otHours.toFixed(2)}h (₱${overtimePay.toFixed(2)})`
-        : `Salaried. Hours logged: ${hoursWorked.toFixed(2)}h | OT: ${otHours.toFixed(2)}h (₱${overtimePay.toFixed(2)})`,
+      remarks,
     };
   });
 
@@ -176,8 +187,8 @@ export async function generatePayslips(formData: FormData) {
     .update({ status: "pending_approval" })
     .eq("id", periodId);
 
-  revalidatePath("/payroll");
-  redirect("/payroll");
+  revalidatePath("/hr/payroll");
+  redirect("/hr/payroll");
 }
 
 export async function approvePayroll(formData: FormData) {
@@ -190,7 +201,7 @@ export async function approvePayroll(formData: FormData) {
 
   await supabase
     .from("payslips")
-    .update({ status: "paid" })
+    .update({ status: "published" })
     .eq("payroll_period_id", periodId);
 
   await supabase
@@ -198,8 +209,55 @@ export async function approvePayroll(formData: FormData) {
     .update({ status: "paid", approved_by: user.id })
     .eq("id", periodId);
 
-  revalidatePath("/payroll");
-  redirect("/payroll");
+  // Notify each paid employee
+  try {
+    const admin = getAdminClient();
+    const { data: period } = await admin
+      .from("payroll_periods")
+      .select("period_start, period_end")
+      .eq("id", periodId)
+      .maybeSingle();
+
+    const { data: slips } = await admin
+      .from("payslips")
+      .select("employee_id, employees(profile_id)")
+      .eq("payroll_period_id", periodId);
+
+    const periodLabel = period
+      ? `${period.period_start} to ${period.period_end}`
+      : "recent pay period";
+
+    const profileIds = Array.from(
+      new Set(
+        (slips ?? [])
+          .map((s) => {
+            const emp = Array.isArray(s.employees) ? s.employees[0] : s.employees;
+            return (emp as { profile_id?: string | null } | null)?.profile_id ?? null;
+          })
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    await Promise.all(
+      profileIds.map((recipientId) =>
+        sendNotification({
+          recipientId,
+          senderId: user.id,
+          type: "payroll_processed",
+          title: "New Payslip Available",
+          body: `Your payslip for ${periodLabel} has been published.`,
+          actionUrl: "/employee/payslips",
+          actionName: "approvePayroll",
+        })
+      )
+    );
+  } catch (notifyErr) {
+    console.error("approvePayroll: failed to notify employees:", notifyErr);
+  }
+
+  revalidatePath("/hr/payroll");
+  revalidatePath("/employee/payslips");
+  redirect("/hr/payroll");
 }
 
 export async function rejectPayroll(formData: FormData) {
@@ -220,6 +278,6 @@ export async function rejectPayroll(formData: FormData) {
     .delete()
     .eq("payroll_period_id", periodId);
 
-  revalidatePath("/payroll");
-  redirect("/payroll");
+  revalidatePath("/hr/payroll");
+  redirect("/hr/payroll");
 }
