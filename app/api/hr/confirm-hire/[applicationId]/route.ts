@@ -386,13 +386,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
         ? offer.work_days
         : defaultWorkDays;
 
-    const defaultHybridDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-    const extractedHybridDays =
-      (Array.isArray(metadata.hybrid_onsite_days) ? metadata.hybrid_onsite_days : null) ??
-      (Array.isArray(jobMetadata.hybrid_onsite_days) ? jobMetadata.hybrid_onsite_days : null) ??
-      (Array.isArray(metadata.hybrid_days) ? metadata.hybrid_days : null) ??
-      defaultHybridDays;
-
     const extractedShiftStart =
       offer.shift_start ??
       (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
@@ -435,7 +428,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           work_mode: extractedWorkMode,
           work_location_id: offer.work_location_id ?? null,
           work_days: extractedWorkDays,
-          hybrid_onsite_days: extractedHybridDays,
           shift_start: extractedShiftStart,
           shift_end: extractedShiftEnd,
           updated_at: now,
