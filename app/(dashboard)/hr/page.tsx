@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
@@ -44,7 +45,8 @@ export default async function HRDashboardPage() {
     .eq("is_published", true);
 
   // 3. Count Pending Leaves
-  const { count: pendingLeaves } = await supabase
+  const admin = getAdminClient();
+  const { count: pendingLeaves } = await admin
     .from("leave_requests")
     .select("*", { count: "exact", head: true })
     .eq("status", "pending");

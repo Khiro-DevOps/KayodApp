@@ -15,7 +15,8 @@ type LeaveRequestWithEmployee = {
   reason: string | null;
   status: "pending" | "approved" | "rejected" | "cancelled";
   hr_remarks: string | null;
-  created_at: string;
+  filed_at?: string;
+  created_at?: string;
   employees: {
     job_title: string | null;
     profiles: {
@@ -56,10 +57,16 @@ export default async function HRLeavesPage() {
   }
 
   const admin = getAdminClient();
-  const { data: requests } = await admin
+  const { data: initialRequests, error: requestsError } = await admin
     .from("leave_requests")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("filed_at", { ascending: false });
+
+  let requests = initialRequests;
+  if (requestsError) {
+    const fallback = await admin.from("leave_requests").select("*");
+    requests = fallback.data;
+  }
 
   const rawRequests = (requests ?? []) as Array<
     Omit<LeaveRequestWithEmployee, "employees"> & { employee_id: string }
