@@ -8,6 +8,7 @@ import { formatPhtTime } from "@/lib/interview-date";
 interface JoinInterviewButtonProps {
   interviewId: string;
   meetingLink?: string | null;
+  videoProvider?: string | null;
   scheduledAt?: string | null;
   durationMinutes?: number | null;
   status?: string | null;
@@ -19,6 +20,7 @@ interface JoinInterviewButtonProps {
 export default function JoinInterviewButton({
   interviewId,
   meetingLink,
+  videoProvider,
   scheduledAt,
   durationMinutes,
   status,
@@ -45,7 +47,12 @@ export default function JoinInterviewButton({
 
   if (meetingType !== "online") return null;
 
-  const roomUrl = meetingLink || `/applicant/interviews/${interviewId}/room`;
+  const useExternalJitsi =
+    videoProvider === "jitsi" &&
+    Boolean(meetingLink) &&
+    meetingLink!.startsWith("http") &&
+    meetingLink!.includes("meet.jit.si");
+  const roomUrl = useExternalJitsi ? meetingLink! : `/applicant/interviews/${interviewId}/room`;
 
   if (joinState === "not_open") {
     const timeStr = scheduledAt ? formatPhtTime(scheduledAt) : "";
@@ -75,8 +82,8 @@ export default function JoinInterviewButton({
   return (
     <Link
       href={roomUrl}
-      target={roomUrl.startsWith("http") ? "_blank" : undefined}
-      rel={roomUrl.startsWith("http") ? "noopener noreferrer" : undefined}
+      target={useExternalJitsi ? "_blank" : undefined}
+      rel={useExternalJitsi ? "noopener noreferrer" : undefined}
       className={`inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 shadow-xs ${className}`}
     >
       Join Interview Call
