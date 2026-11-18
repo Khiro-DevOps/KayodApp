@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
+import CompensationEditorCard from "./compensation-editor-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
 import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
@@ -87,6 +88,14 @@ export default async function EmployeeDetailPage({ params }: Props) {
             </p>
           </div>
         </div>
+
+        {/* Compensation & Pay Frequency */}
+        <CompensationEditorCard
+          employeeId={employee.id}
+          initialBaseSalary={Number(employee.base_salary ?? employee.salary ?? 35000)}
+          initialPayFrequency={String(employee.pay_frequency ?? "monthly")}
+          currency={String(employee.currency ?? "PHP")}
+        />
 
         {/* Location & Geofence Control */}
         <GeofenceControlCard

@@ -45,6 +45,7 @@ type JobOfferRow = {
   job_id: string | null;
   status: string;
   salary?: number | null;
+  offered_salary?: number | null;
   start_date?: string | null;
   work_mode?: string | null;
   work_setup?: string | null;
@@ -307,7 +308,11 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       now.split("T")[0];
 
     const offerSalary =
-      typeof offer.salary === "number" && offer.salary > 0 ? offer.salary : null;
+      typeof offer.offered_salary === "number" && offer.offered_salary > 0
+        ? offer.offered_salary
+        : typeof offer.salary === "number" && offer.salary > 0
+          ? offer.salary
+          : null;
     const metadataSalary =
       typeof jobMetadata.base_salary === "number" && jobMetadata.base_salary > 0
         ? jobMetadata.base_salary
@@ -317,14 +322,14 @@ export async function POST(_request: NextRequest, ctx: unknown) {
             ? jobMetadata.salary
             : null;
 
-    const baseSalaryValue =
-      Number(
-        offerSalary ??
-          metadataSalary ??
-          jobPosting?.salary_min ??
-          jobPosting?.salary_max ??
-          0,
-      ) || 0;
+    const resolvedSalary = Number(
+      offerSalary ??
+        metadataSalary ??
+        jobPosting?.salary_min ??
+        jobPosting?.salary_max ??
+        0,
+    );
+    const baseSalaryValue = resolvedSalary > 0 ? resolvedSalary : 35000;
 
     // 1) Update job_offers -> HIRED
     const { error: offerUpdateError } = await admin

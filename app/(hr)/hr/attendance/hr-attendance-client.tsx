@@ -12,6 +12,7 @@ export type AttendanceRow = {
   isToday: boolean;
   isLate: boolean;
   lateMinutes: number;
+  isAbsent?: boolean;
   date: string;
   clockIn: string | null;
   clockOut: string | null;
@@ -29,6 +30,7 @@ type Metrics = {
   lateToday: number;
   outsideZoneFlags: number;
   onLeave: number;
+  absentToday: number;
 };
 
 type Props = {
@@ -220,7 +222,7 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
       </div>
 
       {/* ── Metric Cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <MetricCard
           label="Present Today"
           value={metrics.presentToday}
@@ -234,6 +236,14 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
           icon="schedule"
           iconBg="bg-amber-100 text-amber-600"
           valueColor="text-amber-600"
+        />
+        <MetricCard
+          label="Absent Today"
+          value={metrics.absentToday}
+          icon="person_off"
+          iconBg="bg-rose-100 text-rose-700"
+          valueColor="text-rose-700"
+          accent={metrics.absentToday > 0}
         />
         <MetricCard
           label="Outside Zone Flags"
@@ -406,7 +416,11 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
 
                   {/* Clock In */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
-                    {row.clockIn ? (
+                    {row.isAbsent ? (
+                      <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700">
+                        Absent
+                      </span>
+                    ) : row.clockIn ? (
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-text-main">
                           {row.clockIn}
@@ -428,7 +442,9 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
 
                   {/* Clock Out */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
-                    {row.clockOut ? (
+                    {row.isAbsent ? (
+                      <span className="text-text-muted">—</span>
+                    ) : row.clockOut ? (
                       <span className="font-medium text-text-main">
                         {row.clockOut}
                       </span>

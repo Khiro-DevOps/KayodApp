@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { computeUnexcusedAbsences, getTodayPhtIso } from "@/lib/attendance-absent";
 import HRAttendanceClient, { type AttendanceRow } from "./hr-attendance-client";
 
 export const metadata = {
@@ -163,8 +164,99 @@ export default async function HRAttendancePage() {
     onLeaveCount = count ?? 0;
   }
 
+  // ── Compute today's unexcused absences for active employees ────────────────
+  const todayPht = getTodayPhtIso();
+
+  let activeEmpQuery = supabase
+    .from("employees")
+    .select(
+      `
+      id,
+      job_title,
+      work_mode,
+      work_days,
+      shift_end,
+      profiles (
+        first_name,
+        last_name,
+        avatar_url
+      )
+    `
+    )
+    .eq("employment_status", "active");
+
+  if (tenantId) {
+    activeEmpQuery = activeEmpQuery.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+  }
+
+  const { data: activeEmployees } = await activeEmpQuery;
+  const activeEmpIds = (activeEmployees ?? []).map((e) => e.id);
+
+  const { data: approvedTodayLeaves } = activeEmpIds.length
+    ? await supabase
+        .from("leave_requests")
+        .select("employee_id, start_date, end_date, status")
+        .in("employee_id", activeEmpIds)
+        .eq("status", "approved")
+        .lte("start_date", todayPht)
+        .gte("end_date", todayPht)
+    : { data: [] as { employee_id: string; start_date: string; end_date: string; status: string }[] };
+
+  const absentRows: AttendanceRow[] = [];
+  for (const emp of activeEmployees ?? []) {
+    const empLogs = logs
+      .filter((l) => l.employee_id === emp.id && l.clock_in)
+      .map((l) => ({ clock_in: l.clock_in }));
+    const empLeaves = (approvedTodayLeaves ?? []).filter(
+      (lr) => lr.employee_id === emp.id
+    );
+
+    const { absentDays } = computeUnexcusedAbsences({
+      periodStart: todayPht,
+      periodEnd: todayPht,
+      workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
+      shiftEnd: emp.shift_end ?? null,
+      attendanceLogs: empLogs,
+      approvedLeaves: empLeaves,
+    });
+
+    if (absentDays > 0) {
+      const p = Array.isArray(emp.profiles)
+        ? (emp.profiles[0] as { first_name?: string | null; last_name?: string | null; avatar_url?: string | null } | undefined)
+        : (emp.profiles as { first_name?: string | null; last_name?: string | null; avatar_url?: string | null } | null);
+      const name =
+        [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
+
+      absentRows.push({
+        id: `absent-${emp.id}-${todayPht}`,
+        employeeName: name,
+        avatarUrl: p?.avatar_url ?? null,
+        jobTitle: emp.job_title ?? null,
+        workSetup: (emp.work_mode as AttendanceRow["workSetup"]) ?? null,
+        isToday: true,
+        isLate: false,
+        lateMinutes: 0,
+        isAbsent: true,
+        date: new Date(`${todayPht}T00:00:00+08:00`).toLocaleDateString("en-PH", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        }),
+        clockIn: null,
+        clockOut: null,
+        distanceMeters: null,
+        zoneStatus: "location_unverified",
+        flagReason: "Unexcused absence (no clock-in or approved leave)",
+      });
+    }
+  }
+
+  const absentToday = absentRows.length;
+
   // ── Shape rows for the client component ────────────────────────────────────
-  const rows: AttendanceRow[] = logs.map((l) => {
+  const rows: AttendanceRow[] = [
+    ...absentRows,
+    ...logs.map((l) => {
     const emp = l.employees;
     const p = emp?.profiles;
     const name =
@@ -213,7 +305,8 @@ export default async function HRAttendancePage() {
       zoneStatus: l.zone_status ?? "location_unverified",
       flagReason: l.flag_reason ?? null,
     };
-  });
+  }),
+  ];
 
   return (
     <HRAttendanceClient
@@ -223,6 +316,7 @@ export default async function HRAttendancePage() {
         lateToday,
         outsideZoneFlags,
         onLeave: onLeaveCount,
+        absentToday,
       }}
     />
   );

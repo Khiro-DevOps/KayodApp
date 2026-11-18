@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     // 3. Update job offer status (if it exists) and fetch latest offer work setup
     const { data: jobOffer } = await admin
       .from("job_offers")
-      .select("work_mode, work_setup, work_location_id")
+      .select("work_mode, work_setup, work_location_id, offered_salary, salary")
       .eq("application_id", applicationId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -161,8 +161,13 @@ export async function POST(req: NextRequest) {
 
     const rawJobTitle = jobInfo?.title
     const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
-    const rawSalary = Number(jobInfo?.salary_min || 0)
-    const baseSalary = rawSalary > 0 ? rawSalary : 45000
+    const rawSalary = Number(
+      (jobOffer as { offered_salary?: number | null; salary?: number | null } | null)?.offered_salary ??
+        (jobOffer as { offered_salary?: number | null; salary?: number | null } | null)?.salary ??
+        jobInfo?.salary_min ??
+        0
+    )
+    const baseSalary = rawSalary > 0 ? rawSalary : 35000
     const empType = jobInfo?.employment_type || "full_time"
 
     if (!existingEmployee) {
@@ -174,6 +179,7 @@ export async function POST(req: NextRequest) {
           tenant_id: resolvedTenantId,
           job_title: jobTitle,
           base_salary: baseSalary,
+          salary: baseSalary,
           start_date: new Date().toISOString().split('T')[0],
           employment_type: empType,
           employment_status: "active",
@@ -191,7 +197,10 @@ export async function POST(req: NextRequest) {
       const patch: Record<string, unknown> = {}
       if (!existingEmployee.tenant_id && resolvedTenantId) patch.tenant_id = resolvedTenantId
       if (!existingEmployee.job_title || existingEmployee.job_title === "Development Employee") patch.job_title = jobTitle
-      if (!existingEmployee.base_salary || Number(existingEmployee.base_salary) <= 0) patch.base_salary = baseSalary
+      if (!existingEmployee.base_salary || Number(existingEmployee.base_salary) <= 0) {
+        patch.base_salary = baseSalary
+        patch.salary = baseSalary
+      }
       if (!existingEmployee.work_mode) {
         patch.work_mode = workMode
       }
