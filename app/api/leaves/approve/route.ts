@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import { sendNotification } from "@/lib/notifications";
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+
+const HR_ALLOWED_ROLES = ["hr", "hr_manager", "admin"];
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -19,7 +23,7 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  if (!profile || !["hr_manager", "admin"].includes(profile.role)) {
+  if (!profile || !HR_ALLOWED_ROLES.includes(profile.role)) {
     return NextResponse.json(
       { error: "Only HR can approve/reject leave requests" },
       { status: 403 }
@@ -27,8 +31,8 @@ export async function POST(request: Request) {
   }
 
   const formData = await request.formData();
-  const leaveId = formData.get("leave_id") as string;
-  const action = formData.get("action") as string;
+  const leaveId = String(formData.get("leave_id") ?? "").trim();
+  const action = String(formData.get("action") ?? "").trim();
 
   if (!leaveId || !["approved", "rejected"].includes(action)) {
     return NextResponse.json(
@@ -37,10 +41,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: leave } = await supabase
+    .from("leave_requests")
+    .select("id, employee_id, total_days, leave_type, start_date, end_date, employees(profile_id)")
+    .eq("id", leaveId)
+    .single();
+
   // Update leave request status
   const { error: updateError } = await supabase
     .from("leave_requests")
-    .update({ status: action })
+    .update({
+      status: action,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", leaveId);
 
   if (updateError) {
@@ -50,29 +65,48 @@ export async function POST(request: Request) {
     );
   }
 
-  // If approved, update leave balance
-  if (action === "approved") {
-    const { data: leave } = await supabase
-      .from("leave_requests")
-      .select("employee_id, total_days, leave_type")
-      .eq("id", leaveId)
-      .single();
+  // If approved and not unpaid, increment used_credits (remaining is generated)
+  if (action === "approved" && leave && leave.leave_type !== "unpaid") {
+    const year = leave.start_date
+      ? new Date(`${leave.start_date}T00:00:00Z`).getFullYear()
+      : new Date().getFullYear();
 
-    if (leave) {
-      // Deduct from leave balance
+    const { data: balance } = await supabase
+      .from("leave_balances")
+      .select("id, used_credits")
+      .eq("employee_id", leave.employee_id)
+      .eq("leave_type", leave.leave_type)
+      .eq("year", year)
+      .maybeSingle();
+
+    if (balance) {
       await supabase
         .from("leave_balances")
         .update({
-          remaining: supabase.rpc("decrement_leave_balance", {
-            p_employee_id: leave.employee_id,
-            p_leave_type: leave.leave_type,
-            p_days: leave.total_days,
-          }),
+          used_credits: (balance.used_credits ?? 0) + (leave.total_days ?? 0),
+          updated_at: new Date().toISOString(),
         })
-        .eq("employee_id", leave.employee_id)
-        .eq("leave_type", leave.leave_type);
+        .eq("id", balance.id);
     }
   }
+
+  // Notify employee
+  const empRelation = Array.isArray(leave?.employees) ? leave?.employees[0] : leave?.employees;
+  const recipientId = empRelation?.profile_id;
+  if (recipientId) {
+    await sendNotification({
+      recipientId,
+      senderId: user.id,
+      type: "leave_status_changed",
+      title: action === "approved" ? "Leave Request Approved" : "Leave Request Rejected",
+      body: `Your ${leave?.leave_type ?? ""} leave request (${leave?.start_date ?? ""} to ${leave?.end_date ?? ""}) was ${action}.`,
+      actionUrl: "/employee/leaves",
+      actionName: "apiLeavesApprove",
+    });
+  }
+
+  revalidatePath("/hr/leaves");
+  revalidatePath("/employee/leaves");
 
   return NextResponse.json(
     { message: `Leave request ${action}` },
