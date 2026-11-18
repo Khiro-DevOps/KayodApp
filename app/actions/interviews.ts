@@ -6,6 +6,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { notifyJobCreator } from "@/lib/notifications";
 import { normalizeMeetingType, type MeetingType } from "@/lib/meeting-type";
 import { DEFAULT_DURATION_MINUTES } from "@/lib/interview-schedule-config";
+import { getDefaultVideoProvider } from "@/lib/video-provider";
 import {
   formatPhtConflictDate,
   formatPhtConflictTime,
@@ -297,9 +298,16 @@ export async function createInterviewInvite(
       status: "proposed",
     }));
 
-    // Generate video meeting link if not provided
-    const roomName = meetingType === "online" || meetingType === "hybrid" ? `kayod-interview-${crypto.randomUUID()}` : null;
-    const dynamicMeetingLink = meetingType === "online" || meetingType === "hybrid" ? (meeting_link || `https://meet.jit.si/${roomName}`) : null;
+    // Generate video room config based on active video provider
+    const provider = getDefaultVideoProvider();
+    const isOnlineOrHybrid = meetingType === "online" || meetingType === "hybrid";
+    const roomName = isOnlineOrHybrid ? `kayod-interview-${crypto.randomUUID()}` : null;
+    const dynamicMeetingLink = isOnlineOrHybrid
+      ? provider === "jitsi"
+        ? meeting_link || `https://meet.jit.si/${roomName}`
+        : null
+      : null;
+    const videoProvider = isOnlineOrHybrid ? provider : null;
 
     let invite;
     let isReschedule = false;
@@ -322,7 +330,7 @@ export async function createInterviewInvite(
           reschedule_reason: rescheduleReason,
           room_name: roomName,
           meeting_link: dynamicMeetingLink,
-          video_provider: meetingType === "online" || meetingType === "hybrid" ? "jitsi" : null,
+          video_provider: videoProvider,
           meeting_type: meetingType,
           office_branch_id: meetingType === "in_person" || meetingType === "hybrid" ? office_branch_id : null,
           updated_at: new Date().toISOString(),
@@ -350,7 +358,7 @@ export async function createInterviewInvite(
           status: "proposed",
           room_name: roomName,
           meeting_link: dynamicMeetingLink,
-          video_provider: meetingType === "online" || meetingType === "hybrid" ? "jitsi" : null,
+          video_provider: videoProvider,
           meeting_type: meetingType,
           office_branch_id: meetingType === "in_person" || meetingType === "hybrid" ? office_branch_id : null,
           interview_notes: "",

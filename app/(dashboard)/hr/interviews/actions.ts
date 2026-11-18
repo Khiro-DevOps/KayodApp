@@ -8,6 +8,7 @@ import { InterviewType } from "@/lib/types";
 import { normalizeMeetingType, type MeetingType } from "@/lib/meeting-type";
 import { getNextDbStatus } from "@/lib/application-stages";
 import { sendNotification } from "@/lib/notifications";
+import { getDefaultVideoProvider } from "@/lib/video-provider";
 
 export interface OfficeBranchOption {
   id: string;
@@ -403,20 +404,19 @@ export async function updateInterviewPreference(formData: FormData) {
 
   if (interview.applicant_id !== user.id) redirect("/hr/interviews");
 
-  let videoRoomUrl = null;
-  let videoRoomName = null;
-
-  if (interviewType === "online" || interviewType === "hybrid") {
-    videoRoomName = `kayod-${interviewId.slice(0, 8)}-${Date.now()}`;
-    videoRoomUrl = `https://meet.jit.si/${videoRoomName}`;
-  }
+  const provider = getDefaultVideoProvider();
+  const isOnlineOrHybrid = interviewType === "online" || interviewType === "hybrid";
+  const videoRoomName = isOnlineOrHybrid ? `interview-${interviewId}` : null;
+  const videoRoomUrl =
+    isOnlineOrHybrid && provider === "jitsi" ? `https://meet.jit.si/${videoRoomName}` : null;
+  const videoProvider = isOnlineOrHybrid ? provider : null;
 
   const { error } = await supabase
     .from("interview_schedules")
     .update({
       meeting_link: videoRoomUrl,
       room_name: videoRoomName,
-      video_provider: interviewType === "online" || interviewType === "hybrid" ? "jitsi" : null,
+      video_provider: videoProvider,
       meeting_type: interview.meeting_type,
       office_branch_id: interview.office_branch_id,
     })
