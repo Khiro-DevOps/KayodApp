@@ -404,36 +404,48 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       "00000000-0000-0000-0000-000000000001";
 
     // 4) Upsert employees record (including NOT NULL columns from 20260930 migration)
-    const { error: employeeInsertError } = await admin
+    const employeePayload = {
+      profile_id: application.applicant_id,
+      tenant_id: tenantId,
+      application_id: applicationId as string | null,
+      job_offer_id: offer.id,
+      department_id: jobPosting?.department_id ?? null,
+      reports_to: null,
+      job_title: jobTitle,
+      employment_type: normalizeEmploymentType(jobMetadata.employment_type),
+      employment_status: "active",
+      start_date: startDate,
+      salary: baseSalaryValue,
+      base_salary: baseSalaryValue,
+      pay_frequency: normalizePayFrequency(jobMetadata.pay_frequency),
+      currency:
+        typeof jobMetadata.salary_currency === "string"
+          ? jobMetadata.salary_currency
+          : "PHP",
+      work_mode: extractedWorkMode,
+      work_location_id: offer.work_location_id ?? null,
+      work_days: extractedWorkDays,
+      shift_start: extractedShiftStart,
+      shift_end: extractedShiftEnd,
+      updated_at: now,
+    };
+
+    let { error: employeeInsertError } = await admin
       .from("employees")
-      .upsert(
-        {
-          profile_id: application.applicant_id,
-          tenant_id: tenantId,
-          application_id: applicationId,
-          job_offer_id: offer.id,
-          department_id: jobPosting?.department_id ?? null,
-          reports_to: null,
-          job_title: jobTitle,
-          employment_type: normalizeEmploymentType(jobMetadata.employment_type),
-          employment_status: "active",
-          start_date: startDate,
-          salary: baseSalaryValue,
-          base_salary: baseSalaryValue,
-          pay_frequency: normalizePayFrequency(jobMetadata.pay_frequency),
-          currency:
-            typeof jobMetadata.salary_currency === "string"
-              ? jobMetadata.salary_currency
-              : "PHP",
-          work_mode: extractedWorkMode,
-          work_location_id: offer.work_location_id ?? null,
-          work_days: extractedWorkDays,
-          shift_start: extractedShiftStart,
-          shift_end: extractedShiftEnd,
-          updated_at: now,
-        },
-        { onConflict: "profile_id" },
-      );
+      .upsert(employeePayload, { onConflict: "profile_id" });
+
+    if (
+      employeeInsertError &&
+      employeeInsertError.message?.includes("employees_application_id_fkey")
+    ) {
+      const retryRes = await admin
+        .from("employees")
+        .upsert(
+          { ...employeePayload, application_id: null },
+          { onConflict: "profile_id" },
+        );
+      employeeInsertError = retryRes.error;
+    }
 
     if (employeeInsertError) {
       try {

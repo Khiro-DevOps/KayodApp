@@ -568,3 +568,9 @@ $$;
 --     to_regclass('public.job_offer_negotiations')
 --   )
 -- ORDER BY table_name::text, trigger_name;
+
+ALTER TABLE public.employees
+  DROP CONSTRAINT IF EXISTS employees_application_id_fkey;
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_application_id_fkey
+  FOREIGN KEY (application_id) REFERENCES public.job_applications(id) ON DELETE SET NULL;
