@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
@@ -71,34 +72,62 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const storedSalary = Number(employee.base_salary ?? employee.salary ?? 0);
   let resolvedInitialSalary = storedSalary > 0 ? storedSalary : 35000;
 
-  if (storedSalary <= 0 && employee.application_id) {
-    const [{ data: linkedOffer }, { data: linkedApp }] = await Promise.all([
-      supabase
-        .from("job_offers")
-        .select("salary, financial_package, job_metadata, metadata")
-        .eq("application_id", employee.application_id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
+  if (storedSalary <= 0 && (employee.application_id || employee.profile_id)) {
+    const admin = getAdminClient();
+    let targetAppId: string | null = employee.application_id ?? null;
+
+    if (!targetAppId && employee.profile_id) {
+      const { data: profileJobApp } = await admin
         .from("job_applications")
-        .select("job_postings ( salary_min, salary_max )")
-        .eq("id", employee.application_id)
-        .maybeSingle(),
-    ]);
+        .select("id")
+        .eq("applicant_id", employee.profile_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    const rawPosting = (
-      linkedApp as { job_postings?: JobPostingSalarySource | JobPostingSalarySource[] | null } | null
-    )?.job_postings;
-    const linkedPosting = Array.isArray(rawPosting)
-      ? rawPosting[0] ?? null
-      : rawPosting ?? null;
+      if (profileJobApp?.id) {
+        targetAppId = profileJobApp.id;
+      } else {
+        const { data: profileLegacyApp } = await admin
+          .from("applications")
+          .select("id")
+          .eq("candidate_id", employee.profile_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        targetAppId = profileLegacyApp?.id ?? null;
+      }
+    }
 
-    resolvedInitialSalary = resolveOfferSalary(
-      linkedOffer as OfferSalarySource | null,
-      linkedPosting,
-      35000,
-    );
+    if (targetAppId) {
+      const [{ data: linkedOffer }, { data: linkedApp }] = await Promise.all([
+        admin
+          .from("job_offers")
+          .select("salary, financial_package, job_metadata, metadata")
+          .eq("application_id", targetAppId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        admin
+          .from("job_applications")
+          .select("job_postings ( salary_min, salary_max )")
+          .eq("id", targetAppId)
+          .maybeSingle(),
+      ]);
+
+      const rawPosting = (
+        linkedApp as { job_postings?: JobPostingSalarySource | JobPostingSalarySource[] | null } | null
+      )?.job_postings;
+      const linkedPosting = Array.isArray(rawPosting)
+        ? rawPosting[0] ?? null
+        : rawPosting ?? null;
+
+      resolvedInitialSalary = resolveOfferSalary(
+        linkedOffer as OfferSalarySource | null,
+        linkedPosting,
+        35000,
+      );
+    }
   }
     
   const p = employee.profiles as unknown as { first_name: string; last_name: string; email: string; };

@@ -40,8 +40,13 @@ export default function CompensationEditorCard({
         toast.error(res.error || "Failed to update compensation");
         return;
       }
-      toast.success("Compensation saved");
-      setSavedNotice("Compensation saved.");
+      const formattedSalary = Number(baseSalary).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const message = `Compensation saved: ₱${formattedSalary}`;
+      toast.success(message);
+      setSavedNotice(message);
     });
   };
 

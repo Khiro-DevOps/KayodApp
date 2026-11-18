@@ -64,7 +64,6 @@ export async function updateEmployeeCompensationAction(formData: FormData): Prom
     .from("employees")
     .update({
       base_salary: rawSalary,
-      salary: rawSalary,
       pay_frequency: payFrequency,
       updated_at: new Date().toISOString(),
     })

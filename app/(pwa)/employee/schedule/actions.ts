@@ -75,6 +75,15 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
   }
 
   const tenantId = employee.tenant_id;
+  let validTenantId: string | null = null;
+  if (tenantId) {
+    const { data: tenantRow } = await supabaseAdmin
+      .from("tenants")
+      .select("id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    validTenantId = tenantRow?.id ?? null;
+  }
 
   // Active Session Guard: Prevent multiple open clock-in sessions for the same employee
   const { data: activeLog } = await supabase
@@ -137,7 +146,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     .from("attendance_logs")
     .insert({
       employee_id: employee.id,
-      tenant_id: tenantId,
+      tenant_id: validTenantId,
       clock_in: new Date().toISOString(),
       latitude,
       longitude,
