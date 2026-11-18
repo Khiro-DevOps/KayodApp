@@ -40,7 +40,7 @@ export default async function EmployeeOnboardingPage() {
 
   return (
     <PageContainer>
-      <div className="w-full max-w-xl min-w-0 mx-auto px-4 py-6 space-y-6">
+      <div className="w-full max-w-6xl min-w-0 px-4 py-6 lg:px-6 space-y-6">
         {/* Header & Progress Card */}
         <div className="rounded-2xl border border-border bg-card-bg p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -105,12 +105,14 @@ export default async function EmployeeOnboardingPage() {
             Required Documents ({items.length})
           </h2>
 
-          {items.map((item) => (
-            <DocumentUploadCard
-              key={item.requirement.id}
-              item={item}
-            />
-          ))}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            {items.map((item) => (
+              <DocumentUploadCard
+                key={item.requirement.id}
+                item={item}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </PageContainer>

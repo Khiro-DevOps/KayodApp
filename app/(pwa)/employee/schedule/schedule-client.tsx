@@ -329,7 +329,7 @@ export default function ScheduleClient({
               <button
                 onClick={handleClockIn}
                 disabled={loading}
-                className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50"
+                className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[18px]">alarm_on</span>
                 {loading ? "Clocking In..." : "Clock In Now"}
@@ -376,8 +376,8 @@ export default function ScheduleClient({
         {/* Bottom Metrics Pill Grid */}
         <div className="grid grid-cols-2 gap-3">
           {/* Left Pill (Wi-Fi / Network Status) */}
-          <div className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-[#f7f6fc] px-3.5 py-2.5 text-xs">
-            <span className="material-symbols-outlined text-[18px] text-purple-600">wifi</span>
+          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
+            <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">wifi</span>
             <div>
               <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Network</p>
               <p className="font-bold text-gray-800">{isOnline ? "Connected / Online" : "Offline"}</p>
@@ -385,8 +385,8 @@ export default function ScheduleClient({
           </div>
 
           {/* Right Pill (Distance / Work Zone Indicator) */}
-          <div className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-[#f7f6fc] px-3.5 py-2.5 text-xs">
-            <span className="material-symbols-outlined text-[18px] text-purple-600">location_on</span>
+          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
+            <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">location_on</span>
             <div>
               <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Proximity</p>
               <p className="font-bold text-gray-800">{distancePillText}</p>
@@ -395,11 +395,11 @@ export default function ScheduleClient({
         </div>
 
         {/* Read-Only Address Lock Banner */}
-        <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3 text-xs text-purple-900 space-y-1">
-          <p className="font-semibold text-purple-950">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+          <p className="font-semibold text-slate-900">
             Registered Address: <span className="font-bold">{remoteAddress}</span>
           </p>
-          <div className="flex items-center gap-1.5 text-[11px] text-purple-700 font-medium">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
             <span className="material-symbols-outlined text-[14px]">lock</span>
             <span>Managed by HR. Contact your HR administrator to update your designated remote work location.</span>
           </div>

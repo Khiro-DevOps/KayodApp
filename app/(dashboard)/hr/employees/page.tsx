@@ -85,7 +85,7 @@ export default async function EmployeesPage() {
 
   return (
     <PageContainer>
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full px-6 py-6">
         <EmployeesDirectoryClient employees={directoryEmployees} />
       </div>
     </PageContainer>

@@ -97,7 +97,7 @@ export default function ScheduleOverviewCard({
   const isHybrid = workMode === "hybrid";
   const isOnsite = workMode === "onsite";
 
-  let badgeColorClass = "bg-purple-100 text-purple-800 border-purple-200";
+  let badgeColorClass = "bg-sky-100 text-sky-800 border-sky-200";
   let badgeLabel = "Remote / WFH";
 
   if (isOnsite) {
@@ -138,9 +138,9 @@ export default function ScheduleOverviewCard({
       </div>
 
       {/* Active Shift Window */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#f7f6fc] rounded-xl p-3.5 border border-[#e6e4f0]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1e1b4b] text-white shadow-sm">
             <span className="material-symbols-outlined text-[20px]">schedule</span>
           </div>
           <div>
@@ -153,7 +153,7 @@ export default function ScheduleOverviewCard({
           </div>
         </div>
         <div className="text-xs text-text-secondary font-medium sm:text-right">
-          <span className="inline-block rounded-md bg-purple-50 px-2.5 py-1 text-purple-800 font-semibold border border-purple-100">
+          <span className="inline-block rounded-md bg-slate-100 px-2.5 py-1 text-slate-700 font-semibold border border-slate-200">
             Philippine Standard Time (UTC+8)
           </span>
         </div>
@@ -172,8 +172,8 @@ export default function ScheduleOverviewCard({
                 key={day.short}
                 className={`flex flex-col items-center justify-center rounded-xl py-2 text-center text-xs transition-all ${
                   isWorking
-                    ? "bg-purple-600 text-white font-bold shadow-sm"
-                    : "bg-[#f7f6fc] border border-[#e6e4f0] text-text-secondary opacity-60 font-medium"
+                    ? "bg-[#1e1b4b] text-white font-bold shadow-sm"
+                    : "bg-slate-50 border border-slate-200 text-text-secondary opacity-60 font-medium"
                 }`}
               >
                 <span>{day.short}</span>
@@ -187,15 +187,15 @@ export default function ScheduleOverviewCard({
       </div>
 
       {/* Assigned Location */}
-      <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3.5 space-y-1">
-        <div className="flex items-center gap-2 text-xs font-bold text-purple-950">
-          <span className="material-symbols-outlined text-[16px] text-purple-700">place</span>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+          <span className="material-symbols-outlined text-[16px] text-[#1e1b4b]">place</span>
           <span>{assignedLocationName}</span>
         </div>
-        <p className="text-xs text-purple-800 font-medium pl-6">
+        <p className="text-xs text-slate-700 font-medium pl-6">
           {assignedLocationAddress}
         </p>
-        <div className="flex items-center gap-1.5 text-[11px] text-purple-700 font-medium pl-6 pt-1">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium pl-6 pt-1">
           <span className="material-symbols-outlined text-[14px]">radar</span>
           <span>Geofence radius: <strong>{radiusMeters}m</strong></span>
         </div>

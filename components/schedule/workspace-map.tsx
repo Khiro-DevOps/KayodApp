@@ -23,7 +23,7 @@ function useLeafletIcons() {
         className: "custom-office-pin",
         html: `
           <div style="
-            background-color: #7c3aed;
+            background-color: #1e1b4b;
             width: 36px;
             height: 36px;
             border-radius: 50%;
@@ -31,7 +31,7 @@ function useLeafletIcons() {
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 4px 10px rgba(124, 58, 237, 0.4);
+            box-shadow: 0 4px 10px rgba(30, 27, 75, 0.35);
             border: 2px solid white;
           ">
             <span class="material-symbols-outlined" style="font-size: 20px;">location_on</span>
