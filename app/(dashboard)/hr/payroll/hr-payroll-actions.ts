@@ -4,53 +4,66 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
 import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 async function verifyHR(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
+  user: { id: string; user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> }
 ) {
-  const { data: profile } = await supabase
+  const admin = getAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
     .select("role")
-    .eq("id", userId)
-    .single();
-  return profile && ["hr", "hr_manager", "admin"].includes(profile.role);
+    .eq("id", user.id)
+    .maybeSingle();
+  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
+  return isHRRole(effectiveRole(profile?.role, authRole));
 }
 
 export async function createPayrollPeriod(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+  if (!await verifyHR(user)) redirect("/dashboard");
 
-  const periodStart = formData.get("period_start") as string;
-  const periodEnd   = formData.get("period_end") as string;
-  const payDate     = formData.get("pay_date") as string;
+  const periodStart = String(formData.get("period_start") ?? "").trim();
+  const periodEnd   = String(formData.get("period_end") ?? "").trim();
+  const payDate     = String(formData.get("pay_date") ?? "").trim();
 
-  const { error } = await supabase.from("payroll_periods").insert({
-    period_start: periodStart,
-    period_end:   periodEnd,
-    pay_date:     payDate,
-    status:       "draft",
-    created_by:   user.id,
-  });
+  if (!periodStart || !periodEnd || !payDate) {
+    redirect("/hr/payslips?error=All+period+dates+are+required");
+  }
 
-  if (error) redirect(`/hr/payroll?error=${encodeURIComponent(error.message)}`);
+  const admin = getAdminClient();
+  const { data: insertedPeriod, error } = await admin
+    .from("payroll_periods")
+    .insert({
+      period_start: periodStart,
+      period_end:   periodEnd,
+      pay_date:     payDate,
+      status:       "draft",
+      created_by:   user.id,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error) redirect(`/hr/payslips?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath("/hr/payroll");
   revalidatePath("/hr/payslips");
-  redirect("/hr/payroll");
+  redirect(insertedPeriod?.id ? `/hr/payslips?periodId=${insertedPeriod.id}` : "/hr/payslips");
 }
 
 export async function generatePayslips(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+  if (!await verifyHR(user)) redirect("/dashboard");
 
-  const periodId = formData.get("period_id") as string;
+  const periodId = String(formData.get("period_id") ?? "").trim();
+  if (!periodId) redirect("/hr/payslips?error=Missing+payroll+period+ID");
+
   const customAllowances = Math.max(0, Number(formData.get("allowances") ?? 0) || 0);
   const customBonuses = Math.max(0, Number(formData.get("bonuses") ?? 0) || 0);
   const customOtherDeductions = Math.max(0, Number(formData.get("other_deductions") ?? 0) || 0);
@@ -59,22 +72,29 @@ export async function generatePayslips(formData: FormData) {
   const admin = getAdminClient();
 
   // 1. Get the period dates
-  const { data: period } = await admin
+  const { data: period, error: periodError } = await admin
     .from("payroll_periods")
     .select("period_start, period_end")
     .eq("id", periodId)
     .single();
 
-  if (!period) redirect("/hr/payslips?error=Period+not+found");
+  if (periodError || !period) {
+    const msg = periodError?.message ?? "Period not found";
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(msg)}`);
+  }
 
   // 2. Get all active employees
-  const { data: employees } = await admin
+  const { data: employees, error: employeesError } = await admin
     .from("employees")
     .select("id, base_salary, salary, pay_frequency, employment_type, shift_start, shift_end, work_days")
     .eq("employment_status", "active");
 
+  if (employeesError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(employeesError.message)}`);
+  }
+
   if (!employees || employees.length === 0) {
-    redirect("/hr/payslips?error=No+active+employees+found");
+    redirect(`/hr/payslips?periodId=${periodId}&error=No+active+employees+found`);
   }
 
   // 3. Get attendance_logs and approved leave_requests for this period
@@ -93,7 +113,7 @@ export async function generatePayslips(formData: FormData) {
     .lte("start_date", period.period_end)
     .gte("end_date", period.period_start);
 
-  // 4. Build payslips using detailed demo payslip computation engine
+  // 4. Build payslips matching exact public.payslips columns in supabase/schema.sql
   const payslips = employees.map((emp) => {
     const monthlySalary = Number(emp.base_salary ?? emp.salary ?? 0);
     const empLogs = (attendanceLogs ?? []).filter((l) => l.employee_id === emp.id);
@@ -132,43 +152,85 @@ export async function generatePayslips(formData: FormData) {
     };
   });
 
-  // 5. Delete any previously generated payslips for this period (allow re-generation)
+  // 5. Delete existing draft / pending_approval payslips for this period before inserting fresh rows
+  const { error: deleteError } = await admin
+    .from("payslips")
+    .delete()
+    .eq("payroll_period_id", periodId)
+    .in("status", ["draft", "pending_approval"]);
+
+  if (deleteError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(deleteError.message)}`);
+  }
+
+  // Also clear any leftover payslips for this period so unique(payroll_period_id, employee_id) never conflicts
   await admin
     .from("payslips")
     .delete()
     .eq("payroll_period_id", periodId);
 
-  await admin.from("payslips").insert(payslips);
+  const { error: insertError } = await admin.from("payslips").insert(payslips);
+  if (insertError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(insertError.message)}`);
+  }
 
-  // 6. Advance period status
-  await admin
+  // 6. Advance period status to pending_approval
+  const { error: periodUpdateError } = await admin
     .from("payroll_periods")
     .update({ status: "pending_approval" })
     .eq("id", periodId);
+
+  if (periodUpdateError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(periodUpdateError.message)}`);
+  }
 
   revalidatePath("/hr/payroll");
   revalidatePath("/hr/payslips");
   redirect(`/hr/payslips?periodId=${periodId}`);
 }
 
-export async function approvePayroll(formData: FormData) {
+export async function approvePayroll(input: FormData | string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+  if (!await verifyHR(user)) redirect("/dashboard");
 
-  const periodId = formData.get("period_id") as string;
+  const periodId = typeof input === "string"
+    ? input.trim()
+    : String(input.get("period_id") ?? "").trim();
+
+  if (!periodId) {
+    redirect("/hr/payslips?error=Missing+payroll+period+ID");
+  }
+
   const admin = getAdminClient();
 
-  await admin
+  // Update payslips to "published" (fallback to "paid" if DB enum payroll_status rejects "published")
+  let { error: slipsUpdateError } = await admin
     .from("payslips")
     .update({ status: "published" })
     .eq("payroll_period_id", periodId);
 
-  await admin
+  if (slipsUpdateError) {
+    const fallback = await admin
+      .from("payslips")
+      .update({ status: "paid" })
+      .eq("payroll_period_id", periodId);
+    slipsUpdateError = fallback.error;
+  }
+
+  if (slipsUpdateError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(slipsUpdateError.message)}`);
+  }
+
+  const { error: periodUpdateError } = await admin
     .from("payroll_periods")
-    .update({ status: "paid", approved_by: user.id })
+    .update({ status: "approved", approved_by: user.id })
     .eq("id", periodId);
+
+  if (periodUpdateError) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(periodUpdateError.message)}`);
+  }
 
   // Notify each paid employee
   try {
@@ -218,13 +280,14 @@ export async function approvePayroll(formData: FormData) {
   revalidatePath("/hr/payroll");
   revalidatePath("/hr/payslips");
   revalidatePath("/employee/payslips");
+  redirect(`/hr/payslips?periodId=${periodId}`);
 }
 
 export async function publishSinglePayslip(input: FormData | string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+  if (!await verifyHR(user)) redirect("/dashboard");
 
   const payslipId = typeof input === "string"
     ? input.trim()
@@ -232,20 +295,29 @@ export async function publishSinglePayslip(input: FormData | string) {
 
   if (!payslipId) {
     if (typeof input === "string") return { success: false, error: "Missing payslip id" };
-    redirect("/hr/payroll?error=Missing+payslip+id");
+    redirect("/hr/payslips?error=Missing+payslip+id");
   }
 
   const admin = getAdminClient();
-  const { error: updateError } = await admin
+  let { error: updateError } = await admin
     .from("payslips")
     .update({ status: "published" })
     .eq("id", payslipId);
+
+  if (updateError) {
+    const fallback = await admin
+      .from("payslips")
+      .update({ status: "paid" })
+      .eq("id", payslipId);
+    updateError = fallback.error;
+  }
 
   if (updateError) {
     if (typeof input === "string") return { success: false, error: updateError.message };
     redirect(`/hr/payslips?error=${encodeURIComponent(updateError.message)}`);
   }
 
+  let periodIdForRedirect: string | null = null;
   try {
     const { data: slip } = await admin
       .from("payslips")
@@ -253,6 +325,7 @@ export async function publishSinglePayslip(input: FormData | string) {
       .eq("id", payslipId)
       .maybeSingle();
 
+    periodIdForRedirect = slip?.payroll_period_id ?? null;
     const emp = Array.isArray(slip?.employees) ? slip?.employees[0] : slip?.employees;
     const recipientId = (emp as { profile_id?: string | null } | null)?.profile_id ?? null;
     const period = Array.isArray(slip?.payroll_periods)
@@ -283,27 +356,39 @@ export async function publishSinglePayslip(input: FormData | string) {
   if (typeof input === "string") {
     return { success: true };
   }
+  redirect(periodIdForRedirect ? `/hr/payslips?periodId=${periodIdForRedirect}` : "/hr/payslips");
 }
 
 export async function rejectPayroll(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+  if (!await verifyHR(user)) redirect("/dashboard");
 
-  const periodId = formData.get("period_id") as string;
+  const periodId = String(formData.get("period_id") ?? "").trim();
+  if (!periodId) redirect("/hr/payslips?error=Missing+payroll+period+ID");
 
-  await supabase
+  const admin = getAdminClient();
+
+  const { error: periodErr } = await admin
     .from("payroll_periods")
     .update({ status: "draft" })
     .eq("id", periodId);
 
-  await supabase
+  if (periodErr) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(periodErr.message)}`);
+  }
+
+  const { error: deleteErr } = await admin
     .from("payslips")
     .delete()
     .eq("payroll_period_id", periodId);
 
+  if (deleteErr) {
+    redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(deleteErr.message)}`);
+  }
+
   revalidatePath("/hr/payroll");
   revalidatePath("/hr/payslips");
-  redirect("/hr/payroll");
+  redirect(`/hr/payslips?periodId=${periodId}`);
 }

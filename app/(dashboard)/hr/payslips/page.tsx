@@ -7,7 +7,7 @@ import PayrollPage from "../payroll/page";
 export default async function HRPayslipsRoutePage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodId?: string }>;
+  searchParams: Promise<{ periodId?: string; error?: string }>;
 }) {
   const resolvedParams = await searchParams;
   const supabase = await createClient();
@@ -28,7 +28,12 @@ export default async function HRPayslipsRoutePage({
 
   const role = effectiveRole(profile?.role, authRole);
   if (isHRRole(role)) {
-    return <HRPayrollPage selectedPeriodId={resolvedParams?.periodId} />;
+    return (
+      <HRPayrollPage
+        selectedPeriodId={resolvedParams?.periodId}
+        errorMessage={resolvedParams?.error}
+      />
+    );
   }
 
   return <PayrollPage searchParams={searchParams} />;

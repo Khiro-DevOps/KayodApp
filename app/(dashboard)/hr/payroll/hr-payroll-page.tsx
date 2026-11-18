@@ -12,6 +12,7 @@ import {
   publishSinglePayslip,
   rejectPayroll,
 } from "./hr-payroll-actions";
+import { PayrollSubmitButton } from "./payroll-submit-button";
 
 interface EmployeeWithProfile extends Employee {
   profiles: Profile;
@@ -24,8 +25,10 @@ interface HoursPreview {
 
 export default async function HRPayrollPage({
   selectedPeriodId,
+  errorMessage,
 }: {
   selectedPeriodId?: string;
+  errorMessage?: string;
 } = {}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -120,6 +123,14 @@ export default async function HRPayrollPage({
           </span>
         </div>
 
+        {/* Error banner */}
+        {errorMessage && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-xs">
+            <span className="font-semibold">Error:</span>
+            <span>{decodeURIComponent(errorMessage)}</span>
+          </div>
+        )}
+
         {/* New payroll period form */}
         <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-text-main">New payroll period</h2>
@@ -147,12 +158,11 @@ export default async function HRPayrollPage({
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary text-text-main bg-white"
               />
             </div>
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
-            >
-              Create period
-            </button>
+            <PayrollSubmitButton
+              label="Create period"
+              pendingLabel="Creating period..."
+              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
+            />
           </form>
         </div>
 
@@ -234,23 +244,21 @@ export default async function HRPayrollPage({
                 {reviewPayslips.length > 0 && (
                   <form action={rejectPayroll}>
                     <input type="hidden" name="period_id" value={reviewPeriod.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-semibold text-text-muted hover:bg-surface-bg transition-colors"
-                    >
-                      Reject &amp; revise
-                    </button>
+                    <PayrollSubmitButton
+                      label="Reject & revise"
+                      pendingLabel="Reverting..."
+                      className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-semibold text-text-muted hover:bg-surface-bg transition-colors disabled:opacity-60"
+                    />
                   </form>
                 )}
-                <form action={approvePayroll}>
+                <form action={approvePayroll as unknown as (formData: FormData) => Promise<void>}>
                   <input type="hidden" name="period_id" value={reviewPeriod.id} />
-                  <button
-                    type="submit"
+                  <PayrollSubmitButton
+                    label="Approve & Publish All"
+                    pendingLabel="Approving & Publishing..."
                     disabled={reviewPayslips.length === 0}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-xs disabled:opacity-50"
-                  >
-                    Approve &amp; Publish All
-                  </button>
+                  />
                 </form>
               </div>
             </div>
@@ -293,12 +301,11 @@ export default async function HRPayrollPage({
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="w-full rounded-lg bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-hover transition-colors shadow-xs"
-                >
-                  Generate Payslips ({activeEmployeeCount} active employees)
-                </button>
+                <PayrollSubmitButton
+                  label={`Generate Payslips (${activeEmployeeCount} active employees)`}
+                  pendingLabel="Generating Payslips..."
+                  className="w-full rounded-lg bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
+                />
               </form>
             )}
 
@@ -370,12 +377,11 @@ export default async function HRPayrollPage({
                         {!isPublished && (
                           <form action={publishSinglePayslip as unknown as (formData: FormData) => Promise<void>}>
                             <input type="hidden" name="payslip_id" value={slip.id} />
-                            <button
-                              type="submit"
-                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
-                            >
-                              Publish
-                            </button>
+                            <PayrollSubmitButton
+                              label="Publish"
+                              pendingLabel="Publishing..."
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                            />
                           </form>
                         )}
                       </div>
@@ -499,16 +505,15 @@ export default async function HRPayrollPage({
                           />
                         </div>
                       </div>
-                      <button
-                        type="submit"
-                        className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
-                      >
-                        Generate payslips for {activeEmployeeCount} employees
-                      </button>
+                      <PayrollSubmitButton
+                        label={`Generate payslips for ${activeEmployeeCount} employees`}
+                        pendingLabel="Generating payslips..."
+                        className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
+                      />
                     </form>
                   )}
 
-                  {period.status === "paid" && (
+                  {(period.status === "paid" || period.status === "approved") && (
                     <p className="text-xs text-success font-medium text-center">
                       ✓ Payslips sent to all employees
                     </p>

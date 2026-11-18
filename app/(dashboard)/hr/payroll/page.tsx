@@ -9,7 +9,7 @@ import HRPayrollPage from "./hr-payroll-page";
 export default async function PayrollPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ periodId?: string }>;
+  searchParams?: Promise<{ periodId?: string; error?: string }>;
 } = {}) {
   const resolvedParams = searchParams ? await searchParams : undefined;
   const supabase = await createClient();
@@ -27,7 +27,12 @@ export default async function PayrollPage({
 
   // HR users see full HR Payroll workspace with creation form and management tools
   if (isHR) {
-    return <HRPayrollPage selectedPeriodId={resolvedParams?.periodId} />;
+    return (
+      <HRPayrollPage
+        selectedPeriodId={resolvedParams?.periodId}
+        errorMessage={resolvedParams?.error}
+      />
+    );
   }
 
   // Employees see their own payslips
