@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { sendNotification } from "@/lib/notifications";
-import { resolveOfferSalary } from "@/lib/offer-salary";
+import { resolveOfferCompensation } from "@/lib/offer-salary";
 import {
   markOfferSigned,
   verifyDocusealSubmissionCompleted,
@@ -310,7 +310,11 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       (typeof jobMetadata.start_date === "string" ? jobMetadata.start_date : null) ??
       now.split("T")[0];
 
-    const baseSalaryValue = resolveOfferSalary(
+    const {
+      baseSalary: baseSalaryValue,
+      monthlyAllowance,
+      attendanceIncentive,
+    } = resolveOfferCompensation(
       {
         ...offer,
         metadata,
@@ -420,6 +424,8 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       start_date: startDate,
       salary: baseSalaryValue,
       base_salary: baseSalaryValue,
+      monthly_allowance: monthlyAllowance,
+      attendance_incentive: attendanceIncentive,
       pay_frequency: normalizePayFrequency(jobMetadata.pay_frequency),
       currency:
         typeof jobMetadata.salary_currency === "string"
@@ -439,12 +445,26 @@ export async function POST(_request: NextRequest, ctx: unknown) {
 
     if (
       employeeInsertError &&
+      (employeeInsertError.message?.toLowerCase().includes("monthly_allowance") ||
+        employeeInsertError.message?.toLowerCase().includes("attendance_incentive") ||
+        employeeInsertError.message?.toLowerCase().includes("schema cache"))
+    ) {
+      const { monthly_allowance: _ma, attendance_incentive: _ai, ...fallbackPayload } = employeePayload;
+      const retryComp = await admin
+        .from("employees")
+        .upsert(fallbackPayload, { onConflict: "profile_id" });
+      employeeInsertError = retryComp.error;
+    }
+
+    if (
+      employeeInsertError &&
       employeeInsertError.message?.includes("employees_application_id_fkey")
     ) {
+      const { monthly_allowance: _ma, attendance_incentive: _ai, ...fallbackPayload } = employeePayload;
       const retryRes = await admin
         .from("employees")
         .upsert(
-          { ...employeePayload, application_id: null },
+          { ...fallbackPayload, application_id: null },
           { onConflict: "profile_id" },
         );
       employeeInsertError = retryRes.error;

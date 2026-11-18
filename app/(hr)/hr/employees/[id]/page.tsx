@@ -6,7 +6,7 @@ import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
 import CompensationEditorCard from "./compensation-editor-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
-import { resolveOfferSalary, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
+import { resolveOfferCompensation, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
 import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
 interface Props {
@@ -71,9 +71,27 @@ export default async function EmployeeDetailPage({ params }: Props) {
     .maybeSingle<EmployeeRemoteResidence>();
 
   const storedSalary = Number(employee.base_salary ?? employee.salary ?? 0);
-  let resolvedInitialSalary = storedSalary > 0 ? storedSalary : 35000;
+  const storedAllowance = (employee as { monthly_allowance?: number | string | null }).monthly_allowance;
+  const storedIncentive = (employee as { attendance_incentive?: number | string | null }).attendance_incentive;
 
-  if (storedSalary <= 0 && (employee.application_id || employee.profile_id)) {
+  let resolvedInitialSalary = storedSalary > 0 ? storedSalary : 35000;
+  let resolvedInitialAllowance =
+    storedAllowance !== null && storedAllowance !== undefined && Number.isFinite(Number(storedAllowance))
+      ? Number(storedAllowance)
+      : 0;
+  let resolvedInitialIncentive =
+    storedIncentive !== null && storedIncentive !== undefined && Number.isFinite(Number(storedIncentive))
+      ? Number(storedIncentive)
+      : 0;
+
+  const needsOfferFallback =
+    storedSalary <= 0 ||
+    storedAllowance === null ||
+    storedAllowance === undefined ||
+    storedIncentive === null ||
+    storedIncentive === undefined;
+
+  if (needsOfferFallback && (employee.application_id || employee.profile_id)) {
     let targetAppId: string | null = employee.application_id ?? null;
 
     if (!targetAppId && employee.profile_id) {
@@ -122,11 +140,21 @@ export default async function EmployeeDetailPage({ params }: Props) {
         ? rawPosting[0] ?? null
         : rawPosting ?? null;
 
-      resolvedInitialSalary = resolveOfferSalary(
+      const offerComp = resolveOfferCompensation(
         linkedOffer as OfferSalarySource | null,
         linkedPosting,
         35000,
       );
+
+      if (storedSalary <= 0) {
+        resolvedInitialSalary = offerComp.baseSalary;
+      }
+      if (storedAllowance === null || storedAllowance === undefined) {
+        resolvedInitialAllowance = offerComp.monthlyAllowance;
+      }
+      if (storedIncentive === null || storedIncentive === undefined) {
+        resolvedInitialIncentive = offerComp.attendanceIncentive;
+      }
     }
   }
     
@@ -156,6 +184,8 @@ export default async function EmployeeDetailPage({ params }: Props) {
         <CompensationEditorCard
           employeeId={employee.id}
           initialBaseSalary={resolvedInitialSalary}
+          initialMonthlyAllowance={resolvedInitialAllowance}
+          initialAttendanceIncentive={resolvedInitialIncentive}
           initialPayFrequency={String(employee.pay_frequency ?? "monthly")}
           currency={String(employee.currency ?? "PHP")}
         />

@@ -8,6 +8,8 @@ import { updateEmployeeCompensationAction } from "./employee-compensation-action
 interface CompensationEditorCardProps {
   employeeId: string;
   initialBaseSalary: number;
+  initialMonthlyAllowance?: number;
+  initialAttendanceIncentive?: number;
   initialPayFrequency: string;
   currency?: string;
 }
@@ -15,12 +17,20 @@ interface CompensationEditorCardProps {
 export default function CompensationEditorCard({
   employeeId,
   initialBaseSalary,
+  initialMonthlyAllowance = 0,
+  initialAttendanceIncentive = 0,
   initialPayFrequency,
   currency = "PHP",
 }: CompensationEditorCardProps) {
   const router = useRouter();
   const [baseSalary, setBaseSalary] = useState<string>(
     String(initialBaseSalary > 0 ? initialBaseSalary : 35000)
+  );
+  const [monthlyAllowance, setMonthlyAllowance] = useState<string>(
+    String(initialMonthlyAllowance > 0 ? initialMonthlyAllowance : 0)
+  );
+  const [attendanceIncentive, setAttendanceIncentive] = useState<string>(
+    String(initialAttendanceIncentive > 0 ? initialAttendanceIncentive : 0)
   );
   const [payFrequency, setPayFrequency] = useState<string>(
     initialPayFrequency === "semi_monthly" ? "semi_monthly" : "monthly"
@@ -36,6 +46,8 @@ export default function CompensationEditorCard({
     const formData = new FormData();
     formData.set("employee_id", employeeId);
     formData.set("base_salary", baseSalary);
+    formData.set("monthly_allowance", monthlyAllowance);
+    formData.set("attendance_incentive", attendanceIncentive);
     formData.set("pay_frequency", payFrequency);
 
     startTransition(async () => {
@@ -50,10 +62,17 @@ export default function CompensationEditorCard({
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
+      const formattedAllowance = (Number(monthlyAllowance) || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const formattedIncentive = (Number(attendanceIncentive) || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
       const freqLabel = payFrequency === "semi_monthly" ? "semi_monthly" : "monthly";
-      const message = res.warning
-        ? `Saved: ₱${formattedSalary} (${freqLabel}) — ${res.warning}`
-        : `Saved: ₱${formattedSalary} (${freqLabel})`;
+      const summary = `Saved: ₱${formattedSalary} (${freqLabel}) | Allowance: ₱${formattedAllowance} | Attendance Incentive: ₱${formattedIncentive}`;
+      const message = res.warning ? `${summary} — ${res.warning}` : summary;
       toast.success(message);
       setSavedNotice(message);
       router.refresh();
@@ -76,7 +95,7 @@ export default function CompensationEditorCard({
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 sm:items-end">
         <div>
           <label
             htmlFor="base_salary"
@@ -93,6 +112,44 @@ export default function CompensationEditorCard({
             required
             value={baseSalary}
             onChange={(e) => setBaseSalary(e.target.value)}
+            className="w-full rounded-xl border border-[#e6e4f0] bg-[#f7f6fc] px-3.5 py-2.5 text-sm font-semibold text-[#171542] outline-none focus:border-[#2d2b68] focus:bg-white"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="monthly_allowance"
+            className="block text-xs font-semibold uppercase tracking-wider text-[#5d5a75] mb-1.5"
+          >
+            Monthly Allowance (₱)
+          </label>
+          <input
+            id="monthly_allowance"
+            name="monthly_allowance"
+            type="number"
+            min={0}
+            step="0.01"
+            value={monthlyAllowance}
+            onChange={(e) => setMonthlyAllowance(e.target.value)}
+            className="w-full rounded-xl border border-[#e6e4f0] bg-[#f7f6fc] px-3.5 py-2.5 text-sm font-semibold text-[#171542] outline-none focus:border-[#2d2b68] focus:bg-white"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="attendance_incentive"
+            className="block text-xs font-semibold uppercase tracking-wider text-[#5d5a75] mb-1.5"
+          >
+            Perfect Attendance Incentive (₱)
+          </label>
+          <input
+            id="attendance_incentive"
+            name="attendance_incentive"
+            type="number"
+            min={0}
+            step="0.01"
+            value={attendanceIncentive}
+            onChange={(e) => setAttendanceIncentive(e.target.value)}
             className="w-full rounded-xl border border-[#e6e4f0] bg-[#f7f6fc] px-3.5 py-2.5 text-sm font-semibold text-[#171542] outline-none focus:border-[#2d2b68] focus:bg-white"
           />
         </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { resolveOfferSalary } from "@/lib/offer-salary"
+import { resolveOfferCompensation } from "@/lib/offer-salary"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -162,30 +162,55 @@ export async function POST(req: NextRequest) {
 
     const rawJobTitle = jobInfo?.title
     const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
-    const baseSalary = resolveOfferSalary(jobOffer, jobInfo, 35000)
+    const {
+      baseSalary,
+      monthlyAllowance,
+      attendanceIncentive,
+    } = resolveOfferCompensation(jobOffer, jobInfo, 35000)
     const empType = jobInfo?.employment_type || "full_time"
 
     if (!existingEmployee) {
-      const { data: newEmployee, error: createEmployeeError } = await admin
+      const baseInsertPayload = {
+        profile_id: application.candidate_id,
+        application_id: application.id,
+        tenant_id: resolvedTenantId,
+        job_title: jobTitle,
+        base_salary: baseSalary,
+        salary: baseSalary,
+        start_date: new Date().toISOString().split('T')[0],
+        employment_type: empType,
+        employment_status: "active",
+        work_mode: workMode,
+        work_location_id: workLocationId,
+      }
+
+      let { data: newEmployee, error: createEmployeeError } = await admin
         .from("employees")
         .insert({
-          profile_id: application.candidate_id,
-          application_id: application.id,
-          tenant_id: resolvedTenantId,
-          job_title: jobTitle,
-          base_salary: baseSalary,
-          salary: baseSalary,
-          start_date: new Date().toISOString().split('T')[0],
-          employment_type: empType,
-          employment_status: "active",
-          work_mode: workMode,
-          work_location_id: workLocationId,
+          ...baseInsertPayload,
+          monthly_allowance: monthlyAllowance,
+          attendance_incentive: attendanceIncentive,
         })
         .select("id")
         .single()
 
-      if (createEmployeeError) {
-        throw new Error(createEmployeeError.message)
+      if (
+        createEmployeeError &&
+        (createEmployeeError.message?.toLowerCase().includes("monthly_allowance") ||
+          createEmployeeError.message?.toLowerCase().includes("attendance_incentive") ||
+          createEmployeeError.message?.toLowerCase().includes("schema cache"))
+      ) {
+        const retryInsert = await admin
+          .from("employees")
+          .insert(baseInsertPayload)
+          .select("id")
+          .single()
+        newEmployee = retryInsert.data
+        createEmployeeError = retryInsert.error
+      }
+
+      if (createEmployeeError || !newEmployee) {
+        throw new Error(createEmployeeError?.message || "Failed to create employee")
       }
       employeeId = newEmployee.id
     } else {

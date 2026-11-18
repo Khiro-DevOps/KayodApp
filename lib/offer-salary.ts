@@ -46,6 +46,86 @@ const SALARY_KEYS = [
   "monthly_salary",
 ];
 
+export interface OfferCompensation {
+  baseSalary: number;
+  monthlyAllowance: number;
+  attendanceIncentive: number;
+}
+
+const ALLOWANCE_KEYS = [
+  "monthly_allowance",
+  "allowance",
+  "phMonthlyAllowance",
+  "recurring_allowance",
+];
+
+const INCENTIVE_KEYS = [
+  "attendance_incentive",
+  "perfect_attendance_incentive",
+  "phAttendanceIncentive",
+];
+
+function toNonNegativeNumber(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    if (!cleaned) return null;
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
+}
+
+function pickNonNegativeFromRecord(record: RecordLike, keys: string[]): number | null {
+  if (!record || typeof record !== "object") return null;
+  for (const key of keys) {
+    if (record[key] === undefined || record[key] === null || record[key] === "") continue;
+    const found = toNonNegativeNumber(record[key]);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+/**
+ * Resolve full recurring compensation from a job_offers row:
+ * baseSalary, monthlyAllowance, and attendanceIncentive.
+ */
+export function resolveOfferCompensation(
+  offer: OfferSalarySource | null | undefined,
+  jobPosting?: JobPostingSalarySource | null,
+  fallbackSalary = 35000,
+): OfferCompensation {
+  const baseSalary = resolveOfferSalary(offer, jobPosting, fallbackSalary);
+
+  if (!offer) {
+    return {
+      baseSalary,
+      monthlyAllowance: 0,
+      attendanceIncentive: 0,
+    };
+  }
+
+  const monthlyAllowance =
+    pickNonNegativeFromRecord(offer.financial_package, ALLOWANCE_KEYS) ??
+    pickNonNegativeFromRecord(offer.job_metadata, ALLOWANCE_KEYS) ??
+    pickNonNegativeFromRecord(offer.metadata, ALLOWANCE_KEYS) ??
+    0;
+
+  const attendanceIncentive =
+    pickNonNegativeFromRecord(offer.financial_package, INCENTIVE_KEYS) ??
+    pickNonNegativeFromRecord(offer.job_metadata, INCENTIVE_KEYS) ??
+    pickNonNegativeFromRecord(offer.metadata, INCENTIVE_KEYS) ??
+    0;
+
+  return {
+    baseSalary,
+    monthlyAllowance,
+    attendanceIncentive,
+  };
+}
+
 /**
  * Resolve confirmed monthly salary from a job_offers row (top-level columns,
  * financial_package, job_metadata, and DocuSeal/offer metadata), falling back
