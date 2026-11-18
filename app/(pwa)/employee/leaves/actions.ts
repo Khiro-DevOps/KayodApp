@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
+import { syncApprovedLeaveToSchedules } from "@/lib/leave-schedule-sync";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -200,6 +201,16 @@ export async function reviewLeaveRequest(formData: FormData) {
     }
   }
 
+  if (action === "approved" && leave?.employee_id && leave.start_date && leave.end_date) {
+    await syncApprovedLeaveToSchedules({
+      employeeId: leave.employee_id,
+      startDate: leave.start_date,
+      endDate: leave.end_date,
+      leaveType: leave.leave_type ?? "leave",
+      reviewedBy: user.id,
+    });
+  }
+
   // Notify employee
   const empRelation = Array.isArray(leave?.employees) ? leave?.employees[0] : leave?.employees;
   const recipientId = empRelation?.profile_id;
@@ -218,6 +229,8 @@ export async function reviewLeaveRequest(formData: FormData) {
   revalidatePath("/hr/leaves");
   revalidatePath("/employee/leaves");
   revalidatePath("/employee/dashboard");
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/schedules");
   redirect("/hr/leaves");
 }
 

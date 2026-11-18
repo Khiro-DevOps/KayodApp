@@ -50,7 +50,6 @@ const defaultPwaShellConfigByVariant: Record<PwaVariant, PwaShellConfig> = {
     navItems: [
       { label: "Home", href: "/employee/dashboard", icon: "home" },
       { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
-      { label: "Attendance", href: "/employee/schedule?view=attendance", icon: "fact_check" },
       { label: "Leaves", href: "/employee/leaves", icon: "event_note" },
       { label: "Payslips", href: "/employee/payslips", icon: "payments" },
       { label: "Profile", href: "/employee/profile", icon: "person" },

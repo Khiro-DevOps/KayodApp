@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendNotification } from "@/lib/notifications";
+import { syncApprovedLeaveToSchedules } from "@/lib/leave-schedule-sync";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -90,6 +91,16 @@ export async function POST(request: Request) {
     }
   }
 
+  if (action === "approved" && leave?.employee_id && leave.start_date && leave.end_date) {
+    await syncApprovedLeaveToSchedules({
+      employeeId: leave.employee_id,
+      startDate: leave.start_date,
+      endDate: leave.end_date,
+      leaveType: leave.leave_type ?? "leave",
+      reviewedBy: user.id,
+    });
+  }
+
   // Notify employee
   const empRelation = Array.isArray(leave?.employees) ? leave?.employees[0] : leave?.employees;
   const recipientId = empRelation?.profile_id;
@@ -107,6 +118,8 @@ export async function POST(request: Request) {
 
   revalidatePath("/hr/leaves");
   revalidatePath("/employee/leaves");
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/schedules");
 
   return NextResponse.json(
     { message: `Leave request ${action}` },

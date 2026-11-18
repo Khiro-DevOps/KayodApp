@@ -148,6 +148,22 @@ export default async function EmployeeSchedulePage() {
   const isTodayOnsite = isDayOnsite(todayDayName);
 
   const weekDates = getWeekDates(thisWeekMonday);
+  const weekStartStr = thisWeekMondayStr;
+  const weekEndDate = weekDates[6];
+  const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}`;
+
+  const { data: approvedLeaves } = await supabase
+    .from("leave_requests")
+    .select("start_date, end_date, leave_type")
+    .eq("employee_id", employee.id)
+    .eq("status", "approved")
+    .lte("start_date", weekEndStr)
+    .gte("end_date", weekStartStr);
+
+  const getLeaveForDate = (dateIso: string) =>
+    (approvedLeaves ?? []).find(
+      (lr) => lr.start_date <= dateIso && lr.end_date >= dateIso
+    ) ?? null;
 
   const formattedShiftRange = `${formatTime12h(shiftStart)} - ${formatTime12h(shiftEnd)}`;
 
@@ -225,11 +241,12 @@ export default async function EmployeeSchedulePage() {
               {/* 7-Day interactive strip (Mon - Sun) */}
               <div className="grid grid-cols-7 gap-1.5">
                 {weekDates.map((date, i) => {
-                  const dateStr = date.toISOString().split("T")[0];
+                  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
                   const isToday = dateStr === todayDateStr;
                   const dayName = DAYS_LONG[i];
                   const isOnsite = isDayOnsite(dayName);
                   const isWeekend = i >= 5;
+                  const leaveEntry = getLeaveForDate(dateStr);
 
                   return (
                     <div
@@ -237,6 +254,8 @@ export default async function EmployeeSchedulePage() {
                       className={`flex flex-col items-center rounded-xl py-2.5 text-center text-xs transition-colors ${
                         isToday
                           ? "bg-[#1e1b4b] text-white shadow-sm ring-2 ring-[#1e1b4b]/20"
+                          : leaveEntry
+                          ? "bg-amber-50 border border-amber-200 text-amber-800"
                           : isWeekend
                           ? "bg-[#f7f6fc] border border-[#e6e4f0] text-text-secondary opacity-75"
                           : isOnsite
@@ -249,7 +268,7 @@ export default async function EmployeeSchedulePage() {
                         {date.getDate()}
                       </span>
                       <span className="mt-1 text-[10px] font-bold">
-                        {isWeekend ? "Off" : isOnsite ? "Onsite" : "WFH"}
+                        {leaveEntry ? "On Leave" : isWeekend ? "Off" : isOnsite ? "Onsite" : "WFH"}
                       </span>
                     </div>
                   );
@@ -259,16 +278,33 @@ export default async function EmployeeSchedulePage() {
               {/* Detailed Day-by-Day Shift Cards */}
               <div className="space-y-2 pt-2">
                 {weekDates.map((date, i) => {
-                  const dateStr = date.toISOString().split("T")[0];
+                  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
                   const isToday = dateStr === todayDateStr;
                   const isPast = date < new Date(todayDateStr);
                   const dayName = DAYS_LONG[i];
                   const isOnsite = isDayOnsite(dayName);
                   const isWeekend = i >= 5;
+                  const leaveEntry = getLeaveForDate(dateStr);
 
-                  const shiftTitle = isWeekend ? "No Shift" : isOnsite ? "Standard Shift" : "Remote Work";
-                  const statusLabel = isWeekend ? "OFF" : isToday ? "ACTIVE" : isPast ? "COMPLETED" : "UPCOMING";
-                  const statusStyle = isWeekend
+                  const shiftTitle = leaveEntry
+                    ? `On Leave (${leaveEntry.leave_type})`
+                    : isWeekend
+                    ? "No Shift"
+                    : isOnsite
+                    ? "Standard Shift"
+                    : "Remote Work";
+                  const statusLabel = leaveEntry
+                    ? "On Leave"
+                    : isWeekend
+                    ? "OFF"
+                    : isToday
+                    ? "ACTIVE"
+                    : isPast
+                    ? "COMPLETED"
+                    : "UPCOMING";
+                  const statusStyle = leaveEntry
+                    ? "bg-amber-100 text-amber-800 border-amber-200"
+                    : isWeekend
                     ? "bg-gray-100 text-gray-600 border-gray-200"
                     : isToday
                     ? "bg-[#1e1b4b] text-white border-[#1e1b4b]"
@@ -300,14 +336,14 @@ export default async function EmployeeSchedulePage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-bold text-text-primary">{shiftTitle}</p>
-                            {!isWeekend && (
+                            {!isWeekend && !leaveEntry && (
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isOnsite ? "bg-blue-50 text-blue-700" : "bg-sky-50 text-sky-700"}`}>
                                 {isOnsite ? "Onsite" : "WFH"}
                               </span>
                             )}
                           </div>
                           <p className="mt-0.5 text-xs text-text-secondary font-medium">
-                            {isWeekend ? "Scheduled Rest Day" : formattedShiftRange}
+                            {leaveEntry ? "Approved Leave" : isWeekend ? "Scheduled Rest Day" : formattedShiftRange}
                           </p>
                         </div>
                       </div>

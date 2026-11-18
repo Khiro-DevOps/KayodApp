@@ -12,6 +12,7 @@ export type HRScheduleEmployee = {
   hybrid_onsite_days: string[];
   shift_start: string;
   shift_end: string;
+  leave_days?: number[];
 };
 
 type HRSchedulesClientProps = {
@@ -137,6 +138,14 @@ export default function HRSchedulesClient({ initialEmployees, todayDayName }: HR
   });
 
   const renderDayBadge = (emp: HRScheduleEmployee, dayIndex: number) => {
+    if (emp.leave_days?.includes(dayIndex)) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 border border-amber-200">
+          On Leave
+        </span>
+      );
+    }
+
     const isWeekend = dayIndex >= 5; // Sat, Sun
     const dayName = DAYS_FULL[dayIndex];
 

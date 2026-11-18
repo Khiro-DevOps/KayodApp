@@ -50,6 +50,46 @@ export default async function HRSchedulesPage() {
 
   const allowedStatuses = new Set(["active", "probation", "onboarding"]);
 
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  monday.setHours(0, 0, 0, 0);
+  const weekIsoDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const weekStartStr = weekIsoDates[0];
+  const weekEndStr = weekIsoDates[6];
+
+  const activeEmployeeIds = (employees ?? [])
+    .filter((emp) =>
+      allowedStatuses.has(String(emp.employment_status ?? "active").toLowerCase())
+    )
+    .map((emp) => emp.id);
+
+  const leaveDaysByEmp = new Map<string, number[]>();
+  if (activeEmployeeIds.length > 0) {
+    const { data: approvedLeaves } = await supabase
+      .from("leave_requests")
+      .select("employee_id, start_date, end_date")
+      .in("employee_id", activeEmployeeIds)
+      .eq("status", "approved")
+      .lte("start_date", weekEndStr)
+      .gte("end_date", weekStartStr);
+
+    for (const lr of approvedLeaves ?? []) {
+      const indices = leaveDaysByEmp.get(lr.employee_id) ?? [];
+      weekIsoDates.forEach((iso, idx) => {
+        if (lr.start_date <= iso && lr.end_date >= iso && !indices.includes(idx)) {
+          indices.push(idx);
+        }
+      });
+      leaveDaysByEmp.set(lr.employee_id, indices);
+    }
+  }
+
   type RawEmployeeRow = {
     id: string;
     job_title: string | null;
@@ -80,6 +120,7 @@ export default async function HRSchedulesPage() {
           : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         shift_start: emp.shift_start || "09:00",
         shift_end: emp.shift_end || "18:00",
+        leave_days: leaveDaysByEmp.get(emp.id) ?? [],
       };
     });
 
