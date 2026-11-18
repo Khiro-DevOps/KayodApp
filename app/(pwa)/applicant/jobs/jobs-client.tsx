@@ -64,7 +64,7 @@ function resolveCompanyName(job: JobPosting): string {
   if (tenantRel?.name && tenantRel.name.trim()) {
     return tenantRel.name.trim();
   }
-  return "Company";
+  return "Verified Employer";
 }
 
 function PaginationControls({

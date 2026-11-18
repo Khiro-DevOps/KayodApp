@@ -3,6 +3,7 @@
 // ============================================================
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import type { JobPosting, Profile, Resume } from "@/lib/types";
 import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore, getDisplayMatchScore } from "@/lib/match-score";
@@ -145,11 +146,68 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   const { data: jobs } = await query.order("created_at", { ascending: false });
+
+  // Server-side admin lookup for tenant names (bypasses tenants RLS for applicants)
+  const tenantMap = new Map<string, string>();
+  const creatorTenantMap = new Map<string, string>();
+
+  try {
+    const admin = getAdminClient();
+    const rawJobs = (jobs ?? []) as Array<JobPosting & { created_by?: string | null }>;
+    const creatorIds = Array.from(
+      new Set(
+        rawJobs
+          .filter((j) => !j.tenant_id && j.created_by)
+          .map((j) => j.created_by as string)
+      )
+    );
+
+    if (creatorIds.length > 0) {
+      const { data: creatorProfiles } = await admin
+        .from("profiles")
+        .select("id, tenant_id")
+        .in("id", creatorIds);
+
+      for (const cp of creatorProfiles ?? []) {
+        if (cp.tenant_id) {
+          creatorTenantMap.set(cp.id, cp.tenant_id);
+        }
+      }
+    }
+
+    const tenantIds = Array.from(
+      new Set([
+        ...rawJobs.map((j) => j.tenant_id).filter((id): id is string => Boolean(id)),
+        ...Array.from(creatorTenantMap.values()),
+      ])
+    );
+
+    if (tenantIds.length > 0) {
+      const { data: tenants } = await admin
+        .from("tenants")
+        .select("id, name")
+        .in("id", tenantIds);
+
+      for (const t of tenants ?? []) {
+        if (t.name?.trim()) {
+          tenantMap.set(t.id, t.name.trim());
+        }
+      }
+    }
+  } catch (err) {
+    console.error("ApplicantJobsPage tenant lookup error:", err);
+  }
+
   const normalizedQuery = searchQuery.toLowerCase();
   const jobsWithCompany = (jobs ?? []).map((rawJob) => {
-    const job = rawJob as JobPosting;
+    const job = rawJob as JobPosting & { created_by?: string | null };
     const tenantRel = Array.isArray(job.tenant) ? job.tenant[0] : job.tenant;
-    const companyName = tenantRel?.name?.trim() || "Company";
+    const creatorTenantId = job.created_by ? creatorTenantMap.get(job.created_by) : undefined;
+    const companyName =
+      tenantRel?.name?.trim() ||
+      (job.tenant_id ? tenantMap.get(job.tenant_id) : undefined) ||
+      (creatorTenantId ? tenantMap.get(creatorTenantId) : undefined) ||
+      "Verified Employer";
     return {
       ...job,
       companyName,
