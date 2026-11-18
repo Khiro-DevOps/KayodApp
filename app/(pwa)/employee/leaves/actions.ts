@@ -102,29 +102,36 @@ export async function fileLeaveRequest(formData: FormData) {
       [requesterProfile?.first_name, requesterProfile?.last_name].filter(Boolean).join(" ").trim() ||
       "An employee";
 
-    let hrQuery = admin
-      .from("profiles")
-      .select("id")
-      .in("role", HR_ALLOWED_ROLES);
+    let hrUsers: Array<{ id: string }> = [];
     if (employee.tenant_id) {
-      hrQuery = hrQuery.eq("tenant_id", employee.tenant_id);
+      const { data: tenantHrUsers } = await admin
+        .from("profiles")
+        .select("id")
+        .in("role", HR_ALLOWED_ROLES)
+        .eq("tenant_id", employee.tenant_id);
+      hrUsers = (tenantHrUsers ?? []).filter((hr) => hr.id !== user.id);
     }
-    const { data: hrUsers } = await hrQuery;
+
+    if (hrUsers.length === 0) {
+      const { data: allHrUsers } = await admin
+        .from("profiles")
+        .select("id")
+        .in("role", HR_ALLOWED_ROLES);
+      hrUsers = (allHrUsers ?? []).filter((hr) => hr.id !== user.id);
+    }
 
     await Promise.all(
-      (hrUsers ?? [])
-        .filter((hr) => hr.id !== user.id)
-        .map((hr) =>
-          sendNotification({
-            recipientId: hr.id,
-            senderId: user.id,
-            type: "general",
-            title: "New Leave Request",
-            body: `${requesterName} filed a ${leaveType} leave request (${startDate} to ${endDate}).`,
-            actionUrl: "/hr/leaves",
-            actionName: "fileLeaveRequest",
-          })
-        )
+      hrUsers.map((hr) =>
+        sendNotification({
+          recipientId: hr.id,
+          senderId: user.id,
+          type: "general",
+          title: "New Leave Request",
+          body: `${requesterName} filed a ${leaveType} leave request (${startDate} to ${endDate}).`,
+          actionUrl: "/hr/leaves",
+          actionName: "fileLeaveRequest",
+        })
+      )
     );
   } catch (notifyError) {
     console.error("fileLeaveRequest: failed to notify HR:", notifyError);

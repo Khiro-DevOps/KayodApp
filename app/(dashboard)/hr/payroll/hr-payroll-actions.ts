@@ -216,6 +216,71 @@ export async function approvePayroll(formData: FormData) {
   redirect("/hr/payroll");
 }
 
+export async function publishSinglePayslip(input: FormData | string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
+
+  const payslipId = typeof input === "string"
+    ? input.trim()
+    : String(input.get("payslip_id") ?? "").trim();
+
+  if (!payslipId) {
+    if (typeof input === "string") return { success: false, error: "Missing payslip id" };
+    redirect("/hr/payroll?error=Missing+payslip+id");
+  }
+
+  const { error: updateError } = await supabase
+    .from("payslips")
+    .update({ status: "published" })
+    .eq("id", payslipId);
+
+  if (updateError) {
+    if (typeof input === "string") return { success: false, error: updateError.message };
+    redirect(`/hr/payroll?error=${encodeURIComponent(updateError.message)}`);
+  }
+
+  try {
+    const admin = getAdminClient();
+    const { data: slip } = await admin
+      .from("payslips")
+      .select("id, payroll_period_id, employees(profile_id), payroll_periods(period_start, period_end)")
+      .eq("id", payslipId)
+      .maybeSingle();
+
+    const emp = Array.isArray(slip?.employees) ? slip?.employees[0] : slip?.employees;
+    const recipientId = (emp as { profile_id?: string | null } | null)?.profile_id ?? null;
+    const period = Array.isArray(slip?.payroll_periods)
+      ? slip?.payroll_periods[0]
+      : slip?.payroll_periods;
+    const periodLabel = period
+      ? `${(period as { period_start: string; period_end: string }).period_start} to ${(period as { period_start: string; period_end: string }).period_end}`
+      : "recent pay period";
+
+    if (recipientId) {
+      await sendNotification({
+        recipientId,
+        senderId: user.id,
+        type: "payroll_processed",
+        title: "New Payslip Available",
+        body: `Your payslip for ${periodLabel} has been published.`,
+        actionUrl: "/employee/payslips",
+        actionName: "publishSinglePayslip",
+      });
+    }
+  } catch (notifyErr) {
+    console.error("publishSinglePayslip: failed to notify employee:", notifyErr);
+  }
+
+  revalidatePath("/hr/payroll");
+  revalidatePath("/employee/payslips");
+  if (typeof input === "string") {
+    return { success: true };
+  }
+  redirect("/hr/payroll");
+}
+
 export async function rejectPayroll(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

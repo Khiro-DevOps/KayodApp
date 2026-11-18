@@ -7,6 +7,7 @@ import {
   createPayrollPeriod,
   generatePayslips,
   approvePayroll,
+  publishSinglePayslip,
   rejectPayroll,
 } from "./hr-payroll-actions";
 
@@ -63,18 +64,51 @@ export default async function HRPayrollPage() {
     }));
   }
 
-  // For pending_approval period, load the generated payslips
-  const pendingPeriod = periods?.find((p) => p.status === "pending_approval") ?? null;
-  let pendingPayslips: Payslip[] = [];
+  // Load payslips for pending_approval period, or any period that still has unpublished payslips
+  let reviewPeriod: PayrollPeriod | null =
+    periods?.find((p) => p.status === "pending_approval") ?? null;
+  let reviewPayslips: Payslip[] = [];
 
-  if (pendingPeriod) {
+  if (reviewPeriod) {
     const { data: slips } = await supabase
       .from("payslips")
       .select("*, employees(profiles(first_name, last_name))")
-      .eq("payroll_period_id", pendingPeriod.id)
+      .eq("payroll_period_id", reviewPeriod.id)
       .returns<Payslip[]>();
-    pendingPayslips = slips ?? [];
+    reviewPayslips = slips ?? [];
+  } else if (periods && periods.length > 0) {
+    const { data: unpublishedSlips } = await supabase
+      .from("payslips")
+      .select("*, employees(profiles(first_name, last_name))")
+      .in("payroll_period_id", periods.map((p) => p.id))
+      .not("status", "in", '("published","paid")')
+      .returns<Payslip[]>();
+
+    if (unpublishedSlips && unpublishedSlips.length > 0) {
+      const targetPeriodId = unpublishedSlips[0].payroll_period_id;
+      reviewPeriod = periods.find((p) => p.id === targetPeriodId) ?? null;
+      if (reviewPeriod) {
+        const { data: slips } = await supabase
+          .from("payslips")
+          .select("*, employees(profiles(first_name, last_name))")
+          .eq("payroll_period_id", reviewPeriod.id)
+          .returns<Payslip[]>();
+        reviewPayslips = slips ?? [];
+      }
+    }
   }
+
+  const unpublishedCount = reviewPayslips.filter((s) => {
+    const status = String(s.status);
+    return status !== "published" && status !== "paid";
+  }).length;
+  const showPublishBanner = Boolean(
+    reviewPeriod &&
+      (reviewPeriod.status === "draft" ||
+        reviewPeriod.status === "pending_approval" ||
+        unpublishedCount > 0) &&
+      reviewPayslips.length > 0
+  );
 
   return (
     <PageContainer>
@@ -170,14 +204,45 @@ export default async function HRPayrollPage() {
           </div>
         )}
 
-        {/* Payslip review for pending_approval period */}
-        {pendingPeriod && pendingPayslips.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-text-main">Review payslips</h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS["pending_approval"]}`}>
-                pending approval
-              </span>
+        {/* Approve & Publish Payslips Banner + Review */}
+        {showPublishBanner && reviewPeriod && (
+          <div className="space-y-4 rounded-xl border-2 border-emerald-300 bg-card-bg p-5 shadow-sm">
+            <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-emerald-950">
+                    Approve &amp; Publish Payslips
+                  </h2>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[reviewPeriod.status]}`}>
+                    {reviewPeriod.status.replace("_", " ")}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-emerald-800">
+                  {unpublishedCount > 0
+                    ? `${unpublishedCount} of ${reviewPayslips.length} payslip(s) ready to publish for employee access.`
+                    : `All ${reviewPayslips.length} payslips published.`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={rejectPayroll}>
+                  <input type="hidden" name="period_id" value={reviewPeriod.id} />
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-semibold text-text-muted hover:bg-surface-bg transition-colors"
+                  >
+                    Reject &amp; revise
+                  </button>
+                </form>
+                <form action={approvePayroll}>
+                  <input type="hidden" name="period_id" value={reviewPeriod.id} />
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-xs"
+                  >
+                    Approve &amp; Publish All
+                  </button>
+                </form>
+              </div>
             </div>
 
             {/* Summary totals */}
@@ -185,51 +250,77 @@ export default async function HRPayrollPage() {
               <div className="rounded-lg bg-surface-bg border border-border p-2 text-center">
                 <p className="text-xs text-text-muted">Total gross</p>
                 <p className="text-sm font-semibold text-text-main">
-                  ₱{pendingPayslips.reduce((s, p) => s + Number(p.gross_pay), 0).toLocaleString()}
+                  ₱{reviewPayslips.reduce((s, p) => s + Number(p.gross_pay), 0).toLocaleString()}
                 </p>
               </div>
               <div className="rounded-lg bg-error-bg border border-error/20 p-2 text-center">
                 <p className="text-xs text-error">Deductions</p>
                 <p className="text-sm font-semibold text-error">
-                  -₱{pendingPayslips.reduce((s, p) => s + Number(p.total_deductions), 0).toLocaleString()}
+                  -₱{reviewPayslips.reduce((s, p) => s + Number(p.total_deductions), 0).toLocaleString()}
                 </p>
               </div>
               <div className="rounded-lg bg-success-bg border border-success/20 p-2 text-center">
                 <p className="text-xs text-success">Net payout</p>
                 <p className="text-sm font-semibold text-success">
-                  ₱{pendingPayslips.reduce((s, p) => s + Number(p.net_pay), 0).toLocaleString()}
+                  ₱{reviewPayslips.reduce((s, p) => s + Number(p.net_pay), 0).toLocaleString()}
                 </p>
               </div>
             </div>
 
             {/* Per-employee breakdown */}
             <div className="space-y-2">
-              {pendingPayslips.map((slip) => {
+              {reviewPayslips.map((slip) => {
                 const emp = (slip as unknown as {
                   employees: { profiles: { first_name: string; last_name: string } };
                 }).employees;
                 const name = emp
                   ? `${emp.profiles.first_name} ${emp.profiles.last_name}`
                   : "Employee";
+                const slipStatus = String(slip.status);
+                const isPublished = slipStatus === "published" || slipStatus === "paid";
                 return (
                   <div
                     key={slip.id}
                     className="rounded-lg bg-surface-bg border border-border/60 px-3 py-2.5 text-sm space-y-2"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-medium text-text-main">{name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-text-main">{name}</p>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isPublished
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {isPublished ? "Published" : slip.status.replace("_", " ")}
+                          </span>
+                        </div>
                         {slip.remarks && (
                           <p className="text-xs text-text-muted mt-0.5">{slip.remarks}</p>
                         )}
                       </div>
-                      <div className="text-right shrink-0 ml-3">
-                        <p className="font-semibold text-success">
-                          ₱{Number(slip.net_pay).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          -₱{Number(slip.total_deductions).toLocaleString()} deductions
-                        </p>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <p className="font-semibold text-success">
+                            ₱{Number(slip.net_pay).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-text-muted">
+                            -₱{Number(slip.total_deductions).toLocaleString()} deductions
+                          </p>
+                        </div>
+                        {!isPublished && (
+                          <form action={publishSinglePayslip as unknown as (formData: FormData) => Promise<void>}>
+                            <input type="hidden" name="payslip_id" value={slip.id} />
+                            <button
+                              type="submit"
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                            >
+                              Publish
+                            </button>
+                          </form>
+                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-border/50 pt-2 text-[11px] text-text-muted">
@@ -245,28 +336,6 @@ export default async function HRPayrollPage() {
                   </div>
                 );
               })}
-            </div>
-
-            {/* Approve / Reject */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <form action={rejectPayroll}>
-                <input type="hidden" name="period_id" value={pendingPeriod.id} />
-                <button
-                  type="submit"
-                  className="w-full rounded-lg border border-border py-2 text-xs font-medium text-text-muted hover:bg-surface-bg transition-colors"
-                >
-                  Reject & revise
-                </button>
-              </form>
-              <form action={approvePayroll}>
-                <input type="hidden" name="period_id" value={pendingPeriod.id} />
-                <button
-                  type="submit"
-                  className="w-full rounded-lg bg-success py-2 text-xs font-medium text-white hover:bg-success/90 transition-colors shadow-xs"
-                >
-                  Approve & pay
-                </button>
-              </form>
             </div>
           </div>
         )}

@@ -43,7 +43,7 @@ export default async function EmployeePayslipsPage() {
     .from("payslips")
     .select("*, payroll_periods(period_start, period_end, pay_date)")
     .eq("employee_id", employee.id)
-    .in("status", ["published", "PUBLISHED", "paid"])
+    .in("status", ["published", "paid"])
     .order("created_at", { ascending: false });
 
   const rawPayslips = payslipsData ?? [];
