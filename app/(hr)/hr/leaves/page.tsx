@@ -59,10 +59,72 @@ export default async function HRLeavesPage() {
   const admin = getAdminClient();
   const { data: requests } = await admin
     .from("leave_requests")
-    .select("*, employees(job_title, profiles(first_name, last_name, avatar_url))")
+    .select("*")
     .order("created_at", { ascending: false });
 
-  const leaveRequests = (requests ?? []) as unknown as LeaveRequestWithEmployee[];
+  const rawRequests = (requests ?? []) as Array<
+    Omit<LeaveRequestWithEmployee, "employees"> & { employee_id: string }
+  >;
+
+  const empIds = Array.from(
+    new Set(rawRequests.map((r) => r.employee_id).filter(Boolean))
+  );
+
+  const empMap = new Map<
+    string,
+    { id: string; profile_id: string | null; job_title: string | null }
+  >();
+  if (empIds.length > 0) {
+    const { data: empRows } = await admin
+      .from("employees")
+      .select("id, profile_id, job_title")
+      .in("id", empIds);
+    for (const emp of empRows ?? []) {
+      empMap.set(emp.id, emp);
+    }
+  }
+
+  const profileIds = Array.from(
+    new Set(
+      Array.from(empMap.values())
+        .map((e) => e.profile_id)
+        .filter((pid): pid is string => Boolean(pid))
+    )
+  );
+
+  const profileMap = new Map<
+    string,
+    { id: string; first_name: string | null; last_name: string | null; avatar_url: string | null }
+  >();
+  if (profileIds.length > 0) {
+    const { data: profRows } = await admin
+      .from("profiles")
+      .select("id, first_name, last_name, avatar_url")
+      .in("id", profileIds);
+    for (const prof of profRows ?? []) {
+      profileMap.set(prof.id, prof);
+    }
+  }
+
+  const leaveRequests: LeaveRequestWithEmployee[] = rawRequests.map((r) => {
+    const emp = empMap.get(r.employee_id);
+    const prof = emp?.profile_id ? profileMap.get(emp.profile_id) ?? null : null;
+    return {
+      ...r,
+      employees: emp
+        ? {
+            job_title: emp.job_title ?? null,
+            profiles: prof
+              ? {
+                  first_name: prof.first_name ?? null,
+                  last_name: prof.last_name ?? null,
+                  avatar_url: prof.avatar_url ?? null,
+                }
+              : null,
+          }
+        : null,
+    };
+  });
 
   const pendingRequests = leaveRequests.filter((r) => r.status === "pending");
   const reviewedRequests = leaveRequests.filter((r) => r.status !== "pending");
