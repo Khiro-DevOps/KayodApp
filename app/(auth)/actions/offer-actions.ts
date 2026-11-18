@@ -454,3 +454,71 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
     };
   }
 }
+
+export async function getOfferSummary(
+  applicationId: string
+): Promise<{ exists: boolean; status: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role, tenant_id")
+    .eq("id", user.id)
+    .single();
+
+  if (
+    profileError ||
+    !profile ||
+    !["hr_manager", "admin", "hr"].includes(String(profile.role ?? ""))
+  ) {
+    throw new Error("Forbidden: HR role required");
+  }
+
+  const admin = getAdminClient();
+  const { data: applicationRow, error: applicationError } = await admin
+    .from("job_applications")
+    .select("id, job_id, job_postings!job_applications_job_id_fkey(tenant_id)")
+    .eq("id", applicationId)
+    .single();
+
+  if (applicationError || !applicationRow) {
+    throw new Error(applicationError?.message ?? "Application not found");
+  }
+
+  const jobPosting = Array.isArray(applicationRow.job_postings)
+    ? applicationRow.job_postings[0]
+    : applicationRow.job_postings;
+
+  if (
+    profile.tenant_id &&
+    jobPosting?.tenant_id &&
+    profile.tenant_id !== jobPosting.tenant_id
+  ) {
+    throw new Error("Forbidden: tenant mismatch");
+  }
+
+  const { data: offerRow, error: offerError } = await admin
+    .from("job_offers")
+    .select("id, status")
+    .eq("application_id", applicationId)
+    .order("is_active", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (offerError) {
+    throw new Error(offerError.message);
+  }
+
+  return {
+    exists: Boolean(offerRow),
+    status: offerRow?.status ?? null,
+  };
+}
