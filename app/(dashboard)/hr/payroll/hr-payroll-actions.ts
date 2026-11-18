@@ -40,6 +40,7 @@ export async function createPayrollPeriod(formData: FormData) {
   if (error) redirect(`/hr/payroll?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
   redirect("/hr/payroll");
 }
 
@@ -144,6 +145,7 @@ export async function generatePayslips(formData: FormData) {
     .eq("id", periodId);
 
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
   redirect("/hr/payroll");
 }
 
@@ -154,20 +156,20 @@ export async function approvePayroll(formData: FormData) {
   if (!await verifyHR(supabase, user.id)) redirect("/dashboard");
 
   const periodId = formData.get("period_id") as string;
+  const admin = getAdminClient();
 
-  await supabase
+  await admin
     .from("payslips")
     .update({ status: "published" })
     .eq("payroll_period_id", periodId);
 
-  await supabase
+  await admin
     .from("payroll_periods")
     .update({ status: "paid", approved_by: user.id })
     .eq("id", periodId);
 
   // Notify each paid employee
   try {
-    const admin = getAdminClient();
     const { data: period } = await admin
       .from("payroll_periods")
       .select("period_start, period_end")
@@ -212,8 +214,8 @@ export async function approvePayroll(formData: FormData) {
   }
 
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
   revalidatePath("/employee/payslips");
-  redirect("/hr/payroll");
 }
 
 export async function publishSinglePayslip(input: FormData | string) {
@@ -231,18 +233,18 @@ export async function publishSinglePayslip(input: FormData | string) {
     redirect("/hr/payroll?error=Missing+payslip+id");
   }
 
-  const { error: updateError } = await supabase
+  const admin = getAdminClient();
+  const { error: updateError } = await admin
     .from("payslips")
     .update({ status: "published" })
     .eq("id", payslipId);
 
   if (updateError) {
     if (typeof input === "string") return { success: false, error: updateError.message };
-    redirect(`/hr/payroll?error=${encodeURIComponent(updateError.message)}`);
+    redirect(`/hr/payslips?error=${encodeURIComponent(updateError.message)}`);
   }
 
   try {
-    const admin = getAdminClient();
     const { data: slip } = await admin
       .from("payslips")
       .select("id, payroll_period_id, employees(profile_id), payroll_periods(period_start, period_end)")
@@ -274,11 +276,11 @@ export async function publishSinglePayslip(input: FormData | string) {
   }
 
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
   revalidatePath("/employee/payslips");
   if (typeof input === "string") {
     return { success: true };
   }
-  redirect("/hr/payroll");
 }
 
 export async function rejectPayroll(formData: FormData) {
@@ -300,5 +302,6 @@ export async function rejectPayroll(formData: FormData) {
     .eq("payroll_period_id", periodId);
 
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
   redirect("/hr/payroll");
 }
