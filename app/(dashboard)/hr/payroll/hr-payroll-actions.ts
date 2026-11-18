@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
 import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
+import { resolveOfferCompensation, type OfferSalarySource } from "@/lib/offer-salary";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -83,10 +84,10 @@ export async function generatePayslips(formData: FormData) {
     redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(msg)}`);
   }
 
-  // 2. Get all active employees
+  // 2. Get all active employees (select * so optional compensation columns are included if present)
   const { data: employees, error: employeesError } = await admin
     .from("employees")
-    .select("id, base_salary, salary, pay_frequency, employment_type, shift_start, shift_end, work_days")
+    .select("*")
     .eq("employment_status", "active");
 
   if (employeesError) {
@@ -95,6 +96,43 @@ export async function generatePayslips(formData: FormData) {
 
   if (!employees || employees.length === 0) {
     redirect(`/hr/payslips?periodId=${periodId}&error=No+active+employees+found`);
+  }
+
+  // 2b. Batch-fetch linked job_offers for any employee missing direct allowance/incentive columns
+  const offerIds = employees
+    .map((e) => (e as { job_offer_id?: string | null }).job_offer_id)
+    .filter((id): id is string => Boolean(id));
+  const appIds = employees
+    .map((e) => (e as { application_id?: string | null }).application_id)
+    .filter((id): id is string => Boolean(id));
+
+  const offerById = new Map<string, OfferSalarySource>();
+  const offerByAppId = new Map<string, OfferSalarySource>();
+
+  if (offerIds.length > 0) {
+    const { data: offersById } = await admin
+      .from("job_offers")
+      .select("id, application_id, salary, financial_package, job_metadata, metadata")
+      .in("id", offerIds);
+    for (const row of offersById ?? []) {
+      offerById.set(row.id, row as OfferSalarySource);
+      if (row.application_id && !offerByAppId.has(row.application_id)) {
+        offerByAppId.set(row.application_id, row as OfferSalarySource);
+      }
+    }
+  }
+
+  if (appIds.length > 0) {
+    const { data: offersByApp } = await admin
+      .from("job_offers")
+      .select("id, application_id, salary, financial_package, job_metadata, metadata")
+      .in("application_id", appIds)
+      .order("created_at", { ascending: false });
+    for (const row of offersByApp ?? []) {
+      if (row.application_id && !offerByAppId.has(row.application_id)) {
+        offerByAppId.set(row.application_id, row as OfferSalarySource);
+      }
+    }
   }
 
   // 3. Get attendance_logs and approved leave_requests for this period
@@ -116,6 +154,32 @@ export async function generatePayslips(formData: FormData) {
   // 4. Build payslips matching exact public.payslips columns in supabase/schema.sql
   const payslips = employees.map((emp) => {
     const monthlySalary = Number(emp.base_salary ?? emp.salary ?? 0);
+    const empRecord = emp as {
+      monthly_allowance?: number | string | null;
+      attendance_incentive?: number | string | null;
+      job_offer_id?: string | null;
+      application_id?: string | null;
+    };
+    const linkedOffer =
+      (empRecord.job_offer_id ? offerById.get(empRecord.job_offer_id) : undefined) ??
+      (empRecord.application_id ? offerByAppId.get(empRecord.application_id) : undefined) ??
+      null;
+    const resolvedOfferComp = resolveOfferCompensation(linkedOffer, null, monthlySalary);
+
+    const contractMonthlyAllowance =
+      empRecord.monthly_allowance !== null &&
+      empRecord.monthly_allowance !== undefined &&
+      Number.isFinite(Number(empRecord.monthly_allowance))
+        ? Math.max(0, Number(empRecord.monthly_allowance))
+        : resolvedOfferComp.monthlyAllowance;
+
+    const contractAttendanceIncentive =
+      empRecord.attendance_incentive !== null &&
+      empRecord.attendance_incentive !== undefined &&
+      Number.isFinite(Number(empRecord.attendance_incentive))
+        ? Math.max(0, Number(empRecord.attendance_incentive))
+        : resolvedOfferComp.attendanceIncentive;
+
     const empLogs = (attendanceLogs ?? []).filter((l) => l.employee_id === emp.id);
     const empLeaves = (approvedLeaves ?? []).filter((lr) => lr.employee_id === emp.id);
 
@@ -129,6 +193,8 @@ export async function generatePayslips(formData: FormData) {
       workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
       attendanceLogs: empLogs,
       approvedLeaves: empLeaves,
+      contractMonthlyAllowance,
+      contractAttendanceIncentive,
       allowances: customAllowances,
       hrBonuses: customBonuses,
       hrOtherDeductions: customOtherDeductions,

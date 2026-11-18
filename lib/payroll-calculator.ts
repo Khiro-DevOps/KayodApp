@@ -20,6 +20,8 @@ export interface ComputeEmployeeDemoPayslipInput {
   workDays?: string[] | null;
   attendanceLogs: PayrollAttendanceLog[];
   approvedLeaves: ApprovedLeaveLike[];
+  contractMonthlyAllowance?: number;
+  contractAttendanceIncentive?: number;
   allowances?: number;
   hrBonuses?: number;
   hrOtherDeductions?: number;
@@ -52,6 +54,9 @@ export interface ComputedDemoPayslip {
     lateDeduction: number;
     unexcusedAbsentDays: number;
     absenceDeduction: number;
+    periodContractAllowance: number;
+    attendanceIncentiveAwarded: number;
+    attendanceIncentiveForfeited: boolean;
     hrBonuses: number;
     hrOtherDeductions: number;
   };
@@ -175,9 +180,18 @@ export function computeEmployeeDemoPayslip(
   const overtimePay = round2((eligibleOtMinutes / 60) * hourlyRate * 1.25);
   const nightDiffPay = round2((nightDiffMinutes / 60) * hourlyRate * 0.10);
 
-  const allowances = round2(Math.max(0, Number(input.allowances ?? 0)));
+  const contractMonthlyAllowance = Math.max(0, Number(input.contractMonthlyAllowance ?? 0));
+  const contractAttendanceIncentive = Math.max(0, Number(input.contractAttendanceIncentive ?? 0));
+  const periodContractAllowance = round2(
+    isSemiOrBiweekly ? contractMonthlyAllowance / 2 : contractMonthlyAllowance
+  );
+  const periodAttendanceIncentive = round2(
+    isSemiOrBiweekly ? contractAttendanceIncentive / 2 : contractAttendanceIncentive
+  );
+
+  const oneTimeAllowances = round2(Math.max(0, Number(input.allowances ?? 0)));
+  const allowances = round2(periodContractAllowance + oneTimeAllowances);
   const hrBonuses = round2(Math.max(0, Number(input.hrBonuses ?? 0)));
-  const bonuses = round2(nightDiffPay + hrBonuses);
 
   const { absentDays: unexcusedAbsentDays } = computeUnexcusedAbsences({
     periodStart: input.periodStart,
@@ -187,6 +201,18 @@ export function computeEmployeeDemoPayslip(
     attendanceLogs: input.attendanceLogs,
     approvedLeaves: input.approvedLeaves,
   });
+
+  let attendanceIncentiveAwarded = 0;
+  let attendanceIncentiveForfeited = false;
+  if (periodAttendanceIncentive > 0) {
+    if (totalLateMinutes === 0 && unexcusedAbsentDays === 0) {
+      attendanceIncentiveAwarded = periodAttendanceIncentive;
+    } else {
+      attendanceIncentiveForfeited = true;
+    }
+  }
+
+  const bonuses = round2(nightDiffPay + hrBonuses + attendanceIncentiveAwarded);
 
   const lateDeduction = round2((totalLateMinutes / 60) * hourlyRate);
   const absenceDeduction = round2(unexcusedAbsentDays * dailyRate);
@@ -218,6 +244,14 @@ export function computeEmployeeDemoPayslip(
     `Late: ${totalLateMinutes}m (-₱${lateDeduction.toFixed(2)})`,
     `Absent: ${unexcusedAbsentDays}d (-₱${absenceDeduction.toFixed(2)})`,
   ];
+  if (periodContractAllowance > 0) {
+    remarksParts.push(`Allowance: +₱${periodContractAllowance.toFixed(2)}`);
+  }
+  if (attendanceIncentiveAwarded > 0) {
+    remarksParts.push(`Attendance Incentive earned (+₱${attendanceIncentiveAwarded.toFixed(2)})`);
+  } else if (attendanceIncentiveForfeited) {
+    remarksParts.push("Attendance Incentive forfeited (late/absent)");
+  }
   if (input.customRemarks?.trim()) {
     remarksParts.push(input.customRemarks.trim());
   }
@@ -248,6 +282,9 @@ export function computeEmployeeDemoPayslip(
       lateDeduction,
       unexcusedAbsentDays,
       absenceDeduction,
+      periodContractAllowance,
+      attendanceIncentiveAwarded,
+      attendanceIncentiveForfeited,
       hrBonuses,
       hrOtherDeductions,
     },
