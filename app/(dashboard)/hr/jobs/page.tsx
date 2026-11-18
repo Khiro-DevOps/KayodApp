@@ -11,6 +11,8 @@ type WorkspaceProfile = Pick<Profile, "role" | "tenant_id"> & {
 
 type JobPostingWithApplicantCount = JobPosting & {
   applicantCount: number;
+  work_location_id?: string | null;
+  work_mode?: string | null;
 };
 
 type LegacyJobListingWithApplicantCount = JobListing & {
@@ -85,7 +87,7 @@ export default async function ManageJobsPage() {
     legacyJobsQuery.order("created_at", { ascending: false }),
   ]);
 
-  let currentJobs = results[0].data as JobPosting[] | null | undefined;
+  const currentJobs = results[0].data as JobPostingWithApplicantCount[] | null | undefined;
   let currentJobsError = results[0].error;
   let legacyJobs = results[1].data as JobListing[] | null | undefined;
   let legacyJobsError = results[1].error;

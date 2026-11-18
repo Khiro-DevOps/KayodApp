@@ -4,7 +4,7 @@ import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
-import type { OfficeBranch, EmployeeRemoteResidence, Profile } from "@/lib/types";
+import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -91,7 +91,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
         {/* Location & Geofence Control */}
         <GeofenceControlCard
           employeeId={employee.id}
-          initialWorkMode={(employee.work_mode ?? employee.work_model ?? "onsite") as any}
+          initialWorkMode={(employee.work_mode ?? employee.work_model ?? "onsite") as WorkSetup}
           initialBranchId={employee.work_location_id || null}
           officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
