@@ -1005,57 +1005,74 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       application.status === "pre_employment" ||
       application.status === "hired");
 
-  return (
-    <>
-      {showConfirmHire && (
-        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-            <div className="text-sm font-medium text-emerald-900">
-              {application.status === "hired"
-                ? "Hire confirmed."
-                : "Contract signed. Ready to confirm hire."}
-            </div>
-            <HireConfirmationModal
-              applicationId={application.id}
-              candidateName={displayName(application.profiles)}
-              jobTitle={jobTitle}
-              isConfirmed={
-                application.status === "hired" ||
-                String(jobOfferRow?.status ?? "").toUpperCase() === "HIRED"
-              }
-            />
-          </div>
-        </div>
-      )}
-      <OfferPageClient
-        token={offer.id}
-        applicationId={application.id}
-        offer={{ status: isCompletedSigning ? "signed" : offer.status }}
-        isAlreadySigned={isAlreadySigned || isCompletedSigning}
-        applicationStatus={application.status}
-        companyName={companyNameOrNull ?? "Hiring Company"}
-        candidateFirstName={candidateFirstName}
-        candidateEmail={candidateEmail}
-        jobTitle={jobTitle}
-        location={location}
-        employmentType={employmentType}
-        workSetup={workSetup}
-        department={department}
-        startDate={startDate}
-        expiresAt={expiresAt}
-        salaryMin={salaryMin ?? null}
-        salaryMax={salaryMax ?? null}
-        currency={currency}
-        hrEmail={hrEmail}
-        signingUrl={signingUrl}
-        embedSrc={resolvedEmbedSrc}
-        docusealEmbedError={docusealEmbedError}
-        signedPdfUrl={signedPdfUrl}
-        negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
-        isHR={isHR && !isApplicant}
-      />
-    </>
+  let hiredEmployeeId: string | null = null;
+  if (isHR && !isApplicant && application.status === "hired" && application.applicant_id) {
+    const { data: empRow } = await admin
+      .from("employees")
+      .select("id")
+      .eq("profile_id", application.applicant_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    hiredEmployeeId = empRow?.id ?? null;
+  }
+
+  const candidateFullName = displayName(application.profiles);
+  const isHrOnlyView = isHR && !isApplicant;
+
+  const clientNode = (
+    <OfferPageClient
+      token={offer.id}
+      applicationId={application.id}
+      jobId={application.job_id}
+      employeeId={hiredEmployeeId}
+      offer={{ status: isCompletedSigning ? "signed" : offer.status }}
+      isAlreadySigned={isAlreadySigned || isCompletedSigning}
+      applicationStatus={application.status}
+      companyName={companyNameOrNull ?? "Hiring Company"}
+      candidateFirstName={candidateFirstName}
+      candidateFullName={candidateFullName}
+      candidateEmail={candidateEmail}
+      jobTitle={jobTitle}
+      location={location}
+      employmentType={employmentType}
+      workSetup={workSetup}
+      department={department}
+      startDate={startDate}
+      expiresAt={expiresAt}
+      signedAt={completedSignedDocument?.signed_at ?? offer.signed_at ?? null}
+      signingMethod={offer.signing_method}
+      salaryMin={salaryMin ?? null}
+      salaryMax={salaryMax ?? null}
+      currency={currency}
+      hrEmail={hrEmail}
+      signingUrl={signingUrl}
+      embedSrc={resolvedEmbedSrc}
+      docusealEmbedError={docusealEmbedError}
+      signedPdfUrl={signedPdfUrl}
+      negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
+      isHR={isHrOnlyView}
+      hrHeaderAction={
+        showConfirmHire ? (
+          <HireConfirmationModal
+            applicationId={application.id}
+            candidateName={candidateFullName}
+            jobTitle={jobTitle}
+            isConfirmed={
+              application.status === "hired" ||
+              String(jobOfferRow?.status ?? "").toUpperCase() === "HIRED"
+            }
+          />
+        ) : null
+      }
+    />
   );
+
+  if (isHrOnlyView) {
+    return <PageContainer>{clientNode}</PageContainer>;
+  }
+
+  return clientNode;
 
 }
 

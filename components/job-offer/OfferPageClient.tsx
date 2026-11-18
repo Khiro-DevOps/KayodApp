@@ -1,9 +1,19 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { DocusealForm } from "@docuseal/react";
-import { ArrowLeft, CheckCircle, ExternalLink, PenLine } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Briefcase,
+  CheckCircle,
+  ExternalLink,
+  FileText,
+  PenLine,
+  UserCheck,
+  Wallet,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
@@ -17,12 +27,15 @@ interface OfferSummary {
 interface OfferPageClientProps {
   token: string;
   applicationId: string;
+  jobId?: string | null;
+  employeeId?: string | null;
   offer: OfferSummary;
   isAlreadySigned: boolean;
   applicationStatus?: string | null;
   companyName: string;
   candidateEmail: string;
   candidateFirstName: string;
+  candidateFullName?: string;
   jobTitle: string;
   location: string | null;
   employmentType: string | null;
@@ -30,6 +43,8 @@ interface OfferPageClientProps {
   department: string | null;
   startDate: string | null;
   expiresAt: string | null;
+  signedAt?: string | null;
+  signingMethod?: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
   currency: string;
@@ -40,6 +55,7 @@ interface OfferPageClientProps {
   signedPdfUrl?: string | null;
   negotiations?: OfferNegotiationRow[];
   isHR?: boolean;
+  hrHeaderAction?: ReactNode;
   mode?: "default" | "overview" | "sign";
 }
 
@@ -66,10 +82,24 @@ function formatSalaryRange(minimum: number | null, maximum: number | null, curre
   });
 
   if (minimum != null && maximum != null) {
+    if (minimum === maximum) {
+      return formatter.format(minimum);
+    }
     return `${formatter.format(minimum)} – ${formatter.format(maximum)}`;
   }
 
   return formatter.format(minimum ?? maximum ?? 0);
+}
+
+function formatEnumTitleCase(value: string | null | undefined, fallback = "To be confirmed") {
+  if (!value || !value.trim()) return fallback;
+  const trimmed = value.trim();
+  if (trimmed.toLowerCase() === "wfh") return "WFH";
+  return trimmed
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function getStatusPill(status: string, isHR?: boolean) {
@@ -244,12 +274,15 @@ function Footer({ hrEmail }: { hrEmail?: string | null }) {
 export default function OfferPageClient({
   token,
   applicationId,
+  jobId,
+  employeeId,
   offer,
   isAlreadySigned,
   applicationStatus,
   companyName,
   candidateEmail,
   candidateFirstName,
+  candidateFullName,
   jobTitle,
   location,
   employmentType,
@@ -257,6 +290,8 @@ export default function OfferPageClient({
   department,
   startDate,
   expiresAt,
+  signedAt,
+  signingMethod,
   salaryMin,
   salaryMax,
   currency,
@@ -267,6 +302,7 @@ export default function OfferPageClient({
   signedPdfUrl,
   negotiations,
   isHR,
+  hrHeaderAction,
   mode = "default",
 }: OfferPageClientProps) {
   const router = useRouter();
@@ -452,6 +488,19 @@ export default function OfferPageClient({
   const canSign = Boolean(resolvedEmbedSrc) && !hasSigned && !isNegotiatingLocked;
   const showSignedBanner = hasSigned;
   const salaryText = formatSalaryRange(salaryMin, salaryMax, currency);
+  const semiMonthlyMin = salaryMin != null ? salaryMin / 2 : null;
+  const semiMonthlyMax = salaryMax != null ? salaryMax / 2 : null;
+  const semiMonthlyText = formatSalaryRange(semiMonthlyMin, semiMonthlyMax, currency);
+  const formattedEmploymentType = formatEnumTitleCase(employmentType);
+  const formattedWorkSetup = formatEnumTitleCase(workSetup);
+  const displayCandidateName = candidateFullName?.trim() || candidateFirstName;
+  const isHired = normalizedApplicationStatus === "hired" || normalizedStatus === "hired";
+  const pipelineHref = jobId
+    ? `/hr/applicants?jobId=${encodeURIComponent(jobId)}`
+    : "/hr/applicants";
+  const employeeRecordHref = employeeId
+    ? `/hr/employees/${encodeURIComponent(employeeId)}`
+    : "/hr/employees";
 
   const toastBanner = signToastMessage ? (
     <div
@@ -545,6 +594,282 @@ export default function OfferPageClient({
     );
   }
 
+  if (isHR && mode === "default") {
+    return (
+      <div className="w-full space-y-6">
+        {toastBanner}
+
+        {/* Top Breadcrumb & Executive Header Bar */}
+        <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-xs sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <Link
+              href="/hr/offers"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors hover:text-slate-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Offers
+            </Link>
+            <StatusPill status={displayStatus} isHR />
+          </div>
+
+          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <CompanyBadge name={companyName} />
+                {expiresAt && (
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                    Expires {formatDate(expiresAt)} · {daysRemaining(expiresAt)}d left
+                  </span>
+                )}
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                  {displayCandidateName}
+                </h1>
+                <p className="mt-0.5 text-sm font-medium text-slate-600">
+                  {jobTitle}
+                  {candidateEmail ? ` · ${candidateEmail}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              {signedPdfUrl && (
+                <a
+                  href={signedPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Download Signed PDF
+                </a>
+              )}
+              {!signedPdfUrl && signingUrl && (
+                <a
+                  href={signingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open DocuSeal Envelope
+                </a>
+              )}
+              {hrHeaderAction}
+            </div>
+          </div>
+        </div>
+
+        {/* Responsive 12-Column Executive Workspace */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+          {/* Left 8 Columns: Offer Terms, Negotiations, Contract & Signature Status */}
+          <div className="space-y-6 lg:col-span-8">
+            <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-base font-bold text-slate-900">Offer Terms</h2>
+                <span className="text-xs font-medium text-slate-500">
+                  Employment Package &amp; Role Details
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <TermItem label="Base Salary" value={salaryText} emphasis />
+                <TermItem label="Location" value={location ?? "To be confirmed"} />
+                <TermItem label="Employment Type" value={formattedEmploymentType} />
+                <TermItem label="Work Setup" value={formattedWorkSetup} />
+                <TermItem label="Department" value={department ?? "General"} />
+                <TermItem
+                  label="Start Date"
+                  value={startDate ? formatDate(startDate) : "To be confirmed"}
+                />
+              </div>
+            </section>
+
+            <NegotiationPanel
+              token={token}
+              applicationId={applicationId}
+              status={status}
+              negotiations={negotiations}
+              isHR
+              signSectionRef={signSectionRef}
+              onAccept={handlePrepareSigningSession}
+              isPreparingSigningSession={isPreparingSigningSession}
+              acceptError={signingSessionError}
+            />
+
+            <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Contract &amp; DocuSeal Signature Status
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Envelope tracking and executed contract access
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                    showSignedBanner
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : normalizedStatus === "negotiating"
+                        ? "border-blue-200 bg-blue-50 text-blue-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {showSignedBanner
+                    ? "Completed"
+                    : normalizedStatus === "negotiating"
+                      ? "Negotiating"
+                      : "Awaiting Signature"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs">
+                <div>
+                  <p className="text-slate-500 font-medium">Signing Method</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {formatEnumTitleCase(signingMethod, "Digital (DocuSeal)")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 font-medium">Signed Timestamp</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {signedAt ? formatDate(signedAt) : "Pending signature"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 font-medium">Document Copy</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {signedPdfUrl ? "Signed PDF ready" : "Generated on completion"}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600">
+                {showSignedBanner
+                  ? `${displayCandidateName} has signed the offer contract.`
+                  : normalizedStatus === "negotiating"
+                    ? `${displayCandidateName} has requested changes to this offer.`
+                    : `Offer sent to ${displayCandidateName}${candidateEmail ? ` (${candidateEmail})` : ""} — currently reviewing and awaiting signature.`}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {signedPdfUrl && (
+                  <a
+                    href={signedPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Download Signed Contract
+                  </a>
+                )}
+                {signingUrl && (
+                  <a
+                    href={signingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    View DocuSeal Submission
+                  </a>
+                )}
+              </div>
+            </section>
+
+            <Timeline status={displayStatus} hasSigned={hasSigned} />
+          </div>
+
+          {/* Right 4 Columns: Compensation Breakdown & Pipeline Quick Links */}
+          <div className="space-y-6 lg:col-span-4">
+            <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Compensation Breakdown
+                  </h2>
+                  <p className="text-xs text-slate-500">Payroll summary ({currency})</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Monthly Base</p>
+                  <p className="mt-1 text-xl font-bold text-emerald-700">{salaryText}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Semi-Monthly Est.</p>
+                  <p className="mt-1 text-base font-bold text-slate-900">{semiMonthlyText}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Pay Cadence</span>
+                  <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+                    Semi-Monthly (15th &amp; 30th)
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                  <Briefcase className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Hiring Pipeline Quick Links
+                  </h2>
+                  <p className="text-xs text-slate-500">Jump to related HR records</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <Link
+                  href={pipelineHref}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-800 transition-colors hover:border-indigo-300 hover:bg-indigo-50/50"
+                >
+                  <span>View Applicant in Pipeline</span>
+                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
+                </Link>
+
+                {isHired && (
+                  <Link
+                    href={employeeRecordHref}
+                    className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-xs font-semibold text-emerald-900 transition-colors hover:bg-emerald-100/70"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <UserCheck className="h-4 w-4 text-emerald-700" />
+                      View Employee Record
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 text-emerald-700" />
+                  </Link>
+                )}
+
+                <Link
+                  href="/hr/offers"
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <span>All Job Offers</span>
+                  <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                </Link>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       {toastBanner}
@@ -613,8 +938,8 @@ export default function OfferPageClient({
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <TermItem label="Base salary" value={salaryText} emphasis />
                 <TermItem label="Location" value={location ?? "To be confirmed"} />
-                <TermItem label="Employment type" value={employmentType ?? "To be confirmed"} />
-                <TermItem label="Work setup" value={workSetup ?? "To be confirmed"} />
+                <TermItem label="Employment type" value={formattedEmploymentType} />
+                <TermItem label="Work setup" value={formattedWorkSetup} />
                 <TermItem label="Department" value={department ?? "General"} />
                 <TermItem label="Start date" value={startDate ? formatDate(startDate) : "To be confirmed"} />
               </div>
