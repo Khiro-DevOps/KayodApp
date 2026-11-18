@@ -86,12 +86,8 @@ export async function loadApplicantOffer(
       salary_max,
       currency,
       employment_type,
-      tenants (
-        name
-      ),
       profiles!job_postings_created_by_fkey (
         email,
-        company_name,
         tenants (
           name
         )
@@ -206,22 +202,18 @@ export async function loadApplicantOffer(
     salary_max?: number | null;
     currency?: string | null;
     employment_type?: string | null;
-    tenants?: { name?: string | null } | { name?: string | null }[] | null;
     profiles?:
       | {
           email?: string | null;
-          company_name?: string | null;
           tenants?: { name?: string | null } | { name?: string | null }[] | null;
         }
       | {
           email?: string | null;
-          company_name?: string | null;
           tenants?: { name?: string | null } | { name?: string | null }[] | null;
         }[]
       | null;
   } | null;
 
-  const directTenant = toSingle(jobPosting?.tenants);
   const creatorProfile = toSingle(jobPosting?.profiles);
   const creatorTenant = toSingle(creatorProfile?.tenants);
   const offerMeta = ((activeOffer?.job_metadata ?? activeOffer?.metadata) || {}) as Record<
@@ -231,8 +223,6 @@ export async function loadApplicantOffer(
   const metaCompanyName = normalizeText(offerMeta.company_name);
 
   const companyName =
-    normalizeText(directTenant?.name) ||
-    normalizeText(creatorProfile?.company_name) ||
     normalizeText(creatorTenant?.name) ||
     (metaCompanyName && metaCompanyName !== "Hiring Company" ? metaCompanyName : "") ||
     "Hiring Company";

@@ -102,9 +102,7 @@ export default async function ApplicantApplicationDetailPage({
         salary_max,
         currency,
         employment_type,
-        tenants ( name ),
         profiles!job_postings_created_by_fkey (
-          company_name,
           tenants ( name )
         )
       )
@@ -234,21 +232,15 @@ export default async function ApplicantApplicationDetailPage({
   const targetJobOffer = latestJobOffer ?? latestJobOfferFallback;
 
   const rawJobPosting = application.job_postings as unknown as {
-    tenants?: { name?: string | null } | { name?: string | null }[] | null;
     profiles?:
       | {
-          company_name?: string | null;
           tenants?: { name?: string | null } | { name?: string | null }[] | null;
         }
       | {
-          company_name?: string | null;
           tenants?: { name?: string | null } | { name?: string | null }[] | null;
         }[]
       | null;
   } | null;
-  const directTenantName = Array.isArray(rawJobPosting?.tenants)
-    ? rawJobPosting?.tenants[0]?.name
-    : rawJobPosting?.tenants?.name;
   const creatorProfile = Array.isArray(rawJobPosting?.profiles)
     ? rawJobPosting?.profiles[0]
     : rawJobPosting?.profiles;
@@ -258,11 +250,7 @@ export default async function ApplicantApplicationDetailPage({
 
   let resolvedOfferEmbedSrc: string | null = null;
   let resolvedOfferLocation: string | null = null;
-  let resolvedCompanyName: string | null =
-    directTenantName?.trim() ||
-    creatorProfile?.company_name?.trim() ||
-    creatorTenantName?.trim() ||
-    null;
+  let resolvedCompanyName: string | null = creatorTenantName?.trim() || null;
 
   if (targetJobOffer) {
     const meta = ((targetJobOffer.job_metadata ?? targetJobOffer.metadata) || {}) as Record<string, unknown>;

@@ -32,17 +32,8 @@ interface JobPosting {
         name: string | null;
       }
     | null;
-  tenants?:
-    | {
-        name: string | null;
-      }
-    | {
-        name: string | null;
-      }[]
-    | null;
   profiles?:
     | {
-        company_name?: string | null;
         tenants?:
           | {
               name: string | null;
@@ -53,7 +44,6 @@ interface JobPosting {
           | null;
       }
     | {
-        company_name?: string | null;
         tenants?:
           | {
               name: string | null;
@@ -188,11 +178,7 @@ export default async function ApplicantApplicationsPage() {
         departments (
           name
         ),
-        tenants (
-          name
-        ),
         profiles!job_postings_created_by_fkey (
-          company_name,
           tenants (
             name
           )
@@ -301,20 +287,13 @@ export default async function ApplicantApplicationsPage() {
           ? app.interview_schedules[0]
           : null;
 
-      const directTenant = Array.isArray(app.job_postings?.tenants)
-        ? app.job_postings?.tenants[0]?.name
-        : app.job_postings?.tenants?.name;
       const creatorProfile = Array.isArray(app.job_postings?.profiles)
         ? app.job_postings?.profiles[0]
         : app.job_postings?.profiles;
       const creatorTenant = Array.isArray(creatorProfile?.tenants)
         ? creatorProfile?.tenants[0]?.name
         : creatorProfile?.tenants?.name;
-      const companyName =
-        directTenant ||
-        creatorProfile?.company_name ||
-        creatorTenant ||
-        null;
+      const companyName = creatorTenant || null;
 
       return {
         id: app.id,
