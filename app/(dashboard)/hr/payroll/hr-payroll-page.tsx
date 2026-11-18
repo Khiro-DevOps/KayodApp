@@ -87,7 +87,7 @@ export default async function HRPayrollPage() {
               Payroll
             </h1>
             <p className="mt-1 text-xs font-medium text-amber-700">
-              Demo Payroll Computation (non-statutory)
+              Demo Payroll Computation
             </p>
           </div>
           <span className="text-xs text-text-muted">
@@ -214,21 +214,33 @@ export default async function HRPayrollPage() {
                 return (
                   <div
                     key={slip.id}
-                    className="flex items-center justify-between rounded-lg bg-surface-bg border border-border/60 px-3 py-2 text-sm"
+                    className="rounded-lg bg-surface-bg border border-border/60 px-3 py-2.5 text-sm space-y-2"
                   >
-                    <div>
-                      <p className="font-medium text-text-main">{name}</p>
-                      {slip.remarks && (
-                        <p className="text-xs text-text-muted mt-0.5">{slip.remarks}</p>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-text-main">{name}</p>
+                        {slip.remarks && (
+                          <p className="text-xs text-text-muted mt-0.5">{slip.remarks}</p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0 ml-3">
+                        <p className="font-semibold text-success">
+                          ₱{Number(slip.net_pay).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          -₱{Number(slip.total_deductions).toLocaleString()} deductions
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-success">
-                        ₱{Number(slip.net_pay).toLocaleString()}
-                      </p>
-                      <p className="text-xs text-text-muted">
-                        -₱{Number(slip.total_deductions).toLocaleString()} deductions
-                      </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-border/50 pt-2 text-[11px] text-text-muted">
+                      <span>Basic: <strong className="text-text-main">₱{Number(slip.basic_pay).toLocaleString()}</strong></span>
+                      <span>OT (1.25x): <strong className="text-text-main">₱{Number(slip.overtime_pay).toLocaleString()}</strong></span>
+                      <span>Night Diff / Bonus: <strong className="text-text-main">₱{Number(slip.bonuses).toLocaleString()}</strong></span>
+                      <span>Allowances: <strong className="text-text-main">₱{Number(slip.allowances).toLocaleString()}</strong></span>
+                      <span>SSS: <strong className="text-text-main">₱{Number(slip.sss_contribution).toLocaleString()}</strong></span>
+                      <span>PhilHealth: <strong className="text-text-main">₱{Number(slip.philhealth_contrib).toLocaleString()}</strong></span>
+                      <span>Pag-IBIG: <strong className="text-text-main">₱{Number(slip.pagibig_contrib).toLocaleString()}</strong></span>
+                      <span>Tax / Late &amp; Abs: <strong className="text-text-main">₱{(Number(slip.withholding_tax) + Number(slip.other_deductions)).toLocaleString()}</strong></span>
                     </div>
                   </div>
                 );

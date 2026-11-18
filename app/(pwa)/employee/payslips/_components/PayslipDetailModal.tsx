@@ -58,6 +58,7 @@ export default function PayslipDetailModal({
   const basicPay = Number(payslip.basic_pay || 0);
   const allowances = Number(payslip.allowances || 0);
   const overtimePay = Number(payslip.overtime_pay || 0);
+  const bonuses = Number(payslip.bonuses || 0);
 
   const sss = Number(payslip.sss_deduction || 0);
   const philhealth = Number(payslip.philhealth_deduction || 0);
@@ -66,6 +67,7 @@ export default function PayslipDetailModal({
   const other = Number(payslip.other_deductions || 0);
   const totalDeductions = Number(payslip.total_deductions || 0);
   const netPay = Number(payslip.net_pay || 0);
+  const remarks = payslip.remarks ?? null;
 
   const handlePrint = () => {
     window.print();
@@ -111,7 +113,7 @@ export default function PayslipDetailModal({
             <div className="sm:text-right">
               <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
                 <span className="inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 border border-amber-200">
-                  Demo Computation
+                  Demo Payroll Computation
                 </span>
                 <span className="inline-block rounded-full bg-purple-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-900 border border-purple-200">
                   {String(payslip.status) === "published" || String(payslip.status) === "paid" ? "PUBLISHED" : "DRAFT"}
@@ -160,12 +162,16 @@ export default function PayslipDetailModal({
                   <span className="font-semibold text-[#171542]">{formatPHP(basicPay)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[#5d5a75]">Allowances</span>
-                  <span className="font-semibold text-[#171542]">{formatPHP(allowances)}</span>
+                  <span className="text-[#5d5a75]">Overtime (Lenient 1.25x)</span>
+                  <span className="font-semibold text-[#171542]">{formatPHP(overtimePay)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[#5d5a75]">Overtime Pay</span>
-                  <span className="font-semibold text-[#171542]">{formatPHP(overtimePay)}</span>
+                  <span className="text-[#5d5a75]">Night Diff / Bonuses</span>
+                  <span className="font-semibold text-[#171542]">{formatPHP(bonuses)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#5d5a75]">Allowances</span>
+                  <span className="font-semibold text-[#171542]">{formatPHP(allowances)}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-[#e6e4f0] pt-2 font-bold">
                   <span className="text-[#171542] uppercase text-[11px]">Gross Pay</span>
@@ -183,27 +189,25 @@ export default function PayslipDetailModal({
               </div>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-[#5d5a75]">SSS Deduction</span>
+                  <span className="text-[#5d5a75]">SSS</span>
                   <span className="font-semibold text-[#171542]">{formatPHP(sss)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[#5d5a75]">PhilHealth Deduction</span>
+                  <span className="text-[#5d5a75]">PhilHealth</span>
                   <span className="font-semibold text-[#171542]">{formatPHP(philhealth)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[#5d5a75]">Pag-IBIG Deduction</span>
+                  <span className="text-[#5d5a75]">Pag-IBIG</span>
                   <span className="font-semibold text-[#171542]">{formatPHP(pagibig)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[#5d5a75]">Withholding Tax</span>
                   <span className="font-semibold text-[#171542]">{formatPHP(tax)}</span>
                 </div>
-                {other > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#5d5a75]">Other Deductions</span>
-                    <span className="font-semibold text-[#171542]">{formatPHP(other)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-[#5d5a75]">Late &amp; Absence / Other Deductions</span>
+                  <span className="font-semibold text-[#171542]">{formatPHP(other)}</span>
+                </div>
                 <div className="flex justify-between items-center border-t border-[#e6e4f0] pt-2 font-bold">
                   <span className="text-[#171542] uppercase text-[11px]">Total Deductions</span>
                   <span className="text-rose-600 font-extrabold text-sm">-{formatPHP(totalDeductions)}</span>
@@ -211,6 +215,13 @@ export default function PayslipDetailModal({
               </div>
             </div>
           </div>
+
+          {remarks && (
+            <div className="rounded-2xl border border-[#e6e4f0] bg-[#f7f6fc] px-4 py-3 text-xs text-[#5d5a75]">
+              <p className="font-semibold text-[#171542] mb-0.5">Computation Breakdown</p>
+              <p className="leading-relaxed">{remarks}</p>
+            </div>
+          )}
 
           {/* Highlight Footer: NET TAKE-HOME PAY (purple background) */}
           <div className="rounded-2xl bg-[#1F195E] p-5 text-white shadow-md">

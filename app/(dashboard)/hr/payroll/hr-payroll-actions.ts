@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
+import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -16,16 +17,6 @@ async function verifyHR(
     .eq("id", userId)
     .single();
   return profile && ["hr", "hr_manager", "admin"].includes(profile.role);
-}
-
-// ─── Philippines withholding tax (simplified TRAIN law brackets) ───────────
-function computeWithholdingTax(monthlyTaxable: number): number {
-  if (monthlyTaxable <= 20_833) return 0;
-  if (monthlyTaxable <= 33_333) return (monthlyTaxable - 20_833) * 0.20;
-  if (monthlyTaxable <= 66_667) return 2_500 + (monthlyTaxable - 33_333) * 0.25;
-  if (monthlyTaxable <= 166_667) return 10_833 + (monthlyTaxable - 66_667) * 0.30;
-  if (monthlyTaxable <= 666_667) return 40_833 + (monthlyTaxable - 166_667) * 0.32;
-  return 200_833 + (monthlyTaxable - 666_667) * 0.35;
 }
 
 export async function createPayrollPeriod(formData: FormData) {
@@ -76,100 +67,65 @@ export async function generatePayslips(formData: FormData) {
   // 2. Get all active employees
   const { data: employees } = await supabase
     .from("employees")
-    .select("id, base_salary, pay_frequency, employment_type")
+    .select("id, base_salary, salary, pay_frequency, employment_type, shift_start, shift_end, work_days")
     .eq("employment_status", "active");
 
   if (!employees || employees.length === 0) {
     redirect("/hr/payroll?error=No+active+employees+found");
   }
 
-  // 3. Get all time records (attendance_logs or legacy time_logs) for this period
+  // 3. Get attendance_logs and approved leave_requests for this period
   const { data: attendanceLogs } = await supabase
     .from("attendance_logs")
-    .select("employee_id, total_hours")
-    .not("clock_out", "is", null)
+    .select("employee_id, date, clock_in, clock_out, late_minutes")
     .gte("clock_in", `${period.period_start}T00:00:00Z`)
     .lte("clock_in", `${period.period_end}T23:59:59Z`);
 
-  const { data: timeLogs } = await supabase
-    .from("time_logs")
-    .select("employee_id, total_hours")
-    .eq("punch_type", "out")
-    .gte("punched_at", `${period.period_start}T00:00:00Z`)
-    .lte("punched_at", `${period.period_end}T23:59:59Z`);
+  const empIds = employees.map((e) => e.id);
+  const { data: approvedLeaves } = await supabase
+    .from("leave_requests")
+    .select("employee_id, start_date, end_date, status")
+    .in("employee_id", empIds)
+    .eq("status", "approved")
+    .lte("start_date", period.period_end)
+    .gte("end_date", period.period_start);
 
-  // Build maps of employee_id → total hours & overtime hours worked this period
-  const hoursMap: Record<string, number> = {};
-  const otHoursMap: Record<string, number> = {};
-
-  const processRecord = (empId: string, hrs: number) => {
-    hoursMap[empId] = (hoursMap[empId] ?? 0) + hrs;
-    if (hrs > 8) {
-      otHoursMap[empId] = (otHoursMap[empId] ?? 0) + (hrs - 8);
-    }
-  };
-
-  for (const log of attendanceLogs ?? []) {
-    processRecord(log.employee_id, log.total_hours ?? 0);
-  }
-
-  for (const log of timeLogs ?? []) {
-    processRecord(log.employee_id, log.total_hours ?? 0);
-  }
-
-  // 4. Build payslips
+  // 4. Build payslips using detailed demo payslip computation engine
   const payslips = employees.map((emp) => {
-    const monthlySalary = Number(emp.base_salary || 0);
-    const freq = String(emp.pay_frequency ?? "monthly").toLowerCase();
-    const isSemiOrBiweekly = freq === "semi_monthly" || freq === "biweekly";
-    const periodSalary = isSemiOrBiweekly ? monthlySalary / 2 : monthlySalary;
-    const hoursWorked = hoursMap[emp.id] ?? 0;
-    const otHours     = otHoursMap[emp.id] ?? 0;
+    const monthlySalary = Number(emp.base_salary ?? emp.salary ?? 0);
+    const empLogs = (attendanceLogs ?? []).filter((l) => l.employee_id === emp.id);
+    const empLeaves = (approvedLeaves ?? []).filter((lr) => lr.employee_id === emp.id);
 
-    // For hourly/part-time: pay based on hours punched
-    // For salaried/full-time: pay periodSalary based on pay_frequency
-    const isHourly =
-      emp.employment_type === "part_time" ||
-      emp.employment_type === "contract" ||
-      emp.employment_type === "intern";
-
-    // Derive hourly rate from monthly salary (÷ 173.33 = PH standard monthly hours)
-    const hourlyRate = monthlySalary / 173.33;
-    const basicPay   = isHourly
-      ? Math.round(hourlyRate * hoursWorked * 100) / 100
-      : periodSalary;
-
-    // Calculate Overtime (OT) pay (1.25x hourly rate for hours > 8)
-    const overtimePay = Math.round(hourlyRate * 1.25 * otHours * 100) / 100;
-
-    // Demo statutory-style deductions (non-statutory demo computation)
-    const sss        = Math.min(basicPay * 0.045, 1_125);
-    const philhealth = basicPay * 0.02;
-    const pagibig    = Math.min(basicPay * 0.02, 200);
-
-    // Withholding tax on taxable income (gross - SSS - PhilHealth - Pagibig)
-    const taxable        = Math.max(0, basicPay + overtimePay + customAllowances + customBonuses - sss - philhealth - pagibig);
-    const withholdingTax = computeWithholdingTax(taxable);
-
-    const baseNote = isHourly
-      ? `Demo Computation (${freq}) | Hours: ${hoursWorked.toFixed(2)}h @ ₱${hourlyRate.toFixed(2)}/hr | OT: ${otHours.toFixed(2)}h`
-      : `Demo Computation (${freq}) | Hours logged: ${hoursWorked.toFixed(2)}h | OT: ${otHours.toFixed(2)}h`;
-    const remarks = customRemarks ? `${baseNote} | ${customRemarks}` : baseNote;
+    const computed = computeEmployeeDemoPayslip({
+      monthlyBaseSalary: monthlySalary,
+      payFrequency: emp.pay_frequency,
+      periodStart: period.period_start,
+      periodEnd: period.period_end,
+      shiftStart: emp.shift_start,
+      shiftEnd: emp.shift_end,
+      workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
+      attendanceLogs: empLogs,
+      approvedLeaves: empLeaves,
+      allowances: customAllowances,
+      hrBonuses: customBonuses,
+      hrOtherDeductions: customOtherDeductions,
+      customRemarks,
+    });
 
     return {
       payroll_period_id:  periodId,
       employee_id:        emp.id,
-      basic_pay:          Number(basicPay.toFixed(2)),
-      overtime_pay:       Number(overtimePay.toFixed(2)),
-      allowances:         Number(customAllowances.toFixed(2)),
-      bonuses:            Number(customBonuses.toFixed(2)),
-      sss_contribution:   Number(sss.toFixed(2)),
-      philhealth_contrib: Number(philhealth.toFixed(2)),
-      pagibig_contrib:    Number(pagibig.toFixed(2)),
-      withholding_tax:    Number(withholdingTax.toFixed(2)),
-      other_deductions:   Number(customOtherDeductions.toFixed(2)),
+      basic_pay:          computed.basic_pay,
+      overtime_pay:       computed.overtime_pay,
+      allowances:         computed.allowances,
+      bonuses:            computed.bonuses,
+      sss_contribution:   computed.sss_contribution,
+      philhealth_contrib: computed.philhealth_contrib,
+      pagibig_contrib:    computed.pagibig_contrib,
+      withholding_tax:    computed.withholding_tax,
+      other_deductions:   computed.other_deductions,
       status:             "pending_approval",
-      remarks,
+      remarks:            computed.remarks,
     };
   });
 

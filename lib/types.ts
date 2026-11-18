@@ -721,6 +721,7 @@ export interface EmployeePayslip {
   basic_pay: number;
   allowances: number;
   overtime_pay: number;
+  bonuses?: number;
   sss_deduction: number;
   philhealth_deduction: number;
   pagibig_deduction: number;
@@ -729,6 +730,7 @@ export interface EmployeePayslip {
   total_deductions: number;
   net_pay: number;
   status: PayslipRecordStatus;
+  remarks?: string | null;
   pdf_storage_path: string | null;
   created_at: string;
   updated_at: string;
