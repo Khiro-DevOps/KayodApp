@@ -143,6 +143,15 @@ export default function NegotiationPanel({
   const [hrError, setHrError] = useState<string | null>(null);
   const [hrSuccess, setHrSuccess] = useState<string | null>(null);
 
+  if (
+    !isHR &&
+    ["signed", "accepted", "hired", "hire_confirmed", "declined", "expired"].includes(
+      String(status ?? "").toLowerCase()
+    )
+  ) {
+    return null;
+  }
+
   if (isHR) {
     if (!negotiations || negotiations.length === 0) {
       return null;

@@ -420,6 +420,11 @@ export default function OfferPageClient({
   const status = normalizedStatus;
   const displayStatus = hasSigned ? "signed" : status;
   const isNegotiatingLocked = normalizedStatus === "negotiating" && !hasSigned;
+  const isOfferFinalized =
+    hasSigned ||
+    isSignedStatus ||
+    ["signed", "accepted", "hired", "hire_confirmed", "declined", "expired"].includes(normalizedStatus) ||
+    ["pre_employment", "hired"].includes(normalizedApplicationStatus);
   const canSign = Boolean(resolvedEmbedSrc) && !hasSigned && !isNegotiatingLocked;
   const showSignedBanner = hasSigned;
   const salaryText = formatSalaryRange(salaryMin, salaryMax, currency);
@@ -615,17 +620,19 @@ export default function OfferPageClient({
             </section>
           ) : (
             <>
-              <NegotiationPanel
-                token={token}
-                applicationId={applicationId}
-                status={status}
-                negotiations={negotiations}
-                isHR={isHR}
-                signSectionRef={signSectionRef}
-                onAccept={handlePrepareSigningSession}
-                isPreparingSigningSession={isPreparingSigningSession}
-                acceptError={signingSessionError}
-              />
+              {(isHR || !isOfferFinalized) && (
+                <NegotiationPanel
+                  token={token}
+                  applicationId={applicationId}
+                  status={status}
+                  negotiations={negotiations}
+                  isHR={isHR}
+                  signSectionRef={signSectionRef}
+                  onAccept={handlePrepareSigningSession}
+                  isPreparingSigningSession={isPreparingSigningSession}
+                  acceptError={signingSessionError}
+                />
+              )}
 
           {isHR ? (
             <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
