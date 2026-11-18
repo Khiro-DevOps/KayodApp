@@ -41,6 +41,8 @@ export interface OfferDraftFormProps {
   jobTitle: string;
   initialOffer: OfferDraftRecord | null;
   branches?: OfficeBranchItem[];
+  defaultWorkSetup?: string | null;
+  defaultWorkLocationId?: string | null;
   onClose?: () => void;
   onSent?: (offerId: string) => void;
 }
@@ -66,6 +68,8 @@ export default function OfferDraftForm({
   jobTitle,
   initialOffer,
   branches = [],
+  defaultWorkSetup,
+  defaultWorkLocationId,
   onClose,
   onSent,
 }: OfferDraftFormProps) {
@@ -80,10 +84,10 @@ export default function OfferDraftForm({
   const [salary, setSalary] = useState<string>(String(initialOffer?.salary ?? 0));
   const [startDate, setStartDate] = useState<string>(initialOffer?.start_date ?? "");
   const [workSetup, setWorkSetup] = useState<string>(
-    initialOffer?.work_setup ?? initialOffer?.work_mode ?? "Remote"
+    initialOffer?.work_setup ?? initialOffer?.work_mode ?? defaultWorkSetup ?? "onsite"
   );
   const [workLocationId, setWorkLocationId] = useState<string>(
-    initialOffer?.work_location_id ?? ""
+    initialOffer?.work_location_id ?? defaultWorkLocationId ?? ""
   );
   const [department, setDepartment] = useState<string>(initialOffer?.department ?? "");
   const [probationDays, setProbationDays] = useState<string>(
@@ -100,8 +104,8 @@ export default function OfferDraftForm({
     setOffer(nextOffer);
     setSalary(String(nextOffer.salary ?? 0));
     setStartDate(nextOffer.start_date ?? "");
-    setWorkSetup(nextOffer.work_setup ?? nextOffer.work_mode ?? "Remote");
-    setWorkLocationId(nextOffer.work_location_id ?? "");
+    setWorkSetup(nextOffer.work_setup ?? nextOffer.work_mode ?? defaultWorkSetup ?? "onsite");
+    setWorkLocationId(nextOffer.work_location_id ?? defaultWorkLocationId ?? "");
     setDepartment(nextOffer.department ?? "");
     setProbationDays(String(nextOffer.probation_days ?? 180));
     setShiftStart(nextOffer.shift_start ?? "");
@@ -146,8 +150,8 @@ export default function OfferDraftForm({
     return {
       salary: Number(salary) || 0,
       start_date: startDate || null,
-      work_setup: workSetup || "Remote",
-      work_mode: (workSetup || "remote").toLowerCase(),
+      work_setup: workSetup || "onsite",
+      work_mode: (workSetup || "onsite").toLowerCase(),
       work_location_id: workLocationId || null,
       department: department.trim() || null,
       probation_days: Number(probationDays) || 0,

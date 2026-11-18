@@ -23,12 +23,15 @@ export async function updateEmployeeLocationAction(formData: FormData) {
   const remoteLng = parseFloat(formData.get("remote_lng") as string);
   const remoteRadius = parseFloat(formData.get("remote_radius") as string) || 200;
 
-  // 1. Update employee's work_model and work_location_id
+  // 1. Update employee's work_mode, work_model and work_location_id
+  const normalizedWorkMode = workMode === "wfh" ? "remote" : (workMode === "hybrid" || workMode === "remote" ? workMode : "onsite");
+  const normalizedWorkModel = workMode === "remote" || workMode === "wfh" ? "wfh" : (workMode === "hybrid" ? "hybrid" : "onsite");
   const { error: empError } = await supabase
     .from("employees")
     .update({
-      work_model: workMode === "hybrid" || workMode === "remote" ? workMode : (workMode === "wfh" ? "wfh" : "onsite"),
-      work_location_id: (workMode === "onsite" || workMode === "hybrid") && workLocationId ? workLocationId : null,
+      work_mode: normalizedWorkMode,
+      work_model: normalizedWorkModel,
+      work_location_id: (normalizedWorkMode === "onsite" || normalizedWorkMode === "hybrid") && workLocationId ? workLocationId : null,
     })
     .eq("id", employeeId);
 

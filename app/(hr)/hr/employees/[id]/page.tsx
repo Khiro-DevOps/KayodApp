@@ -35,11 +35,30 @@ export default async function EmployeeDetailPage({ params }: Props) {
 
   if (!employee) redirect("/hr/employees");
 
-  const { data: officeBranches } = await supabase
-    .from("office_branches")
-    .select("*")
-    .order("name", { ascending: true })
-    .returns<OfficeBranch[]>();
+  const [{ data: workLocations }, { data: officeBranches }] = await Promise.all([
+    supabase
+      .from("work_locations")
+      .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_default, created_at")
+      .order("name", { ascending: true }),
+    supabase
+      .from("office_branches")
+      .select("*")
+      .order("name", { ascending: true })
+      .returns<OfficeBranch[]>(),
+  ]);
+
+  const mergedBranches: OfficeBranch[] = (() => {
+    const byId = new Map<string, OfficeBranch>();
+    (workLocations ?? []).forEach((loc) => {
+      byId.set(loc.id, loc as unknown as OfficeBranch);
+    });
+    (officeBranches ?? []).forEach((branch) => {
+      if (!byId.has(branch.id)) {
+        byId.set(branch.id, branch);
+      }
+    });
+    return Array.from(byId.values());
+  })();
 
   const { data: remoteResidence } = await supabase
     .from("employee_remote_residences")
@@ -72,9 +91,9 @@ export default async function EmployeeDetailPage({ params }: Props) {
         {/* Location & Geofence Control */}
         <GeofenceControlCard
           employeeId={employee.id}
-          initialWorkMode={employee.work_model as any || "onsite"}
+          initialWorkMode={(employee.work_mode ?? employee.work_model ?? "onsite") as any}
           initialBranchId={employee.work_location_id || null}
-          officeBranches={officeBranches || []}
+          officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
         />
         

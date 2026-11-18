@@ -19,7 +19,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   // 1. Fetch Job Listing configuration (Template Data)
   const { data: job, error: jobError } = await supabase
     .from("job_postings")
-    .select("title, work_mode, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+    .select("title, work_mode, work_setup, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
     .eq("id", jobId)
     .single();
 
@@ -77,7 +77,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_mode: job.work_mode || 'remote',
+      work_mode: job.work_mode || (job as { work_setup?: string | null }).work_setup || 'onsite',
       work_location_id: job.work_location_id || null,
       shift_start: job.shift_start || null,
       shift_end: job.shift_end || null,
@@ -258,7 +258,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, work_setup, work_mode, work_location_id, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -321,6 +321,12 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
     const settings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
     const settingsWorkLocationId =
       typeof settings?.work_location_id === "string" ? settings.work_location_id : null;
+    const resolvedWorkSetup =
+      (job as { work_mode?: string | null; work_setup?: string | null }).work_mode ||
+      job.work_setup ||
+      "onsite";
+    const resolvedWorkLocationId =
+      (job as { work_location_id?: string | null }).work_location_id ?? settingsWorkLocationId;
     const settingsShiftStart =
       typeof settings?.shift_start === "string" && settings.shift_start
         ? settings.shift_start
@@ -344,9 +350,9 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_setup: job.work_setup || "Remote",
-      work_mode: job.work_setup || "remote",
-      work_location_id: settingsWorkLocationId,
+      work_setup: resolvedWorkSetup,
+      work_mode: resolvedWorkSetup.toLowerCase(),
+      work_location_id: resolvedWorkLocationId,
       shift_start: settingsShiftStart,
       shift_end: settingsShiftEnd,
       work_days: settingsWorkDays,

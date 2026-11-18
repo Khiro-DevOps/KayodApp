@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         id,
         candidate_id,
         job_posting_id,
-        job:job_postings(title, salary_min, employment_type, tenant_id)
+        job:job_postings(title, salary_min, employment_type, tenant_id, work_setup, work_mode, work_location_id)
       `)
       .eq("id", applicationId)
       .single()
@@ -45,7 +45,15 @@ export async function POST(req: NextRequest) {
       throw new Error(updateAppError.message)
     }
 
-    // 3. Update job offer status (if it exists)
+    // 3. Update job offer status (if it exists) and fetch latest offer work setup
+    const { data: jobOffer } = await admin
+      .from("job_offers")
+      .select("work_mode, work_setup, work_location_id")
+      .eq("application_id", applicationId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
     await admin
       .from("job_offers")
       .update({ 
@@ -82,6 +90,9 @@ export async function POST(req: NextRequest) {
       salary_min?: number | null
       employment_type?: string | null
       tenant_id?: string | null
+      work_setup?: string | null
+      work_mode?: string | null
+      work_location_id?: string | null
     } | null
 
     const resolvedTenantId: string | null = jobInfo?.tenant_id ?? candidateProfile?.tenant_id ?? callerTenantId ?? null
@@ -104,11 +115,51 @@ export async function POST(req: NextRequest) {
     // Check if employee already exists to avoid unique constraint error on profile_id
     const { data: existingEmployee } = await admin
       .from("employees")
-      .select("id, tenant_id, job_title, base_salary")
+      .select("id, tenant_id, job_title, base_salary, work_mode, work_location_id")
       .eq("profile_id", application.candidate_id)
       .maybeSingle()
 
     let employeeId = existingEmployee?.id
+
+    const rawWorkMode = String(
+      jobOffer?.work_mode ??
+        jobOffer?.work_setup ??
+        jobInfo?.work_mode ??
+        jobInfo?.work_setup ??
+        "onsite"
+    ).trim().toLowerCase()
+    const workMode: "onsite" | "hybrid" | "remote" =
+      rawWorkMode === "hybrid"
+        ? "hybrid"
+        : rawWorkMode === "remote" || rawWorkMode === "wfh"
+          ? "remote"
+          : "onsite"
+
+    let workLocationId: string | null =
+      jobOffer?.work_location_id ?? jobInfo?.work_location_id ?? null
+
+    if (!workLocationId && resolvedTenantId) {
+      const { data: defaultWorkLoc } = await admin
+        .from("work_locations")
+        .select("id")
+        .eq("tenant_id", resolvedTenantId)
+        .eq("is_default", true)
+        .limit(1)
+        .maybeSingle()
+
+      if (defaultWorkLoc?.id) {
+        workLocationId = defaultWorkLoc.id
+      } else {
+        const { data: defaultBranch } = await admin
+          .from("office_branches")
+          .select("id")
+          .eq("tenant_id", resolvedTenantId)
+          .eq("is_default", true)
+          .limit(1)
+          .maybeSingle()
+        workLocationId = defaultBranch?.id ?? null
+      }
+    }
 
     const rawJobTitle = jobInfo?.title
     const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
@@ -128,6 +179,9 @@ export async function POST(req: NextRequest) {
           start_date: new Date().toISOString().split('T')[0],
           employment_type: empType,
           employment_status: "active",
+          work_mode: workMode,
+          work_model: workMode === "remote" ? "wfh" : workMode,
+          work_location_id: workLocationId,
         })
         .select("id")
         .single()
@@ -141,6 +195,11 @@ export async function POST(req: NextRequest) {
       if (!existingEmployee.tenant_id && resolvedTenantId) patch.tenant_id = resolvedTenantId
       if (!existingEmployee.job_title || existingEmployee.job_title === "Development Employee") patch.job_title = jobTitle
       if (!existingEmployee.base_salary || Number(existingEmployee.base_salary) <= 0) patch.base_salary = baseSalary
+      if (!existingEmployee.work_mode) {
+        patch.work_mode = workMode
+        patch.work_model = workMode === "remote" ? "wfh" : workMode
+      }
+      if (!existingEmployee.work_location_id && workLocationId) patch.work_location_id = workLocationId
       if (Object.keys(patch).length > 0) {
         await admin.from("employees").update(patch).eq("id", existingEmployee.id)
       }

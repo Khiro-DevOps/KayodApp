@@ -20,6 +20,9 @@ type JobPostingRelation = {
   department_id?: string | null;
   salary_min?: number | null;
   salary_max?: number | null;
+  work_setup?: string | null;
+  work_mode?: string | null;
+  work_location_id?: string | null;
 };
 
 type JobApplicationRelation = {
@@ -186,7 +189,10 @@ export async function POST(_request: NextRequest, ctx: unknown) {
               tenant_id,
               department_id,
               salary_min,
-              salary_max
+              salary_max,
+              work_setup,
+              work_mode,
+              work_location_id
             )
           )
         `)
@@ -353,6 +359,8 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     const extractedWorkMode = normalizeWorkMode(
       offer.work_mode ??
         offer.work_setup ??
+        jobPosting?.work_mode ??
+        jobPosting?.work_setup ??
         metadata.work_model ??
         jobMetadata.work_model ??
         jobMetadata.work_arrangement,
@@ -381,6 +389,32 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       actorProfile?.tenant_id ??
       "00000000-0000-0000-0000-000000000001";
 
+    let resolvedWorkLocationId: string | null =
+      offer.work_location_id ?? jobPosting?.work_location_id ?? null;
+
+    if (!resolvedWorkLocationId && tenantId) {
+      const { data: defaultWorkLoc } = await admin
+        .from("work_locations")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_default", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (defaultWorkLoc?.id) {
+        resolvedWorkLocationId = defaultWorkLoc.id;
+      } else {
+        const { data: defaultBranch } = await admin
+          .from("office_branches")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("is_default", true)
+          .limit(1)
+          .maybeSingle();
+        resolvedWorkLocationId = defaultBranch?.id ?? null;
+      }
+    }
+
     // 4) Upsert employees record (including NOT NULL columns from 20260930 migration)
     const employeePayload = {
       profile_id: application.applicant_id,
@@ -401,7 +435,8 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           ? jobMetadata.salary_currency
           : "PHP",
       work_mode: extractedWorkMode,
-      work_location_id: offer.work_location_id ?? null,
+      work_model: extractedWorkMode === "remote" ? "wfh" : extractedWorkMode,
+      work_location_id: resolvedWorkLocationId,
       work_days: extractedWorkDays,
       shift_start: extractedShiftStart,
       shift_end: extractedShiftEnd,

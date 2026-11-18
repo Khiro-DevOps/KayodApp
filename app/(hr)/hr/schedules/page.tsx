@@ -70,7 +70,7 @@ export default async function HRSchedulesPage() {
     .map((emp) => {
       const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
-      const rawModel = emp.work_model || (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
+      const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || emp.work_model || "onsite";
 
       return {
         id: emp.id,
