@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { DocusealForm } from "@docuseal/react";
-import { CheckCircle, ExternalLink, PenLine } from "lucide-react";
+import { ArrowLeft, CheckCircle, ExternalLink, PenLine } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
@@ -39,6 +40,7 @@ interface OfferPageClientProps {
   signedPdfUrl?: string | null;
   negotiations?: OfferNegotiationRow[];
   isHR?: boolean;
+  mode?: "default" | "overview" | "sign";
 }
 
 function formatDate(value: string) {
@@ -75,7 +77,7 @@ function getStatusPill(status: string, isHR?: boolean) {
 
   if (normalized === "signed") {
     return {
-      label: "Signed — congratulations",
+      label: isHR ? "Signed — congratulations" : "Contract signed",
       wrapper: "border-green-200 bg-green-50 text-green-700",
       dot: "bg-green-500",
     };
@@ -83,7 +85,7 @@ function getStatusPill(status: string, isHR?: boolean) {
 
   if (normalized === "negotiating") {
     return {
-      label: "Under negotiation",
+      label: isHR ? "Under negotiation" : "Negotiation in progress",
       wrapper: "border-blue-200 bg-blue-50 text-blue-700",
       dot: "bg-blue-500",
     };
@@ -265,6 +267,7 @@ export default function OfferPageClient({
   signedPdfUrl,
   negotiations,
   isHR,
+  mode = "default",
 }: OfferPageClientProps) {
   const router = useRouter();
   const signSectionRef = useRef<HTMLDivElement>(null);
@@ -320,6 +323,7 @@ export default function OfferPageClient({
   useEffect(() => {
     if (
       !isHR &&
+      mode !== "overview" &&
       normalizedStatus === "sent" &&
       !hasSigned &&
       !embedSrc?.trim() &&
@@ -431,7 +435,7 @@ export default function OfferPageClient({
     </div>
   ) : null;
 
-  if (!isHR && normalizedApplicationStatus === "pre_employment") {
+  if (!isHR && mode !== "overview" && normalizedApplicationStatus === "pre_employment") {
     return (
       <div className="w-full">
         {toastBanner}
@@ -517,43 +521,111 @@ export default function OfferPageClient({
       {toastBanner}
       <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
         <div className="space-y-6">
-          <section className="py-10 text-center">
-            <CompanyBadge name={companyName} />
-            <h1 className="mt-6 text-2xl font-medium text-text-primary">
-              {isHR ? `Offer for ${candidateFirstName}` : `Your offer is ready, ${candidateFirstName}`}
-            </h1>
-            <p className="mb-5 mt-1 text-base text-text-secondary">{jobTitle}</p>
-            <StatusPill status={displayStatus} isHR={isHR} />
-            {expiresAt && (
-              <p className="mt-3 text-sm text-text-secondary">
-                Offer expires <strong>{formatDate(expiresAt)}</strong> · {daysRemaining(expiresAt)} days remaining
-              </p>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-            <h2 className="mb-4 text-base font-semibold text-text-primary">Offer terms</h2>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-              <TermItem label="Base salary" value={salaryText} emphasis />
-              <TermItem label="Location" value={location ?? "To be confirmed"} />
-              <TermItem label="Employment type" value={employmentType ?? "To be confirmed"} />
-              <TermItem label="Work setup" value={workSetup ?? "To be confirmed"} />
-              <TermItem label="Department" value={department ?? "General"} />
-              <TermItem label="Start date" value={startDate ? formatDate(startDate) : "To be confirmed"} />
+          {mode === "overview" && (
+            <div>
+              <Link
+                href={`/applicant/applications/${encodeURIComponent(applicationId)}`}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Application Track
+              </Link>
             </div>
-          </section>
+          )}
 
-          <NegotiationPanel
-            token={token}
-            applicationId={applicationId}
-            status={status}
-            negotiations={negotiations}
-            isHR={isHR}
-            signSectionRef={signSectionRef}
-            onAccept={handlePrepareSigningSession}
-            isPreparingSigningSession={isPreparingSigningSession}
-            acceptError={signingSessionError}
-          />
+          {mode === "sign" && (
+            <div>
+              <Link
+                href={`/applicant/offer/${encodeURIComponent(applicationId)}`}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Offer Terms
+              </Link>
+            </div>
+          )}
+
+          {mode === "sign" ? (
+            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <CompanyBadge name={companyName} />
+                  <div>
+                    <h1 className="text-xl font-semibold text-text-primary">{jobTitle}</h1>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {salaryText} · Start date: {startDate ? formatDate(startDate) : "To be confirmed"}
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <StatusPill status={displayStatus} isHR={isHR} />
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="py-10 text-center">
+              <CompanyBadge name={companyName} />
+              <h1 className="mt-6 text-2xl font-medium text-text-primary">
+                {isHR ? `Offer for ${candidateFirstName}` : `Your offer is ready, ${candidateFirstName}`}
+              </h1>
+              <p className="mb-5 mt-1 text-base text-text-secondary">{jobTitle}</p>
+              <StatusPill status={displayStatus} isHR={isHR} />
+              {expiresAt && (
+                <p className="mt-3 text-sm text-text-secondary">
+                  Offer expires <strong>{formatDate(expiresAt)}</strong> · {daysRemaining(expiresAt)} days remaining
+                </p>
+              )}
+            </section>
+          )}
+
+          {mode !== "sign" && (
+            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+              <h2 className="mb-4 text-base font-semibold text-text-primary">Offer terms</h2>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                <TermItem label="Base salary" value={salaryText} emphasis />
+                <TermItem label="Location" value={location ?? "To be confirmed"} />
+                <TermItem label="Employment type" value={employmentType ?? "To be confirmed"} />
+                <TermItem label="Work setup" value={workSetup ?? "To be confirmed"} />
+                <TermItem label="Department" value={department ?? "General"} />
+                <TermItem label="Start date" value={startDate ? formatDate(startDate) : "To be confirmed"} />
+              </div>
+            </section>
+          )}
+
+          {mode === "overview" ? (
+            <section className="rounded-2xl border border-indigo-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {hasSigned ? "Contract signed" : "Ready to move forward?"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {hasSigned
+                      ? "Your signed offer contract is on file. View the signing details or download your copy."
+                      : "Review the full contract and sign digitally, or request changes to the offer terms."}
+                  </p>
+                </div>
+                <Link
+                  href={`/applicant/offer/${encodeURIComponent(applicationId)}/sign`}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
+                >
+                  {hasSigned ? "View Signed Contract" : "Sign the Contract"}
+                </Link>
+              </div>
+            </section>
+          ) : (
+            <>
+              <NegotiationPanel
+                token={token}
+                applicationId={applicationId}
+                status={status}
+                negotiations={negotiations}
+                isHR={isHR}
+                signSectionRef={signSectionRef}
+                onAccept={handlePrepareSigningSession}
+                isPreparingSigningSession={isPreparingSigningSession}
+                acceptError={signingSessionError}
+              />
 
           {isHR ? (
             <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -693,14 +765,16 @@ export default function OfferPageClient({
             </div>
           </section>
           )}
+            </>
+          )}
 
-          <Timeline status={displayStatus} hasSigned={hasSigned} />
+          {mode !== "overview" && <Timeline status={displayStatus} hasSigned={hasSigned} />}
 
           <Footer hrEmail={hrEmail} />
         </div>
 
         {/* Signing Modal is rendered directly in the top level flex container instead of in the overflow:hidden layout container */}
-        {!isHR && !hasSigned && signingUrl && resolvedEmbedSrc && (
+        {mode !== "overview" && !isHR && !hasSigned && signingUrl && resolvedEmbedSrc && (
           <SigningModal
             isOpen={signingOpen}
             onClose={() => {
