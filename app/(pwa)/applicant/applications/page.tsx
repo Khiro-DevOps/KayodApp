@@ -395,12 +395,12 @@ export default async function ApplicantApplicationsPage() {
       {/* Overview Stats */}
       <section className="mb-6 grid grid-cols-3 gap-2.5 sm:gap-4">
         {/* Active Applications */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-500 sm:text-xs">
+            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
               Active Applications
             </p>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 sm:h-8 sm:w-8">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600 sm:h-8 sm:w-8">
               <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </span>
           </div>
@@ -408,14 +408,14 @@ export default async function ApplicantApplicationsPage() {
             <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
               {activeApplicationsCount}
             </p>
-            <p className="text-[10px] text-slate-400 sm:text-xs">Open</p>
+            <p className="text-[10px] text-slate-500 sm:text-xs">Open</p>
           </div>
         </div>
 
         {/* In Pipeline */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-500 sm:text-xs">
+            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
               In Pipeline
             </p>
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 sm:h-8 sm:w-8">
@@ -426,14 +426,14 @@ export default async function ApplicantApplicationsPage() {
             <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
               {inPipelineCount}
             </p>
-            <p className="text-[10px] text-slate-400 sm:text-xs">Active stage</p>
+            <p className="text-[10px] text-slate-500 sm:text-xs">Active stage</p>
           </div>
         </div>
 
         {/* Total Submitted */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-500 sm:text-xs">
+            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
               Total Submitted
             </p>
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 sm:h-8 sm:w-8">
@@ -444,7 +444,7 @@ export default async function ApplicantApplicationsPage() {
             <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
               {totalSubmitted}
             </p>
-            <p className="text-[10px] text-slate-400 sm:text-xs">Lifetime</p>
+            <p className="text-[10px] text-slate-500 sm:text-xs">Lifetime</p>
           </div>
         </div>
       </section>

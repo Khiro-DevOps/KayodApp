@@ -37,28 +37,29 @@ interface ApplicationTrackerCardProps {
 function getStatusBadge(status: string): { label: string; className: string } {
   switch (status.toLowerCase()) {
     case "rejected":
-      return { label: "Not Selected", className: "border-red-200 bg-red-50 text-red-700" };
+    case "offer_declined":
+      return { label: status.toLowerCase() === "offer_declined" ? "Offer Declined" : "Not Selected", className: "border-rose-200/80 bg-rose-50 text-rose-700" };
     case "withdrawn":
-      return { label: "Withdrawn", className: "border-slate-200 bg-slate-100 text-slate-600" };
+      return { label: "Withdrawn", className: "border-rose-200/80 bg-rose-50 text-rose-700" };
     case "hired":
     case "hire_confirmed":
-      return { label: "Hired", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+      return { label: "Hired", className: "border-emerald-200/80 bg-emerald-50 text-emerald-700" };
     case "offer":
     case "offer_sent":
     case "offer_accepted":
     case "negotiating":
     case "pre_employment":
-      return { label: "Offer & Contract", className: "border-indigo-200 bg-indigo-50 text-indigo-700" };
+      return { label: "Offer & Contract", className: "border-emerald-200/80 bg-emerald-50 text-emerald-700" };
     case "interview":
     case "interview_scheduled":
     case "interviewed":
-      return { label: "Interview", className: "border-violet-200 bg-violet-50 text-violet-700" };
+      return { label: "Interview", className: "border-indigo-200/80 bg-indigo-50 text-indigo-700" };
     case "screening":
     case "under_review":
     case "shortlisted":
-      return { label: "Screening", className: "border-amber-200 bg-amber-50 text-amber-700" };
+      return { label: "Screening", className: "border-indigo-200/80 bg-indigo-50 text-indigo-700" };
     default:
-      return { label: "Applied", className: "border-slate-200 bg-slate-100 text-slate-700" };
+      return { label: "Applied", className: "border-slate-200/80 bg-slate-100 text-slate-700" };
   }
 }
 
@@ -81,27 +82,14 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
     stored: application.matchScore,
   });
 
-  const matchScoreClasses =
-    displayScore.value !== null && displayScore.value >= 70
-      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-      : displayScore.value !== null && displayScore.value >= 40
-        ? "bg-amber-50 text-amber-700 border border-amber-200"
-        : "bg-slate-100 text-slate-600 border border-slate-200";
+  const matchScoreClasses = "bg-purple-50 text-purple-700 border border-purple-200/70";
 
   const getWorkModeBadge = (mode?: string | null) => {
     if (!mode) return null;
-    const m = mode.toLowerCase();
-    let badgeStyle = "bg-slate-100 text-slate-700";
-    if (m === "remote" || m === "wfh") {
-      badgeStyle = "bg-emerald-50 text-emerald-700";
-    } else if (m === "hybrid") {
-      badgeStyle = "bg-sky-50 text-sky-700";
-    } else if (m === "onsite") {
-      badgeStyle = "bg-purple-50 text-purple-700";
-    }
+    const formatted = mode.replace(/[_-]+/g, " ");
     return (
-      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${badgeStyle}`}>
-        {mode}
+      <span className="inline-flex items-center rounded-full border border-slate-200/80 bg-slate-50 px-2.5 py-0.5 text-xs font-medium capitalize text-slate-700">
+        {formatted}
       </span>
     );
   };
@@ -122,7 +110,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
             navigateToDetail();
           }
         }}
-        className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+        className="w-full min-w-0 rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs hover:border-purple-300 hover:shadow-sm transition-all cursor-pointer"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -133,9 +121,9 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
               {getWorkModeBadge(application.job.workMode)}
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
               {application.job.companyName && (
-                <span className="font-medium text-indigo-600">
+                <span className="font-semibold text-purple-700">
                   {application.job.companyName}
                 </span>
               )}
