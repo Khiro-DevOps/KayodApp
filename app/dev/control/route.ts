@@ -101,11 +101,41 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { data: existingApp, error: existingError } = await admin
+    .from("job_applications")
+    .select("id, status, applicant_id")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (existingError) {
+    return jsonError(existingError.message, 500);
+  }
+
+  if (!existingApp) {
+    return jsonError(
+      `No application was found with ID ${applicationId}.`,
+      404
+    );
+  }
+
+  const wasHired = String(existingApp.status ?? "").toLowerCase() === "hired";
+  const isPreHireStage = String(stage).toLowerCase() !== "hired";
+  const updatePayload: {
+    status: Stage;
+    contract_offer_id?: null;
+    updated_at?: string;
+  } = {
+    status: stage,
+  };
+
+  if (wasHired && isPreHireStage) {
+    updatePayload.contract_offer_id = null;
+    updatePayload.updated_at = new Date().toISOString();
+  }
+
   const { data, error } = await admin
     .from("job_applications")
-    .update({
-      status: stage,
-    })
+    .update(updatePayload)
     .eq("id", applicationId)
     .select("id, status")
     .maybeSingle();
@@ -119,6 +149,17 @@ export async function POST(request: NextRequest) {
       `No application was found with ID ${applicationId}.`,
       404
     );
+  }
+
+  if (wasHired && isPreHireStage && existingApp.applicant_id) {
+    await admin
+      .from("profiles")
+      .update({
+        role: "applicant",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingApp.applicant_id)
+      .eq("role", "employee");
   }
 
   return jsonSuccess(
