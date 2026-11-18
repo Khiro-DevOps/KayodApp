@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 
 import PageContainer from "@/components/ui/page-container";
 import OfferPageClient from "@/components/job-offer/OfferPageClient";
+import OfferDraftForm from "@/components/job-offer/OfferDraftForm";
 import JobOfferHeader from "@/components/job-offer/job-offer-header";
 import JobOfferTermsPanel from "@/components/job-offer/job-offer-terms-panel";
 import JobOfferPdfPanel from "@/components/job-offer/job-offer-pdf-panel";
@@ -296,10 +297,20 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       id,
       application_id,
       job_id,
+      salary,
       start_date,
+      work_setup,
+      work_mode,
+      work_location_id,
+      department,
+      probation_days,
+      shift_start,
+      shift_end,
+      work_days,
       status,
       latest_docuseal_url,
       job_metadata,
+      metadata,
       created_at,
       updated_at
     `;
@@ -308,7 +319,16 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     id: string;
     application_id: string;
     job_id?: string | null;
+    salary?: number | null;
     start_date?: string | null;
+    work_setup?: string | null;
+    work_mode?: string | null;
+    work_location_id?: string | null;
+    department?: string | null;
+    probation_days?: number | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    work_days?: string[] | null;
     status: string;
     latest_docuseal_url?: string | null;
     job_metadata?: Record<string, unknown> | null;
@@ -591,22 +611,65 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       if (!offer && applicationRow) {
         application = applicationRow as unknown as ApplicationRow;
       }
-
-      // Only show "Offer Document Pending" if there is no resolved offer record.
-      // Existing job_offers rows should render even when the signing URL is still empty.
-      if (!offer && applicationRow?.status && ["offer_sent", "negotiating"].includes(applicationRow.status)) {
-        return (
-          <PageContainer>
-            <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-blue-200 bg-blue-50 p-6 text-center">
-              <h2 className="mb-2 text-xl font-bold text-blue-900">Offer Document Pending</h2>
-              <p className="text-sm text-blue-800">
-                Your offer is being prepared. Once HR finishes generating the signing link, it will appear here automatically.
-              </p>
-            </div>
-          </PageContainer>
-        );
-      }
     }
+  }
+
+  const { data: viewerProfile } = await supabase
+    .from("profiles")
+    .select("role, tenant_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isViewerHRRole = Boolean(
+    viewerProfile?.role && ["hr_manager", "admin", "hr"].includes(viewerProfile.role)
+  );
+
+  // When an application is resolved and either has no offer yet or its active job_offers row is DRAFT,
+  // render the HR offer draft creator / editor.
+  if (application && (!offer || (jobOfferRow && jobOfferRow.status?.toUpperCase() === "DRAFT"))) {
+    const canManageDraft =
+      application.job_postings?.created_by === user.id || isViewerHRRole;
+
+    if (!canManageDraft) {
+      return (
+        <PageContainer>
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <p className="text-sm text-red-700">You do not have access to this offer.</p>
+          </div>
+        </PageContainer>
+      );
+    }
+
+    let tenantId = viewerProfile?.tenant_id ?? null;
+    if (!tenantId && application.job_postings?.created_by) {
+      const { data: creatorProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", application.job_postings.created_by)
+        .maybeSingle();
+      tenantId = creatorProfile?.tenant_id ?? null;
+    }
+
+    const { data: branchRows } = tenantId
+      ? await admin
+          .from("office_branches")
+          .select("id, name, address")
+          .eq("tenant_id", tenantId)
+          .order("name")
+      : { data: null };
+
+    return (
+      <PageContainer>
+        <OfferDraftForm
+          applicationId={application.id}
+          jobId={jobOfferRow?.job_id ?? application.job_id}
+          candidateName={displayName(application.profiles)}
+          jobTitle={application.job_postings?.title ?? "Job Offer"}
+          initialOffer={jobOfferRow && jobOfferRow.status?.toUpperCase() === "DRAFT" ? jobOfferRow : null}
+          branches={branchRows ?? []}
+        />
+      </PageContainer>
+    );
   }
 
   if (!offer || !application) {
@@ -741,7 +804,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   }
 
   const isApplicant = application.applicant_id === user.id;
-  const isHR = application.job_postings?.created_by === user.id;
+  const isHR = application.job_postings?.created_by === user.id || isViewerHRRole;
 
   if (!isApplicant && !isHR) {
     return (
@@ -755,8 +818,8 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
   const candidateFirstName = displayName(application.profiles).split(" ")[0] || "Candidate";
   const candidateEmail = application.profiles?.email?.trim() ?? "";
-  const salaryMin = application.job_postings?.salary_min;
-  const salaryMax = application.job_postings?.salary_max;
+  const salaryMin = jobOfferRow?.salary ?? application.job_postings?.salary_min;
+  const salaryMax = jobOfferRow?.salary ?? application.job_postings?.salary_max;
   const currency = application.job_postings?.currency ?? "PHP";
   const metadata = (offer.metadata ?? {}) as Record<string, unknown>;
   if (process.env.NODE_ENV !== "production") {
@@ -777,14 +840,14 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     (typeof metadata.hrEmail === "string" && metadata.hrEmail.trim()) ||
     null;
   const jobTitle = application.job_postings?.title ?? "Job Offer";
-  const workSetup = application.job_postings?.work_setup ?? null;
-  const department = application.job_postings?.department_id ?? null;
+  const workSetup = jobOfferRow?.work_setup ?? jobOfferRow?.work_mode ?? application.job_postings?.work_setup ?? null;
+  const department = jobOfferRow?.department ?? application.job_postings?.department_id ?? null;
   const location = application.job_postings?.location ?? null;
   const employmentType = application.job_postings?.employment_type ?? null;
   const startDate =
+    jobOfferRow?.start_date ||
     (typeof metadata.start_date === "string" && metadata.start_date.trim()) ||
     (typeof metadata.startDate === "string" && metadata.startDate.trim()) ||
-    jobOfferRow?.start_date ||
     null;
   const expiresAt = typeof metadata.expires_at === "string" ? metadata.expires_at : typeof metadata.expiresAt === "string" ? metadata.expiresAt : null;
   const signingUrl = offer.docuseal_submission_url ?? (offer as SignedDocumentRow).latest_docuseal_url ?? null;

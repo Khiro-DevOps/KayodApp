@@ -372,45 +372,46 @@ export async function updateOfferDraft(offerId: string, updates: Record<string, 
 
 // Send an existing draft offer via DocuSeal and finalize records.
 export async function sendDraftOffer(jobId: string, applicationId: string, offerId: string) {
-  const admin = getAdminClient();
-  const supabase = await createClient();
-
-  // Dispatch DocuSeal submission
-  const sendResult = await sendOfferWithDocuSeal(jobId, applicationId, offerId);
-  if (!sendResult.success) {
-    console.error(`DocuSeal integration failed: ${sendResult.error}`);
-    throw new Error(`Failed to send contract via DocuSeal: ${sendResult.error}`);
-  }
-
-  // Create signed_documents placeholder
-  let signedDocId: string;
   try {
-    const { data: job } = await supabase
-      .from("job_postings")
-      .select("docuseal_template_id, created_by")
-      .eq("id", jobId)
-      .single();
+    const admin = getAdminClient();
+    const supabase = await createClient();
 
-    const result = await createSignedDocumentPlaceholderWithTemplateFallback(admin, {
-      applicationId,
-      jobPostingId: jobId,
-      docusealTemplateId: String(job?.docuseal_template_id ?? "").trim(),
-      createdBy: job?.created_by ?? "",
-      signingMethod: "digital",
-      status: "sent",
-      metadata: { job_offer_id: offerId },
-    });
+    // Dispatch DocuSeal submission
+    const sendResult = await sendOfferWithDocuSeal(jobId, applicationId, offerId);
+    if (!sendResult.success) {
+      console.error(`DocuSeal integration failed: ${sendResult.error}`);
+      return { success: false, error: `Failed to send contract via DocuSeal: ${sendResult.error}` };
+    }
 
-    signedDocId = result.signedDocumentId;
-  } catch (signedDocError) {
-    throw new Error(
-      `Failed to create signed_documents placeholder: ${signedDocError instanceof Error ? signedDocError.message : "unknown error"}`
-    );
-  }
+    // Create signed_documents placeholder
+    let signedDocId: string;
+    try {
+      const { data: job } = await supabase
+        .from("job_postings")
+        .select("docuseal_template_id, created_by")
+        .eq("id", jobId)
+        .single();
 
-  const docusealUrl = sendResult.url ?? null;
+      const result = await createSignedDocumentPlaceholderWithTemplateFallback(admin, {
+        applicationId,
+        jobPostingId: jobId,
+        docusealTemplateId: String(job?.docuseal_template_id ?? "").trim(),
+        createdBy: job?.created_by ?? "",
+        signingMethod: "digital",
+        status: "sent",
+        metadata: { job_offer_id: offerId },
+      });
 
-  try {
+      signedDocId = result.signedDocumentId;
+    } catch (signedDocError) {
+      return {
+        success: false,
+        error: `Failed to create signed_documents placeholder: ${signedDocError instanceof Error ? signedDocError.message : "unknown error"}`,
+      };
+    }
+
+    const docusealUrl = sendResult.url ?? null;
+
     const { error: signedDocumentUpdateError } = await admin
       .from("signed_documents")
       .update({ docuseal_submission_url: docusealUrl, metadata: { job_offer_id: offerId }, updated_at: new Date().toISOString() })
@@ -443,10 +444,13 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
     revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/job-offer/${applicationId}`);
     revalidatePath(`/applicant/applications/${applicationId}`);
+
+    return { success: true, offerId, signedDocId, docusealUrl };
   } catch (err) {
     console.error("sendDraftOffer: failed to finalize offer", err);
-    throw new Error("Failed to finalize offer creation; no changes were applied. Please try again.");
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to finalize offer creation; no changes were applied. Please try again.",
+    };
   }
-
-  return { success: true, offerId, signedDocId, docusealUrl };
 }
