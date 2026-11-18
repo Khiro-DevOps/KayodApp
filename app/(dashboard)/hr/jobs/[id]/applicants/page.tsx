@@ -1,6 +1,6 @@
 import { getDocusealBaseUrl } from "@/lib/docuseal";
+import { markOfferSigned } from "@/lib/offer-lifecycle";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ApplicantsHubClient from "./applicants-list-client";
@@ -224,19 +224,11 @@ export default async function ApplicantsPage({
           return jobOffer;
         }
 
-        const admin = getAdminClient();
-        await Promise.all([
-          admin
-            .from("job_offers")
-            .update({ status: "SIGNED", updated_at: new Date().toISOString() })
-            .eq("id", jobOffer.id),
-          // When an offer is signed via DocuSeal, move the application into pre_employment
-          // so the HR Kanban and candidate timeline reflect the onboarding milestone.
-          admin
-            .from("applications")
-            .update({ status: "pre_employment", updated_at: new Date().toISOString() })
-            .eq("id", jobOffer.application_id),
-        ]);
+        await markOfferSigned({
+          applicationId: jobOffer.application_id,
+          offerId: jobOffer.id,
+          source: "applicants_page_reconcile",
+        });
 
         return { ...jobOffer, status: "SIGNED" };
       } catch {

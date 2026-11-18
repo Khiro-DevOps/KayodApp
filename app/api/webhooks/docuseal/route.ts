@@ -3,13 +3,13 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { downloadDocusealDocument, normalizeDocusealWebhook } from "@/lib/docuseal";
 import { verifyDocusealSignature } from "@/lib/docuseal-webhook";
-import { sendNotification } from "@/lib/notifications";
+import {
+  markOfferDeclined,
+  markOfferExpired,
+  markOfferSigned,
+} from "@/lib/offer-lifecycle";
 
 export const runtime = "nodejs";
-
-function formatName(profile: { first_name?: string | null; last_name?: string | null } | null | undefined) {
-  return [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
-}
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -55,17 +55,17 @@ export async function POST(request: Request) {
       pdf_file_path,
       status,
       metadata,
-      applications (
+      job_applications (
         id,
-        candidate_id,
-        job_posting_id,
+        applicant_id,
+        job_id,
         status,
-        profiles (
+        profiles!job_applications_applicant_id_fkey (
           first_name,
           last_name,
           email
         ),
-        job_postings (
+        job_postings!job_applications_job_id_fkey (
           created_by,
           title
         )
@@ -87,17 +87,17 @@ export async function POST(request: Request) {
           docuseal_submission_id,
           updated_at,
           metadata,
-          applications (
+          job_applications (
             id,
-            candidate_id,
-            job_posting_id,
+            applicant_id,
+            job_id,
             status,
-            profiles (
+            profiles!job_applications_applicant_id_fkey (
               first_name,
               last_name,
               email
             ),
-            job_postings (
+            job_postings!job_applications_job_id_fkey (
               created_by,
               title
             )
@@ -140,7 +140,12 @@ export async function POST(request: Request) {
   }
 
   if (eventType === "form.completed" || eventType === "submission.completed") {
-    if (signedDocument?.status === "signed" || jobOffer?.status === "HIRED" || linkedJobOffer?.status === "HIRED") {
+    const offerToUpdate = jobOffer ?? linkedJobOffer;
+    const currentOfferStatus = (offerToUpdate?.status ?? "").toUpperCase();
+    if (
+      signedDocument?.status === "signed" ||
+      ["SIGNED", "HIRED", "HIRE_CONFIRMED"].includes(currentOfferStatus)
+    ) {
       return NextResponse.json({ success: true, skipped: true });
     }
 
@@ -176,8 +181,6 @@ export async function POST(request: Request) {
       const { error: updateDocumentError } = await admin
         .from("signed_documents")
         .update({
-          status: "signed",
-          signed_at: payload.data?.completed_at || new Date().toISOString(),
           pdf_file_path: storagePath,
           docuseal_submission_url: payload.data?.submission?.url ?? signedDocument.docuseal_submission_url,
           docuseal_submitter_id: signedDocument.docuseal_submitter_id ?? externalId,
@@ -234,7 +237,7 @@ export async function POST(request: Request) {
     const rawHybridDays = parseValue(["hybrid_days", "hybrid_onsite_days", "hybridDays"]);
     if (rawHybridDays) {
       if (Array.isArray(rawHybridDays)) {
-        extractedHybridDays = (rawHybridDays as any[]).map((d) => String(d).trim()).filter(Boolean);
+        extractedHybridDays = (rawHybridDays as unknown[]).map((d) => String(d).trim()).filter(Boolean);
       } else if (typeof rawHybridDays === "string") {
         try {
           const parsedJson = JSON.parse(rawHybridDays);
@@ -255,9 +258,10 @@ export async function POST(request: Request) {
     const rawShiftEnd = parseValue(["shift_end", "shiftEnd"]);
     if (rawShiftEnd) extractedShiftEnd = rawShiftEnd;
 
-    const offerToUpdate = jobOffer ?? linkedJobOffer;
     if (offerToUpdate) {
-      const existingMetadata = (offerToUpdate.metadata ?? (jobOffer as any)?.metadata ?? {}) as Record<string, unknown>;
+      const existingMetadata = (
+        (offerToUpdate as { metadata?: Record<string, unknown> | null }).metadata ?? {}
+      ) as Record<string, unknown>;
       const updatedMetadata = {
         ...existingMetadata,
         ...(extractedSalary != null ? { base_salary: extractedSalary } : {}),
@@ -270,7 +274,6 @@ export async function POST(request: Request) {
       const { error: updateJobOfferError } = await admin
         .from("job_offers")
         .update({
-          status: "SIGNED",
           latest_docuseal_url: offerToUpdate.latest_docuseal_url ?? payload.data?.submission?.url ?? null,
           ...(extractedSalary != null ? { salary: extractedSalary } : {}),
           metadata: updatedMetadata,
@@ -283,57 +286,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const { error: updateApplicationError } = await admin
-      .from("applications")
-      .update({
-        status: "pre_employment",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", applicationId);
+    const lifecycleResult = await markOfferSigned({
+      applicationId,
+      offerId: offerToUpdate?.id ?? null,
+      source: "webhook",
+      signedAt: payload.data?.completed_at || new Date().toISOString(),
+    });
 
-    if (updateApplicationError) {
-      return NextResponse.json({ error: updateApplicationError.message }, { status: 500 });
+    if (lifecycleResult.error) {
+      return NextResponse.json({ error: lifecycleResult.error }, { status: 500 });
     }
 
-    const application = (signedDocument?.applications ?? jobOffer?.applications) as {
-      candidate_id?: string;
-      job_postings?: { created_by?: string | null; title?: string | null } | null;
-      profiles?: { first_name?: string | null; last_name?: string | null } | null;
-    } | null;
-
-    if (application?.candidate_id) {
-      await sendNotification({
-        supabase: admin,
-        recipientId: application.candidate_id,
-        type: "offer_accepted",
-        title: "Offer Signed",
-        body: "Your signed contract has been received. Please submit your pre-employment requirements.",
-        actionUrl: `/applications/${applicationId}`,
-      });
-    }
-
-    if (application?.job_postings?.created_by) {
-      await sendNotification({
-        supabase: admin,
-        recipientId: application.job_postings.created_by,
-        type: "offer_accepted",
-        title: "Candidate Signed Offer",
-        body: `${formatName(application.profiles) || "The candidate"} has signed the offer for ${application.job_postings.title ?? "this position"}.`,
-        actionUrl: `/applications/${applicationId}`,
-      });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, changed: lifecycleResult.changed });
   }
 
   if (eventType === "form.declined" || eventType === "submission.declined" || eventType === "submission.expired") {
     const isDeclined = eventType === "form.declined" || eventType === "submission.declined";
+    const offerToUpdate = jobOffer ?? linkedJobOffer;
 
     if (signedDocument) {
       const { error: updateDocumentError } = await admin
         .from("signed_documents")
         .update({
-          status: isDeclined ? "declined" : "expired",
           metadata: {
             ...(signedDocument.metadata ?? {}),
             docuseal_event: payload.event_type,
@@ -347,53 +321,23 @@ export async function POST(request: Request) {
       }
     }
 
-    const offerToUpdate = jobOffer ?? linkedJobOffer;
-    if (offerToUpdate) {
-      const { error: updateJobOfferError } = await admin
-        .from("job_offers")
-        .update({
-          status: isDeclined ? "DECLINED" : "EXPIRED",
-          updated_at: new Date().toISOString(),
+    const lifecycleResult = isDeclined
+      ? await markOfferDeclined({
+          applicationId,
+          offerId: offerToUpdate?.id ?? null,
+          source: "webhook",
         })
-        .eq("id", offerToUpdate.id);
+      : await markOfferExpired({
+          applicationId,
+          offerId: offerToUpdate?.id ?? null,
+          source: "webhook",
+        });
 
-      if (updateJobOfferError) {
-        return NextResponse.json({ error: updateJobOfferError.message }, { status: 500 });
-      }
+    if (lifecycleResult.error) {
+      return NextResponse.json({ error: lifecycleResult.error }, { status: 500 });
     }
 
-    const { error: updateApplicationError } = await admin
-      .from("applications")
-      .update({
-        status: "interviewed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", applicationId);
-
-    if (updateApplicationError) {
-      return NextResponse.json({ error: updateApplicationError.message }, { status: 500 });
-    }
-
-    const application = (signedDocument?.applications ?? jobOffer?.applications) as {
-      candidate_id?: string;
-      job_postings?: { created_by?: string | null; title?: string | null } | null;
-      profiles?: { first_name?: string | null; last_name?: string | null } | null;
-    } | null;
-
-    if (application?.job_postings?.created_by) {
-      await sendNotification({
-        supabase: admin,
-        recipientId: application.job_postings.created_by,
-        type: isDeclined ? "offer_declined" : "offer_letter",
-        title: isDeclined ? "Offer Declined" : "Offer Expired",
-        body: isDeclined
-          ? `${formatName(application.profiles) || "The candidate"} declined the offer for ${application.job_postings.title ?? "this position"}.`
-          : `The offer for ${application.job_postings.title ?? "this position"} has expired.`,
-        actionUrl: `/applications/${applicationId}`,
-      });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, changed: lifecycleResult.changed });
   }
 
   return NextResponse.json({ success: true, ignored: true });

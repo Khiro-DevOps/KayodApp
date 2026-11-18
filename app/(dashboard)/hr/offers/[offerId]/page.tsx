@@ -21,6 +21,7 @@ import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel"
 import HRActionPanel from "@/components/job-offer/hr-action-panel";
 import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
+import { markOfferSigned } from "@/lib/offer-lifecycle";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -904,22 +905,12 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
           if (submitter?.status === "completed" || submitter?.completed_at) {
             isAlreadySigned = true;
 
-            const backfillTimestamp = new Date().toISOString();
-            if (jobOfferRow) {
-              await admin
-                .from("job_offers")
-                .update({
-                  status: "SIGNED",
-                  updated_at: backfillTimestamp,
-                })
-                .eq("id", jobOfferRow.id);
-
-              if (jobOfferRow.application_id) {
-                await admin
-                  .from("applications")
-                  .update({ status: "hired", contract_offer_id: jobOfferRow.id })
-                  .eq("id", jobOfferRow.application_id);
-              }
+            if (jobOfferRow?.application_id) {
+              await markOfferSigned({
+                applicationId: jobOfferRow.application_id,
+                offerId: jobOfferRow.id,
+                source: "offer_page_reconcile",
+              });
             }
           }
         }
