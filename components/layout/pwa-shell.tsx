@@ -50,7 +50,7 @@ const defaultPwaShellConfigByVariant: Record<PwaVariant, PwaShellConfig> = {
     navItems: [
       { label: "Home", href: "/employee/dashboard", icon: "home" },
       { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
-      { label: "Attendance", href: "/employee/schedule", icon: "fact_check" },
+      { label: "Attendance", href: "/employee/schedule?view=attendance", icon: "fact_check" },
       { label: "Leaves", href: "/employee/leaves", icon: "event_note" },
       { label: "Payslips", href: "/employee/payslips", icon: "payments" },
       { label: "Profile", href: "/employee/profile", icon: "person" },
@@ -83,7 +83,7 @@ function PwaDesktopNav({ variant, navItems }: { variant: PwaVariant; navItems: P
 
           return (
             <Link
-              key={item.href}
+              key={`${item.label}-${item.href}`}
               href={item.href}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive ? "bg-[#ede9f9] text-[#2d2b68]" : "text-[#5d5a75] hover:bg-[#f7f6fc] hover:text-[#171542]"
@@ -119,7 +119,7 @@ function PwaMobileNav({ navItems }: { navItems: PwaNavItem[] }) {
 
         return (
           <Link
-            key={item.href}
+            key={`${item.label}-${item.href}`}
             href={item.href}
             className={`${pwaNavItemBase} text-center ${
               isActive ? "bg-[#e9e5ff] text-[#2d2b68]" : "text-[#5d5a75] hover:text-[#2d2b68]"

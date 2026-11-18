@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { clockInAction, clockOutAction, toggleBreakAction } from "./actions";
 import WorkspaceMap from "@/components/schedule/workspace-map";
 
@@ -51,6 +52,8 @@ export default function ScheduleClient({
   targetOfficeCoords,
   remoteAddress,
 }: ScheduleClientProps) {
+  const searchParams = useSearchParams();
+  const attendanceCardRef = useRef<HTMLDivElement>(null);
   const [activeLog, setActiveLog] = useState<AttendanceLog | null>(initialActiveLog);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,6 +66,14 @@ export default function ScheduleClient({
   const [showOutsideModal, setShowOutsideModal] = useState(false);
   const [flagReason, setFlagReason] = useState("");
   const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number; accuracy: number; distanceKm: number } | null>(null);
+
+  // Focus/scroll to clock-in card when navigated via Attendance nav item (?view=attendance)
+  useEffect(() => {
+    if (searchParams.get("view") === "attendance" && attendanceCardRef.current) {
+      attendanceCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      attendanceCardRef.current.focus({ preventScroll: true });
+    }
+  }, [searchParams]);
 
   // Watch network online/offline status
   useEffect(() => {
@@ -280,7 +291,11 @@ export default function ScheduleClient({
   return (
     <div className="space-y-4">
       {/* Attendance Action Header Card */}
-      <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4">
+      <div
+        ref={attendanceCardRef}
+        tabIndex={-1}
+        className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4 outline-none focus:ring-2 focus:ring-[#2d2b68]/20"
+      >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="space-y-1">
             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border max-w-full whitespace-normal break-words leading-normal ${badgeStyle}`}>
