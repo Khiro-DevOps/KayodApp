@@ -30,7 +30,6 @@ export default async function HRSchedulesPage() {
     .select(`
       id,
       job_title,
-      work_model,
       work_mode,
       hybrid_onsite_days,
       shift_start,
@@ -54,7 +53,6 @@ export default async function HRSchedulesPage() {
   type RawEmployeeRow = {
     id: string;
     job_title: string | null;
-    work_model: string | null;
     work_mode: string | null;
     hybrid_onsite_days: string[] | null;
     shift_start: string | null;
@@ -70,7 +68,7 @@ export default async function HRSchedulesPage() {
     .map((emp) => {
       const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
-      const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || emp.work_model || "onsite";
+      const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
 
       return {
         id: emp.id,

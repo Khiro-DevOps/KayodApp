@@ -27,7 +27,7 @@ type RawAttendanceLog = {
   created_at: string | null;
   employees: {
     job_title: string | null;
-    work_model: string | null;
+    work_mode: string | null;
     shift_start: string | null;
     profiles: {
       first_name: string | null;
@@ -85,7 +85,7 @@ export default async function HRAttendancePage() {
       created_at,
       employees (
         job_title,
-        work_model,
+        work_mode,
         shift_start,
         profiles (
           first_name,
@@ -180,7 +180,7 @@ export default async function HRAttendancePage() {
       employeeName: name,
       avatarUrl: p?.avatar_url ?? null,
       jobTitle: emp?.job_title ?? null,
-      workSetup: (emp?.work_model as AttendanceRow["workSetup"]) ?? null,
+      workSetup: (emp?.work_mode as AttendanceRow["workSetup"]) ?? null,
       isToday,
       isLate,
       lateMinutes,

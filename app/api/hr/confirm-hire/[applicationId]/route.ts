@@ -21,7 +21,6 @@ type JobPostingRelation = {
   salary_min?: number | null;
   salary_max?: number | null;
   work_setup?: string | null;
-  work_mode?: string | null;
   work_location_id?: string | null;
 };
 
@@ -191,7 +190,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
               salary_min,
               salary_max,
               work_setup,
-              work_mode,
               work_location_id
             )
           )
@@ -359,7 +357,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     const extractedWorkMode = normalizeWorkMode(
       offer.work_mode ??
         offer.work_setup ??
-        jobPosting?.work_mode ??
         jobPosting?.work_setup ??
         metadata.work_model ??
         jobMetadata.work_model ??
@@ -435,7 +432,6 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           ? jobMetadata.salary_currency
           : "PHP",
       work_mode: extractedWorkMode,
-      work_model: extractedWorkMode === "remote" ? "wfh" : extractedWorkMode,
       work_location_id: resolvedWorkLocationId,
       work_days: extractedWorkDays,
       shift_start: extractedShiftStart,

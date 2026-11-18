@@ -72,7 +72,7 @@ export default function EmployeeProfileView({
     }
   };
 
-  const workMode = (employee?.work_model as string) || (employee?.work_mode as string) || "onsite";
+  const workMode = (employee?.work_mode as string) || "onsite";
   const probationDays = calculateProbationDaysRemaining(employee?.probation_end_date);
   const formattedSalary = employee?.base_salary || employee?.salary
     ? `₱${(employee?.base_salary || employee?.salary || 0).toLocaleString("en-PH")}`

@@ -83,7 +83,6 @@ export default async function EmployeeSchedulePage() {
     id: employee.id,
     tenant_id: employee.tenant_id,
     work_mode: employee.work_mode,
-    work_model: employee.work_model,
     work_location_id: employee.work_location_id,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
@@ -119,7 +118,7 @@ export default async function EmployeeSchedulePage() {
 
   const isSchedulePublished = Boolean(publishedSchedule);
 
-  const rawWorkMode = (employee?.work_mode as string | null) || (employee?.work_model as string | null) || "onsite";
+  const rawWorkMode = (employee?.work_mode as string | null) || "onsite";
   const workModel: "onsite" | "wfh" | "hybrid" =
     rawWorkMode === "remote" || rawWorkMode === "wfh"
       ? "wfh"

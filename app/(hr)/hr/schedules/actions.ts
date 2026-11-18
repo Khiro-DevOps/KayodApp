@@ -95,7 +95,7 @@ export async function saveAndPublishEmployeeSchedule(
     updated_at: nowIso,
   };
   if (input.workModel) {
-    employeeUpdate.work_model = input.workModel;
+    employeeUpdate.work_mode = input.workModel === "wfh" ? "remote" : input.workModel;
   }
 
   const { error: empUpdateErr } = await admin

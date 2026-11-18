@@ -23,7 +23,6 @@ export interface GeofenceEmployeeInput {
   id: string;
   tenant_id?: string | null;
   work_mode?: string | null;
-  work_model?: string | null;
   work_location_id?: string | null;
   hybrid_onsite_days?: string[] | null;
   work_days?: string[] | null;
@@ -108,7 +107,7 @@ export async function resolveEmployeeGeofence(
   supabase: SupabaseClient,
   employee: GeofenceEmployeeInput
 ): Promise<ResolvedGeofence> {
-  const rawMode = String(employee.work_mode ?? employee.work_model ?? "onsite")
+  const rawMode = String(employee.work_mode ?? "onsite")
     .trim()
     .toLowerCase();
   const workMode: "onsite" | "hybrid" | "remote" =

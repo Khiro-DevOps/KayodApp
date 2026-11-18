@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         id,
         candidate_id,
         job_posting_id,
-        job:job_postings(title, salary_min, employment_type, tenant_id, work_setup, work_mode, work_location_id)
+        job:job_postings(title, salary_min, employment_type, tenant_id, work_setup, work_location_id)
       `)
       .eq("id", applicationId)
       .single()
@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
       employment_type?: string | null
       tenant_id?: string | null
       work_setup?: string | null
-      work_mode?: string | null
       work_location_id?: string | null
     } | null
 
@@ -124,7 +123,6 @@ export async function POST(req: NextRequest) {
     const rawWorkMode = String(
       jobOffer?.work_mode ??
         jobOffer?.work_setup ??
-        jobInfo?.work_mode ??
         jobInfo?.work_setup ??
         "onsite"
     ).trim().toLowerCase()
@@ -180,7 +178,6 @@ export async function POST(req: NextRequest) {
           employment_type: empType,
           employment_status: "active",
           work_mode: workMode,
-          work_model: workMode === "remote" ? "wfh" : workMode,
           work_location_id: workLocationId,
         })
         .select("id")
@@ -197,7 +194,6 @@ export async function POST(req: NextRequest) {
       if (!existingEmployee.base_salary || Number(existingEmployee.base_salary) <= 0) patch.base_salary = baseSalary
       if (!existingEmployee.work_mode) {
         patch.work_mode = workMode
-        patch.work_model = workMode === "remote" ? "wfh" : workMode
       }
       if (!existingEmployee.work_location_id && workLocationId) patch.work_location_id = workLocationId
       if (Object.keys(patch).length > 0) {

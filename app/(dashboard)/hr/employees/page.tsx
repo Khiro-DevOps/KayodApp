@@ -64,7 +64,6 @@ export default async function EmployeesPage() {
     const dept = emp.departments as unknown as { name?: string } | null;
     const fullName =
       [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
-    const workModel = (emp as unknown as { work_model?: string }).work_model;
 
     return {
       id: emp.id,
@@ -74,7 +73,7 @@ export default async function EmployeesPage() {
       departmentName: dept?.name ?? null,
       email: p?.email ?? null,
       employmentStatus: emp.employment_status || "active",
-      workMode: normalizeWorkMode(emp.work_mode || workModel),
+      workMode: normalizeWorkMode(emp.work_mode),
       branchName:
         (emp.work_location_id ? branchNameById.get(emp.work_location_id) : undefined) ||
         "Main HQ",

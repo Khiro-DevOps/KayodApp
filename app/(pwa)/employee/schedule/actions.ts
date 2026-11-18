@@ -33,14 +33,14 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
   // 1. Authenticate user & fetch employee record with profiles (tenant_id)
   let { data: employee } = await supabaseAdmin
     .from("employees")
-    .select("id, tenant_id, work_mode, work_model, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
+    .select("id, tenant_id, work_mode, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
     .eq("profile_id", user.id)
     .maybeSingle();
 
   if (!employee && user.email) {
     const { data: empByEmail } = await supabaseAdmin
       .from("employees")
-      .select("id, tenant_id, work_mode, work_model, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
+      .select("id, tenant_id, work_mode, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
       .eq("email", user.email)
       .maybeSingle();
     employee = empByEmail;
@@ -68,7 +68,6 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     id: string;
     tenant_id?: string | null;
     work_mode?: string | null;
-    work_model?: string | null;
     work_location_id?: string | null;
     hybrid_onsite_days?: string[] | null;
     work_days?: string[] | null;
@@ -80,7 +79,6 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     id: empRecord.id,
     tenant_id: empRecord.tenant_id ?? tenantId,
     work_mode: empRecord.work_mode,
-    work_model: empRecord.work_model,
     work_location_id: empRecord.work_location_id,
     hybrid_onsite_days: empRecord.hybrid_onsite_days,
     work_days: empRecord.work_days,

@@ -91,7 +91,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
         {/* Location & Geofence Control */}
         <GeofenceControlCard
           employeeId={employee.id}
-          initialWorkMode={(employee.work_mode ?? employee.work_model ?? "onsite") as WorkSetup}
+          initialWorkMode={(employee.work_mode ?? "onsite") as WorkSetup}
           initialBranchId={employee.work_location_id || null}
           officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
