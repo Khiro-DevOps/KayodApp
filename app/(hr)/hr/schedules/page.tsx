@@ -5,9 +5,14 @@ import { effectiveRole, isHRRole } from "@/lib/roles";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
 import {
   DAYS_FULL,
+  DEFAULT_LUNCH_END,
+  DEFAULT_LUNCH_START,
+  DEFAULT_SHIFT_END,
+  DEFAULT_SHIFT_START,
   getPhtDayInfo,
   normalizeDaysToFull,
   parseHybridScheduleNotes,
+  parseLunchScheduleNotes,
 } from "@/lib/hybrid-schedule";
 
 export const metadata = {
@@ -93,8 +98,24 @@ export default async function HRSchedulesPage() {
     string,
     { onsiteDays: string[]; wfhDays: string[]; cleanNotes: string }
   >();
+  const lunchByEmp = new Map<string, { lunchStart: string; lunchEnd: string }>();
+  const liveStatusByEmp = new Map<
+    string,
+    {
+      label: "Working" | "On Lunch" | "On Break (1/2)" | "On Break (2/2)" | "Overbreak" | "Clocked Out";
+      overbreakMinutes: number;
+    }
+  >();
+
+  const todayPht = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(today);
+
   if (activeEmployeeIds.length > 0) {
-    const [{ data: approvedLeaves }, { data: publishedSchedules }] = await Promise.all([
+    const [{ data: approvedLeaves }, { data: publishedSchedules }, { data: todayLogs }] = await Promise.all([
       admin
         .from("leave_requests")
         .select("employee_id, start_date, end_date")
@@ -109,7 +130,32 @@ export default async function HRSchedulesPage() {
         .eq("is_published", true)
         .order("week_start", { ascending: false })
         .order("updated_at", { ascending: false }),
+      admin
+        .from("attendance_logs")
+        .select(
+          "employee_id, clock_in, clock_out, active_break_type, break_status, short_breaks_used, overbreak_minutes"
+        )
+        .in("employee_id", activeEmployeeIds)
+        .gte("created_at", `${todayPht}T00:00:00+08:00`)
+        .order("created_at", { ascending: false }),
     ]);
+
+    for (const log of todayLogs ?? []) {
+      if (liveStatusByEmp.has(log.employee_id) || !log.clock_in) continue;
+      const overbreakMinutes = log.overbreak_minutes ?? 0;
+      let label: "Working" | "On Lunch" | "On Break (1/2)" | "On Break (2/2)" | "Overbreak" | "Clocked Out" =
+        "Working";
+      if (log.clock_out) {
+        label = overbreakMinutes > 0 ? "Overbreak" : "Clocked Out";
+      } else if (log.active_break_type === "lunch" || log.break_status === "on_lunch") {
+        label = "On Lunch";
+      } else if (log.active_break_type === "short_break" || log.break_status === "on_break") {
+        label = (log.short_breaks_used ?? 0) >= 2 ? "On Break (2/2)" : "On Break (1/2)";
+      } else if (overbreakMinutes > 0) {
+        label = "Overbreak";
+      }
+      liveStatusByEmp.set(log.employee_id, { label, overbreakMinutes });
+    }
 
     for (const lr of approvedLeaves ?? []) {
       const indices = leaveDaysByEmp.get(lr.employee_id) ?? [];
@@ -122,6 +168,9 @@ export default async function HRSchedulesPage() {
     }
 
     for (const sched of publishedSchedules ?? []) {
+      if (!lunchByEmp.has(sched.employee_id)) {
+        lunchByEmp.set(sched.employee_id, parseLunchScheduleNotes(sched.notes));
+      }
       if (hybridScheduleByEmp.has(sched.employee_id)) continue;
       const parsed = parseHybridScheduleNotes(sched.notes);
       if (parsed) {
@@ -158,6 +207,12 @@ export default async function HRSchedulesPage() {
           ? DAYS_FULL.slice(0, 5).filter((d) => !onsiteDays.includes(d))
           : [];
 
+      const lunchWindow = lunchByEmp.get(emp.id) ?? {
+        lunchStart: DEFAULT_LUNCH_START,
+        lunchEnd: DEFAULT_LUNCH_END,
+      };
+      const liveStatus = liveStatusByEmp.get(emp.id) ?? null;
+
       return {
         id: emp.id,
         name,
@@ -166,8 +221,12 @@ export default async function HRSchedulesPage() {
         hybrid_onsite_days: onsiteDays,
         hybrid_wfh_days: wfhDays,
         schedule_notes: parsedHybrid?.cleanNotes || "",
-        shift_start: emp.shift_start || "09:00",
-        shift_end: emp.shift_end || "18:00",
+        shift_start: emp.shift_start || DEFAULT_SHIFT_START,
+        shift_end: emp.shift_end || DEFAULT_SHIFT_END,
+        lunch_start: lunchWindow.lunchStart,
+        lunch_end: lunchWindow.lunchEnd,
+        live_status: liveStatus?.label ?? null,
+        overbreak_minutes: liveStatus?.overbreakMinutes ?? 0,
         leave_days: leaveDaysByEmp.get(emp.id) ?? [],
       };
     });

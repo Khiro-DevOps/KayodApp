@@ -86,7 +86,7 @@ export function TimeClockModule() {
         <div className="flex items-center justify-center gap-2">
            <span className="w-1.5 h-1.5 rounded-full bg-secondary-container animate-bounce"></span>
            <p className="text-center text-[12px] text-on-surface-variant font-medium italic">
-             Current Shift: 09:00 AM - 06:00 PM
+             Current Shift: 08:00 AM - 05:00 PM
            </p>
         </div>
       </div>

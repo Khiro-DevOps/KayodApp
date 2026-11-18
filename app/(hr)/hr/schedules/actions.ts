@@ -6,8 +6,10 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
 import {
   buildHybridScheduleNotes,
+  buildStandardScheduleNotes,
+  DEFAULT_LUNCH_END,
+  DEFAULT_LUNCH_START,
   normalizeDaysToFull,
-  stripHybridScheduleTag,
 } from "@/lib/hybrid-schedule";
 
 export interface SaveAndPublishScheduleInput {
@@ -15,6 +17,8 @@ export interface SaveAndPublishScheduleInput {
   weekStart: string;
   shiftStart: string;
   shiftEnd: string;
+  lunchStart?: string;
+  lunchEnd?: string;
   workDays: string[];
   onsiteDays?: string[];
   wfhDays?: string[];
@@ -83,9 +87,13 @@ export async function saveAndPublishEmployeeSchedule(
   const combinedWorkDays = isHybrid
     ? normalizeDaysToFull([...normalizedOnsite, ...normalizedWfh])
     : normalizedOnsite;
+  const lunchWindow = {
+    lunchStart: input.lunchStart || DEFAULT_LUNCH_START,
+    lunchEnd: input.lunchEnd || DEFAULT_LUNCH_END,
+  };
   const resolvedNotes = isHybrid
-    ? buildHybridScheduleNotes(input.notes, normalizedOnsite, normalizedWfh)
-    : stripHybridScheduleTag(input.notes);
+    ? buildHybridScheduleNotes(input.notes, normalizedOnsite, normalizedWfh, lunchWindow)
+    : buildStandardScheduleNotes(input.notes, lunchWindow);
 
   const { error: upsertErr } = await admin.from("schedules").upsert(
     {

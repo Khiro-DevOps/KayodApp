@@ -30,6 +30,12 @@ const DAY_INDEX_BY_TOKEN: Record<string, number> = {
 };
 
 const HYBRID_TAG_REGEX = /\[HYBRID:ONSITE=([^|\]]*)\|WFH=([^\]]*)\]/i;
+const LUNCH_TAG_REGEX = /\[LUNCH:(\d{2}:\d{2})-(\d{2}:\d{2})\]/i;
+
+export const DEFAULT_SHIFT_START = "08:00";
+export const DEFAULT_SHIFT_END = "17:00";
+export const DEFAULT_LUNCH_START = "12:00";
+export const DEFAULT_LUNCH_END = "13:00";
 
 export function toFullDayName(day: string): string | null {
   const idx = DAY_INDEX_BY_TOKEN[day.trim().toLowerCase()];
@@ -73,21 +79,54 @@ export function parseHybridScheduleNotes(notes: string | null | undefined): {
 
   const onsiteDays = normalizeDaysToFull(onsiteRaw);
   const wfhDays = normalizeDaysToFull(wfhRaw);
-  const cleanNotes = notes.replace(HYBRID_TAG_REGEX, "").trim();
+  const cleanNotes = notes
+    .replace(HYBRID_TAG_REGEX, "")
+    .replace(LUNCH_TAG_REGEX, "")
+    .trim();
 
   return { onsiteDays, wfhDays, cleanNotes };
 }
 
+export function parseLunchScheduleNotes(notes: string | null | undefined): {
+  lunchStart: string;
+  lunchEnd: string;
+} {
+  if (!notes) {
+    return { lunchStart: DEFAULT_LUNCH_START, lunchEnd: DEFAULT_LUNCH_END };
+  }
+  const match = notes.match(LUNCH_TAG_REGEX);
+  if (!match) {
+    return { lunchStart: DEFAULT_LUNCH_START, lunchEnd: DEFAULT_LUNCH_END };
+  }
+  return {
+    lunchStart: match[1] || DEFAULT_LUNCH_START,
+    lunchEnd: match[2] || DEFAULT_LUNCH_END,
+  };
+}
+
 export function stripHybridScheduleTag(notes: string | null | undefined): string | null {
   if (!notes) return null;
-  const cleaned = notes.replace(HYBRID_TAG_REGEX, "").trim();
+  const cleaned = notes
+    .replace(HYBRID_TAG_REGEX, "")
+    .replace(LUNCH_TAG_REGEX, "")
+    .trim();
   return cleaned || null;
+}
+
+export function buildLunchTag(
+  lunchStart: string | null | undefined,
+  lunchEnd: string | null | undefined
+): string {
+  const start = (lunchStart || DEFAULT_LUNCH_START).slice(0, 5);
+  const end = (lunchEnd || DEFAULT_LUNCH_END).slice(0, 5);
+  return `[LUNCH:${start}-${end}]`;
 }
 
 export function buildHybridScheduleNotes(
   notes: string | null | undefined,
   onsiteDays: string[],
-  wfhDays: string[]
+  wfhDays: string[],
+  lunchWindow?: { lunchStart?: string | null; lunchEnd?: string | null }
 ): string {
   const onsiteShort = normalizeDaysToFull(onsiteDays)
     .map((d) => toShortDayName(d))
@@ -96,9 +135,19 @@ export function buildHybridScheduleNotes(
     .map((d) => toShortDayName(d))
     .filter((d): d is string => Boolean(d));
 
-  const tag = `[HYBRID:ONSITE=${onsiteShort.join(",")}|WFH=${wfhShort.join(",")}]`;
+  const hybridTag = `[HYBRID:ONSITE=${onsiteShort.join(",")}|WFH=${wfhShort.join(",")}]`;
+  const lunchTag = buildLunchTag(lunchWindow?.lunchStart, lunchWindow?.lunchEnd);
   const cleaned = stripHybridScheduleTag(notes);
-  return cleaned ? `${cleaned}\n${tag}` : tag;
+  return cleaned ? `${cleaned}\n${hybridTag}\n${lunchTag}` : `${hybridTag}\n${lunchTag}`;
+}
+
+export function buildStandardScheduleNotes(
+  notes: string | null | undefined,
+  lunchWindow?: { lunchStart?: string | null; lunchEnd?: string | null }
+): string {
+  const lunchTag = buildLunchTag(lunchWindow?.lunchStart, lunchWindow?.lunchEnd);
+  const cleaned = stripHybridScheduleTag(notes);
+  return cleaned ? `${cleaned}\n${lunchTag}` : lunchTag;
 }
 
 export function getPhtDayInfo(now: Date = new Date()): {

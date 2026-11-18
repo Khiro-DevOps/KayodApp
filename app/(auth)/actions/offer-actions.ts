@@ -354,11 +354,11 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
     const settingsShiftStart =
       typeof settings?.shift_start === "string" && settings.shift_start
         ? settings.shift_start
-        : "09:00:00";
+        : "08:00:00";
     const settingsShiftEnd =
       typeof settings?.shift_end === "string" && settings.shift_end
         ? settings.shift_end
-        : "18:00:00";
+        : "17:00:00";
     const settingsWorkDays = Array.isArray(settings?.work_days)
       ? (settings.work_days as string[])
       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];

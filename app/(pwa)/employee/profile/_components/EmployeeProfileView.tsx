@@ -22,7 +22,7 @@ function calculateProbationDaysRemaining(probationEndDateStr?: string | null): n
 }
 
 function formatTime12h(timeStr?: string | null) {
-  if (!timeStr) return "09:00 AM";
+  if (!timeStr) return "08:00 AM";
   const [hStr, mStr] = timeStr.split(":");
   let h = parseInt(hStr, 10);
   if (isNaN(h)) return timeStr;

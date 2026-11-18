@@ -371,13 +371,13 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       offer.shift_start ??
       (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
       (typeof jobMetadata.shift_start === "string" ? jobMetadata.shift_start : null) ??
-      "09:00";
+      "08:00";
 
     const extractedShiftEnd =
       offer.shift_end ??
       (typeof metadata.shift_end === "string" ? metadata.shift_end : null) ??
       (typeof jobMetadata.shift_end === "string" ? jobMetadata.shift_end : null) ??
-      "18:00";
+      "17:00";
 
     const tenantId =
       jobPosting?.tenant_id ??

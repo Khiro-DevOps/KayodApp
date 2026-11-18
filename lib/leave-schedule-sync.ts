@@ -64,8 +64,8 @@ export async function syncApprovedLeaveToSchedules(
       .eq("id", input.employeeId)
       .maybeSingle();
 
-    const defaultShiftStart = employee?.shift_start || "09:00";
-    const defaultShiftEnd = employee?.shift_end || "18:00";
+    const defaultShiftStart = employee?.shift_start || "08:00";
+    const defaultShiftEnd = employee?.shift_end || "17:00";
     const defaultLocation =
       employee?.work_mode === "remote" || employee?.work_mode === "wfh"
         ? "remote"

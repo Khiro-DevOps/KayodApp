@@ -13,6 +13,15 @@ export type AttendanceRow = {
   isLate: boolean;
   lateMinutes: number;
   isAbsent?: boolean;
+  breakStatusLabel?:
+    | "Working"
+    | "On Lunch"
+    | "On Break (1/2)"
+    | "On Break (2/2)"
+    | "Overbreak"
+    | "Clocked Out"
+    | null;
+  overbreakMinutes?: number;
   date: string;
   clockIn: string | null;
   clockOut: string | null;
@@ -348,6 +357,9 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
                 Clock Out
               </th>
               <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                Break / Status
+              </th>
+              <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                 Work Setup
               </th>
               <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
@@ -365,7 +377,7 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-6 py-14 text-center"
                 >
                   <div className="flex flex-col items-center gap-2">
@@ -452,6 +464,32 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
                       <span className="text-text-muted italic text-[11px]">
                         In progress
                       </span>
+                    )}
+                  </td>
+
+                  {/* Break / Status */}
+                  <td className="px-4 py-3.5 whitespace-nowrap">
+                    {row.breakStatusLabel ? (
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
+                          row.breakStatusLabel === "Working"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : row.breakStatusLabel === "On Lunch"
+                              ? "border-sky-200 bg-sky-50 text-sky-700"
+                              : row.breakStatusLabel.startsWith("On Break")
+                                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                : row.breakStatusLabel === "Overbreak"
+                                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                                  : "border-slate-200 bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {row.breakStatusLabel}
+                        {row.breakStatusLabel === "Overbreak" && (row.overbreakMinutes ?? 0) > 0
+                          ? ` (+${row.overbreakMinutes}m)`
+                          : ""}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted">—</span>
                     )}
                   </td>
 

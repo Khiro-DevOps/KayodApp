@@ -6,9 +6,12 @@ import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 import {
   DAYS_FULL,
+  DEFAULT_SHIFT_END,
+  DEFAULT_SHIFT_START,
   getPhtDayInfo,
   normalizeDaysToFull,
   parseHybridScheduleNotes,
+  parseLunchScheduleNotes,
 } from "@/lib/hybrid-schedule";
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +35,7 @@ function getWeekDates(weekStart: Date): Date[] {
 }
 
 function formatTime12h(timeStr: string) {
-  if (!timeStr) return "09:00 AM";
+  if (!timeStr) return "08:00 AM";
   const [hStr, mStr] = timeStr.split(":");
   let h = parseInt(hStr, 10);
   if (isNaN(h)) return timeStr;
@@ -102,7 +105,9 @@ export default async function EmployeeSchedulePage() {
   if (employee?.id) {
     const { data: activeLog } = await supabase
       .from("attendance_logs")
-      .select("id, clock_in, clock_out, status, verification_type, break_status")
+      .select(
+        "id, clock_in, clock_out, status, verification_type, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes"
+      )
       .eq("employee_id", employee.id)
       .is("clock_out", null)
       .maybeSingle();
@@ -148,8 +153,9 @@ export default async function EmployeeSchedulePage() {
     workModel === "hybrid"
       ? normalizeDaysToFull([...hybridOnsiteDays, ...hybridWfhDays])
       : fallbackOnsiteDays;
-  const shiftStart = publishedSchedule?.shift_start || employee?.shift_start || "09:00";
-  const shiftEnd = publishedSchedule?.shift_end || employee?.shift_end || "18:00";
+  const shiftStart = publishedSchedule?.shift_start || employee?.shift_start || DEFAULT_SHIFT_START;
+  const shiftEnd = publishedSchedule?.shift_end || employee?.shift_end || DEFAULT_SHIFT_END;
+  const { lunchStart, lunchEnd } = parseLunchScheduleNotes(publishedSchedule?.notes);
 
   const { full: todayDayName } = getPhtDayInfo(todayDate);
   const todayDateStr = todayDate.toISOString().split("T")[0];
@@ -215,6 +221,8 @@ export default async function EmployeeSchedulePage() {
               hasOfficeCoordinates={hasOfficeCoordinates}
               shiftStart={shiftStart}
               shiftEnd={shiftEnd}
+              lunchStart={lunchStart}
+              lunchEnd={lunchEnd}
               initialActiveLog={activeAttendanceLog}
               targetOfficeCoords={
                 geofence.configured
@@ -240,6 +248,8 @@ export default async function EmployeeSchedulePage() {
               workMode={workModel}
               shiftStart={shiftStart}
               shiftEnd={shiftEnd}
+              lunchStart={lunchStart}
+              lunchEnd={lunchEnd}
               workDays={hybridDays}
               assignedLocationName={locationName}
               assignedLocationAddress={locationAddress}

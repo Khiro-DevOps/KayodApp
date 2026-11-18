@@ -15,6 +15,17 @@ export type HRScheduleEmployee = {
   schedule_notes?: string;
   shift_start: string;
   shift_end: string;
+  lunch_start?: string;
+  lunch_end?: string;
+  live_status?:
+    | "Working"
+    | "On Lunch"
+    | "On Break (1/2)"
+    | "On Break (2/2)"
+    | "Overbreak"
+    | "Clocked Out"
+    | null;
+  overbreak_minutes?: number;
   leave_days?: number[];
 };
 
@@ -51,8 +62,10 @@ export default function HRSchedulesClient({
 
   const [editingEmp, setEditingEmp] = useState<HRScheduleEmployee | null>(null);
   const [weekStart, setWeekStart] = useState<string>(getCurrentMondayIso);
-  const [shiftStart, setShiftStart] = useState<string>("09:00");
-  const [shiftEnd, setShiftEnd] = useState<string>("18:00");
+  const [shiftStart, setShiftStart] = useState<string>("08:00");
+  const [shiftEnd, setShiftEnd] = useState<string>("17:00");
+  const [lunchStart, setLunchStart] = useState<string>("12:00");
+  const [lunchEnd, setLunchEnd] = useState<string>("13:00");
   const [workModel, setWorkModel] = useState<"onsite" | "wfh" | "hybrid">("onsite");
   const [workDays, setWorkDays] = useState<string[]>(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
   const [hybridDayModes, setHybridDayModes] = useState<Record<string, HybridDayMode>>({});
@@ -80,8 +93,10 @@ export default function HRSchedulesClient({
   const openEditor = (emp: HRScheduleEmployee) => {
     setEditingEmp(emp);
     setWeekStart(getCurrentMondayIso());
-    setShiftStart(emp.shift_start.slice(0, 5) || "09:00");
-    setShiftEnd(emp.shift_end.slice(0, 5) || "18:00");
+    setShiftStart(emp.shift_start.slice(0, 5) || "08:00");
+    setShiftEnd(emp.shift_end.slice(0, 5) || "17:00");
+    setLunchStart((emp.lunch_start || "12:00").slice(0, 5));
+    setLunchEnd((emp.lunch_end || "13:00").slice(0, 5));
     setWorkModel(emp.work_model);
     setWorkDays(
       emp.hybrid_onsite_days.length > 0
@@ -121,6 +136,8 @@ export default function HRSchedulesClient({
         weekStart,
         shiftStart,
         shiftEnd,
+        lunchStart,
+        lunchEnd,
         workDays: combinedWorkDays,
         onsiteDays,
         wfhDays,
@@ -140,6 +157,8 @@ export default function HRSchedulesClient({
                 ...emp,
                 shift_start: shiftStart,
                 shift_end: shiftEnd,
+                lunch_start: lunchStart,
+                lunch_end: lunchEnd,
                 work_model: workModel,
                 hybrid_onsite_days: onsiteDays,
                 hybrid_wfh_days: wfhDays,
@@ -358,6 +377,26 @@ export default function HRSchedulesClient({
                   <td className="px-4 py-3.5">
                     <p className="font-bold text-text-main">{emp.name}</p>
                     <p className="text-[11px] text-text-muted">{emp.role}</p>
+                    {emp.live_status && (
+                      <span
+                        className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                          emp.live_status === "Working"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : emp.live_status === "On Lunch"
+                              ? "border-sky-200 bg-sky-50 text-sky-700"
+                              : emp.live_status.startsWith("On Break")
+                                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                : emp.live_status === "Overbreak"
+                                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                                  : "border-slate-200 bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {emp.live_status}
+                        {emp.live_status === "Overbreak" && (emp.overbreak_minutes ?? 0) > 0
+                          ? ` (+${emp.overbreak_minutes}m)`
+                          : ""}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <span
@@ -373,7 +412,10 @@ export default function HRSchedulesClient({
                     </span>
                   </td>
                   <td className="px-4 py-3.5 font-medium whitespace-nowrap text-text-muted">
-                    {emp.shift_start} - {emp.shift_end}
+                    <div>{emp.shift_start} - {emp.shift_end}</div>
+                    <div className="text-[10px] text-slate-500">
+                      Lunch {emp.lunch_start || "12:00"}-{emp.lunch_end || "13:00"} (1h unpaid)
+                    </div>
                   </td>
                   {DAYS_SHORT.map((_, dayIdx) => (
                     <td key={dayIdx} className="px-2 py-3.5 text-center whitespace-nowrap">
@@ -467,6 +509,33 @@ export default function HRSchedulesClient({
                     type="time"
                     value={shiftEnd}
                     onChange={(e) => setShiftEnd(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Lunch Start (1 hr unpaid)
+                  </label>
+                  <input
+                    type="time"
+                    value={lunchStart}
+                    onChange={(e) => setLunchStart(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Lunch End
+                  </label>
+                  <input
+                    type="time"
+                    value={lunchEnd}
+                    onChange={(e) => setLunchEnd(e.target.value)}
                     required
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden"
                   />

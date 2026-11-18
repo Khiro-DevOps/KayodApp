@@ -282,14 +282,14 @@ export default function JobForm({
                         <input
                           type="time"
                           name="shift_start"
-                          defaultValue={initialValues?.shiftStart ?? "09:00"}
+                          defaultValue={initialValues?.shiftStart ?? "08:00"}
                           className="w-full rounded-xl border border-border bg-card-bg px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                         <span className="text-sm text-text-muted">to</span>
                         <input
                           type="time"
                           name="shift_end"
-                          defaultValue={initialValues?.shiftEnd ?? "18:00"}
+                          defaultValue={initialValues?.shiftEnd ?? "17:00"}
                           className="w-full rounded-xl border border-border bg-card-bg px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -323,14 +323,14 @@ export default function JobForm({
                         <input
                           type="time"
                           name="shift_start"
-                          defaultValue={initialValues?.shiftStart ?? "09:00"}
+                          defaultValue={initialValues?.shiftStart ?? "08:00"}
                           className="w-full rounded-xl border border-border bg-card-bg px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                         <span className="text-sm text-text-muted">to</span>
                         <input
                           type="time"
                           name="shift_end"
-                          defaultValue={initialValues?.shiftEnd ?? "18:00"}
+                          defaultValue={initialValues?.shiftEnd ?? "17:00"}
                           className="w-full rounded-xl border border-border bg-card-bg px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                       </div>

@@ -170,6 +170,13 @@ ALTER TABLE public.attendance_logs
   ADD COLUMN IF NOT EXISTS work_mode text,
   ADD COLUMN IF NOT EXISTS break_status text,
   ADD COLUMN IF NOT EXISTS flag_reason text,
-  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'present';
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'present',
+  ADD COLUMN IF NOT EXISTS lunch_start timestamptz,
+  ADD COLUMN IF NOT EXISTS lunch_end timestamptz,
+  ADD COLUMN IF NOT EXISTS total_lunch_minutes integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS short_breaks_used integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS overbreak_minutes integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS active_break_type text,
+  ADD COLUMN IF NOT EXISTS break_log jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 NOTIFY pgrst, 'reload schema';

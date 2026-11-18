@@ -8,6 +8,8 @@ interface ScheduleOverviewCardProps {
   workMode: "onsite" | "hybrid" | "remote" | "wfh";
   shiftStart: string;
   shiftEnd: string;
+  lunchStart?: string;
+  lunchEnd?: string;
   workDays: string[];
   assignedLocationName: string;
   assignedLocationAddress: string;
@@ -16,7 +18,7 @@ interface ScheduleOverviewCardProps {
 }
 
 function formatTime12h(timeStr: string) {
-  if (!timeStr) return "09:00 AM";
+  if (!timeStr) return "08:00 AM";
   const [hStr, mStr] = timeStr.split(":");
   let h = parseInt(hStr, 10);
   if (isNaN(h)) return timeStr;
@@ -40,6 +42,8 @@ export default function ScheduleOverviewCard({
   workMode,
   shiftStart,
   shiftEnd,
+  lunchStart = "12:00",
+  lunchEnd = "13:00",
   workDays,
   assignedLocationName,
   assignedLocationAddress,
@@ -148,7 +152,10 @@ export default function ScheduleOverviewCard({
               Shift Hours (PHT)
             </p>
             <p className="text-base font-extrabold text-text-primary">
-              {formatTime12h(shiftStart)} – {formatTime12h(shiftEnd)}
+              {formatTime12h(shiftStart)} – {formatTime12h(shiftEnd)} · 8 hrs paid
+            </p>
+            <p className="text-xs font-medium text-slate-600 mt-0.5">
+              Lunch: {formatTime12h(lunchStart)} – {formatTime12h(lunchEnd)} (1 hr unpaid) · 2 × 15-min paid breaks
             </p>
           </div>
         </div>

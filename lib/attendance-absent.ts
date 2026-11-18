@@ -61,11 +61,11 @@ function toPhtDateStr(isoOrDate: string): string {
 }
 
 function parseShiftMinutes(shiftEnd: string | null | undefined): number {
-  const raw = (shiftEnd ?? "18:00").trim();
+  const raw = (shiftEnd ?? "17:00").trim();
   const [hStr, mStr] = raw.split(":");
-  const h = Number.parseInt(hStr ?? "18", 10);
+  const h = Number.parseInt(hStr ?? "17", 10);
   const m = Number.parseInt(mStr ?? "0", 10);
-  if (Number.isNaN(h) || Number.isNaN(m)) return 18 * 60;
+  if (Number.isNaN(h) || Number.isNaN(m)) return 17 * 60;
   return h * 60 + m;
 }
 

@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { clockInAction, clockOutAction, toggleBreakAction } from "./actions";
+import {
+  clockInAction,
+  clockOutAction,
+  toggleLunchAction,
+  toggleShortBreakAction,
+} from "./actions";
 import WorkspaceMap from "@/components/schedule/workspace-map";
 
 interface AttendanceLog {
@@ -12,6 +17,14 @@ interface AttendanceLog {
   status: string;
   verification_type: string | null;
   break_status?: string | null;
+  active_break_type?: string | null;
+  lunch_start?: string | null;
+  lunch_end?: string | null;
+  total_lunch_minutes?: number | null;
+  break_start?: string | null;
+  total_break_minutes?: number | null;
+  short_breaks_used?: number | null;
+  overbreak_minutes?: number | null;
 }
 
 interface ScheduleClientProps {
@@ -21,10 +34,23 @@ interface ScheduleClientProps {
   hasOfficeCoordinates: boolean;
   shiftStart: string;
   shiftEnd: string;
+  lunchStart?: string;
+  lunchEnd?: string;
   initialActiveLog: AttendanceLog | null;
   targetOfficeCoords: { lat: number; lng: number; name: string } | null;
   geofenceError?: string | null;
   remoteAddress: string;
+}
+
+function formatTime12h(timeStr: string) {
+  if (!timeStr) return "08:00 AM";
+  const [hStr, mStr] = timeStr.split(":");
+  let h = parseInt(hStr, 10);
+  if (isNaN(h)) return timeStr;
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  const paddedH = h < 10 ? `0${h}` : `${h}`;
+  return `${paddedH}:${mStr || "00"} ${ampm}`;
 }
 
 // Calculate distance in km between two lat/lng points using Haversine formula
@@ -49,6 +75,8 @@ export default function ScheduleClient({
   hasOfficeCoordinates,
   shiftStart,
   shiftEnd,
+  lunchStart = "12:00",
+  lunchEnd = "13:00",
   initialActiveLog,
   targetOfficeCoords,
   geofenceError,
@@ -60,7 +88,7 @@ export default function ScheduleClient({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [elapsedText, setElapsedText] = useState<string>("");
-  const [onBreak, setBreak] = useState<boolean>(initialActiveLog?.break_status === "on_break");
+  const [activeBreakElapsedMins, setActiveBreakElapsedMins] = useState<number>(0);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(true);
 
@@ -132,6 +160,16 @@ export default function ScheduleClient({
       });
 
       setElapsedText(`Clocked in at ${formattedClockIn} • ${hours}h ${mins}m elapsed`);
+
+      if (activeLog.active_break_type === "lunch" && activeLog.lunch_start) {
+        const started = new Date(activeLog.lunch_start);
+        setActiveBreakElapsedMins(Math.max(0, Math.floor((now.getTime() - started.getTime()) / 60000)));
+      } else if (activeLog.active_break_type === "short_break" && activeLog.break_start) {
+        const started = new Date(activeLog.break_start);
+        setActiveBreakElapsedMins(Math.max(0, Math.floor((now.getTime() - started.getTime()) / 60000)));
+      } else {
+        setActiveBreakElapsedMins(0);
+      }
     };
 
     updateTimer();
@@ -146,7 +184,7 @@ export default function ScheduleClient({
     const [targetH, targetM] = shiftStart.split(":").map((n) => parseInt(n, 10));
 
     const scheduledDate = new Date(clockInTime);
-    scheduledDate.setHours(targetH || 9, targetM || 0, 0, 0);
+    scheduledDate.setHours(Number.isNaN(targetH) ? 8 : targetH, Number.isNaN(targetM) ? 0 : targetM, 0, 0);
 
     const diffMins = Math.floor((clockInTime.getTime() - scheduledDate.getTime()) / (1000 * 60));
 
@@ -249,16 +287,76 @@ export default function ScheduleClient({
     } else {
       setActiveLog(null);
       setElapsedText("");
-      setBreak(false);
+      setActiveBreakElapsedMins(0);
     }
     setLoading(false);
   };
 
-  const handleToggleBreak = async () => {
+  const isOnLunch = activeLog?.active_break_type === "lunch";
+  const isOnShortBreak = activeLog?.active_break_type === "short_break";
+  const shortBreaksUsed = activeLog?.short_breaks_used ?? 0;
+  const recordedOverbreak = activeLog?.overbreak_minutes ?? 0;
+  const liveOverbreak = isOnLunch
+    ? Math.max(0, (activeLog?.total_lunch_minutes ?? 0) + activeBreakElapsedMins - 60)
+    : isOnShortBreak
+      ? Math.max(0, activeBreakElapsedMins - 15)
+      : 0;
+  const displayOverbreakMins = Math.max(recordedOverbreak, liveOverbreak);
+
+  const handleToggleLunch = async () => {
     if (!activeLog) return;
-    const nextBreakState = !onBreak;
-    setBreak(nextBreakState);
-    await toggleBreakAction(activeLog.id, nextBreakState);
+    setLoading(true);
+    setErrorMessage(null);
+    const res = await toggleLunchAction(activeLog.id, !isOnLunch);
+    if (!res.success) {
+      setErrorMessage(res.error);
+    } else {
+      setActiveLog((prev) =>
+        prev
+          ? {
+              ...prev,
+              active_break_type: res.active_break_type,
+              break_status: res.break_status,
+              lunch_start: res.lunch_start,
+              lunch_end: res.lunch_end,
+              break_start: res.break_start,
+              total_lunch_minutes: res.total_lunch_minutes,
+              total_break_minutes: res.total_break_minutes,
+              short_breaks_used: res.short_breaks_used,
+              overbreak_minutes: res.overbreak_minutes,
+            }
+          : prev
+      );
+    }
+    setLoading(false);
+  };
+
+  const handleToggleShortBreak = async () => {
+    if (!activeLog) return;
+    setLoading(true);
+    setErrorMessage(null);
+    const res = await toggleShortBreakAction(activeLog.id, !isOnShortBreak);
+    if (!res.success) {
+      setErrorMessage(res.error);
+    } else {
+      setActiveLog((prev) =>
+        prev
+          ? {
+              ...prev,
+              active_break_type: res.active_break_type,
+              break_status: res.break_status,
+              lunch_start: res.lunch_start,
+              lunch_end: res.lunch_end,
+              break_start: res.break_start,
+              total_lunch_minutes: res.total_lunch_minutes,
+              total_break_minutes: res.total_break_minutes,
+              short_breaks_used: res.short_breaks_used,
+              overbreak_minutes: res.overbreak_minutes,
+            }
+          : prev
+      );
+    }
+    setLoading(false);
   };
 
   // Determine Badge State
@@ -306,27 +404,64 @@ export default function ScheduleClient({
               <span className="h-2 w-2 shrink-0 rounded-full bg-current animate-pulse" />
               <span className="min-w-0 flex-1">{badgeText}</span>
             </span>
+            <p className="text-[11px] font-medium text-slate-600 pt-1">
+              Shift: {formatTime12h(shiftStart)} – {formatTime12h(shiftEnd)} · 8 hrs paid · Lunch: {formatTime12h(lunchStart)} – {formatTime12h(lunchEnd)} (1 hr unpaid) · 2 × 15-min paid breaks
+            </p>
             {activeLog && (
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <p className="text-xs font-medium text-text-secondary">{elapsedText}</p>
                 {getPunctualityBadge()}
+                {isOnLunch && (
+                  <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800 border border-sky-200">
+                    On Lunch · {activeBreakElapsedMins}m / 60m
+                  </span>
+                )}
+                {isOnShortBreak && (
+                  <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800 border border-indigo-200">
+                    On 15-Min Break ({Math.min(2, Math.max(1, shortBreaksUsed))}/2) · {activeBreakElapsedMins}m / 15m
+                  </span>
+                )}
+                {displayOverbreakMins > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-300">
+                    Overbreak +{displayOverbreakMins}m
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          <div className="w-full sm:w-auto flex justify-center items-center gap-2">
+          <div className="w-full sm:w-auto flex flex-wrap justify-center items-center gap-2">
             {activeLog && (
-              <button
-                onClick={handleToggleBreak}
-                disabled={loading}
-                className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs font-bold transition-all border ${
-                  onBreak
-                    ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
-                    : "bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200"
-                }`}
-              >
-                {onBreak ? "Resume Work" : "Take Break"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleToggleLunch}
+                  disabled={loading || isOnShortBreak}
+                  className={`w-full sm:w-auto rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all border disabled:opacity-50 ${
+                    isOnLunch
+                      ? "bg-sky-600 text-white border-sky-700 hover:bg-sky-700"
+                      : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
+                  }`}
+                >
+                  {isOnLunch ? "End Lunch" : "Start Lunch (1 hr)"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleShortBreak}
+                  disabled={loading || isOnLunch || (!isOnShortBreak && shortBreaksUsed >= 2)}
+                  className={`w-full sm:w-auto rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all border disabled:opacity-50 ${
+                    isOnShortBreak
+                      ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
+                      : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
+                  }`}
+                >
+                  {isOnShortBreak
+                    ? `End Break (${shortBreaksUsed}/2)`
+                    : shortBreaksUsed >= 2
+                      ? "Breaks Used (2/2)"
+                      : `15-Min Break (${shortBreaksUsed}/2)`}
+                </button>
+              </>
             )}
 
             {!activeLog ? (

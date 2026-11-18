@@ -214,6 +214,8 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
       clock_out: clockOutTime.toISOString(),
       total_hours: Number(totalHours.toFixed(2)),
       status: "completed",
+      active_break_type: null,
+      break_status: "clocked_out",
     })
     .eq("id", logId)
     .eq("employee_id", employee.id);
@@ -226,7 +228,48 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
   return { success: true, message: "Clocked out successfully!" };
 }
 
-export async function toggleBreakAction(logId: string, isBreakActive: boolean) {
+type BreakLogEntry = {
+  type: "lunch" | "short_break";
+  started_at: string;
+  ended_at: string;
+  duration_minutes: number;
+  overbreak_minutes: number;
+};
+
+type BreakLogState = {
+  id: string;
+  lunch_start: string | null;
+  lunch_end: string | null;
+  total_lunch_minutes: number | null;
+  break_start: string | null;
+  break_end: string | null;
+  total_break_minutes: number | null;
+  short_breaks_used: number | null;
+  overbreak_minutes: number | null;
+  active_break_type: string | null;
+  break_status: string | null;
+  break_log: BreakLogEntry[] | null;
+};
+
+export type BreakToggleResult =
+  | {
+      success: true;
+      active_break_type: "lunch" | "short_break" | null;
+      break_status: string;
+      lunch_start: string | null;
+      lunch_end: string | null;
+      break_start: string | null;
+      total_lunch_minutes: number;
+      total_break_minutes: number;
+      short_breaks_used: number;
+      overbreak_minutes: number;
+    }
+  | { success: false; error: string };
+
+export async function toggleLunchAction(
+  logId: string,
+  startLunch: boolean
+): Promise<BreakToggleResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -241,11 +284,91 @@ export async function toggleBreakAction(logId: string, isBreakActive: boolean) {
     return { success: false, error: "Employee profile not found. Please contact HR to link your account." };
   }
 
+  const { data: log, error: fetchErr } = await supabase
+    .from("attendance_logs")
+    .select(
+      "id, lunch_start, lunch_end, total_lunch_minutes, break_start, break_end, total_break_minutes, short_breaks_used, overbreak_minutes, active_break_type, break_status, break_log"
+    )
+    .eq("id", logId)
+    .eq("employee_id", employee.id)
+    .maybeSingle<BreakLogState>();
+
+  if (fetchErr || !log) {
+    return { success: false, error: fetchErr?.message || "Attendance log not found." };
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const existingLog = Array.isArray(log.break_log) ? log.break_log : [];
+
+  if (startLunch) {
+    if (log.active_break_type === "short_break") {
+      return { success: false, error: "Please end your 15-minute break before starting lunch." };
+    }
+    if (log.active_break_type === "lunch") {
+      return { success: false, error: "Lunch break is already active." };
+    }
+
+    const { error } = await supabase
+      .from("attendance_logs")
+      .update({
+        lunch_start: log.lunch_start ?? nowIso,
+        lunch_end: null,
+        active_break_type: "lunch",
+        break_status: "on_lunch",
+        updated_at: nowIso,
+      })
+      .eq("id", logId)
+      .eq("employee_id", employee.id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    revalidatePath("/employee/schedule");
+    revalidatePath("/hr/schedules");
+    revalidatePath("/hr/attendance");
+    return {
+      success: true,
+      active_break_type: "lunch",
+      break_status: "on_lunch",
+      lunch_start: log.lunch_start ?? nowIso,
+      lunch_end: null,
+      break_start: log.break_start ?? null,
+      total_lunch_minutes: log.total_lunch_minutes ?? 0,
+      total_break_minutes: log.total_break_minutes ?? 0,
+      short_breaks_used: log.short_breaks_used ?? 0,
+      overbreak_minutes: log.overbreak_minutes ?? 0,
+    };
+  }
+
+  // End lunch
+  const startedAt = log.lunch_start ? new Date(log.lunch_start) : now;
+  const elapsedMinutes = Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000));
+  const nextTotalLunch = (log.total_lunch_minutes ?? 0) + elapsedMinutes;
+  const addedOverbreak = Math.max(0, nextTotalLunch - 60) - Math.max(0, (log.total_lunch_minutes ?? 0) - 60);
+  const nextOverbreak = (log.overbreak_minutes ?? 0) + Math.max(0, addedOverbreak);
+  const nextBreakLog: BreakLogEntry[] = [
+    ...existingLog,
+    {
+      type: "lunch",
+      started_at: startedAt.toISOString(),
+      ended_at: nowIso,
+      duration_minutes: elapsedMinutes,
+      overbreak_minutes: Math.max(0, addedOverbreak),
+    },
+  ];
+
   const { error } = await supabase
     .from("attendance_logs")
     .update({
-      break_status: isBreakActive ? "on_break" : "active",
-      updated_at: new Date().toISOString(),
+      lunch_end: nowIso,
+      total_lunch_minutes: nextTotalLunch,
+      overbreak_minutes: nextOverbreak,
+      active_break_type: null,
+      break_status: "active",
+      break_log: nextBreakLog,
+      updated_at: nowIso,
     })
     .eq("id", logId)
     .eq("employee_id", employee.id);
@@ -255,5 +378,152 @@ export async function toggleBreakAction(logId: string, isBreakActive: boolean) {
   }
 
   revalidatePath("/employee/schedule");
-  return { success: true, isBreakActive };
+  revalidatePath("/hr/schedules");
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    active_break_type: null,
+    break_status: "active",
+    lunch_start: log.lunch_start,
+    lunch_end: nowIso,
+    break_start: log.break_start ?? null,
+    total_lunch_minutes: nextTotalLunch,
+    total_break_minutes: log.total_break_minutes ?? 0,
+    short_breaks_used: log.short_breaks_used ?? 0,
+    overbreak_minutes: nextOverbreak,
+  };
+}
+
+export async function toggleShortBreakAction(
+  logId: string,
+  startBreak: boolean
+): Promise<BreakToggleResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR to link your account." };
+  }
+
+  const { data: log, error: fetchErr } = await supabase
+    .from("attendance_logs")
+    .select(
+      "id, lunch_start, lunch_end, total_lunch_minutes, break_start, break_end, total_break_minutes, short_breaks_used, overbreak_minutes, active_break_type, break_status, break_log"
+    )
+    .eq("id", logId)
+    .eq("employee_id", employee.id)
+    .maybeSingle<BreakLogState>();
+
+  if (fetchErr || !log) {
+    return { success: false, error: fetchErr?.message || "Attendance log not found." };
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const existingLog = Array.isArray(log.break_log) ? log.break_log : [];
+  const usedCount = log.short_breaks_used ?? 0;
+
+  if (startBreak) {
+    if (log.active_break_type === "lunch") {
+      return { success: false, error: "Please end your lunch break before starting a 15-minute break." };
+    }
+    if (log.active_break_type === "short_break") {
+      return { success: false, error: "15-minute break is already active." };
+    }
+    if (usedCount >= 2) {
+      return { success: false, error: "You have already used both of your 15-minute paid breaks for this shift." };
+    }
+
+    const nextUsed = usedCount + 1;
+    const { error } = await supabase
+      .from("attendance_logs")
+      .update({
+        break_start: nowIso,
+        break_end: null,
+        short_breaks_used: nextUsed,
+        active_break_type: "short_break",
+        break_status: "on_break",
+        updated_at: nowIso,
+      })
+      .eq("id", logId)
+      .eq("employee_id", employee.id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    revalidatePath("/employee/schedule");
+    revalidatePath("/hr/schedules");
+    revalidatePath("/hr/attendance");
+    return {
+      success: true,
+      active_break_type: "short_break",
+      break_status: "on_break",
+      lunch_start: log.lunch_start ?? null,
+      lunch_end: log.lunch_end ?? null,
+      break_start: nowIso,
+      total_lunch_minutes: log.total_lunch_minutes ?? 0,
+      total_break_minutes: log.total_break_minutes ?? 0,
+      short_breaks_used: nextUsed,
+      overbreak_minutes: log.overbreak_minutes ?? 0,
+    };
+  }
+
+  // End short break
+  const startedAt = log.break_start ? new Date(log.break_start) : now;
+  const elapsedMinutes = Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000));
+  const addedOverbreak = Math.max(0, elapsedMinutes - 15);
+  const nextTotalBreak = (log.total_break_minutes ?? 0) + elapsedMinutes;
+  const nextOverbreak = (log.overbreak_minutes ?? 0) + addedOverbreak;
+  const nextBreakLog: BreakLogEntry[] = [
+    ...existingLog,
+    {
+      type: "short_break",
+      started_at: startedAt.toISOString(),
+      ended_at: nowIso,
+      duration_minutes: elapsedMinutes,
+      overbreak_minutes: addedOverbreak,
+    },
+  ];
+
+  const { error } = await supabase
+    .from("attendance_logs")
+    .update({
+      break_end: nowIso,
+      total_break_minutes: nextTotalBreak,
+      overbreak_minutes: nextOverbreak,
+      active_break_type: null,
+      break_status: "active",
+      break_log: nextBreakLog,
+      updated_at: nowIso,
+    })
+    .eq("id", logId)
+    .eq("employee_id", employee.id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/schedules");
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    active_break_type: null,
+    break_status: "active",
+    lunch_start: log.lunch_start ?? null,
+    lunch_end: log.lunch_end ?? null,
+    break_start: nowIso,
+    total_lunch_minutes: log.total_lunch_minutes ?? 0,
+    total_break_minutes: nextTotalBreak,
+    short_breaks_used: usedCount,
+    overbreak_minutes: nextOverbreak,
+  };
 }
