@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { sendNotification } from "@/lib/notifications";
 import { syncApprovedLeaveToSchedules } from "@/lib/leave-schedule-sync";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
@@ -101,20 +100,7 @@ export async function POST(request: Request) {
     });
   }
 
-  // Notify employee
-  const empRelation = Array.isArray(leave?.employees) ? leave?.employees[0] : leave?.employees;
-  const recipientId = empRelation?.profile_id;
-  if (recipientId) {
-    await sendNotification({
-      recipientId,
-      senderId: user.id,
-      type: "leave_status_changed",
-      title: action === "approved" ? "Leave Request Approved" : "Leave Request Rejected",
-      body: `Your ${leave?.leave_type ?? ""} leave request (${leave?.start_date ?? ""} to ${leave?.end_date ?? ""}) was ${action}.`,
-      actionUrl: "/employee/leaves",
-      actionName: "apiLeavesApprove",
-    });
-  }
+  // DB trigger trg_notify_leave_status handles employee notification on leave_requests status update.
 
   revalidatePath("/hr/leaves");
   revalidatePath("/employee/leaves");

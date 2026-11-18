@@ -244,20 +244,7 @@ export async function reviewLeaveRequest(formData: FormData) {
     });
   }
 
-  // Notify employee
-  const empRelation = Array.isArray(leave?.employees) ? leave?.employees[0] : leave?.employees;
-  const recipientId = empRelation?.profile_id;
-  if (recipientId) {
-    await sendNotification({
-      recipientId,
-      senderId: user.id,
-      type: "leave_status_changed",
-      title: action === "approved" ? "Leave Request Approved" : "Leave Request Rejected",
-      body: `Your ${leave?.leave_type ?? ""} leave request (${leave?.start_date ?? ""} to ${leave?.end_date ?? ""}) was ${action}.${remarks ? ` Remarks: ${remarks}` : ""}`,
-      actionUrl: "/employee/leaves",
-      actionName: "reviewLeaveRequest",
-    });
-  }
+  // DB trigger trg_notify_leave_status handles employee notification on leave_requests status update.
 
   revalidatePath("/hr/leaves");
   revalidatePath("/employee/leaves");

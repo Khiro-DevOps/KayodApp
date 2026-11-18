@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
 import {
   DAYS_FULL,
@@ -21,32 +23,55 @@ export default async function HRSchedulesPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  const admin = getAdminClient();
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+
+  const { data: profile } = await admin
     .from("profiles")
     .select("role, tenant_id")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!profile || (profile.role !== "hr_manager" && profile.role !== "admin" && profile.role !== "hr")) {
+  const role = effectiveRole(profile?.role, authRole);
+  if (!isHRRole(role)) {
     redirect("/login");
   }
 
-  const [{ data: employees }, { count: pendingLeaveCount }] = await Promise.all([
-    supabase
+  const [{ data: initialEmployees, error: empError }, { count: pendingLeaveCount }] = await Promise.all([
+    admin
       .from("employees")
-      .select(`
-        *,
-        profiles (
-          first_name,
-          last_name
-        )
-      `)
+      .select("*")
       .order("created_at", { ascending: false }),
-    supabase
+    admin
       .from("leave_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending"),
   ]);
+
+  let employees = initialEmployees;
+  if (empError) {
+    const fallback = await admin.from("employees").select("*");
+    employees = fallback.data;
+  }
+
+  const profileIds = Array.from(
+    new Set(
+      (employees ?? [])
+        .map((e) => (e as { profile_id?: string | null }).profile_id)
+        .filter((pid): pid is string => Boolean(pid))
+    )
+  );
+  const profileMap = new Map<string, { first_name?: string | null; last_name?: string | null }>();
+  if (profileIds.length > 0) {
+    const { data: profRows } = await admin
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .in("id", profileIds);
+    for (const p of profRows ?? []) {
+      profileMap.set(p.id, p);
+    }
+  }
 
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -70,14 +95,14 @@ export default async function HRSchedulesPage() {
   >();
   if (activeEmployeeIds.length > 0) {
     const [{ data: approvedLeaves }, { data: publishedSchedules }] = await Promise.all([
-      supabase
+      admin
         .from("leave_requests")
         .select("employee_id, start_date, end_date")
         .in("employee_id", activeEmployeeIds)
         .eq("status", "approved")
         .lte("start_date", weekEndStr)
         .gte("end_date", weekStartStr),
-      supabase
+      admin
         .from("schedules")
         .select("employee_id, week_start, notes, updated_at")
         .in("employee_id", activeEmployeeIds)
@@ -107,6 +132,7 @@ export default async function HRSchedulesPage() {
 
   type RawEmployeeRow = {
     id: string;
+    profile_id?: string | null;
     job_title: string | null;
     work_mode: string | null;
     work_days: string[] | null;
@@ -114,12 +140,11 @@ export default async function HRSchedulesPage() {
     shift_start: string | null;
     shift_end: string | null;
     employment_status: string | null;
-    profiles: { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
   };
 
   const formattedEmployees: HRScheduleEmployee[] = ((employees ?? []) as RawEmployeeRow[])
     .map((emp) => {
-      const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
+      const p = emp.profile_id ? profileMap.get(emp.profile_id) ?? null : null;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
       const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
       const parsedHybrid = hybridScheduleByEmp.get(emp.id);
