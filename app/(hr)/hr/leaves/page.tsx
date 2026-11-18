@@ -36,7 +36,13 @@ const LEAVE_TYPE_BADGES: Record<string, string> = {
   unpaid:    "bg-surface-bg text-text-muted border-border",
 };
 
-export default async function HRLeavesPage() {
+export default async function HRLeavesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const actionError = resolvedParams?.error ?? null;
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -160,6 +166,12 @@ export default async function HRLeavesPage() {
             </p>
           </div>
         </div>
+
+        {actionError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
 
         {/* Metrics Overview */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

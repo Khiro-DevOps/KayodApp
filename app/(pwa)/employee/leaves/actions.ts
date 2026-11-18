@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
 import { syncApprovedLeaveToSchedules } from "@/lib/leave-schedule-sync";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -167,12 +168,18 @@ export async function reviewLeaveRequest(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  const admin = getAdminClient();
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+
+  const { data: profile } = await admin
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single();
-  if (!profile || !HR_ALLOWED_ROLES.includes(profile.role)) {
+    .maybeSingle();
+
+  const role = effectiveRole(profile?.role, authRole);
+  if (!isHRRole(role)) {
     redirect("/employee/dashboard");
   }
 
@@ -182,14 +189,14 @@ export async function reviewLeaveRequest(formData: FormData) {
 
   if (!leaveId || !["approved", "rejected"].includes(action)) redirect("/hr/leaves");
 
-  const { data: leave } = await supabase
+  const { data: leave } = await admin
     .from("leave_requests")
     .select("id, employee_id, leave_type, total_days, start_date, end_date, employees(profile_id)")
     .eq("id", leaveId)
-    .single();
+    .maybeSingle();
 
   // Update the leave request status
-  const { error } = await supabase
+  const { error } = await admin
     .from("leave_requests")
     .update({
       status: action,
@@ -208,7 +215,7 @@ export async function reviewLeaveRequest(formData: FormData) {
       ? new Date(`${leave.start_date}T00:00:00Z`).getFullYear()
       : new Date().getFullYear();
 
-    const { data: balance } = await supabase
+    const { data: balance } = await admin
       .from("leave_balances")
       .select("id, used_credits")
       .eq("employee_id", leave.employee_id)
@@ -217,7 +224,7 @@ export async function reviewLeaveRequest(formData: FormData) {
       .maybeSingle();
 
     if (balance) {
-      await supabase
+      await admin
         .from("leave_balances")
         .update({
           used_credits: (balance.used_credits ?? 0) + (leave.total_days ?? 0),
