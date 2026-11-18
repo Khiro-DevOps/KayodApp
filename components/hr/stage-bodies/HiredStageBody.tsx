@@ -7,9 +7,11 @@ import {
   type PreEmploymentChecklistItem,
 } from "@/lib/pre-employment-actions";
 import type { OnboardingDocumentStatus } from "@/lib/types";
+import type { InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
 import {
   CandidateHeaderSection,
   CoverLetterSection,
+  InterviewNotesScorecardSection,
   MatchBreakdownSection,
   MetadataGridSection,
   ResumePreviewSection,
@@ -27,6 +29,7 @@ const STATUS_BADGE_CLASSES: Record<OnboardingDocumentStatus, string> = {
 
 export interface HiredStageBodyProps {
   application: ApplicationHubCard;
+  interview?: InterviewScheduleItem | null;
   scoreDisplay?: string | null;
   onViewEmployee: (application: ApplicationHubCard) => void;
   onOpenFullApplication: (applicationId: string) => void;
@@ -34,6 +37,7 @@ export interface HiredStageBodyProps {
 
 export default function HiredStageBody({
   application,
+  interview,
   scoreDisplay,
   onViewEmployee,
   onOpenFullApplication,
@@ -163,6 +167,7 @@ export default function HiredStageBody({
         </section>
 
         <MatchBreakdownSection application={application} stageKey="hired" scoreDisplay={scoreDisplay} />
+        <InterviewNotesScorecardSection interview={interview} />
         <MetadataGridSection application={application} />
         <ResumePreviewSection application={application} onOpenFullApplication={onOpenFullApplication} />
         <CoverLetterSection application={application} />

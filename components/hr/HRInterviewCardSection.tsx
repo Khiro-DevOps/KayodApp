@@ -17,6 +17,14 @@ export interface InterviewScheduleItem {
   meeting_link?: string | null;
   proposed_slots?: any;
   selected_slot?: any;
+  interview_notes?: string | null;
+  scorecard?: {
+    rating?: number;
+    strengths?: string;
+    weaknesses?: string;
+    private_notes?: string;
+    submitted_at?: string;
+  } | null;
   office_branches?: {
     name?: string | null;
     address?: string | null;

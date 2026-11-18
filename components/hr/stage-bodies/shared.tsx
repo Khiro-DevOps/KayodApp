@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ApplicationHubCard } from "@/app/(dashboard)/hr/applicants/applications-kanban-board";
+import type { InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
 import { UI_STAGES, type UiStageKey } from "@/lib/application-stages";
+import { formatPhtDate, formatPhtTime } from "@/lib/interview-date";
 import { getDisplayMatchScore } from "@/lib/match-score";
+import { createClient } from "@/lib/supabase/client";
 
 export type CandidateProfile = {
   id: string;
@@ -261,33 +266,443 @@ export function MetadataGridSection({ application }: { application: ApplicationH
   );
 }
 
+type ResumeRecord = {
+  id: string;
+  title: string | null;
+  pdf_url: string | null;
+  content_text: string | null;
+  generated_content: Record<string, unknown> | null;
+  input_data: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function getMeetingTypeLabel(meetingType?: string | null): string {
+  switch (meetingType) {
+    case "in_person":
+      return "In-person";
+    case "hybrid":
+      return "Hybrid";
+    case "online":
+    default:
+      return "Online";
+  }
+}
+
+export function InterviewNotesScorecardSection({
+  interview,
+}: {
+  interview?: InterviewScheduleItem | null;
+}) {
+  if (!interview) return null;
+
+  const rating = typeof interview.scorecard?.rating === "number" ? interview.scorecard.rating : null;
+  const savedNotes =
+    interview.interview_notes?.trim() ||
+    interview.scorecard?.private_notes?.trim() ||
+    "";
+  const strengths = interview.scorecard?.strengths?.trim() || "";
+  const weaknesses = interview.scorecard?.weaknesses?.trim() || "";
+  const dateLabel = interview.scheduled_at
+    ? `${formatPhtDate(interview.scheduled_at)} • ${formatPhtTime(interview.scheduled_at)}`
+    : "Pending slot selection";
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+          Interview Notes &amp; Scorecard
+        </h3>
+        {rating !== null ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-semibold text-purple-700"
+            aria-label={`Rating ${rating} out of 5`}
+          >
+            <span className="text-amber-500" aria-hidden="true">
+              {"★".repeat(Math.max(0, Math.min(5, Math.round(rating))))}
+              {"☆".repeat(Math.max(0, 5 - Math.round(rating)))}
+            </span>
+            <span>{rating}/5</span>
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 capitalize">
+          {interview.status.replace(/_/g, " ")}
+        </span>
+        <span>{dateLabel}</span>
+        <span>•</span>
+        <span>{getMeetingTypeLabel(interview.meeting_type)}</span>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+        {savedNotes ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{savedNotes}</p>
+        ) : (
+          <p className="text-sm italic text-slate-500">No interview notes recorded yet</p>
+        )}
+
+        {strengths ? (
+          <p className="text-xs text-slate-600">
+            <span className="font-semibold text-slate-800">Strengths:</span> {strengths}
+          </p>
+        ) : null}
+        {weaknesses ? (
+          <p className="text-xs text-slate-600">
+            <span className="font-semibold text-slate-800">Areas to probe:</span> {weaknesses}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object" && "name" in item) {
+        return String((item as { name?: unknown }).name ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object");
+}
+
 export function ResumePreviewSection({
   application,
-  onOpenFullApplication,
 }: {
   application: ApplicationHubCard;
-  onOpenFullApplication: (applicationId: string) => void;
+  onOpenFullApplication?: (applicationId: string) => void;
 }) {
   const profile = resolveProfile(application);
+  const defaultTitle =
+    profile?.first_name || profile?.last_name
+      ? `${getApplicantName(profile)} Resume`
+      : "Application Resume";
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [resume, setResume] = useState<ResumeRecord | null>(null);
+  const [signedPdfUrl, setSignedPdfUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsModalOpen(false);
+    setResume(null);
+    setSignedPdfUrl(null);
+    setLoadError(null);
+  }, [application.id]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen]);
+
+  useEffect(() => {
+    if (!isModalOpen || !application.resume_id) return;
+
+    let cancelled = false;
+    const loadResume = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("resumes")
+          .select("id, title, pdf_url, content_text, generated_content, input_data, created_at, updated_at")
+          .eq("id", application.resume_id)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) {
+          setLoadError(error.message || "Failed to load resume.");
+          return;
+        }
+        if (!data) {
+          setLoadError("Resume record not found.");
+          return;
+        }
+
+        const record = data as ResumeRecord;
+        setResume(record);
+
+        if (record.pdf_url) {
+          const match = record.pdf_url.match(/\/resumes\/(.+)$/);
+          const rawPath = match ? match[1] : null;
+          if (rawPath) {
+            const cleanPath = decodeURIComponent(rawPath.split("?")[0]);
+            const storagePath = cleanPath.startsWith("/") ? cleanPath.substring(1) : cleanPath;
+            const { data: signed } = await supabase.storage
+              .from("resumes")
+              .createSignedUrl(storagePath, 3600);
+            if (!cancelled && signed?.signedUrl) {
+              setSignedPdfUrl(signed.signedUrl);
+            }
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "Failed to load resume.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadResume();
+    return () => {
+      cancelled = true;
+    };
+  }, [isModalOpen, application.resume_id]);
+
+  const parsedSource = resume?.generated_content ?? resume?.input_data ?? null;
+  const summaryText =
+    typeof parsedSource?.summary === "string"
+      ? parsedSource.summary
+      : typeof parsedSource?.professional_summary === "string"
+        ? parsedSource.professional_summary
+        : null;
+  const skills = asStringArray(parsedSource?.skills);
+  const experience = asRecordArray(parsedSource?.experience);
+  const education = asRecordArray(parsedSource?.education);
+  const updatedLabel = resume?.updated_at
+    ? `Updated ${new Date(resume.updated_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`
+    : application.resume_id
+      ? `Submitted ${formatApplicationTime(application.submitted_at)}`
+      : "No resume file attached";
 
   return (
     <section>
-      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-outline">
-        Resume Preview
+      <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+        Resume
       </h3>
-      <div className="flex aspect-[1/1.2] flex-col items-center justify-center rounded-xl border border-dashed border-primary/40 bg-primary-light p-8 text-center">
-        <span className="material-symbols-outlined mb-3 text-[48px] text-primary">description</span>
-        <p className="mb-4 text-[14px] text-primary-dark">
-          {profile?.first_name || profile?.last_name ? `${getApplicantName(profile)} Resume` : "Application File"}
-        </p>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setIsModalOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsModalOpen(true);
+          }
+        }}
+        className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:border-purple-300 hover:bg-purple-50/30 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
+            <span className="material-symbols-outlined text-[20px]">description</span>
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {resume?.title || defaultTitle}
+            </p>
+            <p className="truncate text-xs text-slate-600">{updatedLabel}</p>
+          </div>
+        </div>
+
         <button
           type="button"
-          onClick={() => onOpenFullApplication(application.id)}
-          className="rounded-lg border border-card-border bg-white px-5 py-2 text-[13px] font-semibold text-primary transition-colors hover:bg-surface"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsModalOpen(true);
+          }}
+          className="shrink-0 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors"
         >
-          Open Full Application
+          Preview
         </button>
       </div>
+
+      {isModalOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[130] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="kanban-resume-modal-title"
+              onClick={() => setIsModalOpen(false)}
+            >
+              <div
+                className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                  <div className="min-w-0">
+                    <h2
+                      id="kanban-resume-modal-title"
+                      className="truncate text-base font-bold text-slate-900"
+                    >
+                      {resume?.title || defaultTitle}
+                    </h2>
+                    <p className="text-xs text-slate-600">{updatedLabel}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    aria-label="Close resume preview"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                  {!application.resume_id ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+                      No resume was attached to this application.
+                    </div>
+                  ) : isLoading ? (
+                    <div className="flex items-center justify-center py-12 text-sm text-slate-600">
+                      Loading resume preview...
+                    </div>
+                  ) : loadError ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                      {loadError}
+                    </div>
+                  ) : (
+                    <>
+                      {signedPdfUrl ? (
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                          <iframe
+                            src={signedPdfUrl}
+                            title={resume?.title || defaultTitle}
+                            className="h-[55vh] w-full"
+                          />
+                        </div>
+                      ) : null}
+
+                      {summaryText ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                          <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Summary
+                          </h4>
+                          <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                            {summaryText}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {skills.length > 0 ? (
+                        <div>
+                          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Skills
+                          </h4>
+                          <div className="flex flex-wrap gap-1.5">
+                            {skills.map((skill, idx) => (
+                              <span
+                                key={`${skill}-${idx}`}
+                                className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700"
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {experience.length > 0 ? (
+                        <div className="space-y-2.5">
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Experience
+                          </h4>
+                          <div className="space-y-2">
+                            {experience.map((exp, idx) => (
+                              <div
+                                key={idx}
+                                className="rounded-xl border border-slate-200 bg-white p-3.5"
+                              >
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {String(exp.title ?? exp.role ?? "Role")}
+                                  {exp.company ? ` — ${String(exp.company)}` : ""}
+                                </p>
+                                {exp.duration || exp.dates || exp.period ? (
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {String(exp.duration ?? exp.dates ?? exp.period)}
+                                  </p>
+                                ) : null}
+                                {exp.description ? (
+                                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600 whitespace-pre-wrap">
+                                    {String(exp.description)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {education.length > 0 ? (
+                        <div className="space-y-2.5">
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Education
+                          </h4>
+                          <div className="space-y-2">
+                            {education.map((edu, idx) => (
+                              <div
+                                key={idx}
+                                className="rounded-xl border border-slate-200 bg-white p-3.5"
+                              >
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {String(edu.degree ?? edu.program ?? "Degree")}
+                                </p>
+                                <p className="text-xs text-slate-600 mt-0.5">
+                                  {String(edu.school ?? edu.institution ?? "")}
+                                  {edu.year || edu.dates ? ` • ${String(edu.year ?? edu.dates)}` : ""}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {!signedPdfUrl &&
+                      !summaryText &&
+                      skills.length === 0 &&
+                      experience.length === 0 &&
+                      education.length === 0 ? (
+                        resume?.content_text ? (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                              Resume Text
+                            </h4>
+                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                              {resume.content_text}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+                            No parsed resume content available.
+                          </div>
+                        )
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }

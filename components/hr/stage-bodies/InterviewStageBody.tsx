@@ -8,6 +8,7 @@ import { completeInterview } from "@/app/(dashboard)/hr/interviews/actions";
 import {
   CandidateHeaderSection,
   CoverLetterSection,
+  InterviewNotesScorecardSection,
   MatchBreakdownSection,
   MetadataGridSection,
   ResumePreviewSection,
@@ -100,6 +101,7 @@ export default function InterviewStageBody({
         </section>
 
         <MatchBreakdownSection application={application} stageKey="interview" scoreDisplay={scoreDisplay} />
+        <InterviewNotesScorecardSection interview={interview} />
         <MetadataGridSection application={application} />
         <ResumePreviewSection application={application} onOpenFullApplication={onOpenFullApplication} />
         <CoverLetterSection application={application} />

@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { getOfferSummary } from "@/app/(auth)/actions/offer-actions";
 import type { ApplicationHubCard } from "@/app/(dashboard)/hr/applicants/applications-kanban-board";
 import HireConfirmationModal from "@/components/hr/HireConfirmationModal";
+import type { InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
 import {
   CandidateHeaderSection,
   CoverLetterSection,
+  InterviewNotesScorecardSection,
   MatchBreakdownSection,
   MetadataGridSection,
   ResumePreviewSection,
@@ -15,6 +17,7 @@ import {
 
 export interface OfferStageBodyProps {
   application: ApplicationHubCard;
+  interview?: InterviewScheduleItem | null;
   scoreDisplay?: string | null;
   onReject: (applicationId: string) => void;
   onOpenFullApplication: (applicationId: string) => void;
@@ -59,6 +62,7 @@ function getOfferBadgeClass(status: string | null | undefined): string {
 
 export default function OfferStageBody({
   application,
+  interview,
   scoreDisplay,
   onOpenFullApplication,
 }: OfferStageBodyProps) {
@@ -175,6 +179,7 @@ export default function OfferStageBody({
         </section>
 
         <MatchBreakdownSection application={application} stageKey="offer" scoreDisplay={scoreDisplay} />
+        <InterviewNotesScorecardSection interview={interview} />
         <MetadataGridSection application={application} />
         <ResumePreviewSection application={application} onOpenFullApplication={onOpenFullApplication} />
         <CoverLetterSection application={application} />

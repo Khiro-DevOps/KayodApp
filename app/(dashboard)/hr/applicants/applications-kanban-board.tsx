@@ -536,6 +536,7 @@ function ApplicationDrawer({
         return (
           <OfferStageBody
             application={app}
+            interview={interview}
             scoreDisplay={scoreDisplay}
             onReject={onReject}
             onOpenFullApplication={onOpenFullApplication}
@@ -545,6 +546,7 @@ function ApplicationDrawer({
         return (
           <HiredStageBody
             application={app}
+            interview={interview}
             scoreDisplay={scoreDisplay}
             onViewEmployee={onViewEmployee}
             onOpenFullApplication={onOpenFullApplication}
@@ -556,6 +558,7 @@ function ApplicationDrawer({
         return (
           <RejectedStageBody
             application={app}
+            interview={interview}
             scoreDisplay={scoreDisplay}
             onOpenFullApplication={onOpenFullApplication}
           />
@@ -632,7 +635,7 @@ export default function ApplicationsKanbanBoard({
     const supabase = createClient();
     supabase
       .from("interview_schedules")
-      .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, office_branches(name, address)")
+      .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, interview_notes, scorecard, office_branches(name, address)")
       .in("application_id", applicationIds)
       .order("created_at", { ascending: false })
       .then(({ data, error }: { data: any; error: any }) => {
