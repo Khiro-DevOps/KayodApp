@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import Link from "next/link";
 import { reviewLeaveRequest } from "@/app/(pwa)/employee/leaves/actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 
@@ -109,8 +108,10 @@ export default async function HRLeavesPage() {
   const leaveRequests: LeaveRequestWithEmployee[] = rawRequests.map((r) => {
     const emp = empMap.get(r.employee_id);
     const prof = emp?.profile_id ? profileMap.get(emp.profile_id) ?? null : null;
+    const normalizedStatus = String(r.status ?? "pending").toLowerCase() as LeaveRequestWithEmployee["status"];
     return {
       ...r,
+      status: normalizedStatus,
       employees: emp
         ? {
             job_title: emp.job_title ?? null,
@@ -126,10 +127,17 @@ export default async function HRLeavesPage() {
     };
   });
 
-  const pendingRequests = leaveRequests.filter((r) => r.status === "pending");
-  const reviewedRequests = leaveRequests.filter((r) => r.status !== "pending");
+  const pendingRequests = leaveRequests.filter(
+    (r) => String(r.status ?? "pending").toLowerCase() === "pending"
+  );
+  const historyRequests = leaveRequests.filter(
+    (r) => String(r.status ?? "pending").toLowerCase() !== "pending"
+  );
+  const reviewedRequests = historyRequests;
 
-  const approvedCount = leaveRequests.filter((r) => r.status === "approved").length;
+  const approvedCount = leaveRequests.filter(
+    (r) => String(r.status ?? "").toLowerCase() === "approved"
+  ).length;
 
   return (
     <PageContainer>

@@ -20,12 +20,25 @@ export async function fileLeaveRequest(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: employee } = await supabase
+  const admin = getAdminClient();
+  const { data: employee } = await admin
     .from("employees")
     .select("id, tenant_id")
     .eq("profile_id", user.id)
     .single();
   if (!employee) redirect("/employee/dashboard");
+
+  let validTenantId: string | null = employee.tenant_id ?? null;
+  if (validTenantId) {
+    const { data: tenantRow } = await admin
+      .from("tenants")
+      .select("id")
+      .eq("id", validTenantId)
+      .maybeSingle();
+    if (!tenantRow) {
+      validTenantId = null;
+    }
+  }
 
   const leaveType = String(formData.get("leave_type") ?? "").trim();
   const startDate = String(formData.get("start_date") ?? "").trim();
@@ -46,7 +59,7 @@ export async function fileLeaveRequest(formData: FormData) {
   }
 
   // Reject overlapping pending or approved leave requests for the same employee
-  const { data: overlapping } = await supabase
+  const { data: overlapping } = await admin
     .from("leave_requests")
     .select("id")
     .eq("employee_id", employee.id)
@@ -62,7 +75,7 @@ export async function fileLeaveRequest(formData: FormData) {
   // Validate leave balance when leave_type !== "unpaid"
   if (leaveType !== "unpaid") {
     const leaveYear = new Date(`${startDate}T00:00:00Z`).getFullYear();
-    const { data: balance } = await supabase
+    const { data: balance } = await admin
       .from("leave_balances")
       .select("id, remaining")
       .eq("employee_id", employee.id)
@@ -79,7 +92,7 @@ export async function fileLeaveRequest(formData: FormData) {
     }
   }
 
-  const { error } = await supabase.from("leave_requests").insert({
+  const { error: insertError } = await admin.from("leave_requests").insert({
     employee_id: employee.id,
     leave_type: leaveType,
     start_date: startDate,
@@ -88,11 +101,17 @@ export async function fileLeaveRequest(formData: FormData) {
     status: "pending",
   });
 
-  if (error) redirect(`/employee/leaves/new?error=${encodeURIComponent(error.message)}`);
+  if (insertError) {
+    try {
+      throw new Error(insertError.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(insertError.message);
+      redirect(`/employee/leaves/new?error=${encodeURIComponent(msg)}`);
+    }
+  }
 
   // Notify HR managers/admins in the tenant
   try {
-    const admin = getAdminClient();
     const { data: requesterProfile } = await admin
       .from("profiles")
       .select("first_name, last_name")
@@ -103,12 +122,12 @@ export async function fileLeaveRequest(formData: FormData) {
       "An employee";
 
     let hrUsers: Array<{ id: string }> = [];
-    if (employee.tenant_id) {
+    if (validTenantId) {
       const { data: tenantHrUsers } = await admin
         .from("profiles")
         .select("id")
         .in("role", HR_ALLOWED_ROLES)
-        .eq("tenant_id", employee.tenant_id);
+        .eq("tenant_id", validTenantId);
       hrUsers = (tenantHrUsers ?? []).filter((hr) => hr.id !== user.id);
     }
 
