@@ -70,11 +70,11 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     .insert({
       application_id: applicationId,
       job_posting_id: jobId,
-      status: "DRAFT", 
+      status: "DRAFT",
       version_id: 1,
       is_active: true,
       created_by: user.id,
-      
+
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
       work_mode: job.work_mode || 'remote',
@@ -294,6 +294,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       .from("job_offers")
       .select("id, version_id, created_by")
       .eq("application_id", applicationId)
+      .order("version_id", { ascending: false })
       .order("updated_at", { ascending: false })
       .limit(1);
 
@@ -303,12 +304,27 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
     }
 
     const existingOffer = existingOffers?.[0] ?? null;
+
+    if (existingOffer) {
+      const { error: archiveError } = await admin
+        .from("job_offers")
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq("application_id", applicationId)
+        .eq("is_active", true);
+
+      if (archiveError) {
+        console.error("Offer archive error:", archiveError);
+        return { success: false, error: `Failed to archive previous offer: ${archiveError.message}` };
+      }
+    }
+
     const draftPayload = {
       application_id: applicationId,
       job_id: jobId,
       hr_id: user.id,
       status: "DRAFT",
       version_id: (existingOffer?.version_id ?? 0) + 1,
+      parent_offer_id: existingOffer?.id ?? null,
       is_active: true,
       created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
@@ -330,11 +346,11 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       },
     };
 
-    const offerQuery = existingOffer
-      ? admin.from("job_offers").update(draftPayload).eq("id", existingOffer.id)
-      : admin.from("job_offers").insert(draftPayload);
-
-    const { data: offer, error: offerError } = await offerQuery.select().single();
+    const { data: offer, error: offerError } = await admin
+      .from("job_offers")
+      .insert(draftPayload)
+      .select()
+      .single();
 
     if (offerError || !offer) {
       console.error("Offer draft creation error:", offerError);
