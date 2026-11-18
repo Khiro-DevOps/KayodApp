@@ -1,45 +1,67 @@
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDocusealBaseUrl } from "@/lib/docuseal";
-import { createClient } from "@/lib/supabase/server";
+import { sendNotification } from "@/lib/notifications";
+import {
+  markOfferSigned,
+  verifyDocusealSubmissionCompleted,
+} from "@/lib/offer-lifecycle";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+
+const HR_ROLES = new Set(["hr_manager", "admin", "hr"]);
+
+type JobPostingRelation = {
+  id?: string;
+  title?: string | null;
+  created_by?: string | null;
+  tenant_id?: string | null;
+  department_id?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+};
+
+type JobApplicationRelation = {
+  id: string;
+  applicant_id: string;
+  job_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  profiles?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+  } | null;
+  job_postings?: JobPostingRelation | JobPostingRelation[] | null;
+};
 
 type JobOfferRow = {
   id: string;
   application_id: string;
-  job_posting_id: string;
+  job_id: string | null;
   status: string;
   salary?: number | null;
+  start_date?: string | null;
+  work_mode?: string | null;
+  work_setup?: string | null;
+  work_location_id?: string | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  work_days?: string[] | null;
+  docuseal_submission_id?: string | null;
   updated_at: string;
   latest_docuseal_url: string | null;
   job_metadata: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
-  applications: {
-    id: string;
-    candidate_id: string;
-    status: string;
-    submitted_at: string;
-    updated_at: string;
-    profiles?: {
-      first_name?: string | null;
-      last_name?: string | null;
-      email?: string | null;
-    } | null;
-    job_postings?: {
-      id?: string;
-      title?: string | null;
-      created_by?: string | null;
-      salary_min?: number | null;
-      salary_max?: number | null;
-    } | null;
-  } | null;
+  job_applications: JobApplicationRelation | JobApplicationRelation[] | null;
 };
 
 function toSingle<T>(value: T | T[] | null | undefined): T | null {
   if (!value) {
     return null;
   }
-
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
@@ -47,15 +69,66 @@ function normalizeStatus(value: string | null | undefined) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function getJobTitle(application: JobOfferRow["applications"]) {
-  return application?.job_postings?.title?.trim() || "the role";
+function normalizeWorkMode(value: unknown): "onsite" | "hybrid" | "remote" {
+  const norm = String(value ?? "").trim().toLowerCase();
+  if (norm === "hybrid") return "hybrid";
+  if (norm === "remote" || norm === "wfh") return "remote";
+  return "onsite";
 }
 
-export async function POST(_request: NextRequest, ctx: any) {
+function normalizeEmploymentType(value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "full-time" || normalized === "full_time") return "full_time";
+  if (normalized === "part-time" || normalized === "part_time") return "part_time";
+  if (normalized === "internship" || normalized === "intern") return "intern";
+  if (normalized === "contract") return "contract";
+  return "full_time";
+}
+
+function normalizePayFrequency(value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["weekly", "bi_weekly", "semi_monthly", "monthly"].includes(normalized)) {
+    return normalized;
+  }
+  return "monthly";
+}
+
+async function checkDocusealSlugCompleted(latestUrl: string | null): Promise<boolean> {
   try {
-    const rawParams = ctx?.params;
-    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
-    const applicationId = params?.applicationId as string | undefined;
+    const slug = latestUrl?.match(/\/(?:embed\/)?s\/([^/?#]+)/i)?.[1];
+    const apiKey = process.env.DOCUSEAL_API_KEY?.trim();
+    if (!slug || !apiKey) return false;
+
+    const dsRes = await fetch(
+      `${getDocusealBaseUrl()}/submitters?slug=${encodeURIComponent(slug)}`,
+      {
+        headers: { "X-Auth-Token": apiKey },
+        cache: "no-store",
+      },
+    );
+    if (!dsRes.ok) return false;
+
+    const dsData = await dsRes.json();
+    const submitter = Array.isArray(dsData?.data)
+      ? dsData.data[0]
+      : Array.isArray(dsData)
+        ? dsData[0]
+        : dsData;
+
+    return submitter?.status === "completed" || Boolean(submitter?.completed_at);
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(_request: NextRequest, ctx: unknown) {
+  try {
+    const rawParams = (ctx as { params?: unknown })?.params;
+    const params =
+      rawParams && typeof (rawParams as Promise<unknown>).then === "function"
+        ? await (rawParams as Promise<Record<string, string | undefined>>)
+        : ((rawParams as Record<string, string | undefined> | undefined) ?? {});
+    const applicationId = params?.applicationId;
 
     if (!applicationId) {
       return NextResponse.json({ error: "Missing application id" }, { status: 400 });
@@ -72,60 +145,97 @@ export async function POST(_request: NextRequest, ctx: any) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: offer, error: offerError } = await admin
-      .from("job_offers")
-      .select(`
-        id,
-        application_id,
-        job_posting_id,
-        status,
-        salary,
-        updated_at,
-        latest_docuseal_url,
-        job_metadata,
-        metadata,
-        applications!inner (
+    const [{ data: actorProfile }, { data: offer, error: offerError }] = await Promise.all([
+      admin.from("profiles").select("role, tenant_id").eq("id", user.id).maybeSingle(),
+      admin
+        .from("job_offers")
+        .select(`
           id,
-          candidate_id,
+          application_id,
+          job_id,
           status,
-          submitted_at,
+          salary,
+          start_date,
+          work_mode,
+          work_setup,
+          work_location_id,
+          shift_start,
+          shift_end,
+          work_days,
+          docuseal_submission_id,
           updated_at,
-          profiles!applications_candidate_id_fkey (
-            first_name,
-            last_name,
-            email
-          ),
-          job_postings!inner (
+          latest_docuseal_url,
+          job_metadata,
+          metadata,
+          job_applications!inner (
             id,
-            title,
-            created_by
+            applicant_id,
+            job_id,
+            status,
+            created_at,
+            updated_at,
+            profiles!job_applications_applicant_id_fkey (
+              first_name,
+              last_name,
+              email
+            ),
+            job_postings!job_applications_job_id_fkey (
+              id,
+              title,
+              created_by,
+              tenant_id,
+              department_id,
+              salary_min,
+              salary_max
+            )
           )
-        )
-      `)
-      .eq("application_id", applicationId)
-      .maybeSingle<JobOfferRow>();
+        `)
+        .eq("application_id", applicationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<JobOfferRow>(),
+    ]);
 
     if (offerError) {
       return NextResponse.json({ error: offerError.message }, { status: 500 });
     }
 
-    if (!offer?.applications) {
+    const application = toSingle(offer?.job_applications);
+    if (!offer || !application) {
       return NextResponse.json({ error: "Job offer not found" }, { status: 404 });
     }
 
-    const application = offer.applications;
     const jobPosting = toSingle(application.job_postings);
     const normalizedOfferStatus = normalizeStatus(offer.status);
     const normalizedApplicationStatus = normalizeStatus(application.status);
 
-    if (!jobPosting?.created_by || jobPosting.created_by !== user.id) {
+    const isHrRole = HR_ROLES.has(String(actorProfile?.role ?? ""));
+    const isCreator = Boolean(jobPosting?.created_by && jobPosting.created_by === user.id);
+    const sameTenant =
+      !actorProfile?.tenant_id ||
+      !jobPosting?.tenant_id ||
+      actorProfile.tenant_id === jobPosting.tenant_id;
+
+    if ((!isHrRole && !isCreator) || !sameTenant) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (normalizedApplicationStatus === "hired" || normalizedApplicationStatus === "hire_confirmed" || normalizedOfferStatus === "hired") {
-      return NextResponse.json({ success: true, alreadyConfirmed: true, employeeId: application.candidate_id });
+    if (
+      normalizedApplicationStatus === "hired" ||
+      normalizedApplicationStatus === "hire_confirmed" ||
+      normalizedOfferStatus === "hired"
+    ) {
+      return NextResponse.json({
+        success: true,
+        alreadyConfirmed: true,
+        status: "hired",
+        employeeId: application.applicant_id,
+        warnings: [],
+      });
     }
 
+    // Non-blocking applicant_documents check: collect warnings instead of blocking
+    const warnings: string[] = [];
     if (normalizedApplicationStatus === "pre_employment") {
       const { data: applicantDocuments, error: docsError } = await admin
         .from("applicant_documents")
@@ -133,130 +243,107 @@ export async function POST(_request: NextRequest, ctx: any) {
         .eq("application_id", applicationId);
 
       if (docsError) {
-        return NextResponse.json({ error: docsError.message }, { status: 500 });
-      }
+        warnings.push(`Could not verify pre-employment documents: ${docsError.message}`);
+      } else {
+        const requiredDocuments = (applicantDocuments ?? []).filter(
+          (doc: { hr_verified?: boolean; job_required_documents?: { is_required?: boolean | null } | Array<{ is_required?: boolean | null }> | null }) => {
+            const reqDoc = toSingle(doc.job_required_documents);
+            return reqDoc?.is_required !== false;
+          },
+        );
+        const allRequiredVerified =
+          requiredDocuments.length === 0 ||
+          requiredDocuments.every((doc: { hr_verified?: boolean }) => Boolean(doc.hr_verified));
 
-      const requiredDocuments = (applicantDocuments ?? []).filter((document: any) => document.job_required_documents?.is_required !== false);
-      const allRequiredVerified = requiredDocuments.length === 0 || requiredDocuments.every((document: any) => document.hr_verified);
-
-      if (!allRequiredVerified) {
-        return NextResponse.json({ error: "All required documents must be verified before confirming hire" }, { status: 409 });
-      }
-    }
-
-    // Check if offer status allows confirmation
-    const isReadyForConfirmation = ["signed", "accepted", "hired"].includes(normalizedOfferStatus) || normalizedApplicationStatus === "hired";
-    let isActuallySigned = isReadyForConfirmation;
-
-    // If not ready yet, try a live DocuSeal check for "sent" status
-    if (!isReadyForConfirmation && normalizedOfferStatus === "sent") {
-      try {
-        const slug = offer.latest_docuseal_url?.match(
-          /\/(?:embed\/)?s\/([^/?#]+)/i
-        )?.[1];
-        if (slug) {
-          const apiUrl = getDocusealBaseUrl();
-          const apiKey = process.env.DOCUSEAL_API_KEY;
-          if (apiKey) {
-            const dsRes = await fetch(
-              `${apiUrl}/submitters?slug=${encodeURIComponent(slug)}`,
-              { 
-                headers: { "X-Auth-Token": apiKey }, 
-                cache: "no-store" as const 
-              }
-            );
-            if (dsRes.ok) {
-              const dsData = await dsRes.json();
-              const submitter = Array.isArray(dsData?.data)
-                ? dsData.data[0]
-                : Array.isArray(dsData)
-                ? dsData[0]
-                : dsData;
-              isActuallySigned =
-                submitter?.status === "completed" ||
-                !!submitter?.completed_at;
-            }
-          }
+        if (!allRequiredVerified) {
+          warnings.push("Some required pre-employment documents are not yet verified.");
         }
-      } catch (err) {
-        // Silently ignore DocuSeal API errors
-        console.warn("[Confirm Hire] DocuSeal live check failed:", err);
       }
     }
 
-    if (!isActuallySigned) {
-      return NextResponse.json({ error: "Offer is not ready for confirmation" }, { status: 409 });
-    }
+    const isReadyInDb =
+      normalizedApplicationStatus === "pre_employment" ||
+      normalizedOfferStatus === "signed";
 
-    // If we confirmed via DocuSeal live check, backfill the status
-    if (isActuallySigned && !isReadyForConfirmation) {
-      const now = new Date().toISOString();
-      await admin
-        .from("job_offers")
-        .update({ status: "SIGNED", updated_at: now })
-        .eq("id", offer.id);
+    if (!isReadyInDb) {
+      const completedViaSubmission = offer.docuseal_submission_id
+        ? await verifyDocusealSubmissionCompleted(offer.docuseal_submission_id)
+        : false;
+      const completedViaSlug =
+        !completedViaSubmission && offer.latest_docuseal_url
+          ? await checkDocusealSlugCompleted(offer.latest_docuseal_url)
+          : false;
+
+      if (!completedViaSubmission && !completedViaSlug) {
+        return NextResponse.json(
+          { error: "Offer not signed yet" },
+          { status: 409 },
+        );
+      }
+
+      const lifecycleResult = await markOfferSigned({
+        applicationId,
+        offerId: offer.id,
+        source: "confirm_hire_reconcile",
+      });
+
+      if (lifecycleResult.error) {
+        return NextResponse.json({ error: lifecycleResult.error }, { status: 500 });
+      }
     }
 
     const now = new Date().toISOString();
-    const jobTitle = getJobTitle(application);
-    const startDate = typeof offer.job_metadata?.start_date === "string" ? offer.job_metadata.start_date : null;
+    const jobTitle = jobPosting?.title?.trim() || "the role";
+    const metadata = offer.metadata ?? {};
+    const jobMetadata = offer.job_metadata ?? {};
 
-    const normalizeEmploymentType = (value: unknown) => {
-      const normalized = String(value ?? "").trim().toLowerCase();
-      if (normalized === "full-time" || normalized === "full_time") return "full_time";
-      if (normalized === "part-time" || normalized === "part_time") return "part_time";
-      if (normalized === "internship" || normalized === "intern") return "intern";
-      if (normalized === "contract") return "contract";
-      return "full_time";
-    };
+    const startDate =
+      offer.start_date ??
+      (typeof jobMetadata.start_date === "string" ? jobMetadata.start_date : null) ??
+      now.split("T")[0];
 
-    const normalizePayFrequency = (value: unknown) => {
-      const normalized = String(value ?? "").trim().toLowerCase();
-      if (["weekly", "bi_weekly", "semi_monthly", "monthly"].includes(normalized)) {
-        return normalized;
-      }
-      return "monthly";
-    };
+    const offerSalary =
+      typeof offer.salary === "number" && offer.salary > 0 ? offer.salary : null;
+    const metadataSalary =
+      typeof jobMetadata.base_salary === "number" && jobMetadata.base_salary > 0
+        ? jobMetadata.base_salary
+        : typeof jobMetadata.salary_amount === "number" && jobMetadata.salary_amount > 0
+          ? jobMetadata.salary_amount
+          : typeof jobMetadata.salary === "number" && jobMetadata.salary > 0
+            ? jobMetadata.salary
+            : null;
 
-    const offerSalary = typeof (offer as any).salary === "number" && (offer as any).salary > 0 ? (offer as any).salary : null;
-    const metadataSalary = typeof offer.job_metadata?.base_salary === "number" && offer.job_metadata.base_salary > 0
-      ? offer.job_metadata.base_salary
-      : typeof offer.job_metadata?.salary_amount === "number" && offer.job_metadata.salary_amount > 0
-      ? offer.job_metadata.salary_amount
-      : typeof offer.job_metadata?.salary === "number" && offer.job_metadata.salary > 0
-      ? offer.job_metadata.salary
-      : null;
-
-    const baseSalaryValue = Number(
-      offerSalary ?? metadataSalary ?? jobPosting?.salary_min ?? jobPosting?.salary_max ?? 0
-    ) || 0;
-
-    // Perform critical updates sequentially to avoid partial state.
-    // Supabase JS doesn't expose DB transactions here, so apply updates
-    // in order and attempt simple compensating rollbacks on failure.
-
-    const results: { step: string; error?: string | null }[] = [];
+    const baseSalaryValue =
+      Number(
+        offerSalary ??
+          metadataSalary ??
+          jobPosting?.salary_min ??
+          jobPosting?.salary_max ??
+          0,
+      ) || 0;
 
     // 1) Update job_offers -> HIRED
     const { error: offerUpdateError } = await admin
       .from("job_offers")
       .update({ status: "HIRED", updated_at: now })
       .eq("id", offer.id);
-    results.push({ step: "offer_update", error: offerUpdateError?.message ?? null });
+
     if (offerUpdateError) {
       return NextResponse.json({ error: offerUpdateError.message }, { status: 500 });
     }
 
-    // 2) Update applications -> hired
+    // 2) Update job_applications -> hired
     const { error: applicationUpdateError } = await admin
-      .from("applications")
+      .from("job_applications")
       .update({ status: "hired", updated_at: now })
       .eq("id", applicationId);
-    results.push({ step: "application_update", error: applicationUpdateError?.message ?? null });
+
     if (applicationUpdateError) {
-      // Attempt to rollback offer status to previous value
       try {
-        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+        await admin
+          .from("job_offers")
+          .update({ status: offer.status, updated_at: offer.updated_at })
+          .eq("id", offer.id);
       } catch (rollbackErr) {
         console.warn("[Confirm Hire] failed to rollback offer status", rollbackErr);
       }
@@ -267,28 +354,37 @@ export async function POST(_request: NextRequest, ctx: any) {
     const { error: profileUpdateError } = await admin
       .from("profiles")
       .update({ role: "employee", updated_at: now })
-      .eq("id", application.candidate_id);
-    results.push({ step: "profile_update", error: profileUpdateError?.message ?? null });
+      .eq("id", application.applicant_id);
+
     if (profileUpdateError) {
-      // Attempt rollbacks for previous steps
       try {
-        await admin.from("applications").update({ status: application.status, updated_at: application.updated_at }).eq("id", applicationId);
-        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+        await admin
+          .from("job_applications")
+          .update({ status: application.status, updated_at: application.updated_at })
+          .eq("id", applicationId);
+        await admin
+          .from("job_offers")
+          .update({ status: offer.status, updated_at: offer.updated_at })
+          .eq("id", offer.id);
       } catch (rollbackErr) {
         console.warn("[Confirm Hire] failed to rollback after profile update failure", rollbackErr);
       }
       return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
     }
 
-    // Extract schedule settings from offer metadata or job_metadata
-    const metadata = offer.metadata ?? {};
-    const jobMetadata = offer.job_metadata ?? {};
+    const extractedWorkMode = normalizeWorkMode(
+      offer.work_mode ??
+        offer.work_setup ??
+        metadata.work_model ??
+        jobMetadata.work_model ??
+        jobMetadata.work_arrangement,
+    );
 
-    const extractedWorkModel =
-      (typeof metadata.work_model === "string" ? metadata.work_model : null) ??
-      (typeof jobMetadata.work_model === "string" ? jobMetadata.work_model : null) ??
-      (typeof jobMetadata.work_arrangement === "string" ? jobMetadata.work_arrangement : null) ??
-      "onsite";
+    const defaultWorkDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const extractedWorkDays =
+      Array.isArray(offer.work_days) && offer.work_days.length > 0
+        ? offer.work_days
+        : defaultWorkDays;
 
     const defaultHybridDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const extractedHybridDays =
@@ -298,83 +394,93 @@ export async function POST(_request: NextRequest, ctx: any) {
       defaultHybridDays;
 
     const extractedShiftStart =
+      offer.shift_start ??
       (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
       (typeof jobMetadata.shift_start === "string" ? jobMetadata.shift_start : null) ??
       "09:00";
 
     const extractedShiftEnd =
+      offer.shift_end ??
       (typeof metadata.shift_end === "string" ? metadata.shift_end : null) ??
       (typeof jobMetadata.shift_end === "string" ? jobMetadata.shift_end : null) ??
       "18:00";
 
-    // 4) Upsert employees record
+    const tenantId =
+      jobPosting?.tenant_id ??
+      actorProfile?.tenant_id ??
+      "00000000-0000-0000-0000-000000000001";
+
+    // 4) Upsert employees record (including NOT NULL columns from 20260930 migration)
     const { error: employeeInsertError } = await admin
       .from("employees")
       .upsert(
         {
-          profile_id: application.candidate_id,
+          profile_id: application.applicant_id,
+          tenant_id: tenantId,
           application_id: applicationId,
-          department_id: null,
+          job_offer_id: offer.id,
+          department_id: jobPosting?.department_id ?? null,
           reports_to: null,
           job_title: jobTitle,
-          employment_type: normalizeEmploymentType(offer.job_metadata?.employment_type),
+          employment_type: normalizeEmploymentType(jobMetadata.employment_type),
           employment_status: "active",
-          start_date: startDate ?? new Date().toISOString().split("T")[0],
+          start_date: startDate,
+          salary: baseSalaryValue,
           base_salary: baseSalaryValue,
-          pay_frequency: normalizePayFrequency(offer.job_metadata?.pay_frequency),
-          currency: typeof offer.job_metadata?.salary_currency === "string" ? offer.job_metadata.salary_currency : "PHP",
-          work_model: extractedWorkModel || "onsite",
-          hybrid_onsite_days: extractedHybridDays || defaultHybridDays,
-          shift_start: extractedShiftStart || "09:00",
-          shift_end: extractedShiftEnd || "18:00",
-          updated_at: new Date().toISOString(),
+          pay_frequency: normalizePayFrequency(jobMetadata.pay_frequency),
+          currency:
+            typeof jobMetadata.salary_currency === "string"
+              ? jobMetadata.salary_currency
+              : "PHP",
+          work_mode: extractedWorkMode,
+          work_location_id: offer.work_location_id ?? null,
+          work_days: extractedWorkDays,
+          hybrid_onsite_days: extractedHybridDays,
+          shift_start: extractedShiftStart,
+          shift_end: extractedShiftEnd,
+          updated_at: now,
         },
-        { onConflict: "profile_id" }
+        { onConflict: "profile_id" },
       );
-    results.push({ step: "employee_upsert", error: employeeInsertError?.message ?? null });
+
     if (employeeInsertError) {
-      // Try rolling back profile and application/offer changes
       try {
-        // We didn't previously fetch the candidate's prior role reliably in the
-        // initial query; restore to null to avoid applying an incorrect role.
-        await admin.from("profiles").update({ role: null, updated_at: application.updated_at }).eq("id", application.candidate_id);
-        await admin.from("applications").update({ status: application.status, updated_at: application.updated_at }).eq("id", applicationId);
-        await admin.from("job_offers").update({ status: offer.status, updated_at: offer.updated_at }).eq("id", offer.id);
+        await admin
+          .from("profiles")
+          .update({ role: "applicant", updated_at: application.updated_at })
+          .eq("id", application.applicant_id);
+        await admin
+          .from("job_applications")
+          .update({ status: application.status, updated_at: application.updated_at })
+          .eq("id", applicationId);
+        await admin
+          .from("job_offers")
+          .update({ status: offer.status, updated_at: offer.updated_at })
+          .eq("id", offer.id);
       } catch (rollbackErr) {
         console.warn("[Confirm Hire] failed to rollback after employee upsert failure", rollbackErr);
       }
       return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
     }
 
-    // 5) Archive/Clean up old applicant-phase notifications & Insert fresh welcome notification
-    try {
-      await admin
-        .from("notifications")
-        .delete()
-        .eq("recipient_id", application.candidate_id);
-    } catch (cleanupErr) {
-      console.warn("[Confirm Hire] failed to cleanup applicant notifications", cleanupErr);
-    }
+    // 5) Send hire_confirmed notification via admin helper
+    await sendNotification({
+      recipientId: application.applicant_id,
+      type: "hire_confirmed",
+      title: "Hire Confirmed",
+      body: `Congratulations on joining Kayod as ${jobTitle}! Review your schedule and profile to get started.`,
+      actionUrl: "/employee/dashboard",
+      actionName: "confirmHire",
+    });
 
-    const companyName = "Kayod";
+    revalidatePath("/hr", "layout");
 
-    const { error: notificationError } = await admin
-      .from("notifications")
-      .insert({
-        recipient_id: application.candidate_id,
-        title: "Welcome to the Team! 🎉",
-        body: `Congratulations on joining ${companyName}! We are glad you're here. Review your schedule and profile to get started.`,
-        type: "welcome",
-        action_url: "/employee/dashboard",
-        is_read: false,
-        created_at: new Date().toISOString()
-      });
-    results.push({ step: "notification_insert", error: notificationError?.message ?? null });
-    if (notificationError) {
-      console.warn("[Confirm Hire] failed to insert welcome notification", notificationError.message);
-    }
-
-    return NextResponse.json({ success: true, employeeId: application.candidate_id });
+    return NextResponse.json({
+      success: true,
+      status: "hired",
+      employeeId: application.applicant_id,
+      warnings,
+    });
   } catch (error) {
     console.error("[Confirm Hire] Failed to confirm hire:", error);
     return NextResponse.json({ error: "Failed to confirm hire" }, { status: 500 });
