@@ -23,8 +23,9 @@ function getNotificationIcon(type: string) {
     case "offer_declined":
     case "offer_negotiation_submitted":
     case "offer_negotiation_responded":
-    case "hire_confirmed":
       return "description";
+    case "hire_confirmed":
+      return "celebration";
     case "leave_status_changed":
       return "beach_access";
     case "payroll_processed":
@@ -87,6 +88,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
           if (isEmployee) {
             const employeeTypes = [
               "welcome",
+              "hire_confirmed",
               "leave_status_changed",
               "payroll_processed",
               "schedule_published",
@@ -234,7 +236,11 @@ export default function NotificationBell({ userId }: { userId?: string | null })
 
     setIsOpen(false);
     if (notification.action_url) {
-      router.push(notification.action_url);
+      if (notification.action_url.startsWith("/api/")) {
+        window.location.href = notification.action_url;
+      } else {
+        router.push(notification.action_url);
+      }
     }
   };
 
