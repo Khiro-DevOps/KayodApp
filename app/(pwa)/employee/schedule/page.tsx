@@ -116,16 +116,30 @@ export default async function EmployeeSchedulePage() {
   }
 
   // Safe default values if employee record is not found (e.g. testing / newly promoted)
+  const todayDate = new Date();
+  const thisWeekMonday = getMonday(todayDate);
+  const thisWeekMondayStr = `${thisWeekMonday.getFullYear()}-${String(thisWeekMonday.getMonth() + 1).padStart(2, "0")}-${String(thisWeekMonday.getDate()).padStart(2, "0")}`;
+
+  const { data: publishedSchedule } = await supabase
+    .from("schedules")
+    .select("id, week_start, shift_start, shift_end, location, notes, is_published, updated_at")
+    .eq("employee_id", employee.id)
+    .eq("week_start", thisWeekMondayStr)
+    .eq("is_published", true)
+    .order("updated_at", { ascending: false })
+    .maybeSingle();
+
+  const isSchedulePublished = Boolean(publishedSchedule);
+
   const workModel: "onsite" | "wfh" | "hybrid" = (employee?.work_model as any) || (employee?.work_mode as any) || "onsite";
   const hybridDays: string[] = Array.isArray(employee?.hybrid_onsite_days)
     ? employee.hybrid_onsite_days
     : Array.isArray(employee?.work_days)
     ? employee.work_days
     : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const shiftStart = employee?.shift_start || "09:00";
-  const shiftEnd = employee?.shift_end || "18:00";
+  const shiftStart = publishedSchedule?.shift_start || employee?.shift_start || "09:00";
+  const shiftEnd = publishedSchedule?.shift_end || employee?.shift_end || "18:00";
 
-  const todayDate = new Date();
   const todayDayName = todayDate.toLocaleDateString("en-US", { weekday: "long" });
   const todayDateStr = todayDate.toISOString().split("T")[0];
 
@@ -138,7 +152,6 @@ export default async function EmployeeSchedulePage() {
 
   const isTodayOnsite = isDayOnsite(todayDayName);
 
-  const thisWeekMonday = getMonday(todayDate);
   const weekDates = getWeekDates(thisWeekMonday);
 
   const formattedShiftRange = `${formatTime12h(shiftStart)} - ${formatTime12h(shiftEnd)}`;
@@ -189,10 +202,17 @@ export default async function EmployeeSchedulePage() {
 
         {/* Part 2.2: Personal Weekly Shift Calendar */}
         <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_12px_rgba(39,36,84,0.06)] space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
-              Personal Weekly Shift Calendar
-            </p>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
+                Personal Weekly Shift Calendar
+              </p>
+              {isSchedulePublished && (
+                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                  Published
+                </span>
+              )}
+            </div>
             <p className="text-xs text-text-secondary font-medium">
               {thisWeekMonday.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
               {" – "}
