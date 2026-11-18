@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { Palmtree, Banknote, Calendar } from "lucide-react";
+import { Palmtree, Banknote, Calendar, CheckCircle2, ClipboardCheck } from "lucide-react";
 
+import { getEmployeeOnboardingProgress } from "@/app/actions/onboarding-documents";
 import { createClient } from "@/lib/supabase/server";
 import PageContainer from "@/components/ui/page-container";
 import type { LeaveBalance, LeaveRequest, Payslip, Profile, TimeLog } from "@/lib/types";
@@ -41,7 +42,13 @@ function formatLongDate(value: string) {
   });
 }
 
-export default async function EmployeeDashboardPage() {
+export default async function EmployeeDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const showWelcome = resolvedSearchParams.welcome === "1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -77,7 +84,7 @@ export default async function EmployeeDashboardPage() {
     );
   }
 
-  const [balanceResult, payslipResult, leaveResult, timeLogResult] = await Promise.all([
+  const [balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult] = await Promise.all([
     supabase
       .from("leave_balances")
       .select("id, leave_type, year, total_credits, used_credits, remaining, updated_at")
@@ -105,7 +112,10 @@ export default async function EmployeeDashboardPage() {
       .order("punched_at", { ascending: false })
       .limit(3)
       .returns<TimeLog[]>(),
+    getEmployeeOnboardingProgress(employee.id),
   ]);
+
+  const onboardingProgress = onboardingResult.success ? onboardingResult.data ?? null : null;
 
   const balances = balanceResult.data ?? [];
   const latestPayslip = (payslipResult.data as EmployeePayslip | null) ?? null;
@@ -126,6 +136,78 @@ export default async function EmployeeDashboardPage() {
           </h1>
           <p className="text-xs text-text-secondary">{todayLabel}</p>
         </div>
+
+        {showWelcome && (
+          <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm font-medium text-emerald-900 shadow-sm">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+            <span>Welcome to the team! Your employee workspace is now active.</span>
+          </div>
+        )}
+
+        {onboardingProgress && onboardingProgress.totalRequirements > 0 && (
+          <SurfaceCard>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <ClipboardCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardLabel>PRE-EMPLOYMENT REQUIREMENTS</CardLabel>
+                  <p className="mt-1 text-sm font-semibold text-text-primary">
+                    {onboardingProgress.approvedCount}/{onboardingProgress.totalRequirements} verified
+                    <span className="ml-2 text-xs font-normal text-text-secondary">
+                      ({onboardingProgress.counts.submitted} submitted · {onboardingProgress.counts.pending + onboardingProgress.counts.rejected} remaining)
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/employee/onboarding"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#2d2b68] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#2A2375] active:scale-[0.98]"
+              >
+                {onboardingProgress.approvedCount < onboardingProgress.totalRequirements
+                  ? "Complete Pre-Employment Requirements"
+                  : "View Onboarding Documents"}
+              </Link>
+            </div>
+
+            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#e9e5ff]">
+              <div
+                className="h-full rounded-full bg-[#2d2b68] transition-all duration-300"
+                style={{ width: `${onboardingProgress.completionPercentage}%` }}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {onboardingProgress.items.slice(0, 4).map((item) => {
+                const badge =
+                  item.status === "approved"
+                    ? { label: "Verified", className: "bg-emerald-50 text-emerald-700 border-emerald-200" }
+                    : item.status === "submitted"
+                      ? { label: "Submitted", className: "bg-sky-50 text-sky-700 border-sky-200" }
+                      : item.status === "rejected"
+                        ? { label: "Action Required", className: "bg-red-50 text-red-700 border-red-200" }
+                        : { label: "Missing", className: "bg-amber-50 text-amber-700 border-amber-200" };
+
+                return (
+                  <div
+                    key={item.requirement.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-[#e6e4f0] bg-[#fbfaff] px-3 py-2.5"
+                  >
+                    <span className="truncate text-sm font-medium text-text-primary">
+                      {item.requirement.document_name}
+                    </span>
+                    <span
+                      className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </SurfaceCard>
+        )}
 
         <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="grid gap-4 sm:grid-cols-2">
