@@ -7,7 +7,7 @@ import {
   updateOfferDraft,
 } from "@/app/(auth)/actions/offer-actions";
 import { getDocusealBaseUrl } from "@/lib/docuseal";
-import { notifyJobCreator } from "@/lib/notifications";
+import { notifyJobCreator, sendNotification } from "@/lib/notifications";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -510,6 +510,34 @@ export async function respondToNegotiation(
 
     if (updateError) {
       return { success: false, error: updateError.message };
+    }
+
+    const { data: remainingPending, error: remainingError } = await admin
+      .from("job_offer_negotiations")
+      .select("id")
+      .eq("application_id", negotiationRow.application_id)
+      .eq("round", negotiationRow.round ?? 1)
+      .eq("status", "pending")
+      .limit(1);
+
+    if (remainingError) {
+      return { success: false, error: remainingError.message };
+    }
+
+    if (
+      negotiationRow.status === "pending" &&
+      (!remainingPending || remainingPending.length === 0)
+    ) {
+      const jobTitle = authCheck.jobPosting.title?.trim() || "position";
+      await sendNotification({
+        recipientId: authCheck.application.applicant_id,
+        type: "application_status_changed",
+        title: `Offer Negotiation Response for ${jobTitle}`,
+        body: "HR has responded to your offer change requests.",
+        actionUrl: `/applicant/applications/${negotiationRow.application_id}`,
+        senderId: authCheck.userId,
+        actionName: "respondToNegotiation",
+      });
     }
 
     revalidatePath(`/hr/offers/${negotiationRow.application_id}`);
