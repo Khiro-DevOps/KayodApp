@@ -22,7 +22,8 @@ interface ScheduleClientProps {
   shiftStart: string;
   shiftEnd: string;
   initialActiveLog: AttendanceLog | null;
-  targetOfficeCoords: { lat: number; lng: number; name: string };
+  targetOfficeCoords: { lat: number; lng: number; name: string } | null;
+  geofenceError?: string | null;
   remoteAddress: string;
 }
 
@@ -50,6 +51,7 @@ export default function ScheduleClient({
   shiftEnd,
   initialActiveLog,
   targetOfficeCoords,
+  geofenceError,
   remoteAddress,
 }: ScheduleClientProps) {
   const searchParams = useSearchParams();
@@ -277,8 +279,8 @@ export default function ScheduleClient({
   // Calculate distance pill display
   let distancePillText = "In Work Zone";
   if (!isTodayOnsite || workModel === "wfh") {
-    distancePillText = "In Work Zone (WFH)";
-  } else if (userLocation) {
+    distancePillText = targetOfficeCoords ? "In Work Zone (WFH)" : "Remote geofence unconfigured";
+  } else if (userLocation && targetOfficeCoords) {
     const dist = calculateDistanceKm(
       userLocation.lat,
       userLocation.lng,
@@ -286,6 +288,8 @@ export default function ScheduleClient({
       targetOfficeCoords.lng
     );
     distancePillText = `${dist} km from office`;
+  } else if (!targetOfficeCoords) {
+    distancePillText = "Office geofence unconfigured";
   }
 
   return (
@@ -363,14 +367,25 @@ export default function ScheduleClient({
 
         {/* Map Viewport Container */}
         <div className="h-48 md:h-56 rounded-2xl overflow-hidden border border-gray-100 relative bg-gray-50">
-          <WorkspaceMap
-            targetLocation={{
-              lat: targetOfficeCoords.lat,
-              lng: targetOfficeCoords.lng,
-              label: targetOfficeCoords.name,
-            }}
-            userLocation={userLocation}
-          />
+          {targetOfficeCoords ? (
+            <WorkspaceMap
+              targetLocation={{
+                lat: targetOfficeCoords.lat,
+                lng: targetOfficeCoords.lng,
+                label: targetOfficeCoords.name,
+              }}
+              userLocation={userLocation}
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
+              <span className="material-symbols-outlined text-[28px] text-amber-600">
+                location_off
+              </span>
+              <p className="text-xs font-semibold text-gray-800">
+                {geofenceError || "Geofence coordinates not configured for your account."}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Bottom Metrics Pill Grid */}

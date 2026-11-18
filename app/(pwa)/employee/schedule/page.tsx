@@ -4,6 +4,7 @@ import Link from "next/link";
 import PageContainer from "@/components/ui/page-container";
 import ScheduleClient from "./schedule-client";
 import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
+import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -78,52 +79,17 @@ export default async function EmployeeSchedulePage() {
     );
   }
 
-  // Fetch employee remote residence if remote/hybrid
-  const { data: remoteResidence } = await supabase
-    .from("employee_remote_residences")
-    .select("*")
-    .eq("employee_id", employee.id)
-    .maybeSingle();
+  const geofence = await resolveEmployeeGeofence(supabase, {
+    id: employee.id,
+    tenant_id: employee.tenant_id,
+    work_mode: employee.work_mode,
+    work_model: employee.work_model,
+    work_location_id: employee.work_location_id,
+    hybrid_onsite_days: employee.hybrid_onsite_days,
+    work_days: employee.work_days,
+  });
 
-  type OfficeBranch = {
-    name?: string;
-    address?: string;
-    latitude?: number | string | null;
-    longitude?: number | string | null;
-    radius_meters?: number | null;
-  };
-
-  let assignedBranch: OfficeBranch | null = null;
-  if (employee.work_location_id) {
-    const { data: workLoc } = await supabase
-      .from("work_locations")
-      .select("name, address, latitude, longitude, radius_meters")
-      .eq("id", employee.work_location_id)
-      .maybeSingle();
-
-    if (workLoc) {
-      assignedBranch = workLoc;
-    } else {
-      const { data: legacyBranch } = await supabase
-        .from("office_branches")
-        .select("name, address, latitude, longitude, radius_meters")
-        .eq("id", employee.work_location_id)
-        .maybeSingle();
-      assignedBranch = legacyBranch;
-    }
-  } else {
-    const { data: defaultWorkLoc } = await supabase
-      .from("work_locations")
-      .select("name, address, latitude, longitude, radius_meters")
-      .eq("is_default", true)
-      .limit(1)
-      .maybeSingle();
-    assignedBranch = defaultWorkLoc;
-  }
-
-  const hasOfficeCoordinates = Boolean(
-    assignedBranch && assignedBranch.latitude != null && assignedBranch.longitude != null
-  );
+  const hasOfficeCoordinates = geofence.configured;
 
   // Fetch active attendance log if any
   let activeAttendanceLog = null;
@@ -153,7 +119,13 @@ export default async function EmployeeSchedulePage() {
 
   const isSchedulePublished = Boolean(publishedSchedule);
 
-  const workModel: "onsite" | "wfh" | "hybrid" = (employee?.work_model as any) || (employee?.work_mode as any) || "onsite";
+  const rawWorkMode = (employee?.work_mode as string | null) || (employee?.work_model as string | null) || "onsite";
+  const workModel: "onsite" | "wfh" | "hybrid" =
+    rawWorkMode === "remote" || rawWorkMode === "wfh"
+      ? "wfh"
+      : rawWorkMode === "hybrid"
+        ? "hybrid"
+        : "onsite";
   const hybridDays: string[] = Array.isArray(employee?.hybrid_onsite_days)
     ? employee.hybrid_onsite_days
     : Array.isArray(employee?.work_days)
@@ -178,15 +150,11 @@ export default async function EmployeeSchedulePage() {
 
   const formattedShiftRange = `${formatTime12h(shiftStart)} - ${formatTime12h(shiftEnd)}`;
 
-  const locationName = (workModel as string) === "wfh" || (workModel as string) === "remote"
-    ? "Remote Residence"
-    : assignedBranch?.name || "Company Head Office";
-  const locationAddress = (workModel as string) === "wfh" || (workModel as string) === "remote"
-    ? remoteResidence?.address || "Registered Remote Residence, Metro Manila"
-    : assignedBranch?.address || "Company HQ, Makati City, Metro Manila";
-  const locationRadius = (workModel as string) === "wfh" || (workModel as string) === "remote"
-    ? remoteResidence?.geofence_radius_meters || 200
-    : assignedBranch?.radius_meters || 200;
+  const locationName = geofence.name;
+  const locationAddress =
+    geofence.address ||
+    (geofence.configured ? "Address not specified" : geofence.error);
+  const locationRadius = geofence.radiusMeters;
 
   return (
     <PageContainer>
@@ -203,13 +171,20 @@ export default async function EmployeeSchedulePage() {
               shiftEnd={shiftEnd}
               initialActiveLog={activeAttendanceLog}
               targetOfficeCoords={
-                assignedBranch?.latitude && assignedBranch?.longitude
-                  ? { lat: Number(assignedBranch.latitude), lng: Number(assignedBranch.longitude), name: assignedBranch.name || "Assigned Office Location" }
-                  : remoteResidence?.latitude && remoteResidence?.longitude
-                  ? { lat: Number(remoteResidence.latitude), lng: Number(remoteResidence.longitude), name: "Registered Remote Residence" }
-                  : { lat: 14.5547, lng: 121.0244, name: "Company Head Office (Makati HQ)" }
+                geofence.configured
+                  ? {
+                      lat: geofence.latitude,
+                      lng: geofence.longitude,
+                      name: geofence.name,
+                    }
+                  : null
               }
-              remoteAddress={remoteResidence?.address || "Registered Remote Residence, Metro Manila"}
+              geofenceError={geofence.configured ? null : geofence.error}
+              remoteAddress={
+                geofence.mode === "remote_residence" && geofence.address
+                  ? geofence.address
+                  : "Registered Remote Residence"
+              }
             />
           </div>
 
