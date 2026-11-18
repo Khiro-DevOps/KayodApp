@@ -193,6 +193,8 @@ export interface JobPosting {
   created_at: string;
   updated_at: string;
   departments?: Department;
+  tenant?: { name: string | null } | Array<{ name: string | null }> | null;
+  companyName?: string;
   creator?: Profile;
 }
 

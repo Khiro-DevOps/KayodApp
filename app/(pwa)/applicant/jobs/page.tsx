@@ -133,7 +133,7 @@ export default async function JobsPage({ searchParams }: Props) {
 
   let query = supabase
     .from("job_postings")
-    .select("*, departments(name)")
+    .select("*, departments(name), tenant:tenants(name)")
     .eq("is_published", true);
 
   if (location && location !== "all") {
@@ -146,10 +146,19 @@ export default async function JobsPage({ searchParams }: Props) {
 
   const { data: jobs } = await query.order("created_at", { ascending: false });
   const normalizedQuery = searchQuery.toLowerCase();
-  const filteredJobs = (jobs ?? []).filter((job) => {
-    if (!filterByPayRange(job as JobPosting, payMin, payMax)) return false;
+  const jobsWithCompany = (jobs ?? []).map((rawJob) => {
+    const job = rawJob as JobPosting;
+    const tenantRel = Array.isArray(job.tenant) ? job.tenant[0] : job.tenant;
+    const companyName = tenantRel?.name?.trim() || "Company";
+    return {
+      ...job,
+      companyName,
+    };
+  });
+  const filteredJobs = jobsWithCompany.filter((job) => {
+    if (!filterByPayRange(job, payMin, payMax)) return false;
     if (!normalizedQuery) return true;
-    const haystack = `${job.title ?? ""} ${job.description ?? ""} ${job.location ?? ""} ${job.job_category ?? ""}`.toLowerCase();
+    const haystack = `${job.title ?? ""} ${job.companyName ?? ""} ${job.description ?? ""} ${job.location ?? ""} ${job.job_category ?? ""}`.toLowerCase();
     return haystack.includes(normalizedQuery);
   });
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
@@ -208,7 +217,7 @@ export default async function JobsPage({ searchParams }: Props) {
       shortlistedJobs
         .filter((item) => item.score >= 25)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 8)
+        .slice(0, 10)
         .map(async ({ job, score }) => {
           const appliedInfo = applicationsMap[job.id];
           const isApplied = Boolean(appliedInfo?.hasApplied);
