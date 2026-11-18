@@ -77,8 +77,14 @@ export async function POST(req: NextRequest) {
       // Ignore auth lookup errors in dev route
     }
 
-    // @ts-ignore - job is a joined object
-    const resolvedTenantId: string | null = application.job?.tenant_id ?? candidateProfile?.tenant_id ?? callerTenantId ?? null
+    const jobInfo = (Array.isArray(application.job) ? application.job[0] : application.job) as {
+      title?: string | null
+      salary_min?: number | null
+      employment_type?: string | null
+      tenant_id?: string | null
+    } | null
+
+    const resolvedTenantId: string | null = jobInfo?.tenant_id ?? candidateProfile?.tenant_id ?? callerTenantId ?? null
 
     // 4. Update profile role (and sync tenant_id if missing)
     const { error: updateProfileError } = await admin
@@ -104,14 +110,11 @@ export async function POST(req: NextRequest) {
 
     let employeeId = existingEmployee?.id
 
-    // @ts-ignore - job is a joined object
-    const rawJobTitle = application.job?.title
+    const rawJobTitle = jobInfo?.title
     const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
-    // @ts-ignore
-    const rawSalary = Number(application.job?.salary_min || 0)
+    const rawSalary = Number(jobInfo?.salary_min || 0)
     const baseSalary = rawSalary > 0 ? rawSalary : 45000
-    // @ts-ignore
-    const empType = application.job?.employment_type || "full_time"
+    const empType = jobInfo?.employment_type || "full_time"
 
     if (!existingEmployee) {
       const { data: newEmployee, error: createEmployeeError } = await admin

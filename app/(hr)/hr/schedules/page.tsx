@@ -51,12 +51,24 @@ export default async function HRSchedulesPage() {
 
   const allowedStatuses = new Set(["active", "probation", "onboarding"]);
 
-  const formattedEmployees: HRScheduleEmployee[] = (employees ?? [])
-    .filter((emp: any) =>
+  type RawEmployeeRow = {
+    id: string;
+    job_title: string | null;
+    work_model: string | null;
+    work_mode: string | null;
+    hybrid_onsite_days: string[] | null;
+    shift_start: string | null;
+    shift_end: string | null;
+    employment_status: string | null;
+    profiles: { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
+  };
+
+  const formattedEmployees: HRScheduleEmployee[] = ((employees ?? []) as RawEmployeeRow[])
+    .filter((emp) =>
       allowedStatuses.has(String(emp.employment_status ?? "active").toLowerCase())
     )
-    .map((emp: any) => {
-      const p = emp.profiles as { first_name?: string; last_name?: string } | null;
+    .map((emp) => {
+      const p = Array.isArray(emp.profiles) ? emp.profiles[0] ?? null : emp.profiles;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
       const rawModel = emp.work_model || (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
 
