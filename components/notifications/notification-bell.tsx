@@ -338,9 +338,8 @@ export default function NotificationBell({ userId }: { userId?: string | null })
                         handleMarkAsRead(item);
                       }
                     }}
-                    className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 cursor-pointer ${
-                      !item.is_read ? "bg-blue-50/30" : ""
-                    }`}
+                    className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 cursor-pointer ${!item.is_read ? "bg-blue-50/30" : ""
+                      }`}
                   >
                     <div className="p-2 rounded-xl bg-gray-100 text-gray-600 shrink-0 flex items-center justify-center">
                       <span className="material-symbols-outlined text-[18px]">{iconName}</span>

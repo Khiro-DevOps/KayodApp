@@ -153,7 +153,7 @@ function mapJobOfferStatus(status: string) {
 function getStatusMeta(status: string) {
   // Handle both legacy (lowercase) and modern (uppercase) status formats
   const normalizedStatus = status?.toLowerCase?.() || status;
-  
+
   switch (normalizedStatus) {
     case "signed":
     case "accepted":
@@ -660,10 +660,10 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
     const { data: branchRows } = tenantId
       ? await admin
-          .from("office_branches")
-          .select("id, name, address")
-          .eq("tenant_id", tenantId)
-          .order("name")
+        .from("office_branches")
+        .select("id, name, address")
+        .eq("tenant_id", tenantId)
+        .order("name")
       : { data: null };
 
     return (
