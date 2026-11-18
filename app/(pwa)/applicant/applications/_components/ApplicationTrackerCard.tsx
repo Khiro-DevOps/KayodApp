@@ -82,7 +82,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
     stored: application.matchScore,
   });
 
-  const matchScoreClasses = "bg-purple-50 text-purple-700 border border-purple-200/70";
+  const matchScoreClasses = "bg-[#F0ECFF] text-[#1F195E] border border-[#E0D9FC]";
 
   const getWorkModeBadge = (mode?: string | null) => {
     if (!mode) return null;
@@ -110,7 +110,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
             navigateToDetail();
           }
         }}
-        className="w-full min-w-0 rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs hover:border-purple-300 hover:shadow-sm transition-all cursor-pointer"
+        className="w-full min-w-0 rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -123,7 +123,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
 
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
               {application.job.companyName && (
-                <span className="font-semibold text-purple-700">
+                <span className="font-semibold text-[#1F195E]">
                   {application.job.companyName}
                 </span>
               )}

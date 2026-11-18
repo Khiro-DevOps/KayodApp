@@ -202,7 +202,7 @@ export default function ApplicantJobsClient({
               <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
                 Jobs For You
               </h2>
-              <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#E0D9FC] bg-[#F0ECFF] px-2.5 py-0.5 text-xs font-semibold text-[#1F195E]">
                 <Sparkles className="h-3.5 w-3.5" />
                 Top Matches
               </span>
@@ -212,7 +212,7 @@ export default function ApplicantJobsClient({
             </p>
           </div>
           {selectedResumeTitle ? (
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50/70 px-3 py-1 text-xs font-semibold text-purple-700">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E0D9FC] bg-[#F0ECFF] px-3 py-1 text-xs font-semibold text-[#1F195E]">
               <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
               <span className="max-w-[180px] truncate">{selectedResumeTitle}</span>
             </div>
@@ -239,17 +239,17 @@ export default function ApplicantJobsClient({
                   <article
                     key={job.id}
                     onClick={() => openJobModal(job)}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
+                    className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-3">
                       {/* Top Row */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-purple-700 transition-colors truncate">
+                          <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#1F195E] transition-colors truncate">
                             {job.title}
                           </h3>
                           <p className="mt-1 flex items-center gap-1.5 text-xs sm:text-sm text-slate-600 truncate">
-                            <Building2 className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+                            <Building2 className="h-3.5 w-3.5 shrink-0 text-[#1F195E]" />
                             <span className="truncate font-medium text-slate-700">{companyName}</span>
                             {job.location ? <span className="truncate text-slate-500">• {job.location}</span> : null}
                           </p>
@@ -288,7 +288,7 @@ export default function ApplicantJobsClient({
                           e.stopPropagation();
                           openJobModal(job);
                         }}
-                        className="rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                        className="rounded-lg bg-[#1F195E] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#2a2376] transition-colors"
                       >
                         {appliedInfo?.hasApplied ? "View Details" : "Quick Apply"}
                       </button>
@@ -313,7 +313,7 @@ export default function ApplicantJobsClient({
       <section className="space-y-4">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-slate-900">All Open Roles</h2>
-          <span className="rounded-full bg-purple-50 border border-purple-200 text-purple-700 px-3 py-0.5 text-xs font-semibold">
+          <span className="rounded-full bg-[#F0ECFF] border border-[#E0D9FC] text-[#1F195E] px-3 py-0.5 text-xs font-semibold">
             {allJobs.length} openings
           </span>
         </div>
@@ -326,18 +326,18 @@ export default function ApplicantJobsClient({
             return (
               <article
                 key={job.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
+                className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
                 onClick={() => openJobModal(job)}
               >
                 <div className="space-y-3">
                   {/* Top Row */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-purple-700 transition-colors truncate">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#1F195E] transition-colors truncate">
                         {job.title}
                       </h3>
                       <p className="mt-1 flex items-center gap-1.5 text-xs sm:text-sm text-slate-600 truncate">
-                        <Building2 className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+                        <Building2 className="h-3.5 w-3.5 shrink-0 text-[#1F195E]" />
                         <span className="truncate font-medium text-slate-700">{companyName}</span>
                         {job.location ? <span className="truncate text-slate-500">• {job.location}</span> : null}
                       </p>
@@ -378,7 +378,7 @@ export default function ApplicantJobsClient({
                       e.stopPropagation();
                       openJobModal(job);
                     }}
-                    className="rounded-lg border border-purple-200 bg-purple-50 px-3.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-600 hover:text-white transition-colors"
+                    className="rounded-lg border border-[#E0D9FC] bg-[#F0ECFF] px-3.5 py-1.5 text-xs font-semibold text-[#1F195E] hover:bg-[#1F195E] hover:text-white transition-colors"
                   >
                     View Details
                   </button>

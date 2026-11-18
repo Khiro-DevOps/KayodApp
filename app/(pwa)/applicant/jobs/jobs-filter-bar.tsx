@@ -50,7 +50,7 @@ export default function JobsFilterBar({
               name="q"
               defaultValue={initialQuery}
               placeholder="Search jobs..."
-              className="w-full rounded-xl bg-slate-50 py-2 pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20"
+              className="w-full rounded-xl bg-slate-50 py-2 pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
 
@@ -59,7 +59,7 @@ export default function JobsFilterBar({
             onClick={() => setMobileFiltersOpen((prev) => !prev)}
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
               mobileFiltersOpen || activeFilterCount > 0
-                ? "border-purple-200 bg-purple-50 text-purple-700"
+                ? "border-[#E0D9FC] bg-[#F0ECFF] text-[#1F195E]"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
             aria-expanded={mobileFiltersOpen}
@@ -67,7 +67,7 @@ export default function JobsFilterBar({
             <span className="material-symbols-outlined text-[16px]">tune</span>
             <span>Filters</span>
             {activeFilterCount > 0 ? (
-              <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-purple-600 px-1 text-[10px] font-bold text-white">
+              <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1F195E] px-1 text-[10px] font-bold text-white">
                 {activeFilterCount}
               </span>
             ) : null}
@@ -75,7 +75,7 @@ export default function JobsFilterBar({
 
           <button
             type="submit"
-            className="shrink-0 rounded-xl bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+            className="shrink-0 rounded-xl bg-[#1F195E] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2a2376] transition-colors"
           >
             Go
           </button>
@@ -84,14 +84,14 @@ export default function JobsFilterBar({
         {/* Compact Resume selector pill on mobile */}
         <div className="flex items-center gap-2">
           <div className="relative inline-flex max-w-full items-center">
-            <span className="material-symbols-outlined pointer-events-none absolute left-2.5 text-[15px] text-purple-600">
+            <span className="material-symbols-outlined pointer-events-none absolute left-2.5 text-[15px] text-[#1F195E]">
               description
             </span>
             <select
               name="resume_id"
               defaultValue={selectedResumeId}
               aria-label="Select resume for matching"
-              className="max-w-[240px] truncate rounded-full border border-purple-200 bg-purple-50/70 py-1.5 pl-8 pr-7 text-xs font-semibold text-purple-800 appearance-none focus:outline-hidden focus:ring-2 focus:ring-purple-500/20"
+              className="max-w-[240px] truncate rounded-full border border-[#E0D9FC] bg-[#F0ECFF] py-1.5 pl-8 pr-7 text-xs font-semibold text-[#1F195E] appearance-none focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
             >
               {resumes.length > 0 ? (
                 resumes.map((resume) => (
@@ -103,7 +103,7 @@ export default function JobsFilterBar({
                 <option value="">No resumes</option>
               )}
             </select>
-            <span className="material-symbols-outlined pointer-events-none absolute right-2 text-[15px] text-purple-600">
+            <span className="material-symbols-outlined pointer-events-none absolute right-2 text-[15px] text-[#1F195E]">
               expand_more
             </span>
           </div>
@@ -193,7 +193,7 @@ export default function JobsFilterBar({
               </button>
               <button
                 type="submit"
-                className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                className="rounded-xl bg-[#1F195E] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2a2376]"
               >
                 Apply Filters
               </button>
@@ -285,7 +285,7 @@ export default function JobsFilterBar({
 
         <button
           type="submit"
-          className="shrink-0 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition-colors shadow-xs"
+          className="shrink-0 rounded-xl bg-[#1F195E] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2a2376] transition-colors shadow-xs"
         >
           Apply
         </button>

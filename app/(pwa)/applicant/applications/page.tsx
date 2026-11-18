@@ -400,7 +400,7 @@ export default async function ApplicantApplicationsPage() {
             <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
               Active Applications
             </p>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600 sm:h-8 sm:w-8">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#F0ECFF] text-[#1F195E] sm:h-8 sm:w-8">
               <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </span>
           </div>

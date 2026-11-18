@@ -195,7 +195,7 @@ export default function JobDetailContent({
     <div className="flex flex-col flex-1 min-h-0 max-h-[90vh] relative bg-white">
       {isLoadingResumes && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-xs">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></div>
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#1F195E] border-t-transparent"></div>
         </div>
       )}
 
@@ -204,7 +204,7 @@ export default function JobDetailContent({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-              <Building2 className="h-3.5 w-3.5 text-purple-600" />
+              <Building2 className="h-3.5 w-3.5 text-[#1F195E]" />
               {companyName}
             </span>
             {matchScore !== null && (
@@ -297,7 +297,7 @@ export default function JobDetailContent({
               {job.required_skills.map((skill) => (
                 <span
                   key={skill}
-                  className="rounded-full border border-purple-200/80 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700"
+                  className="rounded-full border border-[#E0D9FC] bg-[#F0ECFF] px-3 py-1 text-xs font-medium text-[#1F195E]"
                 >
                   {skill}
                 </span>
@@ -331,7 +331,7 @@ export default function JobDetailContent({
               <button
                 type="button"
                 onClick={handleApplyClick}
-                className="w-full sm:w-auto rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors shadow-xs"
+                className="w-full sm:w-auto rounded-xl bg-[#1F195E] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2a2376] transition-colors shadow-xs"
               >
                 Apply with Selected Resume
               </button>

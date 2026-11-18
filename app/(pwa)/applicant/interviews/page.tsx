@@ -101,7 +101,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
       <div className="flex flex-col gap-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">
               Interview Management
             </p>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
@@ -124,7 +124,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pending Selection</p>
-            <p className="mt-1 text-xl sm:text-2xl font-bold text-purple-600">{pendingSelectionCount}</p>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-[#1F195E]">{pendingSelectionCount}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Completed</p>
@@ -139,7 +139,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
               href="/applicant/interviews?view=upcoming"
               className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
                 view === "upcoming"
-                  ? "bg-purple-600 text-white shadow-xs"
+                  ? "bg-[#1F195E] text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -149,7 +149,7 @@ export default async function ApplicantInterviewsPage({ searchParams }: { search
               href="/applicant/interviews?view=history"
               className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
                 view === "history"
-                  ? "bg-purple-600 text-white shadow-xs"
+                  ? "bg-[#1F195E] text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
