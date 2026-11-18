@@ -39,12 +39,12 @@ export async function GET(_req: NextRequest, ctx: any) {
     }
 
     const { data: application, error: applicationError } = await admin
-      .from("applications")
+      .from("job_applications")
       .select(`
         id,
-        candidate_id,
-        job_posting_id,
-        profiles!applications_candidate_id_fkey (
+        applicant_id,
+        job_id,
+        profiles!job_applications_applicant_id_fkey (
           first_name,
           last_name,
           email
@@ -62,7 +62,7 @@ export async function GET(_req: NextRequest, ctx: any) {
     }
 
     let templateId = "";
-    const jobPostingId = String(application.job_posting_id ?? "").trim();
+    const jobPostingId = String(application.job_id ?? "").trim();
     if (jobPostingId) {
       const { data: jobPosting, error: jobPostingError } = await admin
         .from("job_postings")
@@ -97,7 +97,7 @@ export async function GET(_req: NextRequest, ctx: any) {
       }, { status: 400 });
     }
 
-    const profile = application.profiles?.[0];
+    const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
     const candidateName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || "Candidate";
     const candidateEmail = profile?.email?.trim();
 

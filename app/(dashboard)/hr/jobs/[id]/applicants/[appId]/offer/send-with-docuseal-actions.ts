@@ -43,8 +43,8 @@ export async function sendOfferWithDocuSeal(
     }
 
     const { data: application, error: applicationError } = await supabase
-      .from("applications")
-      .select("id, candidate_id, profiles!applications_candidate_id_fkey (first_name, last_name, email)")
+      .from("job_applications")
+      .select("id, applicant_id, job_id, profiles!job_applications_applicant_id_fkey (first_name, last_name, email)")
       .eq("id", applicationId)
       .single();
 
@@ -52,7 +52,8 @@ export async function sendOfferWithDocuSeal(
       throw new Error(applicationError?.message ?? "Application not found");
     }
 
-    const candidate = (application.profiles as {
+    const rawProfile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
+    const candidate = (rawProfile as {
       first_name?: string | null;
       last_name?: string | null;
       email?: string | null;

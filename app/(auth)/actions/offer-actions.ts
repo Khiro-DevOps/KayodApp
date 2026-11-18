@@ -237,14 +237,28 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
 }
 
 // Create a hydrated draft offer (DRAFT) but do not send to DocuSeal.
-export async function createHydratedOfferDraft(jobId: string, applicationId: string) {
+export async function createHydratedOfferDraft(jobIdOrApplicationId: string, maybeApplicationId?: string) {
   try {
     const supabase = await createClient();
     const admin = getAdminClient();
 
+    const applicationId = maybeApplicationId ?? jobIdOrApplicationId;
+    const { data: application, error: applicationError } = await admin
+      .from("job_applications")
+      .select("id, job_id, applicant_id, profiles!job_applications_applicant_id_fkey(first_name, last_name, email)")
+      .eq("id", applicationId)
+      .single();
+
+    if (applicationError || !application) {
+      console.error("Application fetch error:", applicationError);
+      return { success: false, error: `Failed to fetch application: ${applicationError?.message ?? "unknown error"}` };
+    }
+
+    const jobId = maybeApplicationId ? jobIdOrApplicationId : application.job_id;
+
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_mode, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, work_mode, work_setup, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -291,14 +305,16 @@ export async function createHydratedOfferDraft(jobId: string, applicationId: str
     const existingOffer = existingOffers?.[0] ?? null;
     const draftPayload = {
       application_id: applicationId,
-      job_posting_id: jobId,
+      job_id: jobId,
+      hr_id: user.id,
       status: "DRAFT",
       version_id: (existingOffer?.version_id ?? 0) + 1,
       is_active: true,
       created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_mode: job.work_mode || "remote",
+      work_setup: job.work_setup || job.work_mode || "Remote",
+      work_mode: job.work_mode || job.work_setup || "remote",
       work_location_id: job.work_location_id || null,
       shift_start: job.shift_start || null,
       shift_end: job.shift_end || null,
@@ -395,21 +411,38 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
   const docusealUrl = sendResult.url ?? null;
 
   try {
-    await admin
+    const { error: signedDocumentUpdateError } = await admin
       .from("signed_documents")
       .update({ docuseal_submission_url: docusealUrl, metadata: { job_offer_id: offerId }, updated_at: new Date().toISOString() })
       .eq("id", signedDocId);
 
-    await admin.from("job_offers").update({ status: "SENT", updated_at: new Date().toISOString() }).eq("id", offerId);
+    if (signedDocumentUpdateError) {
+      throw new Error(signedDocumentUpdateError.message);
+    }
 
-    await admin
-      .from("applications")
+    const { error: jobOfferUpdateError } = await admin
+      .from("job_offers")
+      .update({ status: "SENT", updated_at: new Date().toISOString() })
+      .eq("id", offerId);
+
+    if (jobOfferUpdateError) {
+      throw new Error(jobOfferUpdateError.message);
+    }
+
+    const { error: applicationUpdateError } = await admin
+      .from("job_applications")
       .update({ status: "offer_sent", contract_offer_id: signedDocId, updated_at: new Date().toISOString() })
       .eq("id", applicationId);
 
+    if (applicationUpdateError) {
+      throw new Error(applicationUpdateError.message);
+    }
+
     revalidatePath(`/hr/jobs/${jobId}/applicants`);
     revalidatePath(`/hr/jobs/${jobId}/applicants/${applicationId}`);
+    revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/job-offer/${applicationId}`);
+    revalidatePath(`/applicant/applications/${applicationId}`);
   } catch (err) {
     console.error("sendDraftOffer: failed to finalize offer", err);
     throw new Error("Failed to finalize offer creation; no changes were applied. Please try again.");

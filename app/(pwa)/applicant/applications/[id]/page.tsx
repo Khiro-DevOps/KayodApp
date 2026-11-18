@@ -74,44 +74,50 @@ export default async function ApplicantApplicationDetailPage({
   const isHR = isHRRole(role);
 
   // Fetch application with all related data
-  const { data: application } = await supabase
-    .from("applications")
+  const { data: rawApplication } = await supabase
+    .from("job_applications")
     .select(`
       id,
-      job_posting_id,
+      job_id,
       contract_offer_id,
-      candidate_id,
+      applicant_id,
       resume_id,
       status,
       cover_letter,
       match_score,
       hr_notes,
-      hr_offered_modes,
-      hr_office_address,
-      selected_mode,
-      selected_mode_set_at,
-      submitted_at,
+      created_at,
       updated_at,
-      profiles!applications_candidate_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
+      profiles!job_applications_applicant_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
       resumes ( id, title, pdf_url, content_text ),
-      job_postings ( id, title, location, description, salary_min, salary_max, currency, employment_type )
+      job_postings!job_applications_job_id_fkey ( id, title, location, description, salary_min, salary_max, currency, employment_type )
     `)
     .eq("id", id)
-    .single<Application>();
+    .single();
 
-  if (!application) {
+  if (!rawApplication) {
     redirect("/applicant/applications");
   }
 
+  const application = {
+    ...rawApplication,
+    candidate_id: rawApplication.applicant_id,
+    job_posting_id: rawApplication.job_id,
+    submitted_at: rawApplication.created_at,
+    profiles: Array.isArray(rawApplication.profiles) ? rawApplication.profiles[0] : rawApplication.profiles,
+    resumes: Array.isArray(rawApplication.resumes) ? rawApplication.resumes[0] : rawApplication.resumes,
+    job_postings: Array.isArray(rawApplication.job_postings) ? rawApplication.job_postings[0] : rawApplication.job_postings,
+  } as unknown as Application;
+
   // Access control: Candidates can only view their own applications
-  if (application.candidate_id !== user.id && !isHR) {
+  if (rawApplication.applicant_id !== user.id && !isHR) {
     redirect("/applicant/applications");
   }
 
   // Repair candidate profile names from auth metadata when stale/missing.
   try {
     const admin = getAdminClient();
-    const candidateId = application.candidate_id;
+    const candidateId = rawApplication.applicant_id;
     const candidateProfile = (application.profiles ?? {}) as {
       first_name?: string | null;
       last_name?: string | null;
@@ -173,7 +179,7 @@ export default async function ApplicantApplicationDetailPage({
   const { data: contractTemplates } = await supabase
     .from("contract_templates")
     .select("id, template_name, docuseal_template_id")
-    .eq("job_posting_id", application.job_posting_id)
+    .eq("job_posting_id", rawApplication.job_id)
     .order("created_at", { ascending: false });
 
   const { data: jobOffer } = await supabase

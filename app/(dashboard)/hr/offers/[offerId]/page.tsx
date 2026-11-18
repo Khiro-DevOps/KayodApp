@@ -32,8 +32,8 @@ type Relation<T> = T | T[] | null | undefined;
 
 type ApplicationRow = {
   id: string;
-  candidate_id: string;
-  job_posting_id: string;
+  applicant_id: string;
+  job_id: string;
   status: string;
   updated_at: string;
   contract_offer_id?: string | null;
@@ -74,7 +74,7 @@ type SignedDocumentRow = {
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
-  applications?: Relation<ApplicationRow>;
+  job_applications?: Relation<ApplicationRow>;
   contract_templates?: Relation<{
     id: string;
     template_name: string | null;
@@ -253,24 +253,23 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     signing_method,
     status,
     docuseal_submission_url,
-    job_id,
     signed_at,
     pdf_file_path,
     metadata,
     created_at,
     updated_at,
-    applications!signed_documents_application_id_fkey (
+    job_applications!signed_documents_application_id_job_applications_fkey (
       id,
-      candidate_id,
-      job_posting_id,
+      applicant_id,
+      job_id,
       status,
       updated_at,
-      profiles!applications_candidate_id_fkey (
+      profiles!job_applications_applicant_id_fkey (
         first_name,
         last_name,
         email
       ),
-      job_postings (
+      job_postings!job_applications_job_id_fkey (
         created_by,
         title,
         department_id,
@@ -355,20 +354,20 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
   if (jobOfferRow) {
     const { data: resolvedApplication } = await admin
-      .from("applications")
+      .from("job_applications")
       .select(`
         id,
-        candidate_id,
-        job_posting_id,
+        applicant_id,
+        job_id,
         status,
         contract_offer_id,
         updated_at,
-        profiles!applications_candidate_id_fkey (
+        profiles!job_applications_applicant_id_fkey (
           first_name,
           last_name,
           email
         ),
-        job_postings (
+        job_postings!job_applications_job_id_fkey (
           created_by,
           title,
           department_id,
@@ -400,10 +399,10 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         metadata: (jobOfferRow.job_metadata ?? jobOfferRow.metadata) as Record<string, unknown> | null,
         created_at: jobOfferRow.created_at,
         updated_at: jobOfferRow.updated_at,
-        applications: undefined,
+        job_applications: undefined,
         contract_templates: undefined,
       } as SignedDocumentRow;
-      application = resolvedApplication as ApplicationRow;
+      application = resolvedApplication as unknown as ApplicationRow;
     }
   }
 
@@ -418,7 +417,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       .maybeSingle();
 
     if (directOfferById) {
-      directOffer = directOfferById as SignedDocumentRow;
+      directOffer = directOfferById as unknown as SignedDocumentRow;
     } else {
       const latestDirectRes = await admin
         .from("signed_documents")
@@ -429,30 +428,30 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
         .maybeSingle();
 
       if (latestDirectRes?.data) {
-        directOffer = latestDirectRes.data as SignedDocumentRow;
+        directOffer = latestDirectRes.data as unknown as SignedDocumentRow;
       }
     }
 
     if (directOffer) {
       offer = directOffer as SignedDocumentRow;
-      application = toSingle(directOffer.applications) as ApplicationRow | null;
+      application = toSingle(directOffer.job_applications) as ApplicationRow | null;
 
       if (!application) {
         const { data: applicationFallback } = await admin
-          .from("applications")
+          .from("job_applications")
           .select(`
             id,
-            candidate_id,
-            job_posting_id,
+            applicant_id,
+            job_id,
             status,
             contract_offer_id,
             updated_at,
-            profiles!applications_candidate_id_fkey (
+            profiles!job_applications_applicant_id_fkey (
               first_name,
               last_name,
               email
             ),
-            job_postings (
+            job_postings!job_applications_job_id_fkey (
               created_by,
               title,
               department_id,
@@ -473,7 +472,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
           .maybeSingle();
 
         if (applicationFallback) {
-          application = applicationFallback as ApplicationRow;
+          application = applicationFallback as unknown as ApplicationRow;
         }
       }
     }
@@ -481,20 +480,20 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     if (!offer) {
       // Step 3: Try to find application by offerId (handles old links that use applicationId)
       const { data: applicationRow, error: applicationError } = await admin
-        .from("applications")
+        .from("job_applications")
         .select(`
           id,
-          candidate_id,
-          job_posting_id,
+          applicant_id,
+          job_id,
           status,
           contract_offer_id,
           updated_at,
-          profiles!applications_candidate_id_fkey (
+          profiles!job_applications_applicant_id_fkey (
             first_name,
             last_name,
             email
           ),
-          job_postings (
+          job_postings!job_applications_job_id_fkey (
             created_by,
             title,
             department_id,
@@ -535,10 +534,10 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
           .maybeSingle();
 
         if (linkedOffer) {
-          offer = linkedOffer as SignedDocumentRow;
-          application = toSingle(linkedOffer.applications) as ApplicationRow | null;
+          offer = linkedOffer as unknown as SignedDocumentRow;
+          application = toSingle(offer.job_applications) as ApplicationRow | null;
           if (!application) {
-            application = applicationRow as ApplicationRow;
+            application = applicationRow as unknown as ApplicationRow;
           }
         }
       }
@@ -564,10 +563,10 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
             metadata: latestApplicationJobOffer.job_metadata as Record<string, unknown> | null,
             created_at: latestApplicationJobOffer.created_at,
             updated_at: latestApplicationJobOffer.updated_at,
-            applications: undefined,
+            job_applications: undefined,
             contract_templates: undefined,
           } as SignedDocumentRow;
-          application = applicationRow as ApplicationRow;
+          application = applicationRow as unknown as ApplicationRow;
         }
       }
 
@@ -581,16 +580,16 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
           .maybeSingle();
 
         if (latestApplicationSignedDocument) {
-          offer = latestApplicationSignedDocument as SignedDocumentRow;
-          application = toSingle(latestApplicationSignedDocument.applications) as ApplicationRow | null;
+          offer = latestApplicationSignedDocument as unknown as SignedDocumentRow;
+          application = toSingle(offer.job_applications) as ApplicationRow | null;
           if (!application) {
-            application = applicationRow as ApplicationRow;
+            application = applicationRow as unknown as ApplicationRow;
           }
         }
       }
 
       if (!offer && applicationRow) {
-        application = applicationRow as ApplicationRow;
+        application = applicationRow as unknown as ApplicationRow;
       }
 
       // Only show "Offer Document Pending" if there is no resolved offer record.
@@ -741,7 +740,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     );
   }
 
-  const isApplicant = application.candidate_id === user.id;
+  const isApplicant = application.applicant_id === user.id;
   const isHR = application.job_postings?.created_by === user.id;
 
   if (!isApplicant && !isHR) {

@@ -14,10 +14,10 @@ export default async function OfferSigningPage() {
   }
 
   const { data: application } = await supabase
-    .from("applications")
+    .from("job_applications")
     .select("id, contract_offer_id, status, updated_at")
-    .eq("candidate_id", user.id)
-    .in("status", ["offer_sent", "negotiating"])
+    .eq("applicant_id", user.id)
+    .in("status", ["offer", "offer_sent", "negotiating"])
     .limit(1)
     .order("updated_at", { ascending: false })
     .maybeSingle();
