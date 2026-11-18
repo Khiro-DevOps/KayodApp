@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import PageContainer from "@/components/ui/page-container";
 import type { PayrollPeriod, Payslip, Employee, Profile } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
@@ -20,20 +22,26 @@ interface HoursPreview {
   total_hours: number;
 }
 
-export default async function HRPayrollPage() {
+export default async function HRPayrollPage({
+  selectedPeriodId,
+}: {
+  selectedPeriodId?: string;
+} = {}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const admin = getAdminClient();
+
   // Active employees with profiles
-  const { data: employees } = await supabase
+  const { data: employees } = await admin
     .from("employees")
     .select("*, profiles(first_name, last_name, email)")
     .eq("employment_status", "active")
     .returns<EmployeeWithProfile[]>();
 
   // All payroll periods
-  const { data: periods } = await supabase
+  const { data: periods } = await admin
     .from("payroll_periods")
     .select("*")
     .order("period_start", { ascending: false })
@@ -46,7 +54,7 @@ export default async function HRPayrollPage() {
   let hoursPreview: HoursPreview[] = [];
 
   if (draftPeriod) {
-    const { data: logs } = await supabase
+    const { data: logs } = await admin
       .from("time_logs")
       .select("employee_id, total_hours")
       .eq("punch_type", "out")
@@ -64,51 +72,34 @@ export default async function HRPayrollPage() {
     }));
   }
 
-  // Load payslips for pending_approval period, or any period that still has unpublished payslips
-  let reviewPeriod: PayrollPeriod | null =
-    periods?.find((p) => p.status === "pending_approval") ?? null;
-  let reviewPayslips: Payslip[] = [];
+  // Resolve selected period: explicit URL periodId -> most recent pending_approval -> most recent draft -> period with unpublished slips -> latest period
+  let reviewPeriod: PayrollPeriod | null = null;
+  if (selectedPeriodId && periods) {
+    reviewPeriod = periods.find((p) => p.id === selectedPeriodId) ?? null;
+  }
+  if (!reviewPeriod && periods && periods.length > 0) {
+    reviewPeriod =
+      periods.find((p) => p.status === "pending_approval") ??
+      periods.find((p) => p.status === "draft") ??
+      periods[0] ??
+      null;
+  }
 
+  let reviewPayslips: Payslip[] = [];
   if (reviewPeriod) {
-    const { data: slips } = await supabase
+    const { data: slips } = await admin
       .from("payslips")
       .select("*, employees(profiles(first_name, last_name))")
       .eq("payroll_period_id", reviewPeriod.id)
       .returns<Payslip[]>();
     reviewPayslips = slips ?? [];
-  } else if (periods && periods.length > 0) {
-    const { data: unpublishedSlips } = await supabase
-      .from("payslips")
-      .select("*, employees(profiles(first_name, last_name))")
-      .in("payroll_period_id", periods.map((p) => p.id))
-      .not("status", "in", '("published","paid")')
-      .returns<Payslip[]>();
-
-    if (unpublishedSlips && unpublishedSlips.length > 0) {
-      const targetPeriodId = unpublishedSlips[0].payroll_period_id;
-      reviewPeriod = periods.find((p) => p.id === targetPeriodId) ?? null;
-      if (reviewPeriod) {
-        const { data: slips } = await supabase
-          .from("payslips")
-          .select("*, employees(profiles(first_name, last_name))")
-          .eq("payroll_period_id", reviewPeriod.id)
-          .returns<Payslip[]>();
-        reviewPayslips = slips ?? [];
-      }
-    }
   }
 
   const unpublishedCount = reviewPayslips.filter((s) => {
     const status = String(s.status);
     return status !== "published" && status !== "paid";
   }).length;
-  const showPublishBanner = Boolean(
-    reviewPeriod &&
-      (reviewPeriod.status === "draft" ||
-        reviewPeriod.status === "pending_approval" ||
-        unpublishedCount > 0) &&
-      reviewPayslips.length > 0
-  );
+  const showPublishBanner = Boolean(reviewPeriod);
 
   return (
     <PageContainer>
@@ -209,41 +200,107 @@ export default async function HRPayrollPage() {
           <div className="space-y-4 rounded-xl border-2 border-emerald-300 bg-card-bg p-5 shadow-sm">
             <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-base font-bold text-emerald-950">
                     Approve &amp; Publish Payslips
                   </h2>
+                  <span className="text-xs font-semibold text-emerald-900">
+                    (
+                    {new Date(reviewPeriod.period_start).toLocaleDateString("en-PH", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                    {" — "}
+                    {new Date(reviewPeriod.period_end).toLocaleDateString("en-PH", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                    )
+                  </span>
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[reviewPeriod.status]}`}>
                     {reviewPeriod.status.replace("_", " ")}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-emerald-800">
-                  {unpublishedCount > 0
+                  {reviewPayslips.length === 0
+                    ? `No payslips generated yet for this period. Click "Generate Payslips" below to compute payslips for ${activeEmployeeCount} active employee(s).`
+                    : unpublishedCount > 0
                     ? `${unpublishedCount} of ${reviewPayslips.length} payslip(s) ready to publish for employee access.`
                     : `All ${reviewPayslips.length} payslips published.`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <form action={rejectPayroll}>
-                  <input type="hidden" name="period_id" value={reviewPeriod.id} />
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-semibold text-text-muted hover:bg-surface-bg transition-colors"
-                  >
-                    Reject &amp; revise
-                  </button>
-                </form>
+                {reviewPayslips.length > 0 && (
+                  <form action={rejectPayroll}>
+                    <input type="hidden" name="period_id" value={reviewPeriod.id} />
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-semibold text-text-muted hover:bg-surface-bg transition-colors"
+                    >
+                      Reject &amp; revise
+                    </button>
+                  </form>
+                )}
                 <form action={approvePayroll}>
                   <input type="hidden" name="period_id" value={reviewPeriod.id} />
                   <button
                     type="submit"
-                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-xs"
+                    disabled={reviewPayslips.length === 0}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-xs disabled:opacity-50"
                   >
                     Approve &amp; Publish All
                   </button>
                 </form>
               </div>
             </div>
+
+            {reviewPayslips.length === 0 && (
+              <form action={generatePayslips} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <input type="hidden" name="period_id" value={reviewPeriod.id} />
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+                  Generate Payslips for Selected Period — Optional Adjustments
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <input
+                    type="number"
+                    name="allowances"
+                    min="0"
+                    step="0.01"
+                    placeholder="Allowances (₱)"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                  />
+                  <input
+                    type="number"
+                    name="bonuses"
+                    min="0"
+                    step="0.01"
+                    placeholder="Bonuses (₱)"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                  />
+                  <input
+                    type="number"
+                    name="other_deductions"
+                    min="0"
+                    step="0.01"
+                    placeholder="Other deductions (₱)"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                  />
+                  <input
+                    type="text"
+                    name="remarks"
+                    placeholder="Remarks (optional)"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full rounded-lg bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-hover transition-colors shadow-xs"
+                >
+                  Generate Payslips ({activeEmployeeCount} active employees)
+                </button>
+              </form>
+            )}
 
             {/* Summary totals */}
             <div className="grid grid-cols-3 gap-2">
@@ -348,92 +405,117 @@ export default async function HRPayrollPage() {
               <p className="text-sm text-text-muted">No payroll periods yet</p>
             </div>
           ) : (
-            periods.map((period) => (
-              <div
-                key={period.id}
-                className="rounded-xl bg-card-bg border border-border p-4 space-y-3 shadow-xs"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-text-main">
-                      {new Date(period.period_start).toLocaleDateString("en-PH", {
-                        month: "short", day: "numeric",
-                      })}
-                      {" — "}
-                      {new Date(period.period_end).toLocaleDateString("en-PH", {
-                        month: "short", day: "numeric", year: "numeric",
-                      })}
-                    </p>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      Pay date:{" "}
-                      {new Date(period.pay_date).toLocaleDateString("en-PH", {
-                        month: "short", day: "numeric", year: "numeric",
-                      })}
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[period.status]}`}
+            periods.map((period) => {
+              const isSelected = reviewPeriod?.id === period.id;
+              return (
+                <div
+                  key={period.id}
+                  className={`rounded-xl bg-card-bg border p-4 space-y-3 shadow-xs transition-all ${
+                    isSelected
+                      ? "border-primary ring-2 ring-primary/25"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <Link
+                    href={`/hr/payslips?periodId=${period.id}`}
+                    className="flex items-start justify-between gap-2 group rounded-lg -m-1 p-1 hover:bg-surface-bg/60 transition-colors"
                   >
-                    {period.status.replace("_", " ")}
-                  </span>
-                </div>
-
-                {period.status === "draft" && (
-                  <form action={generatePayslips} className="space-y-3 pt-1">
-                    <input type="hidden" name="period_id" value={period.id} />
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                        Demo Payroll Computation (non-statutory) — Optional Adjustments
+                    <div>
+                      <p className="text-sm font-medium text-text-main group-hover:text-primary transition-colors">
+                        {new Date(period.period_start).toLocaleDateString("en-PH", {
+                          month: "short", day: "numeric",
+                        })}
+                        {" — "}
+                        {new Date(period.period_end).toLocaleDateString("en-PH", {
+                          month: "short", day: "numeric", year: "numeric",
+                        })}
                       </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <input
-                          type="number"
-                          name="allowances"
-                          min="0"
-                          step="0.01"
-                          placeholder="Allowances (₱)"
-                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                        />
-                        <input
-                          type="number"
-                          name="bonuses"
-                          min="0"
-                          step="0.01"
-                          placeholder="Bonuses (₱)"
-                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                        />
-                        <input
-                          type="number"
-                          name="other_deductions"
-                          min="0"
-                          step="0.01"
-                          placeholder="Other deductions (₱)"
-                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                        />
-                        <input
-                          type="text"
-                          name="remarks"
-                          placeholder="Remarks (optional)"
-                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
-                        />
-                      </div>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        Pay date:{" "}
+                        {new Date(period.pay_date).toLocaleDateString("en-PH", {
+                          month: "short", day: "numeric", year: "numeric",
+                        })}
+                      </p>
                     </div>
-                    <button
-                      type="submit"
-                      className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
-                    >
-                      Generate payslips for {activeEmployeeCount} employees
-                    </button>
-                  </form>
-                )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYROLL_STATUS_COLORS[period.status]}`}
+                      >
+                        {period.status.replace("_", " ")}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-4 w-4 text-text-muted group-hover:text-primary transition-colors"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </Link>
 
-                {period.status === "paid" && (
-                  <p className="text-xs text-success font-medium text-center">
-                    ✓ Payslips sent to all employees
-                  </p>
-                )}
-              </div>
-            ))
+                  {period.status === "draft" && (
+                    <form action={generatePayslips} className="space-y-3 pt-1">
+                      <input type="hidden" name="period_id" value={period.id} />
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+                          Demo Payroll Computation (non-statutory) — Optional Adjustments
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <input
+                            type="number"
+                            name="allowances"
+                            min="0"
+                            step="0.01"
+                            placeholder="Allowances (₱)"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                          />
+                          <input
+                            type="number"
+                            name="bonuses"
+                            min="0"
+                            step="0.01"
+                            placeholder="Bonuses (₱)"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                          />
+                          <input
+                            type="number"
+                            name="other_deductions"
+                            min="0"
+                            step="0.01"
+                            placeholder="Other deductions (₱)"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                          />
+                          <input
+                            type="text"
+                            name="remarks"
+                            placeholder="Remarks (optional)"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-white hover:bg-primary-hover transition-colors shadow-xs"
+                      >
+                        Generate payslips for {activeEmployeeCount} employees
+                      </button>
+                    </form>
+                  )}
+
+                  {period.status === "paid" && (
+                    <p className="text-xs text-success font-medium text-center">
+                      ✓ Payslips sent to all employees
+                    </p>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
 

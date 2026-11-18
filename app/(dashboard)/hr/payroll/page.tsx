@@ -6,7 +6,12 @@ import { PAYROLL_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
 import HRPayrollPage from "./hr-payroll-page";
 
-export default async function PayrollPage() {
+export default async function PayrollPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ periodId?: string }>;
+} = {}) {
+  const resolvedParams = searchParams ? await searchParams : undefined;
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -15,11 +20,14 @@ export default async function PayrollPage() {
   const { data: profile } = await supabase
     .from("profiles").select("role").eq("id", user.id).single<Profile>();
 
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
+  const isHR =
+    profile?.role === "hr_manager" ||
+    profile?.role === "admin" ||
+    (profile?.role as string | undefined) === "hr";
 
   // HR users see full HR Payroll workspace with creation form and management tools
   if (isHR) {
-    return <HRPayrollPage />;
+    return <HRPayrollPage selectedPeriodId={resolvedParams?.periodId} />;
   }
 
   // Employees see their own payslips

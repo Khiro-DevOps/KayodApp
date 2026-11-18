@@ -56,34 +56,36 @@ export async function generatePayslips(formData: FormData) {
   const customOtherDeductions = Math.max(0, Number(formData.get("other_deductions") ?? 0) || 0);
   const customRemarks = String(formData.get("remarks") ?? "").trim();
 
+  const admin = getAdminClient();
+
   // 1. Get the period dates
-  const { data: period } = await supabase
+  const { data: period } = await admin
     .from("payroll_periods")
     .select("period_start, period_end")
     .eq("id", periodId)
     .single();
 
-  if (!period) redirect("/hr/payroll?error=Period+not+found");
+  if (!period) redirect("/hr/payslips?error=Period+not+found");
 
   // 2. Get all active employees
-  const { data: employees } = await supabase
+  const { data: employees } = await admin
     .from("employees")
     .select("id, base_salary, salary, pay_frequency, employment_type, shift_start, shift_end, work_days")
     .eq("employment_status", "active");
 
   if (!employees || employees.length === 0) {
-    redirect("/hr/payroll?error=No+active+employees+found");
+    redirect("/hr/payslips?error=No+active+employees+found");
   }
 
   // 3. Get attendance_logs and approved leave_requests for this period
-  const { data: attendanceLogs } = await supabase
+  const { data: attendanceLogs } = await admin
     .from("attendance_logs")
     .select("employee_id, date, clock_in, clock_out, late_minutes")
     .gte("clock_in", `${period.period_start}T00:00:00Z`)
     .lte("clock_in", `${period.period_end}T23:59:59Z`);
 
   const empIds = employees.map((e) => e.id);
-  const { data: approvedLeaves } = await supabase
+  const { data: approvedLeaves } = await admin
     .from("leave_requests")
     .select("employee_id, start_date, end_date, status")
     .in("employee_id", empIds)
@@ -131,22 +133,22 @@ export async function generatePayslips(formData: FormData) {
   });
 
   // 5. Delete any previously generated payslips for this period (allow re-generation)
-  await supabase
+  await admin
     .from("payslips")
     .delete()
     .eq("payroll_period_id", periodId);
 
-  await supabase.from("payslips").insert(payslips);
+  await admin.from("payslips").insert(payslips);
 
   // 6. Advance period status
-  await supabase
+  await admin
     .from("payroll_periods")
     .update({ status: "pending_approval" })
     .eq("id", periodId);
 
   revalidatePath("/hr/payroll");
   revalidatePath("/hr/payslips");
-  redirect("/hr/payroll");
+  redirect(`/hr/payslips?periodId=${periodId}`);
 }
 
 export async function approvePayroll(formData: FormData) {
