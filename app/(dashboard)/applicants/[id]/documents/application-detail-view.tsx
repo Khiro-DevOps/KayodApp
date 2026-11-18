@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { Application } from "@/lib/types";
+import OfferPageClient from "@/components/job-offer/OfferPageClient";
 
 interface InterviewProfile {
     first_name: string | null;
@@ -31,6 +32,13 @@ interface ActiveContractOffer {
     id: string;
     status: string;
     docuseal_submission_url: string | null;
+    embed_src?: string | null;
+    salary?: number | null;
+    start_date?: string | null;
+    work_setup?: string | null;
+    department?: string | null;
+    location?: string | null;
+    company_name?: string | null;
     contract_templates: ContractTemplate[] | null;
 }
 
@@ -71,9 +79,11 @@ const getApplicantStageKey = (status: string | null | undefined): string => {
         case "scheduled":
             return "interview";
 
+        case "offer":
         case "offer_sent":
         case "negotiating":
         case "pre-employment":
+        case "pre_employment":
         case "negotiation_pending":
             return "offer";
 
@@ -91,11 +101,34 @@ export default function ApplicationDetailView({
     activeContractOffer,
 }: ApplicationDetailViewProps) {
 
-    const jobPosting = (application as any).job_postings;
+    const jobPosting = (application as unknown as {
+        job_postings?: {
+            title?: string | null;
+            location?: string | null;
+            employment_type?: string | null;
+            work_setup?: string | null;
+            salary_min?: number | null;
+            salary_max?: number | null;
+            currency?: string | null;
+        } | null;
+        profiles?: {
+            first_name?: string | null;
+            last_name?: string | null;
+            email?: string | null;
+        } | null;
+    }).job_postings;
+    const candidateProfile = (application as unknown as {
+        profiles?: {
+            first_name?: string | null;
+            last_name?: string | null;
+            email?: string | null;
+        } | null;
+    }).profiles;
     const jobTitle = jobPosting?.title ?? "Senior Data Analytics & Business Intelligence Lead";
 
     const rawStatus = String(application.status ?? "new").toLowerCase().trim();
-    const currentStageKey = getApplicantStageKey(application.status);
+    const isSentJobOffer = String(activeContractOffer?.status ?? "").toUpperCase() === "SENT";
+    const currentStageKey = isSentJobOffer ? "offer" : getApplicantStageKey(application.status);
     const isRejected = currentStageKey === "rejected";
 
     // Compute active sequence positions
@@ -390,6 +423,33 @@ export default function ApplicationDetailView({
 
                 </div>
             </div>
+
+            {isSentJobOffer && activeContractOffer && (
+                <div className="mt-8">
+                    <OfferPageClient
+                        token={activeContractOffer.id}
+                        applicationId={application.id}
+                        offer={{ status: "sent" }}
+                        isAlreadySigned={false}
+                        applicationStatus={application.status}
+                        companyName={activeContractOffer.company_name || "Hiring Company"}
+                        candidateFirstName={candidateProfile?.first_name?.trim() || "Candidate"}
+                        candidateEmail={candidateProfile?.email?.trim() || ""}
+                        jobTitle={jobTitle}
+                        location={activeContractOffer.location ?? jobPosting?.location ?? null}
+                        employmentType={jobPosting?.employment_type ?? null}
+                        workSetup={activeContractOffer.work_setup ?? jobPosting?.work_setup ?? null}
+                        department={activeContractOffer.department ?? null}
+                        startDate={activeContractOffer.start_date ?? null}
+                        expiresAt={null}
+                        salaryMin={activeContractOffer.salary ?? jobPosting?.salary_min ?? null}
+                        salaryMax={activeContractOffer.salary ?? jobPosting?.salary_max ?? null}
+                        currency={jobPosting?.currency ?? "PHP"}
+                        signingUrl={activeContractOffer.docuseal_submission_url}
+                        embedSrc={activeContractOffer.embed_src ?? activeContractOffer.docuseal_submission_url}
+                    />
+                </div>
+            )}
         </div>
     );
 }

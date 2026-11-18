@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { effectiveRole, isHRRole } from "@/lib/roles";
@@ -90,7 +91,7 @@ export default async function ApplicantApplicationDetailPage({
       updated_at,
       profiles!job_applications_applicant_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
       resumes ( id, title, pdf_url, content_text ),
-      job_postings!job_applications_job_id_fkey ( id, title, location, description, salary_min, salary_max, currency, employment_type )
+      job_postings!job_applications_job_id_fkey ( id, title, location, work_setup, description, salary_min, salary_max, currency, employment_type )
     `)
     .eq("id", id)
     .single();
@@ -192,9 +193,12 @@ export default async function ApplicantApplicationDetailPage({
 
   const admin = getAdminClient();
 
+  const jobOfferColumns =
+    "id, status, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, latest_docuseal_url, contract_template_id, job_metadata, metadata, is_active, created_at, updated_at";
+
   const { data: latestJobOffer } = await admin
     .from("job_offers")
-    .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
+    .select(jobOfferColumns)
     .eq("application_id", application.id)
     .eq("is_active", true)
     .order("updated_at", { ascending: false })
@@ -205,11 +209,47 @@ export default async function ApplicantApplicationDetailPage({
     ? { data: null }
     : await admin
       .from("job_offers")
-      .select("id, status, latest_docuseal_url, contract_template_id, is_active, created_at, updated_at")
+      .select(jobOfferColumns)
       .eq("application_id", application.id)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+  const targetJobOffer = latestJobOffer ?? latestJobOfferFallback;
+
+  let resolvedOfferEmbedSrc: string | null = null;
+  let resolvedOfferLocation: string | null = null;
+  let resolvedCompanyName: string | null = null;
+
+  if (targetJobOffer) {
+    const meta = ((targetJobOffer.job_metadata ?? targetJobOffer.metadata) || {}) as Record<string, unknown>;
+    if (typeof meta.company_name === "string" && meta.company_name.trim()) {
+      resolvedCompanyName = meta.company_name.trim();
+    }
+    if (typeof meta.docuseal_embed_src === "string" && meta.docuseal_embed_src.trim()) {
+      resolvedOfferEmbedSrc = meta.docuseal_embed_src.trim();
+    } else if (
+      String(targetJobOffer.status ?? "").toUpperCase() === "SENT" &&
+      targetJobOffer.latest_docuseal_url
+    ) {
+      try {
+        resolvedOfferEmbedSrc = await getOrCreateDocusealEmbedSrc(targetJobOffer.id);
+      } catch {
+        resolvedOfferEmbedSrc = targetJobOffer.latest_docuseal_url;
+      }
+    }
+
+    if (targetJobOffer.work_location_id) {
+      const { data: branchRow } = await admin
+        .from("office_branches")
+        .select("name, address")
+        .eq("id", targetJobOffer.work_location_id)
+        .maybeSingle();
+      if (branchRow) {
+        resolvedOfferLocation = [branchRow.name, branchRow.address].filter(Boolean).join(", ");
+      }
+    }
+  }
 
   const { data: latestJobOfferTemplate } = latestJobOffer?.contract_template_id
     ? await admin
@@ -293,6 +333,13 @@ export default async function ApplicantApplicationDetailPage({
   const normalizedActiveContractOffer = resolvedActiveContractOffer
     ? {
       ...resolvedActiveContractOffer,
+      embed_src: resolvedOfferEmbedSrc ?? resolvedActiveContractOffer.docuseal_submission_url ?? null,
+      salary: targetJobOffer?.salary != null ? Number(targetJobOffer.salary) : null,
+      start_date: targetJobOffer?.start_date ?? null,
+      work_setup: targetJobOffer?.work_setup ?? targetJobOffer?.work_mode ?? null,
+      department: targetJobOffer?.department ?? null,
+      location: resolvedOfferLocation,
+      company_name: resolvedCompanyName,
       contract_templates: Array.isArray(resolvedActiveContractOffer.contract_templates)
         ? resolvedActiveContractOffer.contract_templates
         : resolvedActiveContractOffer.contract_templates

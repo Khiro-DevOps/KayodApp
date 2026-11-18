@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { DocusealForm } from "@docuseal/react";
 import { CheckCircle, ExternalLink, PenLine } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -298,6 +299,22 @@ export default function OfferPageClient({
     setEmbedLoadError(docusealEmbedError?.trim() || null);
   }, [docusealEmbedError, embedSrc]);
 
+  useEffect(() => {
+    if (
+      normalizedStatus === "sent" &&
+      !hasSigned &&
+      !embedSrc?.trim() &&
+      !resolvedEmbedSrc &&
+      !isResolvingEmbedSrc &&
+      !embedLoadError
+    ) {
+      void fetchEmbedSrc().catch(() => {
+        // Handled inside fetchEmbedSrc
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedStatus, hasSigned, embedSrc]);
+
   const fetchEmbedSrc = async () => {
     setIsResolvingEmbedSrc(true);
     setSigningSessionError(null);
@@ -555,24 +572,34 @@ export default function OfferPageClient({
                     </a>
                   ) : null}
                 </div>
-              ) : canSign ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (hasSigned) return;
-                      if (resolvedEmbedSrc) setSigningOpen(true);
-                    }}
-                    disabled={!resolvedEmbedSrc || hasSigned}
-                    title={!resolvedEmbedSrc ? "Signing link is being prepared" : undefined}
-                    className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
-                  >
-                    <PenLine className="mr-2 h-4 w-4" />
-                    {resolvedEmbedSrc ? "Sign now" : "Preparing..."}
-                  </button>
-                  <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
-                    Secured by DocuSeal
-                  </span>
+              ) : canSign && resolvedEmbedSrc ? (
+                <div className="space-y-4">
+                  <div className="overflow-hidden rounded-xl border border-border bg-white">
+                    <DocusealForm
+                      src={resolvedEmbedSrc}
+                      email={candidateEmail || undefined}
+                      className="w-full"
+                      onComplete={handleSigningComplete}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (hasSigned) return;
+                        if (resolvedEmbedSrc) setSigningOpen(true);
+                      }}
+                      disabled={!resolvedEmbedSrc || hasSigned}
+                      title={!resolvedEmbedSrc ? "Signing link is being prepared" : undefined}
+                      className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
+                    >
+                      <PenLine className="mr-2 h-4 w-4" />
+                      Sign in full screen
+                    </button>
+                    <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
+                      Secured by DocuSeal
+                    </span>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3 rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
