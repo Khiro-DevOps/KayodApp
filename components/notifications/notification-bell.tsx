@@ -237,7 +237,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
     setIsOpen(false);
     if (notification.action_url) {
       if (notification.action_url.startsWith("/api/")) {
-        window.location.href = notification.action_url;
+        window.location.assign(notification.action_url);
       } else {
         router.push(notification.action_url);
       }
