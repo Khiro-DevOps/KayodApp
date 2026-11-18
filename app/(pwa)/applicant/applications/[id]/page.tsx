@@ -4,6 +4,7 @@ import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import type { Profile, Application } from "@/lib/types";
 import ApplicationDetailView from "@/app/(dashboard)/applicants/[id]/documents/application-detail-view";
 
@@ -354,6 +355,15 @@ export default async function ApplicantApplicationDetailPage({
     jobOffer?.id ??
     null;
 
+  const { data: negotiationRows } = await admin
+    .from("job_offer_negotiations")
+    .select(
+      "id, offer_id, application_id, initiator_id, round, target_field, current_value, requested_value, comments, status, counter_value, hr_comment, resolved_by, created_at, resolved_at"
+    )
+    .eq("application_id", application.id)
+    .order("round", { ascending: true })
+    .order("created_at", { ascending: true });
+
   return (
     <PageContainer>
       <ApplicationDetailView
@@ -365,6 +375,7 @@ export default async function ApplicantApplicationDetailPage({
         activeContractOffer={normalizedActiveContractOffer}
         offerId={jobOffer?.id ?? null}
         offerRouteId={offerRouteId}
+        negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
       />
     </PageContainer>
   );

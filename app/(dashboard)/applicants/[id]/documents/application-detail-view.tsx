@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import type { Application } from "@/lib/types";
 import OfferPageClient from "@/components/job-offer/OfferPageClient";
 
@@ -51,6 +52,7 @@ interface ApplicationDetailViewProps {
     activeContractOffer: ActiveContractOffer | null;
     offerId: string | null;
     offerRouteId: string | null;
+    negotiations?: OfferNegotiationRow[];
 }
 
 // 1. Unified 5-Stage Lifecycle matching the Kanban Columns
@@ -99,6 +101,7 @@ export default function ApplicationDetailView({
     application,
     interviews,
     activeContractOffer,
+    negotiations = [],
 }: ApplicationDetailViewProps) {
 
     const jobPosting = (application as unknown as {
@@ -127,7 +130,9 @@ export default function ApplicationDetailView({
     const jobTitle = jobPosting?.title ?? "Senior Data Analytics & Business Intelligence Lead";
 
     const rawStatus = String(application.status ?? "new").toLowerCase().trim();
-    const isSentJobOffer = String(activeContractOffer?.status ?? "").toUpperCase() === "SENT";
+    const normalizedOfferStatus = String(activeContractOffer?.status ?? "").toUpperCase();
+    const isSentJobOffer =
+        normalizedOfferStatus === "SENT" || normalizedOfferStatus === "NEGOTIATING";
     const currentStageKey = isSentJobOffer ? "offer" : getApplicantStageKey(application.status);
     const isRejected = currentStageKey === "rejected";
 
@@ -429,7 +434,7 @@ export default function ApplicationDetailView({
                     <OfferPageClient
                         token={activeContractOffer.id}
                         applicationId={application.id}
-                        offer={{ status: "sent" }}
+                        offer={{ status: String(activeContractOffer.status || "sent").toLowerCase() }}
                         isAlreadySigned={false}
                         applicationStatus={application.status}
                         companyName={activeContractOffer.company_name || "Hiring Company"}
@@ -447,6 +452,8 @@ export default function ApplicationDetailView({
                         currency={jobPosting?.currency ?? "PHP"}
                         signingUrl={activeContractOffer.docuseal_submission_url}
                         embedSrc={activeContractOffer.embed_src ?? activeContractOffer.docuseal_submission_url}
+                        negotiations={negotiations}
+                        isHR={false}
                     />
                 </div>
             )}

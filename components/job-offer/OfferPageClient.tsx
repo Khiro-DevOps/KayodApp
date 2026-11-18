@@ -5,6 +5,7 @@ import { DocusealForm } from "@docuseal/react";
 import { CheckCircle, ExternalLink, PenLine } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
 import SigningModal from "@/components/job-offer/SigningModal";
 
@@ -36,6 +37,8 @@ interface OfferPageClientProps {
   embedSrc?: string | null;
   docusealEmbedError?: string | null;
   signedPdfUrl?: string | null;
+  negotiations?: OfferNegotiationRow[];
+  isHR?: boolean;
 }
 
 function formatDate(value: string) {
@@ -260,6 +263,8 @@ export default function OfferPageClient({
   embedSrc,
   docusealEmbedError,
   signedPdfUrl,
+  negotiations,
+  isHR,
 }: OfferPageClientProps) {
   const router = useRouter();
   const signSectionRef = useRef<HTMLDivElement>(null);
@@ -509,7 +514,10 @@ export default function OfferPageClient({
 
           <NegotiationPanel
             token={token}
+            applicationId={applicationId}
             status={status}
+            negotiations={negotiations}
+            isHR={isHR}
             signSectionRef={signSectionRef}
             onAccept={handlePrepareSigningSession}
             isPreparingSigningSession={isPreparingSigningSession}

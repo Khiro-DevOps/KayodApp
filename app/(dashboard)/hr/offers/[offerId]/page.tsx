@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { redirect } from "next/navigation";
 
+import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import PageContainer from "@/components/ui/page-container";
 import OfferPageClient from "@/components/job-offer/OfferPageClient";
 import OfferDraftForm from "@/components/job-offer/OfferDraftForm";
@@ -958,6 +959,15 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   const isCompletedSigning = isAlreadySigned || ["signed", "accepted", "hired"].includes(signedDocumentStatus) || Boolean(completedSignedDocument?.signed_at) || Boolean(completedSignedDocument?.pdf_file_path) || Boolean(offer.signed_at) || Boolean(offer.pdf_file_path);
   const signedPdfUrl = isCompletedSigning ? await resolveSignedPdfUrl(completedSignedDocument?.pdf_file_path ?? offer.pdf_file_path) : null;
 
+  const { data: negotiationRows } = await admin
+    .from("job_offer_negotiations")
+    .select(
+      "id, offer_id, application_id, initiator_id, round, target_field, current_value, requested_value, comments, status, counter_value, hr_comment, resolved_by, created_at, resolved_at"
+    )
+    .eq("application_id", application.id)
+    .order("round", { ascending: true })
+    .order("created_at", { ascending: true });
+
   return (
     <OfferPageClient
       token={offer.id}
@@ -983,6 +993,8 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       embedSrc={resolvedEmbedSrc}
       docusealEmbedError={docusealEmbedError}
       signedPdfUrl={signedPdfUrl}
+      negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
+      isHR={isHR && !isApplicant}
     />
   );
 
