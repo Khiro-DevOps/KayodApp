@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
@@ -55,7 +56,8 @@ export default async function HRLeavesPage() {
     redirect("/dashboard");
   }
 
-  const { data: requests } = await supabase
+  const admin = getAdminClient();
+  const { data: requests } = await admin
     .from("leave_requests")
     .select("*, employees(job_title, profiles(first_name, last_name, avatar_url))")
     .order("created_at", { ascending: false });
