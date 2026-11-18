@@ -473,7 +473,7 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
 
 export async function getOfferSummary(
   applicationId: string
-): Promise<{ exists: boolean; status: string | null }> {
+): Promise<{ exists: boolean; status: string | null; applicationStatus: string | null }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -500,7 +500,7 @@ export async function getOfferSummary(
   const admin = getAdminClient();
   const { data: applicationRow, error: applicationError } = await admin
     .from("job_applications")
-    .select("id, job_id, job_postings!job_applications_job_id_fkey(tenant_id)")
+    .select("id, status, job_id, job_postings!job_applications_job_id_fkey(tenant_id)")
     .eq("id", applicationId)
     .single();
 
@@ -536,5 +536,6 @@ export async function getOfferSummary(
   return {
     exists: Boolean(offerRow),
     status: offerRow?.status ?? null,
+    applicationStatus: (applicationRow as { status?: string | null }).status ?? null,
   };
 }

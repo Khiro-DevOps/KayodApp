@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import PageContainer from "@/components/ui/page-container";
+import HireConfirmationModal from "@/components/hr/HireConfirmationModal";
 import OfferPageClient from "@/components/job-offer/OfferPageClient";
 import OfferDraftForm from "@/components/job-offer/OfferDraftForm";
 import JobOfferHeader from "@/components/job-offer/job-offer-header";
@@ -959,34 +960,65 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     .order("round", { ascending: true })
     .order("created_at", { ascending: true });
 
+  const showConfirmHire =
+    isHR &&
+    !isApplicant &&
+    (isAlreadySigned ||
+      isCompletedSigning ||
+      String(jobOfferRow?.status ?? "").toUpperCase() === "SIGNED" ||
+      application.status === "pre_employment" ||
+      application.status === "hired");
+
   return (
-    <OfferPageClient
-      token={offer.id}
-      applicationId={application.id}
-      offer={{ status: isCompletedSigning ? "signed" : offer.status }}
-      isAlreadySigned={isAlreadySigned || isCompletedSigning}
-      applicationStatus={application.status}
-      companyName={companyNameOrNull ?? "Hiring Company"}
-      candidateFirstName={candidateFirstName}
-      candidateEmail={candidateEmail}
-      jobTitle={jobTitle}
-      location={location}
-      employmentType={employmentType}
-      workSetup={workSetup}
-      department={department}
-      startDate={startDate}
-      expiresAt={expiresAt}
-      salaryMin={salaryMin ?? null}
-      salaryMax={salaryMax ?? null}
-      currency={currency}
-      hrEmail={hrEmail}
-      signingUrl={signingUrl}
-      embedSrc={resolvedEmbedSrc}
-      docusealEmbedError={docusealEmbedError}
-      signedPdfUrl={signedPdfUrl}
-      negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
-      isHR={isHR && !isApplicant}
-    />
+    <>
+      {showConfirmHire && (
+        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+            <div className="text-sm font-medium text-emerald-900">
+              {application.status === "hired"
+                ? "Hire confirmed."
+                : "Contract signed. Ready to confirm hire."}
+            </div>
+            <HireConfirmationModal
+              applicationId={application.id}
+              candidateName={displayName(application.profiles)}
+              jobTitle={jobTitle}
+              isConfirmed={
+                application.status === "hired" ||
+                String(jobOfferRow?.status ?? "").toUpperCase() === "HIRED"
+              }
+            />
+          </div>
+        </div>
+      )}
+      <OfferPageClient
+        token={offer.id}
+        applicationId={application.id}
+        offer={{ status: isCompletedSigning ? "signed" : offer.status }}
+        isAlreadySigned={isAlreadySigned || isCompletedSigning}
+        applicationStatus={application.status}
+        companyName={companyNameOrNull ?? "Hiring Company"}
+        candidateFirstName={candidateFirstName}
+        candidateEmail={candidateEmail}
+        jobTitle={jobTitle}
+        location={location}
+        employmentType={employmentType}
+        workSetup={workSetup}
+        department={department}
+        startDate={startDate}
+        expiresAt={expiresAt}
+        salaryMin={salaryMin ?? null}
+        salaryMax={salaryMax ?? null}
+        currency={currency}
+        hrEmail={hrEmail}
+        signingUrl={signingUrl}
+        embedSrc={resolvedEmbedSrc}
+        docusealEmbedError={docusealEmbedError}
+        signedPdfUrl={signedPdfUrl}
+        negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
+        isHR={isHR && !isApplicant}
+      />
+    </>
   );
 
 }

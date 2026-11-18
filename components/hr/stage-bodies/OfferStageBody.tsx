@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getOfferSummary } from "@/app/(auth)/actions/offer-actions";
 import type { ApplicationHubCard } from "@/app/(dashboard)/hr/applicants/applications-kanban-board";
+import HireConfirmationModal from "@/components/hr/HireConfirmationModal";
 import {
   CandidateHeaderSection,
   CoverLetterSection,
@@ -62,9 +63,31 @@ export default function OfferStageBody({
   onOpenFullApplication,
 }: OfferStageBodyProps) {
   const router = useRouter();
-  const [summary, setSummary] = useState<{ exists: boolean; status: string | null } | null>(null);
+  const [summary, setSummary] = useState<{
+    exists: boolean;
+    status: string | null;
+    applicationStatus: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const candidateSource = application.candidate ?? application.profiles;
+  const rawProfile = Array.isArray(candidateSource)
+    ? candidateSource[0]
+    : candidateSource;
+  const candidateName =
+    [rawProfile?.first_name, rawProfile?.last_name].filter(Boolean).join(" ").trim() ||
+    "Candidate";
+  const jobSource = application.job ?? application.job_postings;
+  const rawJob = Array.isArray(jobSource) ? jobSource[0] : jobSource;
+  const jobTitle = rawJob?.title?.trim() || "this position";
+
+  const isContractSigned =
+    summary?.applicationStatus === "pre_employment" ||
+    String(summary?.status ?? "").toUpperCase() === "SIGNED";
+  const isHireConfirmed =
+    summary?.applicationStatus === "hired" ||
+    String(summary?.status ?? "").toUpperCase() === "HIRED";
 
   useEffect(() => {
     let active = true;
@@ -99,13 +122,20 @@ export default function OfferStageBody({
               Offer Status
             </h3>
             {!loading && !error && summary?.exists && (
-              <span
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getOfferBadgeClass(
-                  summary.status
-                )}`}
-              >
-                {humaniseOfferStatus(summary.status)}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {isContractSigned && (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                    Contract signed
+                  </span>
+                )}
+                <span
+                  className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getOfferBadgeClass(
+                    summary.status
+                  )}`}
+                >
+                  {humaniseOfferStatus(summary.status)}
+                </span>
+              </div>
             )}
           </div>
 
@@ -116,13 +146,23 @@ export default function OfferStageBody({
               {error}
             </div>
           ) : summary?.exists ? (
-            <button
-              type="button"
-              onClick={() => router.push(`/hr/offers/${application.id}`)}
-              className="w-full rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-primary-dark"
-            >
-              Open offer
-            </button>
+            <div className="flex flex-col gap-2">
+              {(isContractSigned || isHireConfirmed) && (
+                <HireConfirmationModal
+                  applicationId={application.id}
+                  candidateName={candidateName}
+                  jobTitle={jobTitle}
+                  isConfirmed={isHireConfirmed}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => router.push(`/hr/offers/${application.id}`)}
+                className="w-full rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-primary-dark"
+              >
+                Open offer
+              </button>
+            </div>
           ) : (
             <button
               type="button"
