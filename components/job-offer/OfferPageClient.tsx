@@ -70,7 +70,7 @@ function formatSalaryRange(minimum: number | null, maximum: number | null, curre
   return formatter.format(minimum ?? maximum ?? 0);
 }
 
-function getStatusPill(status: string) {
+function getStatusPill(status: string, isHR?: boolean) {
   const normalized = status.toLowerCase();
 
   if (normalized === "signed") {
@@ -98,7 +98,7 @@ function getStatusPill(status: string) {
   }
 
   return {
-    label: "Awaiting your signature",
+    label: isHR ? "Offer sent — awaiting candidate signature" : "Awaiting your signature",
     wrapper: "border-amber-200 bg-amber-50 text-amber-700",
     dot: "bg-amber-500",
   };
@@ -125,8 +125,8 @@ function CompanyBadge({ name }: { name: string }) {
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  const pill = getStatusPill(status);
+function StatusPill({ status, isHR }: { status: string; isHR?: boolean }) {
+  const pill = getStatusPill(status, isHR);
 
   return (
     <div
@@ -319,6 +319,7 @@ export default function OfferPageClient({
 
   useEffect(() => {
     if (
+      !isHR &&
       normalizedStatus === "sent" &&
       !hasSigned &&
       !embedSrc?.trim() &&
@@ -518,9 +519,11 @@ export default function OfferPageClient({
         <div className="space-y-6">
           <section className="py-10 text-center">
             <CompanyBadge name={companyName} />
-            <h1 className="mt-6 text-2xl font-medium text-text-primary">Your offer is ready, {candidateFirstName}</h1>
+            <h1 className="mt-6 text-2xl font-medium text-text-primary">
+              {isHR ? `Offer for ${candidateFirstName}` : `Your offer is ready, ${candidateFirstName}`}
+            </h1>
             <p className="mb-5 mt-1 text-base text-text-secondary">{jobTitle}</p>
-            <StatusPill status={displayStatus} />
+            <StatusPill status={displayStatus} isHR={isHR} />
             {expiresAt && (
               <p className="mt-3 text-sm text-text-secondary">
                 Offer expires <strong>{formatDate(expiresAt)}</strong> · {daysRemaining(expiresAt)} days remaining
@@ -552,6 +555,31 @@ export default function OfferPageClient({
             acceptError={signingSessionError}
           />
 
+          {isHR ? (
+            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+              <h3 className="mb-1 text-base font-semibold text-text-primary">Contract Status</h3>
+              <p className="text-sm text-text-secondary">
+                {showSignedBanner
+                  ? `${candidateFirstName} has signed the offer contract.`
+                  : normalizedStatus === "negotiating"
+                    ? `${candidateFirstName} has requested changes to this offer.`
+                    : `Offer sent to ${candidateFirstName} (${candidateEmail || "candidate"}) — currently reviewing and awaiting signature.`}
+              </p>
+              {signedPdfUrl ? (
+                <div className="mt-4">
+                  <a
+                    href={signedPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Download signed contract
+                  </a>
+                </div>
+              ) : null}
+            </section>
+          ) : (
           <section ref={signSectionRef} className="rounded-2xl border border-border bg-surface shadow-sm">
             <div className="p-5">
               <h3 className="mb-1 text-base font-medium text-text-primary">Sign your contract</h3>
@@ -664,6 +692,7 @@ export default function OfferPageClient({
               )}
             </div>
           </section>
+          )}
 
           <Timeline status={displayStatus} hasSigned={hasSigned} />
 
@@ -671,7 +700,7 @@ export default function OfferPageClient({
         </div>
 
         {/* Signing Modal is rendered directly in the top level flex container instead of in the overflow:hidden layout container */}
-        {!hasSigned && signingUrl && resolvedEmbedSrc && (
+        {!isHR && !hasSigned && signingUrl && resolvedEmbedSrc && (
           <SigningModal
             isOpen={signingOpen}
             onClose={() => {
