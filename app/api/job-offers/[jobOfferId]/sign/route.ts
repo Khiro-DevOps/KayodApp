@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getDocusealBaseUrl } from "@/lib/docuseal";
 import {
   markOfferSigned,
   verifyDocusealSubmissionCompleted,
@@ -9,7 +10,50 @@ import { createClient } from "@/lib/supabase/server";
 
 const HR_ROLES = new Set(["hr_manager", "admin", "hr"]);
 
-export async function POST(_req: NextRequest, ctx: unknown) {
+function extractDocusealSlug(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/\/(?:embed\/)?s\/([^/?#]+)/i);
+  if (match?.[1]) return match[1];
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    return segments.at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyDocusealSubmitterBySlug(slug: string): Promise<{
+  completed: boolean;
+  submissionId: string | null;
+}> {
+  const apiKey = process.env.DOCUSEAL_API_KEY?.trim() ?? "";
+  if (!apiKey) return { completed: false, submissionId: null };
+
+  try {
+    const res = await fetch(
+      `${getDocusealBaseUrl()}/submitters?slug=${encodeURIComponent(slug)}`,
+      {
+        headers: { "X-Auth-Token": apiKey },
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) return { completed: false, submissionId: null };
+    const payload = await res.json();
+    const record = Array.isArray(payload)
+      ? payload[0]
+      : Array.isArray(payload?.data)
+        ? payload.data[0]
+        : payload;
+    const status = typeof record?.status === "string" ? record.status.toLowerCase() : "";
+    const completed = status === "completed" || Boolean(record?.completed_at);
+    const submissionId = record?.submission_id != null ? String(record.submission_id) : null;
+    return { completed, submissionId };
+  } catch {
+    return { completed: false, submissionId: null };
+  }
+}
+
+export async function POST(req: NextRequest, ctx: unknown) {
   try {
     const supabase = await createClient();
     const {
@@ -34,7 +78,7 @@ export async function POST(_req: NextRequest, ctx: unknown) {
 
     const { data: offer, error: offerError } = await admin
       .from("job_offers")
-      .select("id, application_id, status, docuseal_submission_id")
+      .select("id, application_id, status, docuseal_submission_id, latest_docuseal_url, job_metadata, metadata")
       .eq("id", jobOfferId)
       .maybeSingle();
 
@@ -69,7 +113,22 @@ export async function POST(_req: NextRequest, ctx: unknown) {
       return NextResponse.json({ success: true, alreadySigned: true });
     }
 
-    let submissionId: string | null = offer.docuseal_submission_id ?? null;
+    const body = (await req.json().catch(() => null)) as {
+      docusealData?: {
+        submission_id?: string | number | null;
+        slug?: string | null;
+        status?: string | null;
+        completed_at?: string | null;
+      } | null;
+    } | null;
+    const docusealData = body?.docusealData ?? null;
+    const offerMeta = ((offer.job_metadata ?? offer.metadata) || {}) as Record<string, unknown>;
+
+    let submissionId: string | null =
+      offer.docuseal_submission_id ??
+      (offerMeta.docuseal_submission_id != null ? String(offerMeta.docuseal_submission_id) : null) ??
+      (docusealData?.submission_id != null ? String(docusealData.submission_id) : null);
+
     if (!submissionId && offer.application_id) {
       const { data: signedDoc } = await admin
         .from("signed_documents")
@@ -85,7 +144,25 @@ export async function POST(_req: NextRequest, ctx: unknown) {
         (metaSubId != null ? String(metaSubId) : null);
     }
 
-    const completed = await verifyDocusealSubmissionCompleted(submissionId);
+    let completed = await verifyDocusealSubmissionCompleted(submissionId);
+    if (!completed) {
+      const slug =
+        (typeof docusealData?.slug === "string" && docusealData.slug.trim()) ||
+        extractDocusealSlug(offer.latest_docuseal_url);
+      if (slug) {
+        const bySlug = await verifyDocusealSubmitterBySlug(slug);
+        completed = bySlug.completed;
+        if (!submissionId && bySlug.submissionId) {
+          submissionId = bySlug.submissionId;
+        }
+      }
+    }
+
+    if (!completed && submissionId) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      completed = await verifyDocusealSubmissionCompleted(submissionId);
+    }
+
     if (!completed) {
       return NextResponse.json(
         { error: "Signing not completed yet" },
