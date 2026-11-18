@@ -22,7 +22,10 @@ import ApplicantActionPanel from "@/components/job-offer/applicant-action-panel"
 import HRActionPanel from "@/components/job-offer/hr-action-panel";
 import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
-import { markOfferSigned } from "@/lib/offer-lifecycle";
+import {
+  markOfferSigned,
+  verifyDocusealSubmissionCompleted,
+} from "@/lib/offer-lifecycle";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -311,6 +314,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       shift_end,
       work_days,
       status,
+      docuseal_submission_id,
       latest_docuseal_url,
       job_metadata,
       metadata,
@@ -333,6 +337,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     shift_end?: string | null;
     work_days?: string[] | null;
     status: string;
+    docuseal_submission_id?: string | null;
     latest_docuseal_url?: string | null;
     job_metadata?: Record<string, unknown> | null;
     metadata?: Record<string, unknown> | null;
@@ -886,6 +891,24 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     isAlreadySigned = true;
   }
 
+  if (!isAlreadySigned && jobOfferRow?.docuseal_submission_id) {
+    try {
+      const subCompleted = await verifyDocusealSubmissionCompleted(jobOfferRow.docuseal_submission_id);
+      if (subCompleted) {
+        isAlreadySigned = true;
+        if (jobOfferRow.application_id) {
+          await markOfferSigned({
+            applicationId: jobOfferRow.application_id,
+            offerId: jobOfferRow.id,
+            source: "offer_page_reconcile",
+          });
+        }
+      }
+    } catch (error) {
+      console.error("[JobOfferPage] DocuSeal submission reconciliation failed:", error);
+    }
+  }
+
   if (!isAlreadySigned && signingUrl) {
     try {
       const docusealApiUrl = getDocusealBaseUrl();
@@ -901,7 +924,11 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
         if (dsRes.ok) {
           const dsData = await dsRes.json();
-          const submitter = Array.isArray(dsData?.data) ? dsData.data[0] : dsData;
+          const submitter = Array.isArray(dsData)
+            ? dsData[0]
+            : Array.isArray(dsData?.data)
+              ? dsData.data[0]
+              : dsData;
 
           if (submitter?.status === "completed" || submitter?.completed_at) {
             isAlreadySigned = true;
@@ -918,6 +945,15 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       }
     } catch (error) {
       console.error("[JobOfferPage] DocuSeal status reconciliation failed:", error);
+    }
+  }
+
+  if (isAlreadySigned) {
+    if (application && application.status !== "hired") {
+      application.status = "pre_employment";
+    }
+    if (jobOfferRow && String(jobOfferRow.status ?? "").toUpperCase() !== "HIRED") {
+      jobOfferRow.status = "SIGNED";
     }
   }
 

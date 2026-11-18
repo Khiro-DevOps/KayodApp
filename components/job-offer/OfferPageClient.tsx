@@ -396,7 +396,16 @@ export default function OfferPageClient({
     }
   };
 
-  const handleSigningComplete = async (data?: unknown) => {
+  const handleSigningComplete = async (detail?: unknown) => {
+    const payload = (detail ?? {}) as {
+      submission_id?: string | number | null;
+      submission?: { id?: string | number | null } | null;
+      slug?: string | null;
+    };
+    const submissionId = payload?.submission_id ?? payload?.submission?.id ?? null;
+    const slug = payload?.slug ?? null;
+
+    setSigningSessionError(null);
     setHasSigned(true);
     setSignToastMessage("Contract signed successfully! HR has been notified to confirm your hire.");
 
@@ -404,15 +413,30 @@ export default function OfferPageClient({
       const response = await fetch(`/api/job-offers/${encodeURIComponent(token)}/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "signed", docusealData: data }),
+        body: JSON.stringify({
+          status: "signed",
+          submissionId,
+          slug,
+          docusealData: detail,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`Signing update failed with status ${response.status}`);
+        const errBody = await response.json().catch(() => null) as { error?: string } | null;
+        const message = errBody?.error || `Signing update failed with status ${response.status}`;
+        setHasSigned(false);
+        setSignToastMessage(null);
+        setSigningSessionError(message);
+        console.error("[OfferPage] Signing update failed:", message);
+        return;
       }
 
       router.refresh();
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update signing status";
+      setHasSigned(false);
+      setSignToastMessage(null);
+      setSigningSessionError(message);
       console.error("[OfferPage] Failed to update signing status:", error);
     }
   };

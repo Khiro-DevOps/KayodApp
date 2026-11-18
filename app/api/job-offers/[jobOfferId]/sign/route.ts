@@ -45,8 +45,11 @@ async function verifyDocusealSubmitterBySlug(slug: string): Promise<{
         ? payload.data[0]
         : payload;
     const status = typeof record?.status === "string" ? record.status.toLowerCase() : "";
-    const completed = status === "completed" || Boolean(record?.completed_at);
     const submissionId = record?.submission_id != null ? String(record.submission_id) : null;
+    let completed = status === "completed" || Boolean(record?.completed_at);
+    if (!completed && submissionId) {
+      completed = await verifyDocusealSubmissionCompleted(submissionId);
+    }
     return { completed, submissionId };
   } catch {
     return { completed: false, submissionId: null };
@@ -114,8 +117,11 @@ export async function POST(req: NextRequest, ctx: unknown) {
     }
 
     const body = (await req.json().catch(() => null)) as {
+      submissionId?: string | number | null;
+      slug?: string | null;
       docusealData?: {
         submission_id?: string | number | null;
+        submission?: { id?: string | number | null } | null;
         slug?: string | null;
         status?: string | null;
         completed_at?: string | null;
@@ -127,28 +133,32 @@ export async function POST(req: NextRequest, ctx: unknown) {
     let submissionId: string | null =
       offer.docuseal_submission_id ??
       (offerMeta.docuseal_submission_id != null ? String(offerMeta.docuseal_submission_id) : null) ??
-      (docusealData?.submission_id != null ? String(docusealData.submission_id) : null);
+      (body?.submissionId != null ? String(body.submissionId) : null) ??
+      (docusealData?.submission_id != null ? String(docusealData.submission_id) : null) ??
+      (docusealData?.submission?.id != null ? String(docusealData.submission.id) : null);
 
+    let signedDocUrl: string | null = null;
     if (!submissionId && offer.application_id) {
       const { data: signedDoc } = await admin
         .from("signed_documents")
-        .select("docuseal_submission_id, metadata")
+        .select("docuseal_submission_url, metadata")
         .eq("application_id", offer.application_id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
+      signedDocUrl = signedDoc?.docuseal_submission_url ?? null;
       const metaSubId = (signedDoc?.metadata as Record<string, unknown> | null)?.docuseal_submission_id;
-      submissionId =
-        signedDoc?.docuseal_submission_id ??
-        (metaSubId != null ? String(metaSubId) : null);
+      submissionId = metaSubId != null ? String(metaSubId) : null;
     }
 
     let completed = await verifyDocusealSubmissionCompleted(submissionId);
     if (!completed) {
       const slug =
+        (typeof body?.slug === "string" && body.slug.trim()) ||
         (typeof docusealData?.slug === "string" && docusealData.slug.trim()) ||
-        extractDocusealSlug(offer.latest_docuseal_url);
+        extractDocusealSlug(offer.latest_docuseal_url) ||
+        extractDocusealSlug(signedDocUrl);
       if (slug) {
         const bySlug = await verifyDocusealSubmitterBySlug(slug);
         completed = bySlug.completed;

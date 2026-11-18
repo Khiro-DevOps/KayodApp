@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 
 import PageContainer from "@/components/ui/page-container";
 import { getHrJobScope } from "@/lib/hr-job-scope";
+import {
+  markOfferSigned,
+  verifyDocusealSubmissionCompleted,
+} from "@/lib/offer-lifecycle";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -46,6 +50,7 @@ interface RawOfferRow {
   hr_id?: string | null;
   created_by?: string | null;
   status?: string | null;
+  docuseal_submission_id?: string | null;
   salary?: number | null;
   start_date?: string | null;
   work_setup?: string | null;
@@ -135,6 +140,7 @@ export default async function HROffersDirectoryPage() {
     hr_id,
     created_by,
     status,
+    docuseal_submission_id,
     salary,
     start_date,
     work_setup,
@@ -199,6 +205,36 @@ export default async function HROffersDirectoryPage() {
     }
     return false;
   });
+
+  const sentWithSub = scopedOffers.filter(
+    (offer) =>
+      String(offer.status ?? "").toUpperCase() === "SENT" &&
+      Boolean(offer.docuseal_submission_id)
+  );
+
+  if (sentWithSub.length > 0) {
+    await Promise.all(
+      sentWithSub.map(async (offer) => {
+        try {
+          const completed = await verifyDocusealSubmissionCompleted(offer.docuseal_submission_id);
+          if (completed) {
+            await markOfferSigned({
+              applicationId: offer.application_id,
+              offerId: offer.id,
+              source: "hr_offers_list_reconcile",
+            });
+            offer.status = "SIGNED";
+            const app = toSingle(offer.job_applications);
+            if (app && app.status !== "hired") {
+              app.status = "pre_employment";
+            }
+          }
+        } catch (err) {
+          console.error("[HROffersDirectory] DocuSeal reconciliation failed:", err);
+        }
+      })
+    );
+  }
 
   const applicationIds = Array.from(
     new Set(scopedOffers.map((offer) => offer.application_id).filter(Boolean))
