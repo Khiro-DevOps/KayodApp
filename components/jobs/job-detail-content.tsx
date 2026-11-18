@@ -3,11 +3,38 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Building2, Calendar, CheckCircle2, MapPin, Wallet, Briefcase, Laptop, X } from "lucide-react";
 import type { JobPosting, Resume } from "@/lib/types";
-import ApplyActions from "@/app/(dashboard)/jobs/[id]/apply-actions-client";
 import ApplyFormClient from "@/app/(dashboard)/jobs/[id]/apply/apply-form-client";
 import { submitApplication } from "@/app/(dashboard)/hr/applicants/actions";
 import { createClient } from "@/lib/supabase/client";
+
+function formatEmploymentType(employmentType: JobPosting["employment_type"]): string {
+  return String(employmentType ?? "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function formatWorkSetup(workSetup: JobPosting["work_setup"]): string {
+  if (workSetup === "remote" || workSetup === "wfh") return "Remote / WFH";
+  if (workSetup === "hybrid") return "Hybrid";
+  return "Onsite";
+}
+
+function resolveCompanyName(job: JobPosting): string {
+  if (job.companyName && job.companyName.trim()) {
+    return job.companyName.trim();
+  }
+  const tenantRel = Array.isArray(job.tenant) ? job.tenant[0] : job.tenant;
+  if (tenantRel?.name && tenantRel.name.trim()) {
+    return tenantRel.name.trim();
+  }
+  return "Company";
+}
 
 interface JobDetailContentProps {
   job: JobPosting;
@@ -154,108 +181,162 @@ export default function JobDetailContent({
     );
   }
 
+  const companyName = resolveCompanyName(job);
+  const salaryLabel =
+    job.salary_min && job.salary_max
+      ? `₱${job.salary_min.toLocaleString()} – ₱${job.salary_max.toLocaleString()}`
+      : job.salary_min
+        ? `From ₱${job.salary_min.toLocaleString()}`
+        : job.salary_max
+          ? `Up to ₱${job.salary_max.toLocaleString()}`
+          : null;
+
   return (
-    <div className="flex flex-col h-full max-h-[85vh] md:max-h-[90vh] relative bg-white">
+    <div className="flex flex-col flex-1 min-h-0 max-h-[90vh] relative bg-white">
       {isLoadingResumes && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-xs">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></div>
         </div>
       )}
 
-      {/* Fixed Header with Close Button */}
-      <div className="flex items-center justify-between p-4 md:p-6 border-b shrink-0 bg-white">
-        <div className="min-w-0 flex-1 pr-4">
-          <h1 className="truncate text-xl font-bold text-text-main">{job.title}</h1>
-          <p className="text-sm text-text-muted">{deptName}</p>
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/60 shrink-0 flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+              <Building2 className="h-3.5 w-3.5 text-purple-600" />
+              {companyName}
+            </span>
+            {matchScore !== null && (
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                {matchScore}% Match
+              </span>
+            )}
+          </div>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
+            {job.title}
+          </h1>
         </div>
+
         {onClose ? (
           <button
             onClick={onClose}
             type="button"
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors text-text-muted hover:text-text-main shrink-0"
+            className="rounded-full p-2 text-slate-500 hover:bg-slate-200/70 hover:text-slate-900 transition-colors shrink-0"
             aria-label="Close modal"
           >
-            <span className="material-symbols-outlined text-[20px]">close</span>
+            <X className="h-5 w-5" />
           </button>
         ) : (
           <Link
             href="/applicant/jobs"
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors text-text-muted hover:text-text-main shrink-0"
+            className="rounded-full p-2 text-slate-500 hover:bg-slate-200/70 hover:text-slate-900 transition-colors shrink-0"
+            aria-label="Back to jobs"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-              <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
-            </svg>
+            <X className="h-5 w-5" />
           </Link>
         )}
       </div>
 
-      {/* Scrollable Content Body */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {job.location && (
-            <span className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-0.5 text-xs text-text-muted">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
-                <path fillRule="evenodd" d="m7.539 14.841.003.003.002.002a.755.755 0 0 0 .912 0l.002-.002.003-.003.012-.009a5.57 5.57 0 0 0 .19-.153 15.588 15.588 0 0 0 2.046-2.082c1.101-1.362 2.291-3.342 2.291-5.597A5 5 0 0 0 3 7c0 2.255 1.19 4.235 2.291 5.597a15.591 15.591 0 0 0 2.236 2.236l.012.008ZM8 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" clipRule="evenodd" />
-              </svg>
-              {job.location}
-              {job.is_remote && " (Remote)"}
-            </span>
-          )}
-          {job.salary_min && job.salary_max && (
-            <span className="rounded-full bg-surface-container-low px-2.5 py-0.5 text-xs text-text-muted">
-              ₱{job.salary_min.toLocaleString()} – ₱{job.salary_max.toLocaleString()}
-            </span>
-          )}
-          <span className="rounded-full bg-surface-container-low px-2.5 py-0.5 text-xs text-text-muted">
-            {job.employment_type.replace("_", " ")}
+      {/* Metadata Strip */}
+      <div className="px-6 py-3.5 border-b border-slate-100 flex flex-wrap gap-2 shrink-0 bg-white">
+        {job.location && (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+            <MapPin className="h-3.5 w-3.5 text-slate-500" />
+            {job.location}
           </span>
-          <span className="rounded-full bg-surface-container-low px-2.5 py-0.5 text-xs text-text-muted">
-            Posted {new Date(job.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+        )}
+        {salaryLabel && (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+            <Wallet className="h-3.5 w-3.5 text-slate-500" />
+            {salaryLabel}
           </span>
-        </div>
-
-        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Description</p>
-            <p className="whitespace-pre-wrap text-sm text-text-main">{job.description}</p>
-          </div>
-
-          {job.requirements && (
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Requirements</p>
-              <p className="whitespace-pre-wrap text-sm text-text-main">{job.requirements}</p>
-            </div>
-          )}
-
-          {job.required_skills && job.required_skills.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Required Skills</p>
-              <div className="flex flex-wrap gap-1.5">
-                {job.required_skills.map((skill) => (
-                  <span
-                    key={skill}
-                    className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+          <Laptop className="h-3.5 w-3.5 text-slate-500" />
+          {formatWorkSetup(job.work_setup)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+          <Briefcase className="h-3.5 w-3.5 text-slate-500" />
+          {formatEmploymentType(job.employment_type)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+          <Calendar className="h-3.5 w-3.5 text-slate-500" />
+          Posted {new Date(job.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+        </span>
       </div>
 
-      {/* Sticky Bottom Action Bar */}
+      {/* Scrollable Body */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-sm text-slate-700 leading-relaxed">
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            About the Role
+          </h2>
+          <p className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed">
+            {job.description}
+          </p>
+        </section>
+
+        {job.requirements && (
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Requirements
+            </h2>
+            <p className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed">
+              {job.requirements}
+            </p>
+          </section>
+        )}
+
+        {job.required_skills && job.required_skills.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Skills
+            </h2>
+            <div className="flex flex-wrap gap-1.5">
+              {job.required_skills.map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded-full border border-purple-200/80 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* Sticky Footer */}
       {isCandidate && (
-        <div className="p-4 border-t bg-card shrink-0 flex items-center justify-between z-10">
-          <div className="w-full">
-            <ApplyActions
-              jobId={job.id}
-              hasApplied={hasApplied}
-              matchScore={matchScore}
-              onApplyClick={handleApplyClick}
-            />
-          </div>
+        <div className="px-6 py-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+          {hasApplied ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" />
+                Already Applied
+              </span>
+              <Link
+                href="/applicant/applications"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                View Application
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-slate-500">
+                Submit your application directly with your selected resume.
+              </p>
+              <button
+                type="button"
+                onClick={handleApplyClick}
+                className="w-full sm:w-auto rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors shadow-xs"
+              >
+                Apply with Selected Resume
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

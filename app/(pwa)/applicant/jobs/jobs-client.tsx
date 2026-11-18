@@ -153,6 +153,14 @@ export default function ApplicantJobsClient({
     safeAllJobsPage * ALL_JOBS_PAGE_SIZE,
   );
 
+  const estimatedScoresMap = useMemo(() => {
+    const map = new Map<string, number | null>();
+    recommendedJobs.forEach(({ job, fit }) => {
+      map.set(job.id, fit.is_fallback ? null : fit.fit_score);
+    });
+    return map;
+  }, [recommendedJobs]);
+
   const allJobsMap = useMemo(() => {
     const map = new Map<string, JobPosting>();
     allJobs.forEach((j) => map.set(j.id, j));
@@ -391,6 +399,7 @@ export default function ApplicantJobsClient({
         job={selectedJob}
         onClose={closeJobModal}
         applicationsMap={applicationsMap}
+        estimatedMatchScore={selectedJob ? (estimatedScoresMap.get(selectedJob.id) ?? null) : null}
         isCandidate={isCandidate}
       />
     </>
