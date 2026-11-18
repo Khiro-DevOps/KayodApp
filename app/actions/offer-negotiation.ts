@@ -11,7 +11,7 @@ import { notifyJobCreator, sendNotification } from "@/lib/notifications";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-export const ALLOWED_NEGOTIATION_FIELDS = [
+const ALLOWED_NEGOTIATION_FIELDS = [
   "salary",
   "start_date",
   "work_setup",

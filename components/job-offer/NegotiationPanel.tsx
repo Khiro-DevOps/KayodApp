@@ -5,13 +5,20 @@ import { CheckCircle2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
-  ALLOWED_NEGOTIATION_FIELDS,
   respondToNegotiation,
   sendRevisedOffer,
   submitOfferNegotiation,
   type NegotiationField,
   type OfferNegotiationRow,
 } from "@/app/actions/offer-negotiation";
+
+const ALLOWED_NEGOTIATION_FIELDS: readonly NegotiationField[] = [
+  "salary",
+  "start_date",
+  "work_setup",
+  "probation_days",
+  "other",
+] as const;
 
 interface NegotiationPanelProps {
   token: string;
