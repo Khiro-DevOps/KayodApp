@@ -5,6 +5,7 @@ import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
 import CompensationEditorCard from "./compensation-editor-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
+import { resolveOfferSalary, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
 import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
 interface Props {
@@ -66,6 +67,39 @@ export default async function EmployeeDetailPage({ params }: Props) {
     .select("*")
     .eq("employee_id", employeeId)
     .maybeSingle<EmployeeRemoteResidence>();
+
+  const storedSalary = Number(employee.base_salary ?? employee.salary ?? 0);
+  let resolvedInitialSalary = storedSalary > 0 ? storedSalary : 35000;
+
+  if (storedSalary <= 0 && employee.application_id) {
+    const [{ data: linkedOffer }, { data: linkedApp }] = await Promise.all([
+      supabase
+        .from("job_offers")
+        .select("salary, financial_package, job_metadata, metadata")
+        .eq("application_id", employee.application_id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("job_applications")
+        .select("job_postings ( salary_min, salary_max )")
+        .eq("id", employee.application_id)
+        .maybeSingle(),
+    ]);
+
+    const rawPosting = (
+      linkedApp as { job_postings?: JobPostingSalarySource | JobPostingSalarySource[] | null } | null
+    )?.job_postings;
+    const linkedPosting = Array.isArray(rawPosting)
+      ? rawPosting[0] ?? null
+      : rawPosting ?? null;
+
+    resolvedInitialSalary = resolveOfferSalary(
+      linkedOffer as OfferSalarySource | null,
+      linkedPosting,
+      35000,
+    );
+  }
     
   const p = employee.profiles as unknown as { first_name: string; last_name: string; email: string; };
 
@@ -92,7 +126,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
         {/* Compensation & Pay Frequency */}
         <CompensationEditorCard
           employeeId={employee.id}
-          initialBaseSalary={Number(employee.base_salary ?? employee.salary ?? 35000)}
+          initialBaseSalary={resolvedInitialSalary}
           initialPayFrequency={String(employee.pay_frequency ?? "monthly")}
           currency={String(employee.currency ?? "PHP")}
         />

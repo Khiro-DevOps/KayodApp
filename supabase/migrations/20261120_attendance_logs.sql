@@ -17,8 +17,17 @@ CREATE TABLE IF NOT EXISTS public.attendance_logs (
   clock_in_lng double precision,
   clock_out_lat double precision,
   clock_out_lng double precision,
+  latitude double precision,
+  longitude double precision,
+  accuracy_meters double precision,
+  clock_out_accuracy_meters double precision,
   distance_meters integer,
+  total_hours numeric(6,2),
   zone_status text NOT NULL DEFAULT 'in_zone',
+  location_used text,
+  verification_type text,
+  work_mode text,
+  break_status text,
   status text NOT NULL DEFAULT 'present',
   is_late boolean NOT NULL DEFAULT false,
   late_minutes integer NOT NULL DEFAULT 0,
@@ -147,5 +156,20 @@ FOR ALL USING (
       AND (actor.tenant_id IS NULL OR e.tenant_id IS NULL OR actor.tenant_id = e.tenant_id)
   )
 );
+
+ALTER TABLE public.attendance_logs
+  ADD COLUMN IF NOT EXISTS latitude double precision,
+  ADD COLUMN IF NOT EXISTS longitude double precision,
+  ADD COLUMN IF NOT EXISTS accuracy_meters double precision,
+  ADD COLUMN IF NOT EXISTS clock_out_accuracy_meters double precision,
+  ADD COLUMN IF NOT EXISTS distance_meters integer,
+  ADD COLUMN IF NOT EXISTS total_hours numeric(6,2),
+  ADD COLUMN IF NOT EXISTS zone_status text NOT NULL DEFAULT 'in_zone',
+  ADD COLUMN IF NOT EXISTS location_used text,
+  ADD COLUMN IF NOT EXISTS verification_type text,
+  ADD COLUMN IF NOT EXISTS work_mode text,
+  ADD COLUMN IF NOT EXISTS break_status text,
+  ADD COLUMN IF NOT EXISTS flag_reason text,
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'present';
 
 NOTIFY pgrst, 'reload schema';

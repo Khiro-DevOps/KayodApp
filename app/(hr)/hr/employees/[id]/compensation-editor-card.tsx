@@ -23,10 +23,12 @@ export default function CompensationEditorCard({
   const [payFrequency, setPayFrequency] = useState<string>(
     initialPayFrequency === "semi_monthly" ? "semi_monthly" : "monthly"
   );
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSavedNotice(null);
     const formData = new FormData();
     formData.set("employee_id", employeeId);
     formData.set("base_salary", baseSalary);
@@ -38,7 +40,8 @@ export default function CompensationEditorCard({
         toast.error(res.error || "Failed to update compensation");
         return;
       }
-      toast.success("Compensation & pay frequency updated");
+      toast.success("Compensation saved");
+      setSavedNotice("Compensation saved.");
     });
   };
 
@@ -108,6 +111,15 @@ export default function CompensationEditorCard({
           </button>
         </div>
       </form>
+
+      {savedNotice && (
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800"
+        >
+          {savedNotice}
+        </div>
+      )}
     </section>
   );
 }

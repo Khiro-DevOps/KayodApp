@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { resolveOfferSalary } from "@/lib/offer-salary"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     // 3. Update job offer status (if it exists) and fetch latest offer work setup
     const { data: jobOffer } = await admin
       .from("job_offers")
-      .select("work_mode, work_setup, work_location_id, offered_salary, salary")
+      .select("work_mode, work_setup, work_location_id, salary, financial_package, job_metadata, metadata")
       .eq("application_id", applicationId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -161,13 +162,7 @@ export async function POST(req: NextRequest) {
 
     const rawJobTitle = jobInfo?.title
     const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
-    const rawSalary = Number(
-      (jobOffer as { offered_salary?: number | null; salary?: number | null } | null)?.offered_salary ??
-        (jobOffer as { offered_salary?: number | null; salary?: number | null } | null)?.salary ??
-        jobInfo?.salary_min ??
-        0
-    )
-    const baseSalary = rawSalary > 0 ? rawSalary : 35000
+    const baseSalary = resolveOfferSalary(jobOffer, jobInfo, 35000)
     const empType = jobInfo?.employment_type || "full_time"
 
     if (!existingEmployee) {

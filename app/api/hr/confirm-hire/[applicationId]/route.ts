@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getDocusealBaseUrl } from "@/lib/docuseal";
 import { sendNotification } from "@/lib/notifications";
+import { resolveOfferSalary } from "@/lib/offer-salary";
 import {
   markOfferSigned,
   verifyDocusealSubmissionCompleted,
@@ -56,6 +57,7 @@ type JobOfferRow = {
   docuseal_submission_id?: string | null;
   updated_at: string;
   latest_docuseal_url: string | null;
+  financial_package?: Record<string, unknown> | null;
   job_metadata: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
   job_applications: JobApplicationRelation | JobApplicationRelation[] | null;
@@ -168,6 +170,7 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           docuseal_submission_id,
           updated_at,
           latest_docuseal_url,
+          financial_package,
           job_metadata,
           metadata,
           job_applications!inner (
@@ -307,29 +310,15 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       (typeof jobMetadata.start_date === "string" ? jobMetadata.start_date : null) ??
       now.split("T")[0];
 
-    const offerSalary =
-      typeof offer.offered_salary === "number" && offer.offered_salary > 0
-        ? offer.offered_salary
-        : typeof offer.salary === "number" && offer.salary > 0
-          ? offer.salary
-          : null;
-    const metadataSalary =
-      typeof jobMetadata.base_salary === "number" && jobMetadata.base_salary > 0
-        ? jobMetadata.base_salary
-        : typeof jobMetadata.salary_amount === "number" && jobMetadata.salary_amount > 0
-          ? jobMetadata.salary_amount
-          : typeof jobMetadata.salary === "number" && jobMetadata.salary > 0
-            ? jobMetadata.salary
-            : null;
-
-    const resolvedSalary = Number(
-      offerSalary ??
-        metadataSalary ??
-        jobPosting?.salary_min ??
-        jobPosting?.salary_max ??
-        0,
+    const baseSalaryValue = resolveOfferSalary(
+      {
+        ...offer,
+        metadata,
+        job_metadata: jobMetadata,
+      },
+      jobPosting,
+      35000,
     );
-    const baseSalaryValue = resolvedSalary > 0 ? resolvedSalary : 35000;
 
     // 1) Update job_offers -> HIRED
     const { error: offerUpdateError } = await admin
