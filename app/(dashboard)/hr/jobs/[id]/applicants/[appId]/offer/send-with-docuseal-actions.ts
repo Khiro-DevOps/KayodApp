@@ -72,7 +72,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: offerRow, error: offerError } = await admin
       .from("job_offers")
-      .select("id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, job_metadata, metadata")
+      .select("id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, financial_package, job_metadata, metadata")
       .eq("id", offerId)
       .single();
 

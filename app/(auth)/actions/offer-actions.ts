@@ -65,6 +65,26 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   }
 
   // 2. Hydrate the initial Offer Record and set state to DRAFT
+  const baseSalary = Number(job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0) || 0;
+  const monthlyAllowance =
+    Math.max(
+      0,
+      Number(
+        job.offer_letter_settings?.monthly_allowance ??
+          job.offer_letter_settings?.phMonthlyAllowance ??
+          0
+      ) || 0
+    );
+  const attendanceIncentive =
+    Math.max(
+      0,
+      Number(
+        job.offer_letter_settings?.attendance_incentive ??
+          job.offer_letter_settings?.phAttendanceIncentive ??
+          0
+      ) || 0
+    );
+
   const { data: offer, error: offerError } = await admin
     .from("job_offers")
     .insert({
@@ -75,7 +95,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       is_active: true,
       created_by: user.id,
 
-      salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
+      salary: baseSalary,
       start_date: job.offer_letter_settings?.phStartDate || null,
       work_mode: job.work_setup || 'onsite',
       work_location_id: job.work_location_id || null,
@@ -84,10 +104,17 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       work_days: job.work_days || null,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
+      financial_package: {
+        offered_salary: baseSalary,
+        monthly_allowance: monthlyAllowance,
+        attendance_incentive: attendanceIncentive,
+      },
       job_metadata: {
         company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
+        monthly_allowance: monthlyAllowance,
+        attendance_incentive: attendanceIncentive,
       },
     })
     .select()
@@ -336,6 +363,26 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       ? (settings.work_days as string[])
       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
+    const baseSalary = Number(job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0) || 0;
+    const monthlyAllowance =
+      Math.max(
+        0,
+        Number(
+          settings?.monthly_allowance ??
+            settings?.phMonthlyAllowance ??
+            0
+        ) || 0
+      );
+    const attendanceIncentive =
+      Math.max(
+        0,
+        Number(
+          settings?.attendance_incentive ??
+            settings?.phAttendanceIncentive ??
+            0
+        ) || 0
+      );
+
     const draftPayload = {
       application_id: applicationId,
       job_id: jobId,
@@ -345,7 +392,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       parent_offer_id: existingOffer?.id ?? null,
       is_active: true,
       created_by: existingOffer?.created_by ?? user.id,
-      salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
+      salary: baseSalary,
       start_date: job.offer_letter_settings?.phStartDate || null,
       work_setup: resolvedWorkSetup,
       work_mode: resolvedWorkSetup.toLowerCase(),
@@ -355,12 +402,19 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       work_days: settingsWorkDays,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
+      financial_package: {
+        offered_salary: baseSalary,
+        monthly_allowance: monthlyAllowance,
+        attendance_incentive: attendanceIncentive,
+      },
       job_metadata: {
         company_name: tenantName,
         start_date: job.offer_letter_settings?.phStartDate || null,
         job_title: job.title,
         // include any selected benefits if present in job.offer_letter_settings
         benefits: job.offer_letter_settings?.selectedBenefits ?? null,
+        monthly_allowance: monthlyAllowance,
+        attendance_incentive: attendanceIncentive,
       },
     };
 

@@ -313,6 +313,8 @@ export type OfferPrefillFields = {
   company_name: string;
   department: string;
   salary: string;
+  monthly_allowance?: string;
+  attendance_incentive?: string;
   start_date: string;
   work_setup: string;
   work_location: string;
@@ -340,6 +342,7 @@ export function buildOfferPrefillFields(
     work_mode?: string | null;
     department?: string | null;
     probation_days?: number | string | null;
+    financial_package?: Record<string, unknown> | null;
     job_metadata?: Record<string, unknown> | null;
     metadata?: Record<string, unknown> | null;
   } | null | undefined,
@@ -425,12 +428,36 @@ export function buildOfferPrefillFields(
       ? String(offer.probation_days).trim()
       : "";
 
+  const offerPkg = (offer?.financial_package ?? {}) as Record<string, unknown>;
+  const formatOptionalAmount = (raw: unknown): string => {
+    const parsed =
+      raw !== null && raw !== undefined && String(raw).trim() !== ""
+        ? Number(raw)
+        : null;
+    if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
+      return "";
+    }
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency,
+    }).format(parsed);
+  };
+
+  const monthlyAllowance = formatOptionalAmount(
+    offerPkg.monthly_allowance ?? offerMeta.monthly_allowance
+  );
+  const attendanceIncentive = formatOptionalAmount(
+    offerPkg.attendance_incentive ?? offerMeta.attendance_incentive
+  );
+
   return {
     candidate_name: candidateName,
     job_title: jobTitle,
     company_name: companyName,
     department,
     salary,
+    ...(monthlyAllowance ? { monthly_allowance: monthlyAllowance } : {}),
+    ...(attendanceIncentive ? { attendance_incentive: attendanceIncentive } : {}),
     start_date: startDate,
     work_setup: workSetup,
     work_location: workLocation,

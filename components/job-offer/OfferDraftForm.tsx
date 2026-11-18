@@ -30,6 +30,7 @@ export interface OfferDraftRecord {
   shift_start?: string | null;
   shift_end?: string | null;
   work_days?: string[] | null;
+  financial_package?: Record<string, unknown> | null;
   job_metadata?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
 }
@@ -61,6 +62,17 @@ function formatBenefitsValue(offer: OfferDraftRecord | null): string {
   return "";
 }
 
+function readPackageNumber(
+  offer: OfferDraftRecord | null,
+  key: "monthly_allowance" | "attendance_incentive"
+): string {
+  const pkg = (offer?.financial_package ?? {}) as Record<string, unknown>;
+  const meta = (offer?.job_metadata ?? offer?.metadata ?? {}) as Record<string, unknown>;
+  const raw = pkg[key] ?? meta[key];
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : "0";
+}
+
 export default function OfferDraftForm({
   applicationId,
   jobId,
@@ -82,6 +94,12 @@ export default function OfferDraftForm({
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const [salary, setSalary] = useState<string>(String(initialOffer?.salary ?? 0));
+  const [monthlyAllowance, setMonthlyAllowance] = useState<string>(
+    readPackageNumber(initialOffer, "monthly_allowance")
+  );
+  const [attendanceIncentive, setAttendanceIncentive] = useState<string>(
+    readPackageNumber(initialOffer, "attendance_incentive")
+  );
   const [startDate, setStartDate] = useState<string>(initialOffer?.start_date ?? "");
   const [workSetup, setWorkSetup] = useState<string>(
     initialOffer?.work_setup ?? initialOffer?.work_mode ?? defaultWorkSetup ?? "onsite"
@@ -103,6 +121,8 @@ export default function OfferDraftForm({
   const syncFormFromOffer = (nextOffer: OfferDraftRecord) => {
     setOffer(nextOffer);
     setSalary(String(nextOffer.salary ?? 0));
+    setMonthlyAllowance(readPackageNumber(nextOffer, "monthly_allowance"));
+    setAttendanceIncentive(readPackageNumber(nextOffer, "attendance_incentive"));
     setStartDate(nextOffer.start_date ?? "");
     setWorkSetup(nextOffer.work_setup ?? nextOffer.work_mode ?? defaultWorkSetup ?? "onsite");
     setWorkLocationId(nextOffer.work_location_id ?? defaultWorkLocationId ?? "");
@@ -142,6 +162,9 @@ export default function OfferDraftForm({
 
   const buildUpdatesPayload = () => {
     const existingMeta = (offer?.job_metadata ?? offer?.metadata ?? {}) as Record<string, unknown>;
+    const existingPackage = (offer?.financial_package ?? {}) as Record<string, unknown>;
+    const parsedMonthlyAllowance = Math.max(0, Number(monthlyAllowance) || 0);
+    const parsedAttendanceIncentive = Math.max(0, Number(attendanceIncentive) || 0);
     const parsedBenefits = benefits
       .split(",")
       .map((s) => s.trim())
@@ -158,10 +181,18 @@ export default function OfferDraftForm({
       shift_start: shiftStart || null,
       shift_end: shiftEnd || null,
       work_days: workDays.length > 0 ? workDays : null,
+      financial_package: {
+        ...existingPackage,
+        offered_salary: Number(salary) || 0,
+        monthly_allowance: parsedMonthlyAllowance,
+        attendance_incentive: parsedAttendanceIncentive,
+      },
       job_metadata: {
         ...existingMeta,
         start_date: startDate || null,
         benefits: parsedBenefits,
+        monthly_allowance: parsedMonthlyAllowance,
+        attendance_incentive: parsedAttendanceIncentive,
       },
     };
   };
@@ -288,17 +319,60 @@ export default function OfferDraftForm({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block space-y-1">
-          <span className="text-xs font-medium text-text-secondary">Salary</span>
-          <input
-            type="number"
-            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary"
-            value={salary}
-            onChange={(e) => setSalary(e.target.value)}
-          />
-        </label>
+      <div className="rounded-xl border border-border bg-white/60 p-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Compensation &amp; Incentives
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-text-secondary">Salary</span>
+            <input
+              type="number"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary"
+              value={salary}
+              onChange={(e) => setSalary(e.target.value)}
+            />
+          </label>
 
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-text-secondary">
+              Monthly Allowance (₱)
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary"
+              value={monthlyAllowance}
+              onChange={(e) => setMonthlyAllowance(e.target.value)}
+            />
+            <span className="block text-[11px] text-text-secondary">
+              Internet / Rice / Transport allowance
+            </span>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-text-secondary">
+              Perfect Attendance Incentive (₱)
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary"
+              value={attendanceIncentive}
+              onChange={(e) => setAttendanceIncentive(e.target.value)}
+            />
+            <span className="block text-[11px] text-text-secondary">
+              Awarded when 0 lates &amp; 0 absences
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block space-y-1">
           <span className="text-xs font-medium text-text-secondary">Start date</span>
           <input
