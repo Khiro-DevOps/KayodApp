@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { createDocusealSubmission } from "@/lib/docuseal";
-import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
+import { buildOfferPrefillFields, createDocusealSubmission } from "@/lib/docuseal";
+import { ensureOfferTemplate, getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 
 export async function GET(_req: NextRequest, ctx: any) {
   try {
@@ -17,7 +17,9 @@ export async function GET(_req: NextRequest, ctx: any) {
     const admin = getAdminClient();
     const { data: jobOffer, error: jobOfferError } = await admin
       .from("job_offers")
-      .select("id, application_id, latest_docuseal_url, job_id, contract_template_id")
+      .select(
+        "id, application_id, latest_docuseal_url, job_id, contract_template_id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, job_metadata, metadata"
+      )
       .eq("id", jobOfferId)
       .single();
 
@@ -62,11 +64,20 @@ export async function GET(_req: NextRequest, ctx: any) {
     }
 
     let templateId = "";
-    const jobPostingId = String(application.job_id ?? "").trim();
+    const jobPostingId = String(jobOffer.job_id ?? application.job_id ?? "").trim();
+    let jobPosting: {
+      title?: string | null;
+      currency?: string | null;
+      location?: string | null;
+      docuseal_template_id?: string | null;
+      created_by?: string | null;
+      company_name?: string | null;
+    } | null = null;
+
     if (jobPostingId) {
-      const { data: jobPosting, error: jobPostingError } = await admin
+      const { data: fetchedJobPosting, error: jobPostingError } = await admin
         .from("job_postings")
-        .select("docuseal_template_id")
+        .select("title, currency, location, docuseal_template_id, created_by")
         .eq("id", jobPostingId)
         .maybeSingle();
 
@@ -74,7 +85,26 @@ export async function GET(_req: NextRequest, ctx: any) {
         return NextResponse.json({ error: jobPostingError.message }, { status: 500 });
       }
 
-      templateId = String(jobPosting?.docuseal_template_id ?? "").trim();
+      let tenantName: string | null = null;
+      if (fetchedJobPosting?.created_by) {
+        const { data: creatorProfile } = await admin
+          .from("profiles")
+          .select("tenant_id")
+          .eq("id", fetchedJobPosting.created_by)
+          .maybeSingle();
+
+        if (creatorProfile?.tenant_id) {
+          const { data: tenantRow } = await admin
+            .from("tenants")
+            .select("name")
+            .eq("id", creatorProfile.tenant_id)
+            .maybeSingle();
+          tenantName = tenantRow?.name ?? null;
+        }
+      }
+
+      jobPosting = fetchedJobPosting ? { ...fetchedJobPosting, company_name: tenantName } : null;
+      templateId = await ensureOfferTemplate(jobPostingId);
     }
 
     if (!templateId && jobOffer.contract_template_id) {
@@ -97,6 +127,14 @@ export async function GET(_req: NextRequest, ctx: any) {
       }, { status: 400 });
     }
 
+    const { data: branchRow } = jobOffer.work_location_id
+      ? await admin
+          .from("office_branches")
+          .select("id, name, address")
+          .eq("id", jobOffer.work_location_id)
+          .maybeSingle()
+      : { data: null };
+
     const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
     const candidateName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || "Candidate";
     const candidateEmail = profile?.email?.trim();
@@ -105,6 +143,7 @@ export async function GET(_req: NextRequest, ctx: any) {
       return NextResponse.json({ error: "Candidate email is required to create a signing session" }, { status: 400 });
     }
 
+    const prefillFields = buildOfferPrefillFields(jobOffer, jobPosting, profile, branchRow);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim() || "http://localhost:3000";
     const submission = await createDocusealSubmission({
       templateId,
@@ -113,6 +152,7 @@ export async function GET(_req: NextRequest, ctx: any) {
       externalId: jobOfferId,
       sendEmail: false,
       redirectUrl: `${appUrl}/job-offer/${jobOfferId}`,
+      prefillFields,
     });
 
     const { error: updateError } = await admin

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { resolveCompanyLogoUrlForUser } from "@/lib/company-logos";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { createDocusealSubmission } from "@/lib/docuseal";
+import { buildOfferPrefillFields, createDocusealSubmission } from "@/lib/docuseal";
+import { ensureOfferTemplate } from "@/lib/docuseal-actions";
 
 type SendOfferWithDocuSealResult =
   | {
@@ -34,7 +35,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("id, title, docuseal_template_id, created_by")
+      .select("id, title, location, currency, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -69,10 +70,52 @@ export async function sendOfferWithDocuSeal(
       throw new Error("Candidate email is required to send a DocuSeal offer");
     }
 
-    const templateId = String(job.docuseal_template_id ?? "").trim();
-    if (!templateId) {
-      throw new Error("Job posting is missing a DocuSeal template ID");
+    const { data: offerRow, error: offerError } = await admin
+      .from("job_offers")
+      .select("id, salary, start_date, work_setup, work_mode, work_location_id, department, probation_days, job_metadata, metadata")
+      .eq("id", offerId)
+      .single();
+
+    if (offerError || !offerRow) {
+      throw new Error(offerError?.message ?? "Job offer not found");
     }
+
+    const { data: branchRow } = offerRow.work_location_id
+      ? await admin
+          .from("office_branches")
+          .select("id, name, address")
+          .eq("id", offerRow.work_location_id)
+          .maybeSingle()
+      : { data: null };
+
+    const { data: creatorProfile } = job.created_by
+      ? await admin
+          .from("profiles")
+          .select("tenant_id")
+          .eq("id", job.created_by)
+          .maybeSingle()
+      : { data: null };
+
+    const { data: tenantRow } = creatorProfile?.tenant_id
+      ? await admin
+          .from("tenants")
+          .select("name")
+          .eq("id", creatorProfile.tenant_id)
+          .maybeSingle()
+      : { data: null };
+
+    const templateId = await ensureOfferTemplate(jobId);
+    const prefillFields = buildOfferPrefillFields(
+      offerRow,
+      {
+        title: job.title,
+        currency: job.currency,
+        location: job.location,
+        company_name: tenantRow?.name ?? null,
+      },
+      candidate,
+      branchRow
+    );
 
     const companyLogoUrl = await resolveCompanyLogoUrlForUser(user.id);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim() || "http://localhost:3000";
@@ -84,6 +127,7 @@ export async function sendOfferWithDocuSeal(
       sendEmail: true,
       redirectUrl: `${appUrl}/applications/${applicationId}`,
       companyLogoUrl,
+      prefillFields,
     });
 
     const { error: updateError } = await admin

@@ -293,6 +293,151 @@ const DEFAULT_OFFER_CLOSING = `Please review this offer carefully and sign below
 
 We look forward to working with you!`;
 
+export const REQUIRED_OFFER_TEMPLATE_FIELDS = [
+  "candidate_name",
+  "job_title",
+  "company_name",
+  "department",
+  "salary",
+  "start_date",
+  "work_setup",
+  "work_location",
+  "probation_days",
+  "signature",
+  "date_signed",
+] as const;
+
+export type OfferPrefillFields = {
+  candidate_name: string;
+  job_title: string;
+  company_name: string;
+  department: string;
+  salary: string;
+  start_date: string;
+  work_setup: string;
+  work_location: string;
+  probation_days: string;
+};
+
+function formatWorkSetupHumanLabel(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  const lower = value.toLowerCase();
+  if (lower === "remote") return "Remote";
+  if (lower === "hybrid") return "Hybrid";
+  if (lower === "onsite" || lower === "on_site" || lower === "on-site") return "On-site";
+  if (lower === "flexible") return "Flexible";
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+export function buildOfferPrefillFields(
+  offer: {
+    salary?: number | string | null;
+    start_date?: string | null;
+    work_setup?: string | null;
+    work_mode?: string | null;
+    department?: string | null;
+    probation_days?: number | string | null;
+    job_metadata?: Record<string, unknown> | null;
+    metadata?: Record<string, unknown> | null;
+  } | null | undefined,
+  job: {
+    title?: string | null;
+    currency?: string | null;
+    location?: string | null;
+    company_name?: string | null;
+    tenant_name?: string | null;
+  } | null | undefined,
+  applicant: {
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null | undefined,
+  branch?: {
+    name?: string | null;
+    address?: string | null;
+  } | null
+): OfferPrefillFields {
+  const candidateName = [applicant?.first_name?.trim(), applicant?.last_name?.trim()]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const offerMeta = (offer?.job_metadata ?? offer?.metadata ?? {}) as Record<string, unknown>;
+  const jobTitle = String(
+    (typeof offerMeta.job_title === "string" && offerMeta.job_title.trim()) ||
+      job?.title ||
+      ""
+  ).trim();
+
+  const companyName = String(
+    (typeof offerMeta.company_name === "string" && offerMeta.company_name.trim()) ||
+      job?.company_name ||
+      job?.tenant_name ||
+      ""
+  ).trim();
+
+  const department = String(offer?.department ?? "").trim();
+
+  const currency = String(job?.currency || "PHP").trim() || "PHP";
+  const rawSalary = offer?.salary;
+  const numericSalary =
+    rawSalary !== null && rawSalary !== undefined && String(rawSalary).trim() !== ""
+      ? Number(rawSalary)
+      : null;
+  const salary =
+    numericSalary !== null && Number.isFinite(numericSalary)
+      ? new Intl.NumberFormat("en-PH", {
+          style: "currency",
+          currency,
+        }).format(numericSalary)
+      : "";
+
+  let startDate = "";
+  const rawStartDate = offer?.start_date ? String(offer.start_date).trim() : "";
+  if (rawStartDate) {
+    const parsed = new Date(rawStartDate.includes("T") ? rawStartDate : `${rawStartDate}T00:00:00Z`);
+    if (!Number.isNaN(parsed.getTime())) {
+      startDate = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(parsed);
+    } else {
+      startDate = rawStartDate;
+    }
+  }
+
+  const workSetup = formatWorkSetupHumanLabel(offer?.work_setup ?? offer?.work_mode ?? "");
+
+  const branchParts = [branch?.name?.trim(), branch?.address?.trim()].filter(Boolean);
+  const workLocation =
+    branchParts.length > 0
+      ? branchParts.join(", ")
+      : String(job?.location ?? "").trim();
+
+  const probationDays =
+    offer?.probation_days !== null &&
+    offer?.probation_days !== undefined &&
+    String(offer.probation_days).trim() !== ""
+      ? String(offer.probation_days).trim()
+      : "";
+
+  return {
+    candidate_name: candidateName,
+    job_title: jobTitle,
+    company_name: companyName,
+    department,
+    salary,
+    start_date: startDate,
+    work_setup: workSetup,
+    work_location: workLocation,
+    probation_days: probationDays,
+  };
+}
+
 /**
  * Build an HTML string for the offer letter that will be sent to DocuSeal
  */
@@ -516,6 +661,48 @@ export function buildOfferLetterHtml(
         <div class="terms-content">${injectFieldTags(escapeHtml(applyMergeTags(additionalTerms)))}</div>
       </div>
       ` : ""}
+
+      <div class="terms-section">
+        <div class="terms-title">Offer terms</div>
+        <div class="details-section">
+          ${!escapedIntro.includes('name="job_title"') ? `
+          <div class="detail-row">
+            <span class="detail-label">Position:</span>
+            <span class="detail-value"><text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          ` : ""}
+          ${!escapedIntro.includes('name="company_name"') ? `
+          <div class="detail-row">
+            <span class="detail-label">Company:</span>
+            <span class="detail-value"><text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          ` : ""}
+          <div class="detail-row">
+            <span class="detail-label">Department:</span>
+            <span class="detail-value"><text-field name="department" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Salary:</span>
+            <span class="detail-value"><text-field name="salary" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Start Date:</span>
+            <span class="detail-value"><text-field name="start_date" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Work Setup:</span>
+            <span class="detail-value"><text-field name="work_setup" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Work Location:</span>
+            <span class="detail-value"><text-field name="work_location" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Probation Days:</span>
+            <span class="detail-value"><text-field name="probation_days" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
+          </div>
+        </div>
+      </div>
 
         <div class="signature-section">
             <div class="signature-block">

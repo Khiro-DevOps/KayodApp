@@ -1,6 +1,12 @@
 "use server";
 
-import { getDocusealBaseUrl } from "@/lib/docuseal";
+import {
+  createJobOfferTemplate,
+  getDocusealBaseUrl,
+  REQUIRED_OFFER_TEMPLATE_FIELDS,
+  type OfferLetterSettings,
+} from "@/lib/docuseal";
+import { getOrCreateContractTemplateId } from "@/lib/contract-template-compat";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 type JobOfferRow = {
@@ -266,4 +272,157 @@ export async function getOrCreateDocusealEmbedSrc(jobOfferId: string): Promise<s
       ? error
       : new Error(`Unable to resolve DocuSeal embed source for job offer ${jobOfferId}`);
   }
+}
+
+type DocusealTemplatePayload = {
+  id?: string | number;
+  archived_at?: string | null;
+  archived?: boolean | null;
+  fields?: Array<{ name?: string | null }>;
+  submitters?: Array<{ fields?: Array<{ name?: string | null }> }>;
+};
+
+function extractTemplateFieldNames(template: DocusealTemplatePayload): Set<string> {
+  const names = new Set<string>();
+  if (Array.isArray(template.fields)) {
+    for (const field of template.fields) {
+      if (typeof field?.name === "string" && field.name.trim()) {
+        names.add(field.name.trim());
+      }
+    }
+  }
+  if (Array.isArray(template.submitters)) {
+    for (const submitter of template.submitters) {
+      if (Array.isArray(submitter?.fields)) {
+        for (const field of submitter.fields) {
+          if (typeof field?.name === "string" && field.name.trim()) {
+            names.add(field.name.trim());
+          }
+        }
+      }
+    }
+  }
+  return names;
+}
+
+export async function ensureOfferTemplate(jobId: string): Promise<string> {
+  const admin = getAdminClient();
+
+  const { data: job, error: jobError } = await admin
+    .from("job_postings")
+    .select(
+      "id, title, description, location, employment_type, work_setup, work_mode, salary_min, salary_max, currency, job_category, offer_letter_settings, docuseal_template_id, created_by"
+    )
+    .eq("id", jobId)
+    .single();
+
+  if (jobError || !job) {
+    throw new Error(`Failed to load job posting ${jobId}: ${jobError?.message ?? "not found"}`);
+  }
+
+  const currentTemplateId = String(job.docuseal_template_id ?? "").trim();
+  let isTemplateValid = false;
+
+  if (currentTemplateId) {
+    try {
+      const res = await fetchDocusealWithTimeout(
+        `${getDocusealBaseUrl()}/templates/${encodeURIComponent(currentTemplateId)}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Auth-Token": getDocusealApiKey(),
+          },
+        }
+      );
+
+      if (res.ok && res.status !== 404) {
+        const payload = (await res.json()) as DocusealTemplatePayload;
+        const isArchived = Boolean(payload?.archived_at) || payload?.archived === true;
+        const fieldNames = extractTemplateFieldNames(payload);
+        const hasAllRequired = REQUIRED_OFFER_TEMPLATE_FIELDS.every((field) => fieldNames.has(field));
+
+        if (!isArchived && hasAllRequired) {
+          isTemplateValid = true;
+        }
+      }
+    } catch {
+      isTemplateValid = false;
+    }
+  }
+
+  if (isTemplateValid && currentTemplateId) {
+    if (job.created_by) {
+      await getOrCreateContractTemplateId(admin, "contract_templates", {
+        jobPostingId: job.id,
+        docusealTemplateId: currentTemplateId,
+        createdBy: job.created_by,
+      });
+    }
+    return currentTemplateId;
+  }
+
+  const { data: creatorProfile } = job.created_by
+    ? await admin
+        .from("profiles")
+        .select("first_name, last_name, email, tenant_id")
+        .eq("id", job.created_by)
+        .maybeSingle()
+    : { data: null };
+
+  const { data: tenantRow } = creatorProfile?.tenant_id
+    ? await admin
+        .from("tenants")
+        .select("name")
+        .eq("id", creatorProfile.tenant_id)
+        .maybeSingle()
+    : { data: null };
+
+  const tenantName =
+    tenantRow?.name?.trim() ||
+    [creatorProfile?.first_name, creatorProfile?.last_name].filter(Boolean).join(" ").trim() ||
+    "Company";
+
+  const settings = (job.offer_letter_settings ?? undefined) as OfferLetterSettings | undefined;
+  const newTemplateId = await createJobOfferTemplate(
+    {
+      jobTitle: job.title || "Position",
+      department: settings?.phDepartment || job.job_category || undefined,
+      employmentType: job.employment_type || "full_time",
+      location: job.location || undefined,
+      jobDescription: job.description || undefined,
+      salary_min: job.salary_min ?? undefined,
+      salary_max: job.salary_max ?? undefined,
+      currency: job.currency || "PHP",
+    },
+    {
+      name: tenantName,
+      email: creatorProfile?.email ?? undefined,
+    },
+    settings
+  );
+
+  console.info("[DocuSeal] Replaced offer template for job", {
+    jobId: job.id,
+    replacedTemplateId: currentTemplateId || null,
+    newTemplateId,
+  });
+
+  const { error: updateJobError } = await admin
+    .from("job_postings")
+    .update({ docuseal_template_id: newTemplateId })
+    .eq("id", job.id);
+
+  if (updateJobError) {
+    throw new Error(`Failed to save new DocuSeal template ID on job posting: ${updateJobError.message}`);
+  }
+
+  if (job.created_by) {
+    await getOrCreateContractTemplateId(admin, "contract_templates", {
+      jobPostingId: job.id,
+      docusealTemplateId: newTemplateId,
+      createdBy: job.created_by,
+    });
+  }
+
+  return newTemplateId;
 }

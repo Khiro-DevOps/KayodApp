@@ -32,7 +32,7 @@ function isLegacyContractTemplateFkError(error: { code?: string; message?: strin
   return error?.code === "23503" && message.includes("contract_templates_old");
 }
 
-async function getOrCreateContractTemplateId(
+export async function getOrCreateContractTemplateId(
   supabase: AdminClient,
   tableName: ContractTemplateTable,
   params: ContractTemplateResolveParams
