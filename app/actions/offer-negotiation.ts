@@ -444,6 +444,8 @@ export async function submitOfferNegotiation(
     });
 
     revalidatePath(`/applicant/applications/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}/sign`);
     revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/job-offer/${applicationId}`);
 
@@ -534,7 +536,7 @@ export async function respondToNegotiation(
         type: "application_status_changed",
         title: `Offer Negotiation Response for ${jobTitle}`,
         body: "HR has responded to your offer change requests.",
-        actionUrl: `/applicant/applications/${negotiationRow.application_id}`,
+        actionUrl: `/applicant/offer/${negotiationRow.application_id}`,
         senderId: authCheck.userId,
         actionName: "respondToNegotiation",
       });
@@ -542,6 +544,8 @@ export async function respondToNegotiation(
 
     revalidatePath(`/hr/offers/${negotiationRow.application_id}`);
     revalidatePath(`/applicant/applications/${negotiationRow.application_id}`);
+    revalidatePath(`/applicant/offer/${negotiationRow.application_id}`);
+    revalidatePath(`/applicant/offer/${negotiationRow.application_id}/sign`);
     revalidatePath(`/job-offer/${negotiationRow.application_id}`);
 
     return { success: true };
@@ -742,6 +746,8 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
 
     revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/applicant/applications/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}/sign`);
     revalidatePath(`/job-offer/${applicationId}`);
 
     return { success: true };

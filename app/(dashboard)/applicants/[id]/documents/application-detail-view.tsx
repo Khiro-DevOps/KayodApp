@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import type { Application } from "@/lib/types";
-import OfferPageClient from "@/components/job-offer/OfferPageClient";
 
 interface InterviewProfile {
     first_name: string | null;
@@ -102,7 +102,6 @@ export default function ApplicationDetailView({
     application,
     interviews,
     activeContractOffer,
-    negotiations = [],
 }: ApplicationDetailViewProps) {
 
     const jobPosting = (application as unknown as {
@@ -121,16 +120,8 @@ export default function ApplicationDetailView({
             email?: string | null;
         } | null;
     }).job_postings;
-    const candidateProfile = (application as unknown as {
-        profiles?: {
-            first_name?: string | null;
-            last_name?: string | null;
-            email?: string | null;
-        } | null;
-    }).profiles;
     const jobTitle = jobPosting?.title ?? "Senior Data Analytics & Business Intelligence Lead";
 
-    const offerSectionRef = React.useRef<HTMLDivElement>(null);
     const rawStatus = String(application.status ?? "new").toLowerCase().trim();
     const normalizedOfferStatus = String(activeContractOffer?.status ?? "").toUpperCase();
     const isAlreadySignedOffer =
@@ -286,7 +277,7 @@ export default function ApplicationDetailView({
                                                     : "Pending"}
                                         </p>
 
-                                        {/* Offer Section In-App Scroll Trigger */}
+                                        {/* Offer Section Link */}
                                         {stage.key === "offer" && isActive && activeContractOffer && (
                                             <div className="mt-4 bg-surface-container-high rounded-xl p-4 border border-indigo-100 shadow-sm max-w-md animate-fadeIn">
                                                 <div className="flex items-center gap-3 mb-3">
@@ -297,13 +288,12 @@ export default function ApplicationDetailView({
                                                         Onboarding document package ready
                                                     </p>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => offerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                                                <Link
+                                                    href={`/applicant/offer/${encodeURIComponent(application.id)}`}
                                                     className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-body-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm active:scale-95"
                                                 >
-                                                    {isAlreadySignedOffer ? "View Signed Offer" : "Sign Offer"}
-                                                </button>
+                                                    {isAlreadySignedOffer ? "View Signed Offer" : "View Offer"}
+                                                </Link>
                                             </div>
                                         )}
                                     </div>
@@ -433,35 +423,6 @@ export default function ApplicationDetailView({
 
                 </div>
             </div>
-
-            {isSentJobOffer && activeContractOffer && (
-                <div ref={offerSectionRef} className="mt-8">
-                    <OfferPageClient
-                        token={activeContractOffer.id}
-                        applicationId={application.id}
-                        offer={{ status: String(activeContractOffer.status || "sent").toLowerCase() }}
-                        isAlreadySigned={isAlreadySignedOffer}
-                        applicationStatus={application.status}
-                        companyName={activeContractOffer.company_name || "Hiring Company"}
-                        candidateFirstName={candidateProfile?.first_name?.trim() || "Candidate"}
-                        candidateEmail={candidateProfile?.email?.trim() || ""}
-                        jobTitle={jobTitle}
-                        location={activeContractOffer.location ?? jobPosting?.location ?? null}
-                        employmentType={jobPosting?.employment_type ?? null}
-                        workSetup={activeContractOffer.work_setup ?? jobPosting?.work_setup ?? null}
-                        department={activeContractOffer.department ?? null}
-                        startDate={activeContractOffer.start_date ?? null}
-                        expiresAt={null}
-                        salaryMin={activeContractOffer.salary ?? jobPosting?.salary_min ?? null}
-                        salaryMax={activeContractOffer.salary ?? jobPosting?.salary_max ?? null}
-                        currency={jobPosting?.currency ?? "PHP"}
-                        signingUrl={activeContractOffer.docuseal_submission_url}
-                        embedSrc={activeContractOffer.embed_src ?? activeContractOffer.docuseal_submission_url}
-                        negotiations={negotiations}
-                        isHR={false}
-                    />
-                </div>
-            )}
         </div>
     );
 }

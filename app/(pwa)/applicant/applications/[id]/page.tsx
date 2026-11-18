@@ -92,7 +92,22 @@ export default async function ApplicantApplicationDetailPage({
       updated_at,
       profiles!job_applications_applicant_id_fkey ( id, first_name, last_name, email, phone, avatar_url, city, country ),
       resumes ( id, title, pdf_url, content_text ),
-      job_postings!job_applications_job_id_fkey ( id, title, location, work_setup, description, salary_min, salary_max, currency, employment_type )
+      job_postings!job_applications_job_id_fkey (
+        id,
+        title,
+        location,
+        work_setup,
+        description,
+        salary_min,
+        salary_max,
+        currency,
+        employment_type,
+        tenants ( name ),
+        profiles!job_postings_created_by_fkey (
+          company_name,
+          tenants ( name )
+        )
+      )
     `)
     .eq("id", id)
     .single();
@@ -218,13 +233,40 @@ export default async function ApplicantApplicationDetailPage({
 
   const targetJobOffer = latestJobOffer ?? latestJobOfferFallback;
 
+  const rawJobPosting = application.job_postings as unknown as {
+    tenants?: { name?: string | null } | { name?: string | null }[] | null;
+    profiles?:
+      | {
+          company_name?: string | null;
+          tenants?: { name?: string | null } | { name?: string | null }[] | null;
+        }
+      | {
+          company_name?: string | null;
+          tenants?: { name?: string | null } | { name?: string | null }[] | null;
+        }[]
+      | null;
+  } | null;
+  const directTenantName = Array.isArray(rawJobPosting?.tenants)
+    ? rawJobPosting?.tenants[0]?.name
+    : rawJobPosting?.tenants?.name;
+  const creatorProfile = Array.isArray(rawJobPosting?.profiles)
+    ? rawJobPosting?.profiles[0]
+    : rawJobPosting?.profiles;
+  const creatorTenantName = Array.isArray(creatorProfile?.tenants)
+    ? creatorProfile?.tenants[0]?.name
+    : creatorProfile?.tenants?.name;
+
   let resolvedOfferEmbedSrc: string | null = null;
   let resolvedOfferLocation: string | null = null;
-  let resolvedCompanyName: string | null = null;
+  let resolvedCompanyName: string | null =
+    directTenantName?.trim() ||
+    creatorProfile?.company_name?.trim() ||
+    creatorTenantName?.trim() ||
+    null;
 
   if (targetJobOffer) {
     const meta = ((targetJobOffer.job_metadata ?? targetJobOffer.metadata) || {}) as Record<string, unknown>;
-    if (typeof meta.company_name === "string" && meta.company_name.trim()) {
+    if (!resolvedCompanyName && typeof meta.company_name === "string" && meta.company_name.trim()) {
       resolvedCompanyName = meta.company_name.trim();
     }
     if (typeof meta.docuseal_embed_src === "string" && meta.docuseal_embed_src.trim()) {
@@ -340,7 +382,7 @@ export default async function ApplicantApplicationDetailPage({
       work_setup: targetJobOffer?.work_setup ?? targetJobOffer?.work_mode ?? null,
       department: targetJobOffer?.department ?? null,
       location: resolvedOfferLocation,
-      company_name: resolvedCompanyName,
+      company_name: resolvedCompanyName || "Hiring Company",
       contract_templates: Array.isArray(resolvedActiveContractOffer.contract_templates)
         ? resolvedActiveContractOffer.contract_templates
         : resolvedActiveContractOffer.contract_templates

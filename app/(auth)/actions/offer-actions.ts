@@ -475,6 +475,8 @@ export async function sendDraftOffer(jobId: string, applicationId: string, offer
     revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/job-offer/${applicationId}`);
     revalidatePath(`/applicant/applications/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}`);
+    revalidatePath(`/applicant/offer/${applicationId}/sign`);
 
     return { success: true, offerId, signedDocId, docusealUrl };
   } catch (err) {

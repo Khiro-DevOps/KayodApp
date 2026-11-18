@@ -58,7 +58,7 @@ export default async function JobOfferRedirectPage({
       }
     }
 
-    redirect(`/applicant/applications/${encodeURIComponent(applicationId)}`);
+    redirect(`/applicant/offer/${encodeURIComponent(applicationId)}`);
   }
 
   redirect(`/hr/offers/${encodeURIComponent(offerId)}`);
