@@ -8,11 +8,12 @@ import type { JobPosting, Profile, Resume } from "@/lib/types";
 import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore, getDisplayMatchScore } from "@/lib/match-score";
 import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
-import { JOB_INDUSTRIES, PHILIPPINE_CITIES } from "@/lib/constants";
+import { JOB_INDUSTRIES } from "@/lib/constants";
 import ApplicantJobsClient from "./jobs-client";
+import JobsFilterBar from "./jobs-filter-bar";
 
 interface Props {
-  searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string; work_setup?: string }>;
+  searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string; work_setup?: string; q?: string }>;
 }
 
 function filterByPayRange(job: JobPosting, payMin: number | null, payMax: number | null) {
@@ -101,7 +102,8 @@ function formatIndustry(industry: string | null): string | null {
 
 export default async function JobsPage({ searchParams }: Props) {
   const supabase = await createClient();
-  const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location, work_setup } = await searchParams;
+  const { resume_id: resumeId, payMin: payMinStr, payMax: payMaxStr, location, work_setup, q } = await searchParams;
+  const searchQuery = q?.trim() ?? "";
 
   const payMin = payMinStr ? parseInt(payMinStr) : null;
   const payMax = payMaxStr ? parseInt(payMaxStr) : null;
@@ -143,7 +145,13 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   const { data: jobs } = await query.order("created_at", { ascending: false });
-  const filteredJobs = (jobs ?? []).filter((job) => filterByPayRange(job as JobPosting, payMin, payMax));
+  const normalizedQuery = searchQuery.toLowerCase();
+  const filteredJobs = (jobs ?? []).filter((job) => {
+    if (!filterByPayRange(job as JobPosting, payMin, payMax)) return false;
+    if (!normalizedQuery) return true;
+    const haystack = `${job.title ?? ""} ${job.description ?? ""} ${job.location ?? ""} ${job.job_category ?? ""}`.toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
   const resumeText = selectedResume ? buildResumeText(selectedResume) : "";
 
   // Fetch candidate application statuses for all jobs shown from canonical table
@@ -297,98 +305,16 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pt-4 space-y-8">
-      <section className="bg-white rounded-xl border border-outline-variant p-6 md:p-8 shadow-xs">
-        <div className="mb-6">
-          <h2 className="text-headline-sm font-headline-sm text-on-surface">AI Recommended Jobs</h2>
-          <p className="text-body-sm text-on-surface-variant">We match your resume skills and salary expectations with current market openings.</p>
-        </div>
-
-        <form method="get" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="space-y-2">
-            <label className="text-label-caps font-label-caps text-on-surface-variant ml-1">Resume</label>
-            <div className="relative">
-              <select
-                name="resume_id"
-                defaultValue={selectedResume?.id ?? ""}
-                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
-              >
-                {resumes && resumes.length > 0 ? (
-                  resumes.map((resume) => (
-                    <option key={resume.id} value={resume.id}>
-                      {resume.title || new Date(resume.created_at).toLocaleDateString()}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No resumes available</option>
-                )}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-3.5 text-outline pointer-events-none" style={{ fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}>expand_more</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-label-caps font-label-caps text-on-surface-variant ml-1">Salary Range (Monthly)</label>
-            <div className="flex items-center gap-2">
-              <input
-                name="payMin"
-                defaultValue={payMin ?? ""}
-                className="w-1/2 bg-surface border border-border rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
-                placeholder="Min"
-                type="number"
-              />
-              <input
-                name="payMax"
-                defaultValue={payMax ?? ""}
-                className="w-1/2 bg-surface border border-border rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
-                placeholder="Max"
-                type="number"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-label-caps font-label-caps text-on-surface-variant ml-1">Location</label>
-            <div className="relative">
-              <select
-                name="location"
-                defaultValue={location ?? "all"}
-                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
-              >
-                <option value="all">All Locations</option>
-                {PHILIPPINE_CITIES.map((city, index) => (
-                  <option key={`${city}-${index}`} value={city}>
-                    {city}
-                  </option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-3.5 text-outline pointer-events-none" style={{ fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}>location_on</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-label-caps font-label-caps text-on-surface-variant ml-1">Work Setup</label>
-            <div className="relative">
-              <select
-                name="work_setup"
-                defaultValue={work_setup ?? ""}
-                className="w-full bg-surface border border-border rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-body-md"
-              >
-                <option value="">Any Setup</option>
-                <option value="remote">Remote</option>
-                <option value="hybrid">Hybrid</option>
-                <option value="onsite">On-site</option>
-                <option value="wfh">WFH</option>
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-3.5 text-outline pointer-events-none" style={{ fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}>work</span>
-            </div>
-          </div>
-
-          <button type="submit" className="md:col-span-4 w-full bg-primary text-on-primary py-3.5 rounded-xl font-headline-sm text-headline-sm hover:opacity-95 transition-all shadow-xs">
-            Show matches
-          </button>
-        </form>
-      </section>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 space-y-6">
+      <JobsFilterBar
+        resumes={(resumes ?? []).map((r) => ({ id: r.id, title: r.title, created_at: r.created_at }))}
+        selectedResumeId={selectedResume?.id ?? ""}
+        initialQuery={searchQuery}
+        initialPayMin={payMin}
+        initialPayMax={payMax}
+        initialLocation={location ?? "all"}
+        initialWorkSetup={work_setup ?? ""}
+      />
 
       <ApplicantJobsClient
         recommendedJobs={recommendedJobs}

@@ -42,6 +42,25 @@ function formatEmploymentType(employmentType: JobPosting["employment_type"]): st
     .join(" ");
 }
 
+function getMonogram(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "KY").toUpperCase();
+}
+
+function formatPostedRelative(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diffMs / 86_400_000);
+  if (days <= 0) return "Posted today";
+  if (days === 1) return "Posted 1d ago";
+  if (days < 7) return `Posted ${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `Posted ${weeks}w ago`;
+  return `Posted ${new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
 export default function ApplicantJobsClient({
   recommendedJobs,
   allJobs,
@@ -99,9 +118,11 @@ export default function ApplicantJobsClient({
         </div>
 
         {recommendedJobs.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {recommendedJobs.map(({ job, fit }) => {
               const dept = job.departments as unknown as { name: string } | null;
+              const companyOrDept = dept?.name ?? "Kayod Partner";
+              const subtitle = [companyOrDept, job.location].filter(Boolean).join(" • ");
               const salaryRange = formatSalaryRange(job);
               const appliedInfo = applicationsMap[job.id];
               const displayScore = getDisplayMatchScore({
@@ -111,128 +132,161 @@ export default function ApplicantJobsClient({
               });
               const badgeLabel =
                 displayScore.value === null
-                  ? "—"
+                  ? "Recommended"
                   : displayScore.kind === "estimate"
-                    ? `Estimated · ${fit.match_level} ${displayScore.value}%`
-                    : `${fit.match_level} ${displayScore.value}%`;
+                    ? `${displayScore.value}% Match`
+                    : `${displayScore.value}% Match`;
               return (
                 <article
                   key={job.id}
                   onClick={() => openJobModal(job)}
-                  className="bg-white border border-outline-variant rounded-xl p-6 job-card-hover cursor-pointer group relative"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
                 >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary">
-                      <span className="material-symbols-outlined text-[32px]">analytics</span>
+                  <div className="space-y-3">
+                    {/* Top Row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 text-sm border border-purple-100">
+                          {getMonogram(companyOrDept)}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-purple-700 transition-colors truncate">
+                            {job.title}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-slate-600 truncate">
+                            {subtitle}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold">
+                        {badgeLabel}
+                      </span>
                     </div>
-                    <div
-                      className="px-3 py-1 rounded-full text-label-caps font-label-caps"
-                      style={{ backgroundColor: `${fit.card_color_hex}18`, color: fit.card_color_hex }}
-                    >
-                      {badgeLabel}
+
+                    {/* Middle Row */}
+                    <div className="flex flex-wrap gap-2">
+                      {salaryRange ? (
+                        <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          {salaryRange}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        {formatWorkSetup(job.work_setup)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        {formatEmploymentType(job.employment_type)}
+                      </span>
                     </div>
+
+                    <p className="line-clamp-2 text-sm text-slate-600">
+                      {fit.top_reasons[0] || job.description}
+                    </p>
                   </div>
-                  <h3 className="text-title-lg font-title-lg text-on-surface group-hover:text-primary transition-colors">
-                    {job.title}
-                  </h3>
-                  <p className="text-body-sm text-on-surface-variant font-medium mb-3">
-                    {dept?.name ?? "General"}{job.job_category && ` • ${job.job_category}`}
-                  </p>
-                  <p className="w-full min-w-0 block whitespace-normal break-words leading-relaxed text-body-sm text-on-surface-variant mb-6">
-                    {fit.top_reasons[0]}
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {job.location && (
-                      <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-                        <span className="material-symbols-outlined text-[18px]">location_on</span> {job.location}
-                      </div>
-                    )}
-                    {salaryRange && (
-                      <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-                        <span className="material-symbols-outlined text-[18px]">payments</span> {salaryRange}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-                      <span className="material-symbols-outlined text-[18px]">home_work</span> {formatWorkSetup(job.work_setup)}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-lg">
-                      <span className="material-symbols-outlined text-[18px]">schedule</span> {formatEmploymentType(job.employment_type)}
-                    </div>
+
+                  {/* Bottom Row */}
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <span className="text-xs text-slate-500">{formatPostedRelative(job.created_at)}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openJobModal(job);
+                      }}
+                      className="rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                    >
+                      {appliedInfo?.hasApplied ? "View Details" : "Quick Apply"}
+                    </button>
                   </div>
                 </article>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-outline-variant p-8 text-center bg-surface">
-            <p className="text-body-sm text-on-surface-variant">No recommended jobs matching your criteria.</p>
+          <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center bg-white">
+            <p className="text-sm text-slate-600">No recommended jobs matching your criteria.</p>
           </div>
         )}
       </section>
 
-      <section className="space-y-6">
+      <section className="space-y-4">
         <div className="flex items-center gap-3">
-          <h2 className="text-headline-sm font-headline-sm text-on-surface">All Jobs</h2>
-          <span className="bg-surface-container-highest text-primary px-3 py-0.5 rounded-full text-label-caps font-label-caps">
+          <h2 className="text-lg font-bold text-slate-900">All Jobs</h2>
+          <span className="rounded-full bg-purple-50 border border-purple-200 text-purple-700 px-3 py-0.5 text-xs font-semibold">
             {allJobs.length} openings
           </span>
         </div>
 
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {allJobs.map((job) => {
+            const dept = job.departments as unknown as { name: string } | null;
+            const companyOrDept = dept?.name ?? "Kayod Partner";
+            const subtitle = [companyOrDept, job.location].filter(Boolean).join(" • ");
             const salaryRange = formatSalaryRange(job);
+            const appliedInfo = applicationsMap[job.id];
             return (
-              <div
+              <article
                 key={job.id}
-                className="bg-white border border-outline-variant rounded-xl p-6 job-card-hover flex flex-col md:flex-row gap-6 group relative cursor-pointer"
+                className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group flex flex-col justify-between gap-4"
                 onClick={() => openJobModal(job)}
               >
-                <div className="flex-shrink-0">
-                  <div className="w-16 h-16 rounded-xl bg-surface-container flex items-center justify-center text-primary">
-                    <span className="material-symbols-outlined text-[40px]">monitoring</span>
+                <div className="space-y-3">
+                  {/* Top Row */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 text-sm border border-purple-100">
+                        {getMonogram(companyOrDept)}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-purple-700 transition-colors truncate">
+                          {job.title}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-600 truncate">
+                          {subtitle}
+                        </p>
+                      </div>
+                    </div>
+                    {appliedInfo?.hasApplied ? (
+                      <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold">
+                        Applied
+                      </span>
+                    ) : null}
                   </div>
-                </div>
-                <div className="flex-grow space-y-3">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                    <h3 className="text-title-lg font-title-lg text-on-surface group-hover:text-primary transition-colors">
-                      {job.title}
-                    </h3>
-                    <span className="text-label-caps font-label-caps text-on-surface-variant">
-                      Posted {new Date(job.created_at).toLocaleDateString()}
+
+                  {/* Middle Row */}
+                  <div className="flex flex-wrap gap-2">
+                    {salaryRange ? (
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        {salaryRange}
+                      </span>
+                    ) : null}
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                      {formatWorkSetup(job.work_setup)}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                      {formatEmploymentType(job.employment_type)}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-4">
-                    {job.location && (
-                      <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-                        <span className="material-symbols-outlined text-[18px]">location_on</span> {job.location}
-                      </div>
-                    )}
-                    {salaryRange && (
-                      <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-                        <span className="material-symbols-outlined text-[18px]">payments</span> {salaryRange}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-                      <span className="material-symbols-outlined text-[18px]">home_work</span> {formatWorkSetup(job.work_setup)}
-                    </div>
-                  </div>
-                  <p className="w-full min-w-0 block whitespace-normal break-words leading-relaxed text-body-sm text-on-surface-variant">
+
+                  <p className="line-clamp-2 text-sm text-slate-600">
                     {job.description}
                   </p>
                 </div>
-                <div className="flex items-center relative z-20">
+
+                {/* Bottom Row */}
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                  <span className="text-xs text-slate-500">{formatPostedRelative(job.created_at)}</span>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       openJobModal(job);
                     }}
-                    className="w-full md:w-auto border border-primary text-primary px-8 py-2 rounded-full font-label-caps text-label-caps hover:bg-primary hover:text-on-primary transition-all text-center"
+                    className="rounded-lg border border-purple-200 bg-purple-50 px-3.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-600 hover:text-white transition-colors"
                   >
-                    View Details
+                    {appliedInfo?.hasApplied ? "View Details" : "View Details"}
                   </button>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
