@@ -258,7 +258,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_mode, work_setup, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -318,6 +318,21 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       }
     }
 
+    const settings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
+    const settingsWorkLocationId =
+      typeof settings?.work_location_id === "string" ? settings.work_location_id : null;
+    const settingsShiftStart =
+      typeof settings?.shift_start === "string" && settings.shift_start
+        ? settings.shift_start
+        : "09:00:00";
+    const settingsShiftEnd =
+      typeof settings?.shift_end === "string" && settings.shift_end
+        ? settings.shift_end
+        : "18:00:00";
+    const settingsWorkDays = Array.isArray(settings?.work_days)
+      ? (settings.work_days as string[])
+      : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
     const draftPayload = {
       application_id: applicationId,
       job_id: jobId,
@@ -329,12 +344,12 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       created_by: existingOffer?.created_by ?? user.id,
       salary: job.offer_letter_settings?.phMonthlyBasicSalary || job.salary_min || 0,
       start_date: job.offer_letter_settings?.phStartDate || null,
-      work_setup: job.work_setup || job.work_mode || "Remote",
-      work_mode: job.work_mode || job.work_setup || "remote",
-      work_location_id: job.work_location_id || null,
-      shift_start: job.shift_start || null,
-      shift_end: job.shift_end || null,
-      work_days: job.work_days || null,
+      work_setup: job.work_setup || "Remote",
+      work_mode: job.work_setup || "remote",
+      work_location_id: settingsWorkLocationId,
+      shift_start: settingsShiftStart,
+      shift_end: settingsShiftEnd,
+      work_days: settingsWorkDays,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       job_metadata: {

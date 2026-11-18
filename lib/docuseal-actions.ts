@@ -311,7 +311,7 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
   const { data: job, error: jobError } = await admin
     .from("job_postings")
     .select(
-      "id, title, description, location, employment_type, work_setup, work_mode, salary_min, salary_max, currency, job_category, offer_letter_settings, docuseal_template_id, created_by"
+      "id, title, description, location, employment_type, work_setup, salary_min, salary_max, currency, job_category, offer_letter_settings, docuseal_template_id, created_by"
     )
     .eq("id", jobId)
     .single();
