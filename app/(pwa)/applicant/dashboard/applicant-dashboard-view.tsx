@@ -169,7 +169,7 @@ export default function ApplicantDashboardView({
       ) : null}
 
       {/* --- MOBILE ONLY VIEW (Inverted Navy Header Banner) --- */}
-      <div className="block md:hidden bg-[#1F195E] text-white p-6 pb-12 -mx-6 -mt-6 mb-[-32px] rounded-b-[40px]">
+      <div className="block md:hidden bg-[#1F195E] text-white px-6 pt-6 pb-12 -mx-6 -mt-8 mb-[-32px] rounded-b-[40px]">
         {/* Greeting Section */}
         <div className="mb-6 flex flex-col">
           <span className="text-sm opacity-80">Hello,</span>
@@ -376,26 +376,51 @@ function ActivityCard({
       </div>
 
       <div className="space-y-3">
-        <JourneyRow label="Applications" value={`${stats.applications} active`} icon="description" />
-        <JourneyRow label="Interviews" value={`${stats.interviews} pending`} icon="event" />
-        <JourneyRow label="Upcoming calls" value={`${upcomingCount} scheduled`} icon="schedule" />
-        <JourneyRow label="Resume" value="Ready to submit" icon="upload_file" />
+        <JourneyRow
+          href="/applicant/applications"
+          label="Applications"
+          value={`${stats.applications} active`}
+          icon="description"
+        />
+        <JourneyRow
+          href="/applicant/interviews"
+          label="Interviews"
+          value={`${stats.interviews} pending`}
+          icon="event"
+        />
+        <JourneyRow
+          href="/applicant/interviews?tab=upcoming"
+          label="Upcoming calls"
+          value={`${upcomingCount} scheduled`}
+          icon="schedule"
+        />
+        <JourneyRow
+          href="/applicant/resume"
+          label="Resume"
+          value="Ready to submit"
+          icon="upload_file"
+        />
       </div>
     </div>
   );
 }
 
 function JourneyRow({
+  href,
   label,
   value,
   icon,
 }: {
+  href: string;
   label: string;
   value: string;
   icon: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#E0D9FC] bg-[#FCFBFF] px-4 py-3">
+    <Link
+      href={href}
+      className="flex items-center justify-between gap-4 rounded-2xl border border-[#E0D9FC] bg-[#FCFBFF] px-4 py-3 cursor-pointer hover:border-purple-300 hover:bg-purple-50/30 transition"
+    >
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F0ECFF] text-primary">
           <span className="material-symbols-outlined text-[20px]">{icon}</span>
@@ -406,6 +431,6 @@ function JourneyRow({
         </div>
       </div>
       <span className="material-symbols-outlined text-[18px] text-[#5B5784]">arrow_forward</span>
-    </div>
+    </Link>
   );
 }

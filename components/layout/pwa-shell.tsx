@@ -260,11 +260,17 @@ export default function PwaShell({
     };
   }, [variant]);
 
+  const isApplicantDashboard = variant === "applicant" && pathname === "/applicant/dashboard";
+
   return (
     <PwaShellContext.Provider value>
       <div className={pwaShellBackground} data-pwa-shell={variant}>
         {/* HEADER: #1F195E (Deep Navy) background, unified top bar for mobile & desktop */}
-        <header className="fixed inset-x-0 top-0 z-50 flex min-h-[72px] items-center justify-between gap-6 bg-[#1F195E] px-6 py-3 text-white shadow-[0_8px_20px_rgba(31,25,94,0.18)]">
+        <header
+          className={`fixed inset-x-0 top-0 z-50 flex min-h-[72px] items-center justify-between gap-6 bg-[#1F195E] px-6 py-3 text-white ${
+            isApplicantDashboard ? "md:shadow-[0_8px_20px_rgba(31,25,94,0.18)]" : "shadow-[0_8px_20px_rgba(31,25,94,0.18)]"
+          }`}
+        >
           <div className="flex min-w-0 items-center gap-3">
             <Link href={variant === "employee" ? "/employee/dashboard" : "/applicant/dashboard"} className="shrink-0 text-xl font-bold tracking-tight text-white transition-opacity hover:opacity-90">
               Kayod
@@ -282,7 +288,7 @@ export default function PwaShell({
           </div>
 
           <div className="min-w-0 flex-1 px-3">
-            {variant === "employee" ? null : (
+            {variant === "employee" || isApplicantDashboard ? null : (
               <>
                 <p className="truncate text-sm font-semibold text-white">{pageHeader.title}</p>
                 <p className="hidden truncate text-[11px] text-white/65 sm:block">{pageHeader.description}</p>
