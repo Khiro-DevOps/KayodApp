@@ -9,6 +9,9 @@ export type AttendanceRow = {
   avatarUrl: string | null;
   jobTitle: string | null;
   workSetup: "onsite" | "wfh" | "hybrid" | "remote" | null;
+  isToday: boolean;
+  isLate: boolean;
+  lateMinutes: number;
   date: string;
   clockIn: string | null;
   clockOut: string | null;
@@ -175,11 +178,14 @@ function MetricCard({
 
 // ─── Main Client Component ───────────────────────────────────────────────────
 export default function HRAttendanceClient({ rows, metrics }: Props) {
+  const hasTodayLogs = rows.some((r) => r.isToday);
   const [search, setSearch] = useState("");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [todayOnly, setTodayOnly] = useState(hasTodayLogs);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
+      const matchesToday = !todayOnly || r.isToday;
       const matchesSearch =
         !search ||
         r.employeeName.toLowerCase().includes(search.toLowerCase()) ||
@@ -187,9 +193,9 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
 
       const matchesFlagged = !flaggedOnly || r.zoneStatus === "outside_zone";
 
-      return matchesSearch && matchesFlagged;
+      return matchesToday && matchesSearch && matchesFlagged;
     });
-  }, [rows, search, flaggedOnly]);
+  }, [rows, todayOnly, search, flaggedOnly]);
 
   const flaggedCount = rows.filter((r) => r.zoneStatus === "outside_zone").length;
 
@@ -263,27 +269,55 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
           />
         </div>
 
-        {/* Flagged Toggle */}
-        <button
-          id="attendance-flagged-toggle"
-          type="button"
-          onClick={() => setFlaggedOnly((p) => !p)}
-          className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
-            flaggedOnly
-              ? "border-rose-300 bg-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-300"
-              : "border-border bg-surface-bg text-text-muted hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700"
-          }`}
-        >
-          <span className="material-symbols-outlined text-[16px]">
-            {flaggedOnly ? "filter_alt_off" : "filter_alt"}
-          </span>
-          {flaggedOnly ? "Showing Flagged Only" : "Show Flagged Only"}
-          {flaggedCount > 0 && (
-            <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
-              {flaggedCount > 99 ? "99+" : flaggedCount}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Today / All (30d) Quick Toggle */}
+          <div className="inline-flex rounded-xl border border-border bg-surface-bg p-0.5">
+            <button
+              type="button"
+              onClick={() => setTodayOnly(true)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                todayOnly
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-text-muted hover:text-text-main"
+              }`}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setTodayOnly(false)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                !todayOnly
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-text-muted hover:text-text-main"
+              }`}
+            >
+              All (30d)
+            </button>
+          </div>
+
+          {/* Flagged Toggle */}
+          <button
+            id="attendance-flagged-toggle"
+            type="button"
+            onClick={() => setFlaggedOnly((p) => !p)}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+              flaggedOnly
+                ? "border-rose-300 bg-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-300"
+                : "border-border bg-surface-bg text-text-muted hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">
+              {flaggedOnly ? "filter_alt_off" : "filter_alt"}
             </span>
-          )}
-        </button>
+            {flaggedOnly ? "Showing Flagged Only" : "Show Flagged Only"}
+            {flaggedCount > 0 && (
+              <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                {flaggedCount > 99 ? "99+" : flaggedCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ── Attendance Log Table ─────────────────────────────────────────────── */}
@@ -373,9 +407,20 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
                   {/* Clock In */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
                     {row.clockIn ? (
-                      <span className="font-medium text-text-main">
-                        {row.clockIn}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-text-main">
+                          {row.clockIn}
+                        </span>
+                        {row.isLate ? (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                            Late (+{row.lateMinutes}m)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            On Time
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-text-muted">—</span>
                     )}

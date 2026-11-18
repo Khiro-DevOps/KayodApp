@@ -92,12 +92,34 @@ export default async function EmployeeSchedulePage() {
     longitude?: number | string | null;
     radius_meters?: number | null;
   };
-  const branchRelation = (
-    employee as { office_branches?: OfficeBranch | OfficeBranch[] | null }
-  ).office_branches;
-  const assignedBranch = Array.isArray(branchRelation)
-    ? branchRelation[0]
-    : branchRelation;
+
+  let assignedBranch: OfficeBranch | null = null;
+  if (employee.work_location_id) {
+    const { data: workLoc } = await supabase
+      .from("work_locations")
+      .select("name, address, latitude, longitude, radius_meters")
+      .eq("id", employee.work_location_id)
+      .maybeSingle();
+
+    if (workLoc) {
+      assignedBranch = workLoc;
+    } else {
+      const { data: legacyBranch } = await supabase
+        .from("office_branches")
+        .select("name, address, latitude, longitude, radius_meters")
+        .eq("id", employee.work_location_id)
+        .maybeSingle();
+      assignedBranch = legacyBranch;
+    }
+  } else {
+    const { data: defaultWorkLoc } = await supabase
+      .from("work_locations")
+      .select("name, address, latitude, longitude, radius_meters")
+      .eq("is_default", true)
+      .limit(1)
+      .maybeSingle();
+    assignedBranch = defaultWorkLoc;
+  }
 
   const hasOfficeCoordinates = Boolean(
     assignedBranch && assignedBranch.latitude != null && assignedBranch.longitude != null

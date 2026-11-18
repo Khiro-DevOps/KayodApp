@@ -120,14 +120,23 @@ export default async function HRAttendancePage() {
 
   const presentToday = new Set(todayLogs.map((l) => l.employee_id)).size;
 
+  const computeLateness = (clockInIso: string | null, shiftStartRaw: string | null) => {
+    if (!clockInIso) return { isLate: false, lateMinutes: 0 };
+    const clockInDate = new Date(clockInIso);
+    const [hStr, mStr] = (shiftStartRaw ?? "09:00").split(":");
+    const targetH = parseInt(hStr, 10);
+    const targetM = parseInt(mStr, 10);
+    const shiftDate = new Date(clockInDate);
+    shiftDate.setHours(Number.isNaN(targetH) ? 9 : targetH, Number.isNaN(targetM) ? 0 : targetM, 0, 0);
+    const diffMins = Math.floor((clockInDate.getTime() - shiftDate.getTime()) / 60000);
+    if (diffMins > 5) {
+      return { isLate: true, lateMinutes: diffMins };
+    }
+    return { isLate: false, lateMinutes: 0 };
+  };
+
   const lateToday = todayLogs.filter((l) => {
-    if (!l.clock_in) return false;
-    const emp = l.employees;
-    const shiftStart = emp?.shift_start ?? "09:00";
-    const clockInTime = new Date(l.clock_in)
-      .toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-      .slice(0, 5);
-    return clockInTime > shiftStart;
+    return computeLateness(l.clock_in, l.employees?.shift_start ?? null).isLate;
   }).length;
 
   const outsideZoneFlags = logs.filter(
@@ -161,6 +170,10 @@ export default async function HRAttendancePage() {
     const name =
       [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() ||
       "Employee";
+    const { isLate, lateMinutes } = computeLateness(l.clock_in, emp?.shift_start ?? null);
+    const isToday = l.clock_in
+      ? new Date(l.clock_in).toLocaleDateString("en-CA") === todayStr
+      : false;
 
     return {
       id: l.id,
@@ -168,6 +181,9 @@ export default async function HRAttendancePage() {
       avatarUrl: p?.avatar_url ?? null,
       jobTitle: emp?.job_title ?? null,
       workSetup: (emp?.work_model as AttendanceRow["workSetup"]) ?? null,
+      isToday,
+      isLate,
+      lateMinutes,
       date: l.clock_in
         ? new Date(l.clock_in).toLocaleDateString("en-PH", {
             year: "numeric",

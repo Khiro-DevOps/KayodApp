@@ -202,26 +202,7 @@ export default function ScheduleClient({
         const lng = pos.coords.longitude;
         const accuracy = pos.coords.accuracy || 10;
         setUserLocation({ lat, lng, accuracy });
-
-        // Calculate client-side distance preview for UI feedback
-        const distKm = calculateDistanceKm(
-          lat,
-          lng,
-          targetOfficeCoords.lat,
-          targetOfficeCoords.lng
-        );
-
-        const geofenceRadiusKm = 0.2; // 200m
-
-        if (distKm > geofenceRadiusKm && (isTodayOnsite || workModel === "onsite")) {
-          // Outside zone - open soft-blocking modal/drawer
-          setPendingCoords({ lat, lng, accuracy, distanceKm: distKm });
-          setShowOutsideModal(true);
-          setLoading(false);
-        } else {
-          // Inside zone or remote mode
-          submitClockInPayload(lat, lng, accuracy);
-        }
+        submitClockInPayload(lat, lng, accuracy);
       },
       (err) => {
         setErrorMessage("Unable to acquire location for clock-in: " + err.message);
