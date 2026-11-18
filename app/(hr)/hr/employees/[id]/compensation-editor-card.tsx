@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateEmployeeCompensationAction } from "./employee-compensation-actions";
 
@@ -17,6 +18,7 @@ export default function CompensationEditorCard({
   initialPayFrequency,
   currency = "PHP",
 }: CompensationEditorCardProps) {
+  const router = useRouter();
   const [baseSalary, setBaseSalary] = useState<string>(
     String(initialBaseSalary > 0 ? initialBaseSalary : 35000)
   );
@@ -24,11 +26,13 @@ export default function CompensationEditorCard({
     initialPayFrequency === "semi_monthly" ? "semi_monthly" : "monthly"
   );
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSavedNotice(null);
+    setErrorNotice(null);
     const formData = new FormData();
     formData.set("employee_id", employeeId);
     formData.set("base_salary", baseSalary);
@@ -36,17 +40,23 @@ export default function CompensationEditorCard({
 
     startTransition(async () => {
       const res = await updateEmployeeCompensationAction(formData);
-      if (!res.success) {
-        toast.error(res.error || "Failed to update compensation");
+      if (!res.ok) {
+        const errText = res.error || "Failed to update compensation";
+        setErrorNotice(errText);
+        toast.error(errText);
         return;
       }
       const formattedSalary = Number(baseSalary).toLocaleString("en-PH", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
-      const message = `Compensation saved: ₱${formattedSalary}`;
+      const freqLabel = payFrequency === "semi_monthly" ? "semi_monthly" : "monthly";
+      const message = res.warning
+        ? `Saved: ₱${formattedSalary} (${freqLabel}) — ${res.warning}`
+        : `Saved: ₱${formattedSalary} (${freqLabel})`;
       toast.success(message);
       setSavedNotice(message);
+      router.refresh();
     });
   };
 
@@ -117,10 +127,19 @@ export default function CompensationEditorCard({
         </div>
       </form>
 
+      {errorNotice && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-semibold text-red-800"
+        >
+          {errorNotice}
+        </div>
+      )}
+
       {savedNotice && (
         <div
           role="status"
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-800"
         >
           {savedNotice}
         </div>

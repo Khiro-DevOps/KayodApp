@@ -30,7 +30,8 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (!isHR) redirect("/dashboard");
 
-  const { data: employee } = await supabase
+  const admin = getAdminClient();
+  const { data: employee } = await admin
     .from("employees")
     .select(`*, profiles ( first_name, last_name, email )`)
     .eq("id", employeeId)
@@ -73,7 +74,6 @@ export default async function EmployeeDetailPage({ params }: Props) {
   let resolvedInitialSalary = storedSalary > 0 ? storedSalary : 35000;
 
   if (storedSalary <= 0 && (employee.application_id || employee.profile_id)) {
-    const admin = getAdminClient();
     let targetAppId: string | null = employee.application_id ?? null;
 
     if (!targetAppId && employee.profile_id) {

@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-
-const HR_ROLES = new Set(["hr", "hr_manager", "admin"]);
+import { effectiveRole, isHRRole } from "@/lib/roles";
 
 export async function updateEmployeeCompensationAction(formData: FormData): Promise<{
+  ok: boolean;
   success: boolean;
+  warning?: string;
   error?: string;
 }> {
   const supabase = await createClient();
@@ -16,48 +17,51 @@ export async function updateEmployeeCompensationAction(formData: FormData): Prom
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { success: false, error: "Unauthorized" };
+    return { ok: false, success: false, error: "Unauthorized" };
   }
 
-  const { data: profile } = await supabase
+  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> })
+    .raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+
+  const admin = getAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
-    .select("role, tenant_id")
+    .select("role")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !HR_ROLES.has(String(profile.role ?? "").toLowerCase())) {
-    return { success: false, error: "Forbidden: HR role required" };
+  const role = effectiveRole(profile?.role, authRole);
+  if (!isHRRole(role)) {
+    return { ok: false, success: false, error: "Forbidden: HR role required" };
   }
 
   const employeeId = String(formData.get("employee_id") ?? "").trim();
   const rawSalary = Number(formData.get("base_salary"));
   const rawFreq = String(formData.get("pay_frequency") ?? "monthly").trim().toLowerCase();
-  const payFrequency = rawFreq === "semi_monthly" ? "semi_monthly" : "monthly";
+  const payFrequency =
+    rawFreq === "semi_monthly" || rawFreq === "weekly" || rawFreq === "bi_weekly"
+      ? rawFreq
+      : "monthly";
 
   if (!employeeId) {
-    return { success: false, error: "Missing employee ID" };
+    return { ok: false, success: false, error: "Missing employee ID" };
   }
   if (!Number.isFinite(rawSalary) || rawSalary < 0) {
-    return { success: false, error: "Base salary must be a valid non-negative number" };
+    return { ok: false, success: false, error: "Base salary must be a valid non-negative number" };
   }
 
-  const admin = getAdminClient();
-  const { data: targetEmp } = await admin
+  const { data: targetEmp, error: fetchErr } = await admin
     .from("employees")
-    .select("id, tenant_id")
+    .select("id")
     .eq("id", employeeId)
     .maybeSingle();
 
-  if (!targetEmp) {
-    return { success: false, error: "Employee not found" };
+  if (fetchErr) {
+    return { ok: false, success: false, error: fetchErr.message };
   }
-
-  if (
-    profile.tenant_id &&
-    targetEmp.tenant_id &&
-    profile.tenant_id !== targetEmp.tenant_id
-  ) {
-    return { success: false, error: "Forbidden: cross-tenant access" };
+  if (!targetEmp) {
+    return { ok: false, success: false, error: "Employee not found" };
   }
 
   const { error: updateErr } = await admin
@@ -69,13 +73,35 @@ export async function updateEmployeeCompensationAction(formData: FormData): Prom
     })
     .eq("id", employeeId);
 
+  let warning: string | undefined;
+
   if (updateErr) {
-    return { success: false, error: updateErr.message };
+    const errMsg = updateErr.message.toLowerCase();
+    if (
+      errMsg.includes("pay_frequency") ||
+      errMsg.includes("schema cache") ||
+      errMsg.includes("check constraint") ||
+      errMsg.includes("invalid input value for enum") ||
+      errMsg.includes("updated_at")
+    ) {
+      const { error: retryErr } = await admin
+        .from("employees")
+        .update({ base_salary: rawSalary })
+        .eq("id", employeeId);
+
+      if (retryErr) {
+        return { ok: false, success: false, error: retryErr.message };
+      }
+      warning = `Saved base_salary (pay_frequency skipped: ${updateErr.message})`;
+    } else {
+      return { ok: false, success: false, error: updateErr.message };
+    }
   }
 
   revalidatePath(`/hr/employees/${employeeId}`);
   revalidatePath("/hr/employees");
   revalidatePath("/hr/payroll");
+  revalidatePath("/hr/payslips");
 
-  return { success: true };
+  return { ok: true, success: true, warning };
 }
