@@ -59,6 +59,8 @@ export default async function EmployeeSchedulePage() {
     .from("employees")
     .select("*")
     .eq("profile_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (!employee) {

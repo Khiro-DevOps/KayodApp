@@ -17,6 +17,46 @@ export type ClockInResult =
   | { success: true; message: string; logId: string; status: string; zone_status: string; location_used: string }
   | { success: false; error: string; distanceMeters?: number; radiusMeters?: number };
 
+type ResolvedEmployee = {
+  id: string;
+  tenant_id: string | null;
+  work_mode?: string | null;
+  work_location_id?: string | null;
+  hybrid_onsite_days?: string[] | null;
+  work_days?: string[] | null;
+};
+
+async function resolveCurrentEmployee(userId: string): Promise<ResolvedEmployee | null> {
+  const supabaseAdmin = getAdminClient();
+
+  const { data: employee } = await supabaseAdmin
+    .from("employees")
+    .select("*")
+    .eq("profile_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<ResolvedEmployee>();
+
+  if (!employee) {
+    return null;
+  }
+
+  let tenantId = employee.tenant_id ?? null;
+  if (!tenantId) {
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", userId)
+      .maybeSingle<{ tenant_id: string | null }>();
+    tenantId = profile?.tenant_id ?? null;
+  }
+
+  return {
+    ...employee,
+    tenant_id: tenantId,
+  };
+}
+
 export async function clockInAction(payload: ClockInPayload): Promise<ClockInResult> {
   const supabase = await createClient();
   const {
@@ -27,30 +67,14 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     return { success: false, error: "Authentication required." };
   }
 
-  // Use admin client for employee lookup to bypass RLS restrictions
   const supabaseAdmin = getAdminClient();
-
-  // 1. Authenticate user & fetch employee record with profiles (tenant_id)
-  let { data: employee } = await supabaseAdmin
-    .from("employees")
-    .select("id, tenant_id, work_mode, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  if (!employee && user.email) {
-    const { data: empByEmail } = await supabaseAdmin
-      .from("employees")
-      .select("id, tenant_id, work_mode, work_location_id, hybrid_onsite_days, work_days, profiles ( tenant_id )")
-      .eq("email", user.email)
-      .maybeSingle();
-    employee = empByEmail;
-  }
+  const employee = await resolveCurrentEmployee(user.id);
 
   if (!employee) {
     return { success: false, error: "Employee profile not found. Please contact HR to link your account." };
   }
 
-  const tenantId = (employee.profiles as any)?.tenant_id || null;
+  const tenantId = employee.tenant_id;
 
   // Active Session Guard: Prevent multiple open clock-in sessions for the same employee
   const { data: activeLog } = await supabase
@@ -64,24 +88,15 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     return { success: false, error: "You are already clocked in." };
   }
 
-  const empRecord = employee as {
-    id: string;
-    tenant_id?: string | null;
-    work_mode?: string | null;
-    work_location_id?: string | null;
-    hybrid_onsite_days?: string[] | null;
-    work_days?: string[] | null;
-  };
-
   const { latitude, longitude, accuracy_meters, flag_reason } = payload;
 
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
-    id: empRecord.id,
-    tenant_id: empRecord.tenant_id ?? tenantId,
-    work_mode: empRecord.work_mode,
-    work_location_id: empRecord.work_location_id,
-    hybrid_onsite_days: empRecord.hybrid_onsite_days,
-    work_days: empRecord.work_days,
+    id: employee.id,
+    tenant_id: tenantId,
+    work_mode: employee.work_mode,
+    work_location_id: employee.work_location_id,
+    hybrid_onsite_days: employee.hybrid_onsite_days,
+    work_days: employee.work_days,
   });
 
   if (!geofence.configured) {
@@ -162,6 +177,11 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
     return { success: false, error: "Authentication required." };
   }
 
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR to link your account." };
+  }
+
   const clockOutTime = new Date();
 
   // Fetch the attendance log record
@@ -169,7 +189,8 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
     .from("attendance_logs")
     .select("id, clock_in")
     .eq("id", logId)
-    .single();
+    .eq("employee_id", employee.id)
+    .maybeSingle();
 
   if (!log) {
     return { success: false, error: "Attendance log not found." };
@@ -185,7 +206,8 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
       total_hours: Number(totalHours.toFixed(2)),
       status: "completed",
     })
-    .eq("id", logId);
+    .eq("id", logId)
+    .eq("employee_id", employee.id);
 
   if (error) {
     return { success: false, error: error.message };
@@ -197,13 +219,27 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
 
 export async function toggleBreakAction(logId: string, isBreakActive: boolean) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR to link your account." };
+  }
+
   const { error } = await supabase
     .from("attendance_logs")
     .update({
       break_status: isBreakActive ? "on_break" : "active",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", logId);
+    .eq("id", logId)
+    .eq("employee_id", employee.id);
 
   if (error) {
     return { success: false, error: error.message };
