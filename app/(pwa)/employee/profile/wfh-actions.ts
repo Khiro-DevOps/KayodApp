@@ -96,10 +96,30 @@ export async function submitWfhLocationAction(input: {
     );
 
   if (!existing) {
+    let resolvedTenantId = employee.tenant_id;
+    if (!resolvedTenantId) {
+      const { data: profTenant } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .maybeSingle<{ tenant_id: string | null }>();
+      resolvedTenantId = profTenant?.tenant_id ?? null;
+    }
+    if (!resolvedTenantId) {
+      const { data: firstTenant } = await admin
+        .from("tenants")
+        .select("id")
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      resolvedTenantId = firstTenant?.id ?? null;
+    }
+    const tenantIdValue = resolvedTenantId ?? "00000000-0000-0000-0000-000000000001";
+
     const { error: insertErr } = await admin
       .from("employee_remote_residences")
       .insert({
         employee_id: employee.id,
+        tenant_id: tenantIdValue,
         address: trimmedAddress,
         latitude: input.latitude,
         longitude: input.longitude,
@@ -121,6 +141,7 @@ export async function submitWfhLocationAction(input: {
           .from("employee_remote_residences")
           .insert({
             employee_id: employee.id,
+            tenant_id: tenantIdValue,
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
