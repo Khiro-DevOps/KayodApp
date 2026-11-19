@@ -41,7 +41,12 @@ const VALUE_PROPS = [
 export default function LoginPage() {
   return (
     <Suspense>
-      <div className="flex min-h-[calc(100vh-3rem)] items-center justify-center py-2 sm:py-6">
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[#FDF8F2]">
+        <div className="absolute left-1/2 top-1/2 h-[1120px] w-[1120px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-900/[0.06]" />
+        <div className="absolute left-1/2 top-1/2 h-[820px] w-[820px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-900/[0.06]" />
+        <div className="absolute left-1/2 top-1/2 h-[540px] w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-900/[0.06]" />
+      </div>
+      <div className="relative z-10 flex min-h-[calc(100vh-3rem)] items-center justify-center py-2 sm:py-6">
         <LoginForm />
       </div>
     </Suspense>
@@ -70,16 +75,10 @@ function LoginForm() {
     : "/register/applicant";
 
   return (
-    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-indigo-100/80 bg-[#FDF8F2]/60 shadow-[0_8px_30px_rgb(30,27,75,0.08)] lg:grid-cols-12">
-      {/* Left Panel: Warm Cream Canvas + Concentric Rings + Frosted Glass Auth Card */}
-      <div className="relative flex flex-col justify-center overflow-hidden bg-[#FDF8F2]/60 p-4 sm:p-8 lg:col-span-6 lg:p-10">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(253,248,242,0.95),_rgba(252,251,255,0.75)_70%)]" />
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full border border-[#1E1B4B]/10" />
-          <div className="absolute -left-10 -top-10 h-[260px] w-[260px] rounded-full border border-[#1E1B4B]/8" />
-        </div>
-
-        <div className="relative flex flex-col justify-between rounded-3xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.06)] backdrop-blur-xl sm:p-7">
+    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl lg:grid-cols-12">
+      {/* Left Panel: Transparent over Full-Page Cream + Rings, Frosted Glass Auth Card */}
+      <div className="flex flex-col justify-center bg-transparent p-2 sm:p-6 lg:col-span-6 lg:p-8">
+        <div className="flex flex-col justify-between rounded-3xl border border-white/80 bg-white/60 p-5 shadow-[0_8px_32px_rgba(30,27,75,0.06)] backdrop-blur-xl sm:p-7">
           <div className="space-y-4 sm:space-y-5">
             <div className="flex items-center justify-between">
               <Link
@@ -128,7 +127,7 @@ function LoginForm() {
                   autoComplete="email"
                   required
                   placeholder="you@example.com"
-                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white/90 px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
               </div>
 
@@ -152,7 +151,7 @@ function LoginForm() {
                     autoComplete="current-password"
                     required
                     placeholder="Enter your password"
-                    className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white/90 py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                    className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                   />
                   <button
                     type="button"
