@@ -103,7 +103,6 @@ export async function submitWfhLocationAction(input: {
         address: trimmedAddress,
         latitude: input.latitude,
         longitude: input.longitude,
-        radius_meters: 200,
         is_active: false,
         approval_status: "pending",
         pending_address: trimmedAddress,
@@ -125,7 +124,6 @@ export async function submitWfhLocationAction(input: {
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            radius_meters: 200,
             is_active: false,
             updated_at: nowIso,
           });
@@ -162,7 +160,6 @@ export async function submitWfhLocationAction(input: {
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            radius_meters: 200,
             is_active: false,
             updated_at: nowIso,
           })
@@ -182,7 +179,6 @@ export async function submitWfhLocationAction(input: {
         address: trimmedAddress,
         latitude: input.latitude,
         longitude: input.longitude,
-        radius_meters: 200,
         is_active: false,
         approval_status: "pending",
         pending_address: trimmedAddress,
@@ -204,7 +200,6 @@ export async function submitWfhLocationAction(input: {
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            radius_meters: 200,
             is_active: false,
             updated_at: nowIso,
           })
@@ -333,13 +328,20 @@ export async function reviewWfhLocationAction(input: {
       residence.geofence_radius_meters ??
       200;
 
+    const radiusPatch =
+      "radius_meters" in residence
+        ? { radius_meters: nextRadius }
+        : "geofence_radius_meters" in residence
+          ? { geofence_radius_meters: nextRadius }
+          : {};
+
     const { error: approveErr } = await admin
       .from("employee_remote_residences")
       .update({
         address: nextAddress,
         latitude: nextLat,
         longitude: nextLng,
-        radius_meters: nextRadius,
+        ...radiusPatch,
         is_active: true,
         approval_status: "approved",
         pending_address: null,
