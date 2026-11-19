@@ -521,15 +521,23 @@ export default function ScheduleClient({
   }
 
   // Calculate distance pill display (hydrated from attendance_logs.distance_meters + live GPS)
+  const effectiveDistanceMeters = distanceMeters ?? activeLog?.distance_meters ?? null;
+  const effectiveIsInZone =
+    distanceMeters !== null
+      ? isInZone
+      : activeLog?.zone_status
+        ? activeLog.zone_status !== "outside_zone"
+        : isInZone;
+
   let distancePillText = "In Work Zone";
   if (!targetOfficeCoords) {
     distancePillText =
       !isTodayOnsite || workModel === "wfh"
         ? "Remote geofence unconfigured"
         : "Office geofence unconfigured";
-  } else if (distanceMeters !== null) {
-    const zoneLabel = isInZone ? "In Zone" : "Outside Zone";
-    distancePillText = `${distanceMeters.toLocaleString()}m (${zoneLabel})`;
+  } else if (effectiveDistanceMeters !== null) {
+    const zoneLabel = effectiveIsInZone ? "In Zone" : "Outside Zone";
+    distancePillText = `${effectiveDistanceMeters.toLocaleString()}m (${zoneLabel})`;
   } else if (userLocation) {
     const meters = Math.round(
       calculateDistanceKm(

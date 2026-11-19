@@ -94,7 +94,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
   }
 
   // Active Session Guard: Prevent multiple open clock-in sessions for the same employee
-  const { data: activeLog } = await supabase
+  const { data: activeLog } = await supabaseAdmin
     .from("attendance_logs")
     .select("id")
     .eq("employee_id", employee.id)
@@ -150,7 +150,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     : "onsite_verified";
 
   // Persistence: Insert into attendance_logs
-  const { data: newLog, error: insertError } = await supabase
+  const { data: newLog, error: insertError } = await supabaseAdmin
     .from("attendance_logs")
     .insert({
       employee_id: employee.id,
@@ -159,7 +159,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
       latitude,
       longitude,
       accuracy_meters,
-      distance_meters: distanceMeters !== null ? Math.round(distanceMeters) : null,
+      distance_meters: Math.round(distanceMeters),
       zone_status: zoneStatus,
       location_used: locationUsed,
       flag_reason: flag_reason || null,
@@ -634,7 +634,7 @@ export async function updateLiveAttendanceLocationAction(
       distance_meters: distanceMeters,
       zone_status: zoneStatus,
       flag_reason: isOutside
-        ? `Outside designated work zone (${distanceMeters}m away; max ${allowedRadius}m)`
+        ? `Outside working zone (${distanceMeters}m > ${allowedRadius}m limit)`
         : null,
       updated_at: new Date().toISOString(),
     })

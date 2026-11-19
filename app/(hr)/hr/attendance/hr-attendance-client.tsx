@@ -208,7 +208,6 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
           event: "*",
           schema: "public",
           table: "attendance_logs",
-          ...(tenantId ? { filter: `tenant_id=eq.${tenantId}` } : {}),
         },
         () => {
           router.refresh();
