@@ -77,6 +77,15 @@ export async function submitWfhLocationAction(input: {
     };
   }
 
+  const isMissingApprovalColumn = (msg?: string | null) =>
+    Boolean(
+      msg &&
+        (msg.includes("does not exist") ||
+          msg.includes("schema cache") ||
+          msg.includes("approval_status") ||
+          msg.includes("pending_address")),
+    );
+
   if (!existing) {
     const { error: insertErr } = await admin
       .from("employee_remote_residences")
@@ -100,7 +109,25 @@ export async function submitWfhLocationAction(input: {
       });
 
     if (insertErr) {
-      return { success: false, error: insertErr.message };
+      if (isMissingApprovalColumn(insertErr.message)) {
+        const { error: fallbackErr } = await admin
+          .from("employee_remote_residences")
+          .insert({
+            employee_id: employee.id,
+            tenant_id: employee.tenant_id ?? "00000000-0000-0000-0000-000000000001",
+            address: trimmedAddress,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            geofence_radius_meters: 200,
+            updated_by: user.id,
+            updated_at: nowIso,
+          });
+        if (fallbackErr) {
+          return { success: false, error: fallbackErr.message };
+        }
+      } else {
+        return { success: false, error: insertErr.message };
+      }
     }
   } else if (hasActiveApproved) {
     // Keep active approved coordinates untouched until HR approves relocation
@@ -120,7 +147,24 @@ export async function submitWfhLocationAction(input: {
       .eq("id", existing.id);
 
     if (updateErr) {
-      return { success: false, error: updateErr.message };
+      if (isMissingApprovalColumn(updateErr.message)) {
+        const { error: fallbackErr } = await admin
+          .from("employee_remote_residences")
+          .update({
+            address: trimmedAddress,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            geofence_radius_meters: 200,
+            updated_by: user.id,
+            updated_at: nowIso,
+          })
+          .eq("id", existing.id);
+        if (fallbackErr) {
+          return { success: false, error: fallbackErr.message };
+        }
+      } else {
+        return { success: false, error: updateErr.message };
+      }
     }
   } else {
     const { error: updateErr } = await admin
@@ -144,7 +188,24 @@ export async function submitWfhLocationAction(input: {
       .eq("id", existing.id);
 
     if (updateErr) {
-      return { success: false, error: updateErr.message };
+      if (isMissingApprovalColumn(updateErr.message)) {
+        const { error: fallbackErr } = await admin
+          .from("employee_remote_residences")
+          .update({
+            address: trimmedAddress,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            geofence_radius_meters: 200,
+            updated_by: user.id,
+            updated_at: nowIso,
+          })
+          .eq("id", existing.id);
+        if (fallbackErr) {
+          return { success: false, error: fallbackErr.message };
+        }
+      } else {
+        return { success: false, error: updateErr.message };
+      }
     }
   }
 

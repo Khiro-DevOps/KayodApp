@@ -10,11 +10,14 @@ import { submitWfhLocationAction } from "../wfh-actions";
 
 interface WfhResidenceCardProps {
   remoteResidence: EmployeeRemoteResidence | null;
+  workSetup?: string;
 }
 
 export default function WfhResidenceCard({
   remoteResidence,
+  workSetup,
 }: WfhResidenceCardProps) {
+  const isOnsiteOnly = workSetup?.toLowerCase() === "onsite";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -83,6 +86,10 @@ export default function WfhResidenceCard({
         ) : isPendingApproval ? (
           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
             Pending HR Approval
+          </span>
+        ) : isOnsiteOnly ? (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            Onsite Setup · Optional WFH Backup
           </span>
         ) : (
           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">

@@ -231,11 +231,10 @@ export default function EmployeeProfileView({
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
               <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">Employment Status</p>
-              <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${
-                employee?.employment_status === "active"
-                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                  : "bg-amber-100 text-amber-800 border border-amber-200"
-              }`}>
+              <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${employee?.employment_status === "active"
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                : "bg-amber-100 text-amber-800 border border-amber-200"
+                }`}>
                 {employee?.employment_status || "Active"}
               </span>
             </div>
@@ -290,11 +289,9 @@ export default function EmployeeProfileView({
         </SolidSurfaceCard>
       </div>
 
-      {["hybrid", "wfh", "remote"].includes(workMode.toLowerCase()) ? (
-        <div className="mx-auto w-full max-w-[1440px] px-4 pb-2 sm:px-6 lg:px-10">
-          <WfhResidenceCard remoteResidence={remoteResidence} />
-        </div>
-      ) : null}
+      <div className="mx-auto w-full max-w-[1440px] px-4 pb-2 sm:px-6 lg:px-10">
+        <WfhResidenceCard remoteResidence={remoteResidence} workSetup={workMode} />
+      </div>
     </div>
   );
 }
