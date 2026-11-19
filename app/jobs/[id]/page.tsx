@@ -194,7 +194,7 @@ export default async function PublicJobDetailPage({ params }: PublicJobDetailPag
       />
 
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#1E1B4B] text-white shadow-[0_2px_24px_rgba(26,27,33,0.08)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-10">
           <div className="flex items-center gap-4">
             <Link
               href="/"
@@ -239,7 +239,7 @@ export default async function PublicJobDetailPage({ params }: PublicJobDetailPag
         </div>
       </header>
 
-      <main className="relative mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
+      <main className="relative mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
         <Link
           href="/jobs"
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 text-sm font-semibold text-text-muted transition-colors hover:text-[#1E1B4B]"

@@ -177,7 +177,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
       </div>
 
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#1E1B4B] text-white shadow-[0_2px_24px_rgba(26,27,33,0.08)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-10">
           <div className="flex items-center gap-4">
             <Link
               href="/"
@@ -222,7 +222,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
         </div>
       </header>
 
-      <main className="relative mx-auto max-w-6xl px-4 py-5 sm:px-6 lg:py-8">
+      <main className="relative mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
         {/* Compact PWA Header */}
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -365,7 +365,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
             ) : null}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {jobs.map((job) => {
               const salary = formatSalaryRange(
                 job.salary_min,
