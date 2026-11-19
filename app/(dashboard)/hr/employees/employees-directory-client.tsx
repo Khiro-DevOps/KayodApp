@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Building2, Home, Laptop, Users } from "lucide-react";
+import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 export interface DirectoryEmployee {
   id: string;
@@ -88,42 +90,43 @@ export default function EmployeesDirectoryClient({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Employees
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Manage active team members, work modes, compensation, and geofence settings
-          </p>
-        </div>
-        <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
-          {employees.length} {employees.length === 1 ? "member" : "members"}
-        </span>
-      </div>
+      <PageHeroHeader
+        eyebrow="Organization"
+        title="Employees"
+        subtitle="Manage active team members, work modes, compensation, and geofence settings"
+        actions={
+          <span className="inline-flex w-fit items-center rounded-full border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
+            {employees.length} {employees.length === 1 ? "member" : "members"}
+          </span>
+        }
+      />
 
       {/* 4-Card KPI Strip */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-600">Total Active</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{kpis.totalActive}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-600">Onsite</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{kpis.onsite}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-600">Hybrid</p>
-          <p className="mt-1 text-2xl font-bold text-purple-600">{kpis.hybrid}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-600">Remote</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{kpis.remote}</p>
-        </div>
+        <GlassStatTile
+          icon={<Users className="h-5 w-5" />}
+          label="Total Active"
+          value={kpis.totalActive}
+        />
+        <GlassStatTile
+          icon={<Building2 className="h-5 w-5" />}
+          label="Onsite"
+          value={kpis.onsite}
+        />
+        <GlassStatTile
+          icon={<Laptop className="h-5 w-5" />}
+          label="Hybrid"
+          value={kpis.hybrid}
+        />
+        <GlassStatTile
+          icon={<Home className="h-5 w-5" />}
+          label="Remote"
+          value={kpis.remote}
+        />
       </div>
 
-      {/* Search & Work-Mode Filter Bar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      {/* Search & Work-Mode Filter Bar (Frosted Glass) */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-indigo-100/80 bg-white/75 p-3.5 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -142,7 +145,7 @@ export default function EmployeesDirectoryClient({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name, role, email, or branch..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600/15"
+            className="w-full rounded-xl border border-indigo-100 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-[#1E1B4B]/15"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -155,8 +158,8 @@ export default function EmployeesDirectoryClient({
                 onClick={() => setModeFilter(option)}
                 className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                   active
-                    ? "bg-purple-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                    ? "bg-[#1E1B4B] text-white shadow-xs"
+                    : "border border-slate-200/80 bg-white text-slate-600 hover:text-[#1E1B4B]"
                 }`}
               >
                 {option}
@@ -168,25 +171,25 @@ export default function EmployeesDirectoryClient({
 
       {/* Directory Grid */}
       {employees.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
-          <p className="text-sm font-medium text-slate-900">No employees yet</p>
+        <SolidSurfaceCard className="border-dashed p-10 text-center">
+          <p className="text-sm font-medium text-[#1E1B4B]">No employees yet</p>
           <p className="mt-1 text-xs text-slate-600">
             Employees are added automatically when you hire applicants.
           </p>
-        </div>
+        </SolidSurfaceCard>
       ) : filteredEmployees.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
-          <p className="text-sm font-medium text-slate-900">No matching employees</p>
+        <SolidSurfaceCard className="border-dashed p-10 text-center">
+          <p className="text-sm font-medium text-[#1E1B4B]">No matching employees</p>
           <p className="mt-1 text-xs text-slate-600">
             Try clearing your search or switching work mode filters.
           </p>
-        </div>
+        </SolidSurfaceCard>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredEmployees.map((emp) => (
             <div
               key={emp.id}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-purple-300 hover:shadow-md"
+              className="flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-[#1E1B4B]/40 hover:shadow-md"
             >
               <div className="space-y-4">
                 {/* Top row: Avatar + Name/Role + Pills */}

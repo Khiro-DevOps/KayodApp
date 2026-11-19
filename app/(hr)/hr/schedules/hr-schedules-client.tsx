@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { saveAndPublishEmployeeSchedule } from "./actions";
+import { GlassStatTile, PageHeroHeader } from "@/components/ui/option-b-surfaces";
 
 export type HRScheduleEmployee = {
   id: string;
@@ -255,71 +256,51 @@ export default function HRSchedulesClient({
   return (
     <div className="space-y-6">
       {/* Header & Controls Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-main">Schedules &amp; Work Models</h1>
-          <p className="text-xs text-text-muted mt-1">
-            Manage employee shifts, onsite days, and hybrid arrangements
-          </p>
-        </div>
-        <Link
-          href="/hr/leaves"
-          className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-colors ${
-            pendingLeaveCount > 0
-              ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
-              : "border-border bg-card-bg text-text-main hover:bg-surface-bg"
-          }`}
-        >
-          <span className="material-symbols-outlined text-[16px]">event_busy</span>
-          <span>Pending Leave Requests ({pendingLeaveCount})</span>
-        </Link>
-      </div>
+      <PageHeroHeader
+        eyebrow="Workforce Scheduling"
+        title="Schedules & Work Models"
+        subtitle="Manage employee shifts, onsite days, and hybrid arrangements"
+        actions={
+          <Link
+            href="/hr/leaves"
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-colors ${
+              pendingLeaveCount > 0
+                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                : "border-indigo-100 bg-white/80 text-[#1E1B4B] backdrop-blur-md hover:bg-white"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">event_busy</span>
+            <span>Pending Leave Requests ({pendingLeaveCount})</span>
+          </Link>
+        }
+      />
 
       {/* Quick Summary Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Total Employees</span>
-            <span className="material-symbols-outlined rounded-lg bg-primary-light p-2 text-primary-dark text-[20px]">
-              group
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-text-main">{totalEmployees}</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Onsite Today</span>
-            <span className="material-symbols-outlined rounded-lg bg-blue-100 p-2 text-blue-700 text-[20px]">
-              domain
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-blue-700">{onsiteTodayCount}</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">WFH Today</span>
-            <span className="material-symbols-outlined rounded-lg bg-purple-100 p-2 text-purple-700 text-[20px]">
-              home
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-purple-700">{wfhTodayCount}</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card-bg p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Hybrid Total</span>
-            <span className="material-symbols-outlined rounded-lg bg-amber-100 p-2 text-amber-700 text-[20px]">
-              published_with_changes
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-text-main">{hybridTotalCount}</p>
-        </div>
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">group</span>}
+          label="Total Employees"
+          value={totalEmployees}
+        />
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">domain</span>}
+          label="Onsite Today"
+          value={onsiteTodayCount}
+        />
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">home</span>}
+          label="WFH Today"
+          value={wfhTodayCount}
+        />
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">published_with_changes</span>}
+          label="Hybrid Total"
+          value={hybridTotalCount}
+        />
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-border bg-card-bg p-4 shadow-xs">
+      {/* Filter and Search Bar (Frosted Glass) */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl border border-indigo-100/80 bg-white/75 p-4 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
         <div className="relative w-full sm:w-80">
           <span className="material-symbols-outlined absolute left-3 top-2.5 text-text-muted text-[20px]">
             search
@@ -329,7 +310,7 @@ export default function HRSchedulesClient({
             placeholder="Search by employee name or role..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface-bg pl-10 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-primary focus:bg-card-bg"
+            className="w-full rounded-xl border border-indigo-100 bg-white pl-10 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-[#1E1B4B]"
           />
         </div>
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type AttendanceRow = {
@@ -145,51 +146,6 @@ function Avatar({
   );
 }
 
-// ─── Metric Card ─────────────────────────────────────────────────────────────
-function MetricCard({
-  label,
-  value,
-  icon,
-  iconBg,
-  valueColor,
-  accent,
-}: {
-  label: string;
-  value: number;
-  icon: string;
-  iconBg: string;
-  valueColor: string;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`relative overflow-hidden rounded-2xl border border-border bg-card-bg p-5 shadow-sm transition-shadow hover:shadow-md ${
-        accent ? "ring-1 ring-rose-300" : ""
-      }`}
-    >
-      {/* Soft glow stripe */}
-      <div
-        className={`absolute inset-x-0 top-0 h-[3px] rounded-t-2xl opacity-60 ${
-          accent ? "bg-gradient-to-r from-rose-400 to-amber-400" : "bg-gradient-to-r from-primary/40 to-primary-light"
-        }`}
-      />
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-          {label}
-        </span>
-        <span
-          className={`material-symbols-outlined rounded-xl p-2 text-[20px] ${iconBg}`}
-        >
-          {icon}
-        </span>
-      </div>
-      <p className={`mt-3 text-4xl font-extrabold tracking-tight ${valueColor}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
 // ─── Main Client Component ───────────────────────────────────────────────────
 export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
   const router = useRouter();
@@ -246,66 +202,65 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
   return (
     <div className="space-y-6">
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="border-b border-border pb-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-main">
-            Attendance Operations
-          </h1>
-          <p className="mt-0.5 text-sm text-text-muted">
-            Monitor clock-ins, geofence flags, and zone status — last 30 days
-          </p>
-        </div>
-        <div className="mt-2 sm:mt-0 flex items-center gap-2 text-xs text-text-muted bg-surface-bg border border-border rounded-xl px-3 py-2">
-          <span className="material-symbols-outlined text-[16px] text-primary">
-            update
-          </span>
-          Live attendance data
-        </div>
-      </div>
+      <PageHeroHeader
+        eyebrow="Live Operations"
+        title="Attendance Operations"
+        subtitle="Monitor clock-ins, geofence flags, and zone status — last 30 days"
+        actions={
+          <div className="flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3.5 py-2 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
+            <span className="material-symbols-outlined text-[16px] text-[#1E1B4B]">
+              update
+            </span>
+            Live attendance data
+          </div>
+        }
+      />
 
       {/* ── Metric Cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <MetricCard
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">how_to_reg</span>}
           label="Present Today"
           value={metrics.presentToday}
-          icon="how_to_reg"
-          iconBg="bg-emerald-100 text-emerald-700"
-          valueColor="text-emerald-700"
         />
-        <MetricCard
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">schedule</span>}
           label="Late Today"
           value={metrics.lateToday}
-          icon="schedule"
-          iconBg="bg-amber-100 text-amber-600"
-          valueColor="text-amber-600"
         />
-        <MetricCard
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">person_off</span>}
           label="Absent Today"
           value={metrics.absentToday}
-          icon="person_off"
-          iconBg="bg-rose-100 text-rose-700"
-          valueColor="text-rose-700"
-          accent={metrics.absentToday > 0}
+          badge={
+            metrics.absentToday > 0 ? (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                Alert
+              </span>
+            ) : undefined
+          }
         />
-        <MetricCard
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">location_off</span>}
           label="Outside Zone Flags"
           value={metrics.outsideZoneFlags}
-          icon="location_off"
-          iconBg="bg-rose-100 text-rose-700"
-          valueColor="text-rose-600"
-          accent={metrics.outsideZoneFlags > 0}
+          badge={
+            metrics.outsideZoneFlags > 0 ? (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                Flagged
+              </span>
+            ) : undefined
+          }
         />
-        <MetricCard
+        <GlassStatTile
+          icon={<span className="material-symbols-outlined text-[20px]">beach_access</span>}
           label="On Leave"
           value={metrics.onLeave}
-          icon="beach_access"
-          iconBg="bg-sky-100 text-sky-700"
-          valueColor="text-sky-700"
         />
       </div>
 
-      {/* ── Filter / Search Bar ──────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-border bg-card-bg p-4 shadow-xs">
+      {/* ── Filter / Search Bar (Frosted Glass) ──────────────────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-indigo-100/80 bg-white/75 p-4 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
         {/* Search */}
         <div className="relative w-full sm:w-80">
           <span className="material-symbols-outlined absolute left-3 top-2.5 text-text-muted text-[20px]">
@@ -317,7 +272,7 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
             placeholder="Search employee name or role..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-border bg-surface-bg pl-10 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-primary focus:bg-card-bg transition-colors"
+            className="w-full rounded-xl border border-indigo-100 bg-white pl-10 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-[#1E1B4B] transition-colors"
           />
         </div>
 
@@ -373,7 +328,7 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
       </div>
 
       {/* ── Attendance Log Table ─────────────────────────────────────────────── */}
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card-bg shadow-xs">
+      <SolidSurfaceCard className="overflow-x-auto p-0">
         <table className="w-full text-left text-xs">
           <thead className="border-b border-border bg-surface-bg">
             <tr>
@@ -598,7 +553,7 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
             )}
           </div>
         )}
-      </div>
+      </SolidSurfaceCard>
     </div>
   );
 }

@@ -56,7 +56,7 @@ export default function BranchManager({ initialBranches }: BranchManagerProps) {
     <div className="space-y-4">
       <div className="flex justify-end">
         <button
-          className="rounded-lg bg-primary text-white px-4 py-2 text-sm font-medium hover:bg-primary-dark transition-colors"
+          className="rounded-xl bg-[#1E1B4B] text-white px-4 py-2.5 text-sm font-semibold hover:bg-indigo-900 transition-colors shadow-xs"
           onClick={() => {
             setEditingBranch(null);
             setIsModalOpen(true);
@@ -66,7 +66,7 @@ export default function BranchManager({ initialBranches }: BranchManagerProps) {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border shadow-sm">
+      <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xs">
         <table className="min-w-full text-sm text-left">
           <thead className="bg-surface-bg border-b border-border text-text-muted">
             <tr>

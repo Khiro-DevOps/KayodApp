@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import BranchManager from "./branch-manager";
 import type { OfficeBranch } from "@/lib/types";
+import { PageHeroHeader } from "@/components/ui/option-b-surfaces";
 
 export default async function BranchesSettingsPage() {
   const supabase = await createClient();
@@ -28,14 +29,11 @@ export default async function BranchesSettingsPage() {
   return (
     <PageContainer>
       <div className="space-y-6">
-        <div className="border-b border-border pb-5">
-          <h1 className="font-h1 text-2xl font-bold text-text-main">
-            Office Branches
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            Manage your company's physical office locations for attendance tracking.
-          </p>
-        </div>
+        <PageHeroHeader
+          eyebrow="Workspace Settings"
+          title="Office Branches"
+          subtitle="Manage your company's physical office locations for attendance tracking."
+        />
         <BranchManager initialBranches={branches || []} />
       </div>
     </PageContainer>

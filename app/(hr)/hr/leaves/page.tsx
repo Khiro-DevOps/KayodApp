@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { reviewLeaveRequest } from "@/app/(pwa)/employee/leaves/actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 type LeaveRequestWithEmployee = {
   id: string;
@@ -156,16 +157,11 @@ export default async function HRLeavesPage({
     <PageContainer>
       <div className="space-y-7">
         {/* Header */}
-        <div className="border-b border-border pb-5">
-          <div>
-            <h1 className="font-h1 text-2xl font-bold text-text-main">
-              Leave Requests
-            </h1>
-            <p className="text-sm text-text-muted">
-              Review and manage employee leave applications
-            </p>
-          </div>
-        </div>
+        <PageHeroHeader
+          eyebrow="Time Off"
+          title="Leave Requests"
+          subtitle="Review and manage employee leave applications"
+        />
 
         {actionError && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -175,23 +171,26 @@ export default async function HRLeavesPage({
 
         {/* Metrics Overview */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
-            <p className="text-xs text-text-muted">Pending Approval</p>
-            <p className="text-2xl font-bold text-warning mt-1">{pendingRequests.length}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
-            <p className="text-xs text-text-muted">Approved Leaves</p>
-            <p className="text-2xl font-bold text-success mt-1">{approvedCount}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card-bg p-5 shadow-sm">
-            <p className="text-xs text-text-muted">Total Processed</p>
-            <p className="text-2xl font-bold text-text-main mt-1">{leaveRequests.length}</p>
-          </div>
+          <GlassStatTile
+            icon={<span className="material-symbols-outlined text-[20px]">pending_actions</span>}
+            label="Pending Approval"
+            value={pendingRequests.length}
+          />
+          <GlassStatTile
+            icon={<span className="material-symbols-outlined text-[20px]">check_circle</span>}
+            label="Approved Leaves"
+            value={approvedCount}
+          />
+          <GlassStatTile
+            icon={<span className="material-symbols-outlined text-[20px]">event_note</span>}
+            label="Total Processed"
+            value={leaveRequests.length}
+          />
         </div>
 
         {/* Pending Requests Section */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-text-main flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-[#1E1B4B] flex items-center gap-2">
             Pending Requests
             {pendingRequests.length > 0 && (
               <span className="rounded-full bg-warning-bg text-warning text-xs px-2.5 py-0.5 font-medium border border-warning/20">
@@ -201,9 +200,9 @@ export default async function HRLeavesPage({
           </h2>
 
           {pendingRequests.length === 0 ? (
-            <div className="rounded-xl bg-card-bg border border-dashed border-border p-6 text-center shadow-xs">
+            <SolidSurfaceCard className="border-dashed p-6 text-center">
               <p className="text-sm text-text-muted">No pending leave requests to review.</p>
-            </div>
+            </SolidSurfaceCard>
           ) : (
             <div className="space-y-3">
               {pendingRequests.map((req) => {
@@ -212,7 +211,7 @@ export default async function HRLeavesPage({
                   : "Employee";
 
                 return (
-                    <div key={req.id} className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
+                    <SolidSurfaceCard key={req.id} className="space-y-4 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-primary-light text-primary-dark flex items-center justify-center font-bold text-sm">
@@ -284,7 +283,7 @@ export default async function HRLeavesPage({
                         </button>
                       </form>
                     </div>
-                  </div>
+                  </SolidSurfaceCard>
                 );
               })}
             </div>

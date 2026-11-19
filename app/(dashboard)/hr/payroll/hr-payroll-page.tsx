@@ -15,6 +15,7 @@ import {
   rejectPayroll,
 } from "./hr-payroll-actions";
 import { PayrollSubmitButton } from "./payroll-submit-button";
+import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 interface EmployeeWithProfile extends Employee {
   profiles: Profile;
@@ -287,19 +288,16 @@ export default async function HRPayrollPage({
       <div className="space-y-6">
 
         {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-5">
-          <div>
-            <h1 className="font-h1 text-2xl font-bold text-text-main">
-              Payroll
-            </h1>
-            <p className="mt-1 text-xs font-medium text-amber-700">
-              Demo Payroll Computation
-            </p>
-          </div>
-          <span className="text-xs text-text-muted">
-            {activeEmployeeCount} active employees
-          </span>
-        </div>
+        <PageHeroHeader
+          eyebrow="Payroll & Compensation"
+          title="Payroll"
+          subtitle="Demo Payroll Computation"
+          actions={
+            <span className="inline-flex items-center rounded-full border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
+              {activeEmployeeCount} active employees
+            </span>
+          }
+        />
 
         {/* Error banner */}
         {errorMessage && (
@@ -310,8 +308,8 @@ export default async function HRPayrollPage({
         )}
 
         {/* New payroll period form */}
-        <div className="space-y-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-text-main">New payroll period</h2>
+        <SolidSurfaceCard className="space-y-4 p-5">
+          <h2 className="text-sm font-semibold text-[#1E1B4B]">New payroll period</h2>
           <form action={createPayrollPeriod} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -339,10 +337,10 @@ export default async function HRPayrollPage({
             <PayrollSubmitButton
               label="Create period"
               pendingLabel="Creating period..."
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors shadow-xs disabled:opacity-60"
+              className="w-full rounded-xl bg-[#1E1B4B] py-2.5 text-sm font-medium text-white hover:bg-indigo-900 transition-colors shadow-xs disabled:opacity-60"
             />
           </form>
-        </div>
+        </SolidSurfaceCard>
 
         {/* Hours preview for draft period */}
         {draftPeriod && hoursPreview.length > 0 && (
