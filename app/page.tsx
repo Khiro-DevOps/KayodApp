@@ -14,6 +14,7 @@ import {
 
 import { SmoothScrollButton } from "@/components/smooth-scroll-button";
 import BookDemoModal from "@/components/landing/BookDemoModal";
+import FindYourJobSection from "@/components/landing/FindYourJobSection";
 
 const features: Array<{
   title: string;
@@ -75,6 +76,12 @@ export default function Home() {
             Kayod
           </Link>
           <nav className="ml-6 hidden items-center gap-6 md:flex">
+            <Link
+              href="/jobs"
+              className="text-[15px] text-white/80 transition-colors hover:text-white"
+            >
+              Jobs
+            </Link>
             <SmoothScrollButton
               targetId="features"
               offset={72}
@@ -126,19 +133,16 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <SmoothScrollButton
-                  targetId="pricing"
-                  offset={72}
-                  className="rounded-[8px] bg-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+                <BookDemoModal
+                  triggerLabel="I'm hiring"
+                  triggerClassName="rounded-[8px] bg-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+                />
+                <Link
+                  href="/jobs"
+                  className="inline-flex items-center justify-center rounded-[8px] border border-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#332477] transition-all hover:bg-[#332477]/5 active:scale-95"
                 >
-                  I&apos;m hiring
-                </SmoothScrollButton>
-                <SmoothScrollButton
-                  targetId="applicant-journey"
-                  className="rounded-[8px] border border-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#332477] transition-all hover:bg-[#332477]/5 active:scale-95"
-                >
-                  Find a job
-                </SmoothScrollButton>
+                  Browse jobs
+                </Link>
               </div>
             </div>
 
@@ -354,6 +358,8 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        <FindYourJobSection />
 
         {/* FIXED PRICING SECTION */}
         <section id="pricing" className="scroll-mt-20 bg-[#FAF8FF] px-6 py-10 lg:scroll-mt-24 lg:py-12">
