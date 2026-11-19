@@ -117,12 +117,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: appUpdateError.message }, { status: 500 });
   }
 
-  // 8. Reset profiles.role back to 'applicant' if currently 'employee'
+  // 8. Reset profiles.role and auth user_metadata.role back to 'candidate' if currently 'employee'
   if (app.applicant_id) {
     const { error: profileError } = await admin
       .from("profiles")
       .update({
-        role: "applicant",
+        role: "candidate",
         updated_at: now,
       })
       .eq("id", app.applicant_id)
@@ -130,6 +130,14 @@ export async function POST(req: NextRequest) {
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    try {
+      await admin.auth.admin.updateUserById(app.applicant_id, {
+        user_metadata: { role: "candidate" },
+      });
+    } catch {
+      // Non-blocking fallback
     }
   }
 

@@ -108,7 +108,7 @@ export async function toggleDevUserRole(
     const { error: metadataError } = await admin.auth.admin.updateUserById(
       userId,
       {
-        user_metadata: { role: targetRole },
+        user_metadata: { role: dbRole },
       }
     );
 
@@ -186,12 +186,26 @@ export async function toggleDevUserRole(
       }
     }
 
+    if (targetRole === "applicant") {
+      const { error: employeeDeleteError } = await admin
+        .from("employees")
+        .delete()
+        .eq("profile_id", userId);
+
+      if (employeeDeleteError) {
+        return {
+          success: false,
+          error: employeeDeleteError.message,
+        };
+      }
+    }
+
     const targetRoute =
       targetRole === "employee"
         ? "/employee/dashboard"
         : targetRole === "hr_manager"
-          ? "/hr/dashboard"
-          : "/applicant/jobs";
+          ? "/hr"
+          : "/applicant/dashboard";
 
     return {
       success: true,

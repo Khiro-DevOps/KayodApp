@@ -2,6 +2,7 @@ import type { UserRole } from "@/lib/types";
 
 const ROLE_MAP: Record<string, UserRole | null> = {
   candidate: "candidate",
+  applicant: "candidate",
   job_seeker: "candidate",
   employee: "employee",
   hr: "hr_manager",
