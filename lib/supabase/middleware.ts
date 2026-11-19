@@ -2,7 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Routes that don't require authentication
-const publicRoutes = ["/", "/login", "/register", "/auth/callback", "/sitemap.xml", "/robots.txt"];
+const publicRoutes = [
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+  "/sitemap.xml",
+  "/robots.txt",
+];
 
 // Route prefixes that don't require authentication
 // Include `/register` so subroutes like `/register/applicant` are public
