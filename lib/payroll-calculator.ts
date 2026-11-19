@@ -25,6 +25,7 @@ export interface ComputeEmployeeDemoPayslipInput {
   periodStart: string;
   periodEnd: string;
   startDate?: string | null;
+  hireDate?: string | null;
   shiftStart?: string | null;
   shiftEnd?: string | null;
   workDays?: string[] | null;
@@ -176,7 +177,8 @@ export function computeEmployeeDemoPayslip(
   const freqDivisor = isSemiOrBiweekly ? 2 : 1;
 
   // Mid-cutoff pro-rata calculation
-  const startDateIso = input.startDate ? String(input.startDate).slice(0, 10) : null;
+  const rawEffectiveStart = input.startDate ?? input.hireDate ?? null;
+  const startDateIso = rawEffectiveStart ? String(rawEffectiveStart).slice(0, 10) : null;
   let isProrated = false;
   let prorateFactor = 1;
   if (startDateIso && startDateIso > input.periodStart) {
@@ -276,6 +278,7 @@ export function computeEmployeeDemoPayslip(
   const { absentDays: unexcusedAbsentDays } = computeUnexcusedAbsences({
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
+    effectiveStartDate: startDateIso,
     workDays: input.workDays,
     shiftEnd: input.shiftEnd,
     attendanceLogs: input.attendanceLogs,

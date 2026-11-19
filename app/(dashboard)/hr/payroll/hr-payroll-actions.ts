@@ -170,6 +170,7 @@ export async function generatePayslips(formData: FormData) {
     const monthlySalary = Number(emp.base_salary ?? emp.salary ?? 0);
     const empRecord = emp as {
       start_date?: string | null;
+      hire_date?: string | null;
       monthly_allowance?: number | string | null;
       attendance_incentive?: number | string | null;
       job_offer_id?: string | null;
@@ -225,7 +226,7 @@ export async function generatePayslips(formData: FormData) {
       payFrequency: emp.pay_frequency,
       periodStart: period.period_start,
       periodEnd: period.period_end,
-      startDate: empRecord.start_date ?? null,
+      startDate: empRecord.start_date ?? empRecord.hire_date ?? null,
       shiftStart: emp.shift_start,
       shiftEnd: emp.shift_end,
       workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,

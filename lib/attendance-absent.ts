@@ -12,6 +12,7 @@ export interface ApprovedLeaveLike {
 export interface ComputeUnexcusedAbsencesInput {
   periodStart: string;
   periodEnd: string;
+  effectiveStartDate?: string | null;
   workDays?: string[] | null;
   shiftEnd?: string | null;
   attendanceLogs: AttendanceLogLike[];
@@ -77,10 +78,13 @@ export function computeUnexcusedAbsences(
   const shiftEndMinutes = parseShiftMinutes(input.shiftEnd);
 
   const startIso = input.periodStart.slice(0, 10);
+  const effectiveStartIso = input.effectiveStartDate
+    ? input.effectiveStartDate.slice(0, 10)
+    : null;
   const rawEndIso = input.periodEnd.slice(0, 10);
   const endIso = rawEndIso < todayPht ? rawEndIso : todayPht;
 
-  if (endIso < startIso) {
+  if (endIso < startIso || (effectiveStartIso && endIso < effectiveStartIso)) {
     return { absentDays: 0, absentDates: [] };
   }
 
@@ -112,6 +116,10 @@ export function computeUnexcusedAbsences(
     const m = String(cursor.getUTCMonth() + 1).padStart(2, "0");
     const d = String(cursor.getUTCDate()).padStart(2, "0");
     const dayIso = `${y}-${m}-${d}`;
+    if (effectiveStartIso && dayIso < effectiveStartIso) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      continue;
+    }
     const dayToken = DAY_INDEX_TO_SHORT[cursor.getUTCDay()];
 
     const isTodayBeforeShiftEnd =

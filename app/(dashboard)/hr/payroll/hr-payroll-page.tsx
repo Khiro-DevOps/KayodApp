@@ -173,6 +173,7 @@ export default async function HRPayrollPage({
         base_salary?: number | null;
         salary?: number | null;
         start_date?: string | null;
+        hire_date?: string | null;
         pay_frequency?: string | null;
         shift_start?: string | null;
         shift_end?: string | null;
@@ -227,7 +228,7 @@ export default async function HRPayrollPage({
         payFrequency: empRec.pay_frequency,
         periodStart: reviewPeriod.period_start,
         periodEnd: reviewPeriod.period_end,
-        startDate: empRec.start_date ?? null,
+        startDate: empRec.start_date ?? empRec.hire_date ?? null,
         shiftStart: empRec.shift_start,
         shiftEnd: empRec.shift_end,
         workDays: Array.isArray(empRec.work_days) ? empRec.work_days : null,
