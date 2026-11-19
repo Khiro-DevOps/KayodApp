@@ -36,13 +36,9 @@ export default async function HRDashboardPage() {
   const admin = getAdminClient();
 
   // 1. Count Total Employees
-  let employeesQuery = admin
+  const { count: totalEmployees } = await admin
     .from("employees")
     .select("*", { count: "exact", head: true });
-  if (profile?.tenant_id) {
-    employeesQuery = employeesQuery.eq("tenant_id", profile.tenant_id);
-  }
-  const { count: totalEmployees } = await employeesQuery;
 
   // 2. Count Active Jobs
   const { count: activeJobs } = await supabase
