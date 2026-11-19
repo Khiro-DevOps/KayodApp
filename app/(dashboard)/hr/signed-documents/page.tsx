@@ -1,5 +1,6 @@
 import PageContainer from "@/components/ui/page-container";
 import SignedDocumentsTable from "@/components/hr/SignedDocumentsTable";
+import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -87,20 +88,17 @@ export default async function SignedDocumentsPage() {
     return (
       <PageContainer>
         <div className="space-y-6">
-          <div>
-            <h1 className="font-h1 text-2xl font-bold text-text-main">
-              Signed Documents
-            </h1>
-            <p className="text-sm text-text-muted">
-              Review signed offer letters before confirming hires.
-            </p>
-          </div>
-          <div className="rounded-xl border border-dashed border-border bg-card-bg p-10 text-center shadow-sm">
-            <p className="text-sm font-medium text-text-main">No job postings found</p>
+          <PageHeroHeader
+            eyebrow="Contract Review"
+            title="Signed Documents"
+            subtitle="Review signed offer letters before confirming hires."
+          />
+          <SolidSurfaceCard className="border-dashed p-10 text-center">
+            <p className="text-sm font-medium text-[#1E1B4B]">No job postings found</p>
             <p className="mt-1 text-sm text-text-muted">
               Create a job posting first so signed contracts appear here.
             </p>
-          </div>
+          </SolidSurfaceCard>
         </div>
       </PageContainer>
     );
@@ -162,16 +160,15 @@ export default async function SignedDocumentsPage() {
   return (
     <PageContainer>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <h1 className="font-h1 text-xl font-bold text-text-main">
-            Signed Documents
-          </h1>
-          <p className="text-sm text-text-muted">
-            Review completed offer letters and confirm the hire when the contract looks correct.
-          </p>
-        </div>
+        <PageHeroHeader
+          eyebrow="Contract Review"
+          title="Signed Documents"
+          subtitle="Review completed offer letters and confirm the hire when the contract looks correct."
+        />
 
-        <SignedDocumentsTable documents={documents} />
+        <SolidSurfaceCard className="p-5">
+          <SignedDocumentsTable documents={documents} />
+        </SolidSurfaceCard>
       </div>
     </PageContainer>
   );

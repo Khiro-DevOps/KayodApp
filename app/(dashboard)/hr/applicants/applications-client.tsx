@@ -9,6 +9,7 @@ import { recalculateMatchScores } from "./actions";
 import { withdrawApplication } from "./actions";
 import { createClient } from "@/lib/supabase/client";
 import ApplicationsKanbanBoard, { type ApplicationHubCard } from "./applications-kanban-board";
+import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 type ApplicationsListItem = {
   id: string;
@@ -260,46 +261,49 @@ export function ApplicationsHubClient({
   return (
     <div className="flex w-full min-w-0 flex-col space-y-5 text-text-main">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-main">
-            Application Hub
-          </h1>
-          <p className="text-xs text-text-muted">Manage candidate pipelines across roles</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button type="button" disabled={recalculating} onClick={async () => {
-            setRecalculating(true);
-            const result = await recalculateMatchScores();
-            setRecalculating(false);
-            if (!result.success) toast.error(result.error);
-            else { toast.success(`Scores: ${result.scored} scored, ${result.skipped} skipped, ${result.failed} failed`); router.refresh(); }
-          }} className="h-8 rounded-lg border border-border bg-card-bg px-3 text-xs font-semibold text-text-main disabled:opacity-50">
-            {recalculating ? "Recalculating..." : "Recalculate scores"}
-          </button>
-          <div className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-bold text-primary-dark">
-            <span className="mr-1.5">{selectedApplications.length}</span>
-            <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
+      <PageHeroHeader
+        eyebrow="Recruitment Pipeline"
+        title="Application Hub"
+        subtitle="Manage candidate pipelines across roles"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={recalculating}
+              onClick={async () => {
+                setRecalculating(true);
+                const result = await recalculateMatchScores();
+                setRecalculating(false);
+                if (!result.success) toast.error(result.error);
+                else {
+                  toast.success(`Scores: ${result.scored} scored, ${result.skipped} skipped, ${result.failed} failed`);
+                  router.refresh();
+                }
+              }}
+              className="h-9 rounded-xl border border-indigo-100 bg-white/80 px-3.5 text-xs font-semibold text-[#1E1B4B] backdrop-blur-md transition-colors hover:bg-white disabled:opacity-50"
+            >
+              {recalculating ? "Recalculating..." : "Recalculate scores"}
+            </button>
+            <div className="inline-flex items-center rounded-full bg-[#EDE9F9] px-3.5 py-1.5 text-xs font-bold text-[#1E1B4B]">
+              <span className="mr-1.5">{selectedApplications.length}</span>
+              <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
+            </div>
+            <button className="h-9 rounded-xl bg-[#1E1B4B] px-4 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-indigo-900">
+              + Add Candidate
+            </button>
           </div>
+        }
+      />
 
-
-
-          <button className="h-8 rounded-lg bg-primary hover:bg-primary-hover px-3.5 text-xs font-semibold text-white transition-colors shadow-xs">
-            + Add Candidate
-          </button>
-        </div>
-      </div>
-
-      {/* Job Tabs Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 border-b border-border">
+      {/* Frosted Glass Job Tabs Bar */}
+      <div className="flex max-w-full items-center gap-2 overflow-x-auto rounded-2xl border border-indigo-100/80 bg-white/75 p-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
         <button
           type="button"
           onClick={() => setSelectedJobId("all")}
-          className={`flex-shrink-0 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+          className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
             selectedJobId === "all"
-              ? "bg-primary text-white shadow-xs"
-              : "bg-card-bg text-text-muted hover:text-text-main hover:bg-surface-bg border border-border/60"
+              ? "bg-[#1E1B4B] text-white shadow-xs"
+              : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
           }`}
         >
           All roles
@@ -309,11 +313,11 @@ export function ApplicationsHubClient({
             key={job.id}
             onClick={() => setSelectedJobId(job.id)}
             data-job-id={job.id}
-            className={`flex-shrink-0 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+            className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
               job.id === selectedJobId
-                ? "bg-primary text-white shadow-xs"
-                : "bg-card-bg text-text-muted hover:text-text-main hover:bg-surface-bg border border-border/60"
-            }`} 
+                ? "bg-[#1E1B4B] text-white shadow-xs"
+                : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
+            }`}
           >
             {job.title}
           </button>
@@ -321,13 +325,13 @@ export function ApplicationsHubClient({
       </div>
 
       {/* Kanban Board Container */}
-      <section className="flex-1 min-h-[500px] w-full min-w-0 overflow-hidden">
+      <SolidSurfaceCard className="flex-1 min-h-[500px] w-full min-w-0 overflow-hidden p-4">
         <ApplicationsKanbanBoard
           applications={selectedApplications}
           currentCompanyId={currentCompanyId}
           tenantJobIds={activeJobs.map((job) => job.id)}
         />
-      </section>
+      </SolidSurfaceCard>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Briefcase, Calendar, Clock, DollarSign, ExternalLink, FileText, MapPin, User } from "lucide-react";
+import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 export type OfferDirectoryStatus =
   | "Sent"
@@ -138,35 +139,60 @@ export default function HROffersListClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Job Offers</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Track candidate offers, negotiation requests, and signed contracts across job postings.
-          </p>
-        </div>
+      <PageHeroHeader
+        eyebrow="Offer Management"
+        title="Job Offers"
+        subtitle="Track candidate offers, negotiation requests, and signed contracts across job postings."
+        actions={
+          <div className="flex items-center gap-3 rounded-2xl border border-indigo-100/80 bg-white/75 px-3.5 py-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+            <label htmlFor="hr-offers-job-filter" className="text-xs font-semibold text-[#1E1B4B]">
+              Job Posting
+            </label>
+            <select
+              id="hr-offers-job-filter"
+              value={selectedJobId}
+              onChange={(event) => setSelectedJobId(event.target.value)}
+              className="rounded-xl border border-indigo-100 bg-white px-3 py-1.5 text-sm font-medium text-[#1E1B4B] focus:border-[#1E1B4B] focus:outline-none"
+            >
+              <option value="all">All Job Postings</option>
+              {jobOptions.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      />
 
-        <div className="flex items-center gap-3">
-          <label htmlFor="hr-offers-job-filter" className="text-sm font-medium text-text-secondary">
-            Job Posting
-          </label>
-          <select
-            id="hr-offers-job-filter"
-            value={selectedJobId}
-            onChange={(event) => setSelectedJobId(event.target.value)}
-            className="rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-text-primary shadow-sm focus:border-primary focus:outline-none"
-          >
-            <option value="all">All Job Postings</option>
-            {jobOptions.map((job) => (
-              <option key={job.id} value={job.id}>
-                {job.title}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <GlassStatTile
+          icon={<FileText className="h-5 w-5" />}
+          label="Total Offers"
+          value={statusCounts.All}
+        />
+        <GlassStatTile
+          icon={<Clock className="h-5 w-5" />}
+          label="Sent / Pending"
+          value={statusCounts.Sent}
+        />
+        <GlassStatTile
+          icon={<Briefcase className="h-5 w-5" />}
+          label="Negotiating"
+          value={statusCounts.Negotiating}
+        />
+        <GlassStatTile
+          icon={<DollarSign className="h-5 w-5" />}
+          label="Signed & Hired"
+          value={statusCounts.Signed + statusCounts.Hired}
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Filter offers by status">
+      <div
+        className="flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100/80 bg-white/75 p-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md"
+        role="tablist"
+        aria-label="Filter offers by status"
+      >
         {STATUS_TABS.map((tab) => {
           const isActive = selectedStatus === tab;
           return (
@@ -176,16 +202,16 @@ export default function HROffersListClient({
               role="tab"
               aria-selected={isActive}
               onClick={() => setSelectedStatus(tab)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-1.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-border bg-surface text-text-secondary hover:bg-background hover:text-text-primary"
+                  ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
+                  : "border-slate-200/80 bg-white text-text-secondary hover:text-[#1E1B4B]"
               }`}
             >
               <span>{tab}</span>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs ${
-                  isActive ? "bg-white/20 text-white" : "bg-slate-100 text-text-secondary"
+                  isActive ? "bg-white/20 text-white" : "bg-[#EDE9F9] text-[#1E1B4B]"
                 }`}
               >
                 {statusCounts[tab]}
@@ -196,19 +222,19 @@ export default function HROffersListClient({
       </div>
 
       {filteredOffers.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
+        <SolidSurfaceCard className="border-dashed p-10 text-center">
           <FileText className="mx-auto h-10 w-10 text-text-secondary" />
-          <h2 className="mt-3 text-base font-semibold text-text-primary">No matching job offers</h2>
+          <h2 className="mt-3 text-base font-semibold text-[#1E1B4B]">No matching job offers</h2>
           <p className="mt-1 text-sm text-text-secondary">
             No offers match the selected job posting and status filter.
           </p>
-        </div>
+        </SolidSurfaceCard>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredOffers.map((offer) => (
             <article
               key={offer.id}
-              className="flex flex-col justify-between rounded-2xl border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
+              className="flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs transition-shadow hover:shadow-md"
             >
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
@@ -270,7 +296,7 @@ export default function HROffersListClient({
               <div className="mt-4 flex items-center justify-end border-t border-border pt-3">
                 <Link
                   href={`/hr/offers/${encodeURIComponent(offer.applicationId)}`}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary/90"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-900"
                 >
                   <span>Open Offer</span>
                   <ExternalLink className="h-3.5 w-3.5" />

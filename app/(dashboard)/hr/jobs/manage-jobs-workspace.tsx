@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 type ManageJobPosting = {
   id: string;
@@ -123,30 +124,30 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
   if (jobs.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-border bg-card-bg px-6 py-16 shadow-sm">
+      <SolidSurfaceCard className="flex items-center justify-center px-6 py-16">
         <div className="max-w-xl space-y-5 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-light text-primary-dark">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-[#1E1B4B]">
             <span className="material-symbols-outlined text-[28px]">work</span>
           </div>
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               {companyName}
             </p>
-            <h1 className="text-2xl font-bold text-text-main">
+            <h1 className="text-2xl font-bold text-[#1E1B4B]">
               Manage Jobs
             </h1>
             <p className="text-xs leading-6 text-text-muted">
-              No job postings found for this company workspace. Click "New Job" to create your first listing.
+              No job postings found for this company workspace. Click &quot;New Job&quot; to create your first listing.
             </p>
           </div>
           <Link
             href="/hr/jobs/new"
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
+            className="inline-flex items-center justify-center rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 shadow-xs"
           >
             New Job
           </Link>
         </div>
-      </div>
+      </SolidSurfaceCard>
     );
   }
 
@@ -154,27 +155,23 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-text-main">
-            Manage Jobs
-          </h1>
-          <p className="text-xs text-text-muted">
-            Scoped to {companyName}
-          </p>
-        </div>
+      <PageHeroHeader
+        eyebrow={companyName}
+        title="Manage Jobs"
+        subtitle="Create, publish, and manage open roles across your workspace"
+        actions={
+          <Link
+            href="/hr/jobs/new"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#1E1B4B] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 shadow-xs"
+          >
+            + New Job
+          </Link>
+        }
+      />
 
-        <Link
-          href="/hr/jobs/new"
-          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover shadow-xs"
-        >
-          + New Job
-        </Link>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start">
-        {/* Left Master List */}
-        <aside className="flex min-w-0 flex-col gap-4 rounded-xl border border-border bg-card-bg p-5 shadow-sm">
+      <div className="grid gap-5 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start">
+        {/* Left Master List (Frosted Glass Rail) */}
+        <aside className="flex min-w-0 flex-col gap-4 rounded-3xl border border-indigo-100/80 bg-white/75 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">
               search
@@ -182,7 +179,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="w-full rounded-lg border border-border bg-surface-bg py-2 pl-9 pr-4 text-xs text-text-main outline-none transition-colors placeholder:text-text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-xl border border-indigo-100 bg-white py-2.5 pl-9 pr-4 text-xs text-text-main outline-none transition-colors placeholder:text-text-muted/70 focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/15"
               placeholder="Search jobs..."
               type="text"
             />
@@ -262,7 +259,7 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
         </aside>
 
         {/* Right Detail Section */}
-        <section className="flex min-w-0 flex-col rounded-xl border border-border bg-card-bg shadow-sm">
+        <section className="flex min-w-0 flex-col rounded-3xl border border-slate-200/80 bg-white shadow-xs">
           {selectedJob ? (
             <>
               <div className="border-b border-border p-5">
