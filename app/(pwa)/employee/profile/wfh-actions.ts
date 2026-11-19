@@ -96,15 +96,29 @@ export async function submitWfhLocationAction(input: {
     );
 
   if (!existing) {
-    let resolvedTenantId = employee.tenant_id;
-    if (!resolvedTenantId) {
-      const { data: profTenant } = await admin
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle<{ tenant_id: string | null }>();
-      resolvedTenantId = profTenant?.tenant_id ?? null;
+    let resolvedTenantId: string | null = null;
+    const candidateTenants: string[] = [];
+    if (employee.tenant_id) candidateTenants.push(employee.tenant_id);
+
+    const { data: profTenant } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .maybeSingle<{ tenant_id: string | null }>();
+    if (profTenant?.tenant_id) candidateTenants.push(profTenant.tenant_id);
+
+    for (const candidate of candidateTenants) {
+      const { data: validTenant } = await admin
+        .from("tenants")
+        .select("id")
+        .eq("id", candidate)
+        .maybeSingle<{ id: string }>();
+      if (validTenant?.id) {
+        resolvedTenantId = validTenant.id;
+        break;
+      }
     }
+
     if (!resolvedTenantId) {
       const { data: firstTenant } = await admin
         .from("tenants")
@@ -113,7 +127,11 @@ export async function submitWfhLocationAction(input: {
         .maybeSingle<{ id: string }>();
       resolvedTenantId = firstTenant?.id ?? null;
     }
-    const tenantIdValue = resolvedTenantId ?? "00000000-0000-0000-0000-000000000001";
+
+    if (!resolvedTenantId) {
+      return { success: false, error: "No valid tenant found for WFH location." };
+    }
+    const tenantIdValue = resolvedTenantId;
 
     const { error: insertErr } = await admin
       .from("employee_remote_residences")
