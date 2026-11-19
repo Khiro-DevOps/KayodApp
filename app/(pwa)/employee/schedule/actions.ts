@@ -14,7 +14,15 @@ export type ClockInPayload = {
 };
 
 export type ClockInResult =
-  | { success: true; message: string; logId: string; status: string; zone_status: string; location_used: string }
+  | {
+      success: true;
+      message: string;
+      logId: string;
+      status: string;
+      zone_status: string;
+      location_used: string;
+      distanceMeters: number | null;
+    }
   | { success: false; error: string; distanceMeters?: number; radiusMeters?: number };
 
 type ResolvedEmployee = {
@@ -173,6 +181,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     status: zoneStatus,
     zone_status: zoneStatus,
     location_used: locationUsed,
+    distanceMeters: distanceMeters !== null ? Math.round(distanceMeters) : null,
   };
 }
 
@@ -312,7 +321,7 @@ export async function toggleLunchAction(
     const { error } = await supabase
       .from("attendance_logs")
       .update({
-        lunch_start: log.lunch_start ?? nowIso,
+        lunch_start: nowIso,
         lunch_end: null,
         active_break_type: "lunch",
         break_status: "on_lunch",
@@ -343,7 +352,13 @@ export async function toggleLunchAction(
   }
 
   // End lunch
-  const startedAt = log.lunch_start ? new Date(log.lunch_start) : now;
+  const parsedLunchStart = log.lunch_start ? new Date(log.lunch_start) : null;
+  const startedAt =
+    parsedLunchStart &&
+    !Number.isNaN(parsedLunchStart.getTime()) &&
+    parsedLunchStart.getTime() > 86_400_000
+      ? parsedLunchStart
+      : now;
   const elapsedMinutes = Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000));
   const nextTotalLunch = (log.total_lunch_minutes ?? 0) + elapsedMinutes;
   const addedOverbreak = Math.max(0, nextTotalLunch - 60) - Math.max(0, (log.total_lunch_minutes ?? 0) - 60);
@@ -477,7 +492,13 @@ export async function toggleShortBreakAction(
   }
 
   // End short break
-  const startedAt = log.break_start ? new Date(log.break_start) : now;
+  const parsedBreakStart = log.break_start ? new Date(log.break_start) : null;
+  const startedAt =
+    parsedBreakStart &&
+    !Number.isNaN(parsedBreakStart.getTime()) &&
+    parsedBreakStart.getTime() > 86_400_000
+      ? parsedBreakStart
+      : now;
   const elapsedMinutes = Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000));
   const addedOverbreak = Math.max(0, elapsedMinutes - 15);
   const nextTotalBreak = (log.total_break_minutes ?? 0) + elapsedMinutes;
@@ -525,5 +546,111 @@ export async function toggleShortBreakAction(
     total_break_minutes: nextTotalBreak,
     short_breaks_used: usedCount,
     overbreak_minutes: nextOverbreak,
+  };
+}
+
+export type LiveLocationUpdatePayload = {
+  attendanceLogId: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+};
+
+export type LiveLocationUpdateResult =
+  | {
+      success: true;
+      distanceMeters: number;
+      isOutside: boolean;
+      allowedRadius: number;
+      zoneStatus: "onsite_verified" | "remote_verified" | "outside_zone";
+    }
+  | { success: false; error: string };
+
+export async function updateLiveAttendanceLocationAction(
+  payload: LiveLocationUpdatePayload
+): Promise<LiveLocationUpdateResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found." };
+  }
+
+  const supabaseAdmin = getAdminClient();
+  const { data: openLog } = await supabaseAdmin
+    .from("attendance_logs")
+    .select("id, clock_out")
+    .eq("id", payload.attendanceLogId)
+    .eq("employee_id", employee.id)
+    .is("clock_out", null)
+    .maybeSingle<{ id: string; clock_out: string | null }>();
+
+  if (!openLog) {
+    return { success: false, error: "No open attendance log found." };
+  }
+
+  const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
+    id: employee.id,
+    tenant_id: employee.tenant_id,
+    work_mode: employee.work_mode,
+    work_location_id: employee.work_location_id,
+    hybrid_onsite_days: employee.hybrid_onsite_days,
+    work_days: employee.work_days,
+  });
+
+  if (!geofence.configured) {
+    return { success: false, error: geofence.error };
+  }
+
+  const allowedRadius = geofence.radiusMeters || 100;
+  const distanceMeters = Math.round(
+    calculateHaversineDistance(
+      payload.latitude,
+      payload.longitude,
+      geofence.latitude,
+      geofence.longitude
+    )
+  );
+  const isOutside = distanceMeters > allowedRadius;
+  const zoneStatus: "onsite_verified" | "remote_verified" | "outside_zone" = isOutside
+    ? "outside_zone"
+    : geofence.mode === "remote_residence"
+      ? "remote_verified"
+      : "onsite_verified";
+
+  const { error: updateErr } = await supabaseAdmin
+    .from("attendance_logs")
+    .update({
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      accuracy_meters: payload.accuracyMeters,
+      distance_meters: distanceMeters,
+      zone_status: zoneStatus,
+      flag_reason: isOutside
+        ? `Outside designated work zone (${distanceMeters}m away; max ${allowedRadius}m)`
+        : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", openLog.id)
+    .eq("employee_id", employee.id);
+
+  if (updateErr) {
+    return { success: false, error: updateErr.message };
+  }
+
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    distanceMeters,
+    isOutside,
+    allowedRadius,
+    zoneStatus,
   };
 }

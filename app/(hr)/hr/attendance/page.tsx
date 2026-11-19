@@ -263,13 +263,11 @@ export default async function HRAttendancePage() {
     let breakStatusLabel: AttendanceRow["breakStatusLabel"] = null;
     if (l.clock_in) {
       if (l.clock_out) {
-        breakStatusLabel = overbreakMinutes > 0 ? "Overbreak" : "Clocked Out";
+        breakStatusLabel = "Clocked Out";
       } else if (l.active_break_type === "lunch" || l.break_status === "on_lunch") {
         breakStatusLabel = "On Lunch";
       } else if (l.active_break_type === "short_break" || l.break_status === "on_break") {
         breakStatusLabel = (l.short_breaks_used ?? 0) >= 2 ? "On Break (2/2)" : "On Break (1/2)";
-      } else if (overbreakMinutes > 0) {
-        breakStatusLabel = "Overbreak";
       } else {
         breakStatusLabel = "Working";
       }
@@ -321,6 +319,7 @@ export default async function HRAttendancePage() {
   return (
     <HRAttendanceClient
       rows={rows}
+      tenantId={profile?.tenant_id ?? null}
       metrics={{
         presentToday,
         lateToday,

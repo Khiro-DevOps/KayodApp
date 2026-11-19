@@ -106,7 +106,7 @@ export default async function EmployeeSchedulePage() {
     const { data: activeLog } = await supabase
       .from("attendance_logs")
       .select(
-        "id, clock_in, clock_out, status, verification_type, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes, break_log"
+        "id, clock_in, clock_out, status, verification_type, distance_meters, zone_status, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes, break_log"
       )
       .eq("employee_id", employee.id)
       .is("clock_out", null)
@@ -224,6 +224,7 @@ export default async function EmployeeSchedulePage() {
               lunchStart={lunchStart}
               lunchEnd={lunchEnd}
               initialActiveLog={activeAttendanceLog}
+              allowedRadiusMeters={geofence.radiusMeters}
               targetOfficeCoords={
                 geofence.configured
                   ? {

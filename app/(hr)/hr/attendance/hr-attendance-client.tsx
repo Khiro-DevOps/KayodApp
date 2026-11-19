@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type AttendanceRow = {
@@ -45,6 +47,7 @@ type Metrics = {
 type Props = {
   rows: AttendanceRow[];
   metrics: Metrics;
+  tenantId?: string | null;
 };
 
 // ─── Zone Badge ───────────────────────────────────────────────────────────────
@@ -188,11 +191,42 @@ function MetricCard({
 }
 
 // ─── Main Client Component ───────────────────────────────────────────────────
-export default function HRAttendanceClient({ rows, metrics }: Props) {
+export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
+  const router = useRouter();
   const hasTodayLogs = rows.some((r) => r.isToday);
   const [search, setSearch] = useState("");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [todayOnly, setTodayOnly] = useState(hasTodayLogs);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("hr-attendance-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "attendance_logs",
+          ...(tenantId ? { filter: `tenant_id=eq.${tenantId}` } : {}),
+        },
+        () => {
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    const fallbackInterval = todayOnly
+      ? setInterval(() => {
+          router.refresh();
+        }, 15_000)
+      : null;
+
+    return () => {
+      if (fallbackInterval) clearInterval(fallbackInterval);
+      void supabase.removeChannel(channel);
+    };
+  }, [router, tenantId, todayOnly]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -470,24 +504,28 @@ export default function HRAttendanceClient({ rows, metrics }: Props) {
                   {/* Break / Status */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
                     {row.breakStatusLabel ? (
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
-                          row.breakStatusLabel === "Working"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : row.breakStatusLabel === "On Lunch"
-                              ? "border-sky-200 bg-sky-50 text-sky-700"
-                              : row.breakStatusLabel.startsWith("On Break")
-                                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                                : row.breakStatusLabel === "Overbreak"
-                                  ? "border-amber-300 bg-amber-50 text-amber-800"
-                                  : "border-slate-200 bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {row.breakStatusLabel}
-                        {row.breakStatusLabel === "Overbreak" && (row.overbreakMinutes ?? 0) > 0
-                          ? ` (+${row.overbreakMinutes}m)`
-                          : ""}
-                      </span>
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
+                            row.breakStatusLabel === "Working"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : row.breakStatusLabel === "On Lunch"
+                                ? "border-sky-200 bg-sky-50 text-sky-700"
+                                : row.breakStatusLabel.startsWith("On Break")
+                                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                  : row.breakStatusLabel === "Overbreak"
+                                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                                    : "border-slate-200 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {row.breakStatusLabel}
+                        </span>
+                        {(row.overbreakMinutes ?? 0) > 0 ? (
+                          <span className="text-[10px] font-medium text-amber-700">
+                            +{row.overbreakMinutes}m overbreak
+                          </span>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-text-muted">—</span>
                     )}

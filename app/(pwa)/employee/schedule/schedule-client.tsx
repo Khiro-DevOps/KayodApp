@@ -7,6 +7,7 @@ import {
   clockOutAction,
   toggleLunchAction,
   toggleShortBreakAction,
+  updateLiveAttendanceLocationAction,
 } from "./actions";
 import WorkspaceMap from "@/components/schedule/workspace-map";
 
@@ -16,6 +17,8 @@ interface AttendanceLog {
   clock_out: string | null;
   status: string;
   verification_type: string | null;
+  distance_meters?: number | null;
+  zone_status?: string | null;
   break_status?: string | null;
   active_break_type?: string | null;
   lunch_start?: string | null;
@@ -45,6 +48,7 @@ interface ScheduleClientProps {
   lunchStart?: string;
   lunchEnd?: string;
   initialActiveLog: AttendanceLog | null;
+  allowedRadiusMeters?: number;
   targetOfficeCoords: { lat: number; lng: number; name: string } | null;
   geofenceError?: string | null;
   remoteAddress: string;
@@ -86,6 +90,7 @@ export default function ScheduleClient({
   lunchStart = "12:00",
   lunchEnd = "13:00",
   initialActiveLog,
+  allowedRadiusMeters = 100,
   targetOfficeCoords,
   geofenceError,
   remoteAddress,
@@ -99,6 +104,17 @@ export default function ScheduleClient({
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [optimisticBreakStartIso, setOptimisticBreakStartIso] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [distanceMeters, setDistanceMeters] = useState<number | null>(
+    initialActiveLog?.distance_meters ?? null
+  );
+  const [isInZone, setIsInZone] = useState<boolean>(
+    initialActiveLog ? initialActiveLog.zone_status !== "outside_zone" : true
+  );
+  const lastSentDistanceRef = useRef<number | null>(initialActiveLog?.distance_meters ?? null);
+  const lastSentInZoneRef = useRef<boolean>(
+    initialActiveLog ? initialActiveLog.zone_status !== "outside_zone" : true
+  );
+  const lastSentAtRef = useRef<number>(0);
   const [isOnline, setIsOnline] = useState<boolean>(true);
 
   // Soft-blocking modal state
@@ -138,6 +154,18 @@ export default function ScheduleClient({
             lng: pos.coords.longitude,
             accuracy: pos.coords.accuracy || 10,
           });
+          if (targetOfficeCoords) {
+            const meters = Math.round(
+              calculateDistanceKm(
+                pos.coords.latitude,
+                pos.coords.longitude,
+                targetOfficeCoords.lat,
+                targetOfficeCoords.lng
+              ) * 1000
+            );
+            setDistanceMeters((prev) => prev ?? meters);
+            setIsInZone(meters <= allowedRadiusMeters);
+          }
         },
         (err) => {
           console.log("Geolocation error/denied:", err);
@@ -145,7 +173,72 @@ export default function ScheduleClient({
         { enableHighAccuracy: true, timeout: 10000 }
       );
     }
-  }, []);
+  }, [allowedRadiusMeters, targetOfficeCoords]);
+
+  // Continuous live geofence tracking while clocked in
+  useEffect(() => {
+    if (!activeLog || activeLog.clock_out) return;
+    if (typeof window === "undefined" || !navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy || 10;
+        setUserLocation({ lat, lng, accuracy });
+
+        let localMeters: number | null = null;
+        let nextInZone = lastSentInZoneRef.current;
+
+        if (targetOfficeCoords) {
+          localMeters = Math.round(
+            calculateDistanceKm(lat, lng, targetOfficeCoords.lat, targetOfficeCoords.lng) * 1000
+          );
+          nextInZone = localMeters <= allowedRadiusMeters;
+          setDistanceMeters(localMeters);
+          setIsInZone(nextInZone);
+        }
+
+        const now = Date.now();
+        const distDelta =
+          localMeters !== null && lastSentDistanceRef.current !== null
+            ? Math.abs(localMeters - lastSentDistanceRef.current)
+            : 0;
+        const zoneFlipped = nextInZone !== lastSentInZoneRef.current;
+        const elapsedMs = now - lastSentAtRef.current;
+
+        if (
+          lastSentAtRef.current === 0 ||
+          distDelta >= 15 ||
+          zoneFlipped ||
+          elapsedMs >= 45_000
+        ) {
+          lastSentAtRef.current = now;
+          void updateLiveAttendanceLocationAction({
+            attendanceLogId: activeLog.id,
+            latitude: lat,
+            longitude: lng,
+            accuracyMeters: accuracy,
+          }).then((res) => {
+            if (res.success) {
+              lastSentDistanceRef.current = res.distanceMeters;
+              lastSentInZoneRef.current = !res.isOutside;
+              setDistanceMeters(res.distanceMeters);
+              setIsInZone(!res.isOutside);
+            }
+          });
+        }
+      },
+      (err) => {
+        console.log("Live geofence watchPosition error:", err);
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [activeLog, allowedRadiusMeters, targetOfficeCoords]);
 
   // Keep live elapsed shift timer running when clocked in
   useEffect(() => {
@@ -241,8 +334,15 @@ export default function ScheduleClient({
         clock_out: null,
         status: res.status,
         verification_type: res.location_used,
+        distance_meters: res.distanceMeters,
+        zone_status: res.zone_status,
         break_status: "active",
       });
+      setDistanceMeters(res.distanceMeters);
+      setIsInZone(res.zone_status !== "outside_zone");
+      lastSentDistanceRef.current = res.distanceMeters;
+      lastSentInZoneRef.current = res.zone_status !== "outside_zone";
+      lastSentAtRef.current = Date.now();
       setShowOutsideModal(false);
       setFlagReason("");
       setPendingCoords(null);
@@ -420,20 +520,29 @@ export default function ScheduleClient({
     badgeStyle = "bg-amber-100 text-amber-800 border-amber-200";
   }
 
-  // Calculate distance pill display
+  // Calculate distance pill display (hydrated from attendance_logs.distance_meters + live GPS)
   let distancePillText = "In Work Zone";
-  if (!isTodayOnsite || workModel === "wfh") {
-    distancePillText = targetOfficeCoords ? "In Work Zone (WFH)" : "Remote geofence unconfigured";
-  } else if (userLocation && targetOfficeCoords) {
-    const dist = calculateDistanceKm(
-      userLocation.lat,
-      userLocation.lng,
-      targetOfficeCoords.lat,
-      targetOfficeCoords.lng
+  if (!targetOfficeCoords) {
+    distancePillText =
+      !isTodayOnsite || workModel === "wfh"
+        ? "Remote geofence unconfigured"
+        : "Office geofence unconfigured";
+  } else if (distanceMeters !== null) {
+    const zoneLabel = isInZone ? "In Zone" : "Outside Zone";
+    distancePillText = `${distanceMeters.toLocaleString()}m (${zoneLabel})`;
+  } else if (userLocation) {
+    const meters = Math.round(
+      calculateDistanceKm(
+        userLocation.lat,
+        userLocation.lng,
+        targetOfficeCoords.lat,
+        targetOfficeCoords.lng
+      ) * 1000
     );
-    distancePillText = `${dist} km from office`;
-  } else if (!targetOfficeCoords) {
-    distancePillText = "Office geofence unconfigured";
+    const zoneLabel = meters <= allowedRadiusMeters ? "In Zone" : "Outside Zone";
+    distancePillText = `${meters.toLocaleString()}m (${zoneLabel})`;
+  } else if (!isTodayOnsite || workModel === "wfh") {
+    distancePillText = "In Work Zone (WFH)";
   }
 
   return (
