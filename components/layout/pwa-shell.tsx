@@ -263,7 +263,7 @@ export default function PwaShell({
 
   return (
     <PwaShellContext.Provider value>
-      <div className={pwaShellBackground} data-pwa-shell={variant}>
+      <div className={`pwa-portal-shell ${pwaShellBackground}`} data-pwa-shell={variant}>
         {/* HEADER: #1F195E (Deep Navy) background, unified top bar for mobile & desktop */}
         <header
           className={`fixed inset-x-0 top-0 z-50 flex min-h-[72px] items-center justify-between gap-6 bg-[#1F195E] px-6 py-3 text-white ${
