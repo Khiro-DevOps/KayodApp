@@ -75,11 +75,10 @@ function LoginForm() {
     : "/register/applicant";
 
   return (
-    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl lg:grid-cols-12">
-      {/* Left Panel: Transparent over Full-Page Cream + Rings, Frosted Glass Auth Card */}
-      <div className="flex flex-col justify-center bg-transparent p-2 sm:p-6 lg:col-span-6 lg:p-8">
-        <div className="flex flex-col justify-between rounded-3xl border border-white/80 bg-white/60 p-5 shadow-[0_8px_32px_rgba(30,27,75,0.06)] backdrop-blur-xl sm:p-7">
-          <div className="space-y-4 sm:space-y-5">
+    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-white/80 shadow-[0_8px_32px_rgba(30,27,75,0.06)] lg:grid-cols-12">
+      {/* Left Panel: Frosted Glass Auth Card matching Right Panel size */}
+      <div className="flex flex-col justify-between bg-white/60 p-5 backdrop-blur-xl sm:p-8 lg:col-span-6 lg:p-10">
+        <div className="space-y-4 sm:space-y-5">
             <div className="flex items-center justify-between">
               <Link
                 href="/"
@@ -191,7 +190,6 @@ function LoginForm() {
               create an account
             </Link>
           </div>
-        </div>
       </div>
 
       {/* Right Panel: Branded Kayod Value Proposition (Desktop only) */}
