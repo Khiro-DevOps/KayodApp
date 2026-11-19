@@ -253,7 +253,7 @@ export async function generatePayslips(formData: FormData) {
       pagibig_contrib:    computed.pagibig_contrib,
       withholding_tax:    computed.withholding_tax,
       other_deductions:   computed.other_deductions,
-      status:             "pending_approval",
+      status:             "draft",
       remarks:            computed.remarks,
     };
   });
