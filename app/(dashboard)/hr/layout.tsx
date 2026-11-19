@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getStatusesForStage } from "@/lib/application-stages";
 import { getHrJobScope } from "@/lib/hr-job-scope";
 import NotificationBell from "@/components/notifications/notification-bell";
+import { AmbientCanvas } from "@/components/ui/option-b-surfaces";
 
 type NavItem = {
   label: string;
@@ -62,6 +63,7 @@ export default function DashboardLayout({
   const [applicantsBadge, setApplicantsBadge] = useState<string | null>(null);
   const [interviewsBadge, setInterviewsBadge] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   const isActive = (item: NavItem) => {
     if (item.exact) {
@@ -205,15 +207,25 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface-bg text-text-main">
+    <div className="min-h-screen flex flex-col bg-[#FDF8F2]/70 text-text-main">
       {/* Top Navigation Header (Full Width) */}
-      <header className="h-[56px] w-full bg-brand-navy text-white flex items-center justify-between px-6 z-20 shrink-0 no-shadow">
+      <header className="h-[56px] w-full bg-[#1E1B4B] text-white flex items-center justify-between px-4 sm:px-6 z-30 shrink-0 no-shadow">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsMobileDrawerOpen((prev) => !prev)}
+            aria-label={isMobileDrawerOpen ? "Close navigation menu" : "Open navigation menu"}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/90 hover:bg-white/10 lg:hidden"
+          >
+            <span className="material-symbols-outlined text-[22px]">
+              {isMobileDrawerOpen ? "close" : "menu"}
+            </span>
+          </button>
           <Link href="/hr" className="font-bold text-xl text-white tracking-tight hover:opacity-90 transition-opacity">
             Kayod
           </Link>
           <div className="h-4 w-[1px] bg-white/20 mx-1"></div>
-          <div className="bg-brand-navy-light text-white/90 px-3 py-1 rounded-md text-xs font-medium border border-white/10 flex items-center gap-1.5">
+          <div className="bg-white/10 text-white/90 px-3 py-1 rounded-md text-xs font-medium border border-white/10 flex items-center gap-1.5">
             <span>{companyName}</span>
             <span className="material-symbols-outlined text-[14px] text-white/60">expand_more</span>
           </div>
@@ -305,10 +317,24 @@ export default function DashboardLayout({
       </header>
 
       {/* Main Body Shell */}
-      <div className="relative flex flex-1 w-full pl-[220px] overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="absolute inset-y-0 left-0 w-[220px] shrink-0 border-r border-border bg-card-bg flex flex-col justify-between p-4 z-10">
-          <nav className="flex-1 space-y-0.5">
+      <div className="relative flex flex-1 w-full lg:pl-[220px] overflow-hidden">
+        {/* Mobile Slide-Over Backdrop */}
+        {isMobileDrawerOpen ? (
+          <button
+            type="button"
+            aria-label="Close navigation backdrop"
+            onClick={() => setIsMobileDrawerOpen(false)}
+            className="fixed inset-0 top-[56px] z-30 bg-[#1E1B4B]/30 backdrop-blur-xs lg:hidden"
+          />
+        ) : null}
+
+        {/* Left Sidebar (Desktop Frosted Glass Rail + Mobile Slide-Over Drawer) */}
+        <aside
+          className={`fixed inset-y-0 left-0 top-[56px] z-40 flex w-[240px] flex-col justify-between border-r border-indigo-100/80 bg-white/85 p-4 backdrop-blur-xl transition-transform duration-200 lg:absolute lg:inset-y-0 lg:top-0 lg:z-10 lg:w-[220px] lg:translate-x-0 lg:bg-white/75 ${
+            isMobileDrawerOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <nav className="flex-1 space-y-0.5 overflow-y-auto">
             {navGroups.map((group) => (
               <section key={group.label} className="mt-4 first:mt-0">
                 <h2 className="px-3 mb-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
@@ -329,14 +355,15 @@ export default function DashboardLayout({
                         <Link
                           key={item.href}
                           href={item.href}
-                          className="bg-primary-light text-primary-dark font-semibold rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
+                          onClick={() => setIsMobileDrawerOpen(false)}
+                          className="bg-[#EDE9F9] text-[#1E1B4B] font-semibold rounded-xl my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors"
                         >
                           <div className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                            <span className="material-symbols-outlined text-[20px] text-[#1E1B4B]">{item.icon}</span>
                             <span>{item.label}</span>
                           </div>
                           {badge ? (
-                            <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            <span className="bg-[#1E1B4B] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
                               {badge}
                             </span>
                           ) : null}
@@ -348,16 +375,17 @@ export default function DashboardLayout({
                       <Link
                         key={item.href}
                         href={item.href}
-                        className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
+                        onClick={() => setIsMobileDrawerOpen(false)}
+                        className="text-text-muted hover:bg-white/80 hover:text-[#1E1B4B] font-medium rounded-xl my-0.5 flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors group"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-text-main transition-colors">
+                          <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-[#1E1B4B] transition-colors">
                             {item.icon}
                           </span>
                           <span>{item.label}</span>
                         </div>
                         {badge ? (
-                          <span className="bg-primary-light text-primary-dark text-[10px] px-2 py-0.5 rounded-full font-bold">
+                          <span className="bg-[#EDE9F9] text-[#1E1B4B] text-[10px] px-2 py-0.5 rounded-full font-bold">
                             {badge}
                           </span>
                         ) : null}
@@ -370,24 +398,27 @@ export default function DashboardLayout({
           </nav>
 
           {/* Pinned Bottom Items: Support & Settings */}
-          <div className="pt-2 border-t border-border space-y-0.5 shrink-0 z-10">
+          <div className="pt-2 border-t border-indigo-100/80 space-y-0.5 shrink-0 z-10">
             <Link
               href="/support"
-              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+              onClick={() => setIsMobileDrawerOpen(false)}
+              className="text-text-muted hover:bg-white/80 hover:text-[#1E1B4B] font-medium rounded-xl flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
             >
               <span className="material-symbols-outlined text-[20px]">contact_support</span>
               <span>Support</span>
             </Link>
             <Link
               href="/hr/settings/branches"
-              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+              onClick={() => setIsMobileDrawerOpen(false)}
+              className="text-text-muted hover:bg-white/80 hover:text-[#1E1B4B] font-medium rounded-xl flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
             >
               <span className="material-symbols-outlined text-[20px]">storefront</span>
               <span>Office Branches</span>
             </Link>
             <Link
               href="/hr/profile"
-              className="text-text-muted hover:bg-surface-bg hover:text-text-main font-medium rounded-lg flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
+              onClick={() => setIsMobileDrawerOpen(false)}
+              className="text-text-muted hover:bg-white/80 hover:text-[#1E1B4B] font-medium rounded-xl flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
             >
               <span className="material-symbols-outlined text-[20px]">settings</span>
               <span>Settings</span>
@@ -396,8 +427,9 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 w-full min-w-0 p-8 overflow-y-auto bg-surface-bg">
-          {children}
+        <main className="relative flex-1 w-full min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-[#FDF8F2]/70">
+          <AmbientCanvas />
+          <div className="relative z-10">{children}</div>
         </main>
       </div>
     </div>
