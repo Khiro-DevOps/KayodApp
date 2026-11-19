@@ -1,7 +1,11 @@
 import 'server-only';
 import type { NextRequest } from 'next/server';
+import { devRouteGuard } from '@/lib/dev-guard';
 
 export async function GET(_req: NextRequest) {
+  const guard = await devRouteGuard();
+  if (guard) return guard;
+
   if (process.env.NODE_ENV === 'production') {
     return new Response(JSON.stringify({ error: 'Not available in production' }), { status: 403 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { getStatusesForStage, UI_STAGES } from "@/lib/application-stages";
+import { devRouteGuard } from "@/lib/dev-guard";
 import { createClient } from "@/lib/supabase/server";
 
 const STAGES = UI_STAGES.flatMap((s) => getStatusesForStage(s.key));
@@ -45,6 +46,9 @@ function getAdminClient() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await devRouteGuard();
+  if (guard) return guard;
+
   if (process.env.NODE_ENV === "production") {
     return jsonError(
       "Developer control endpoints are only available in development mode.",

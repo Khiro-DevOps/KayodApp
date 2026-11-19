@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
+import { devRouteGuard } from "@/lib/dev-guard"
 import { resolveOfferCompensation } from "@/lib/offer-salary"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 export async function POST(req: NextRequest) {
+  const guard = await devRouteGuard()
+  if (guard) return guard
+
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Unauthorized in production" }, { status: 403 })
   }

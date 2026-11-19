@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { notFound } from "next/navigation";
 import { toast } from "sonner";
 import { toggleDevUserRole } from "@/app/actions/dev-role-toggle";
 import { resetApplicantTestData } from "@/app/actions/debug";
@@ -51,7 +52,7 @@ export default function DevToolsPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (process.env.NODE_ENV === "production") {
-    return null;
+    notFound();
   }
 
   const trimmedAppId = applicationId.trim();
