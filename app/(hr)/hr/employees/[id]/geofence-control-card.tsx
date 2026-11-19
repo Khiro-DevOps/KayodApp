@@ -115,7 +115,10 @@ export default function GeofenceControlCard({
           <p className="text-[11px] text-amber-800">
             Coordinates: {Number(remoteResidence.pending_latitude ?? remoteResidence.latitude).toFixed(6)},{" "}
             {Number(remoteResidence.pending_longitude ?? remoteResidence.longitude).toFixed(6)} · Radius:{" "}
-            {remoteResidence.pending_radius_meters ?? remoteResidence.geofence_radius_meters ?? 200}m
+            {remoteResidence.pending_radius_meters ??
+              (remoteResidence as { radius_meters?: number | null }).radius_meters ??
+              remoteResidence.geofence_radius_meters ??
+              200}m
           </p>
           {remoteResidence.relocation_reason ? (
             <p className="text-xs text-amber-900">
@@ -187,7 +190,9 @@ export default function GeofenceControlCard({
                 <p className="text-slate-600">
                   Coordinates: {Number(remoteResidence.latitude).toFixed(6)},{" "}
                   {Number(remoteResidence.longitude).toFixed(6)} · Radius:{" "}
-                  {remoteResidence.geofence_radius_meters ?? 200}m
+                  {(remoteResidence as { radius_meters?: number | null }).radius_meters ??
+                    remoteResidence.geofence_radius_meters ??
+                    200}m
                 </p>
               </div>
             ) : !hasPendingWfh ? (

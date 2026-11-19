@@ -100,11 +100,10 @@ export async function submitWfhLocationAction(input: {
       .from("employee_remote_residences")
       .insert({
         employee_id: employee.id,
-        tenant_id: employee.tenant_id ?? "00000000-0000-0000-0000-000000000001",
         address: trimmedAddress,
         latitude: input.latitude,
         longitude: input.longitude,
-        geofence_radius_meters: 200,
+        radius_meters: 200,
         is_active: false,
         approval_status: "pending",
         pending_address: trimmedAddress,
@@ -113,25 +112,25 @@ export async function submitWfhLocationAction(input: {
         pending_radius_meters: 200,
         relocation_reason: input.relocationReason?.trim() || null,
         rejection_reason: null,
-        updated_by: user.id,
         updated_at: nowIso,
       });
 
     if (insertErr) {
+      console.error("submitWfhLocationAction insertErr:", insertErr.message);
       if (isMissingApprovalColumn(insertErr.message)) {
         const { error: fallbackErr } = await admin
           .from("employee_remote_residences")
           .insert({
             employee_id: employee.id,
-            tenant_id: employee.tenant_id ?? "00000000-0000-0000-0000-000000000001",
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            geofence_radius_meters: 200,
-            updated_by: user.id,
+            radius_meters: 200,
+            is_active: false,
             updated_at: nowIso,
           });
         if (fallbackErr) {
+          console.error("submitWfhLocationAction fallbackErr:", fallbackErr.message);
           return { success: false, error: fallbackErr.message };
         }
       } else {
@@ -150,12 +149,12 @@ export async function submitWfhLocationAction(input: {
         pending_radius_meters: 200,
         relocation_reason: input.relocationReason?.trim() || null,
         rejection_reason: null,
-        updated_by: user.id,
         updated_at: nowIso,
       })
       .eq("id", existing.id);
 
     if (updateErr) {
+      console.error("submitWfhLocationAction relocation updateErr:", updateErr.message);
       if (isMissingApprovalColumn(updateErr.message)) {
         const { error: fallbackErr } = await admin
           .from("employee_remote_residences")
@@ -163,12 +162,13 @@ export async function submitWfhLocationAction(input: {
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            geofence_radius_meters: 200,
-            updated_by: user.id,
+            radius_meters: 200,
+            is_active: false,
             updated_at: nowIso,
           })
           .eq("id", existing.id);
         if (fallbackErr) {
+          console.error("submitWfhLocationAction relocation fallbackErr:", fallbackErr.message);
           return { success: false, error: fallbackErr.message };
         }
       } else {
@@ -182,7 +182,7 @@ export async function submitWfhLocationAction(input: {
         address: trimmedAddress,
         latitude: input.latitude,
         longitude: input.longitude,
-        geofence_radius_meters: 200,
+        radius_meters: 200,
         is_active: false,
         approval_status: "pending",
         pending_address: trimmedAddress,
@@ -191,12 +191,12 @@ export async function submitWfhLocationAction(input: {
         pending_radius_meters: 200,
         relocation_reason: input.relocationReason?.trim() || null,
         rejection_reason: null,
-        updated_by: user.id,
         updated_at: nowIso,
       })
       .eq("id", existing.id);
 
     if (updateErr) {
+      console.error("submitWfhLocationAction updateErr:", updateErr.message);
       if (isMissingApprovalColumn(updateErr.message)) {
         const { error: fallbackErr } = await admin
           .from("employee_remote_residences")
@@ -204,12 +204,13 @@ export async function submitWfhLocationAction(input: {
             address: trimmedAddress,
             latitude: input.latitude,
             longitude: input.longitude,
-            geofence_radius_meters: 200,
-            updated_by: user.id,
+            radius_meters: 200,
+            is_active: false,
             updated_at: nowIso,
           })
           .eq("id", existing.id);
         if (fallbackErr) {
+          console.error("submitWfhLocationAction update fallbackErr:", fallbackErr.message);
           return { success: false, error: fallbackErr.message };
         }
       } else {
@@ -307,7 +308,8 @@ export async function reviewWfhLocationAction(input: {
       address: string;
       latitude: number;
       longitude: number;
-      geofence_radius_meters: number;
+      radius_meters?: number;
+      geofence_radius_meters?: number;
       is_active?: boolean | null;
       pending_address?: string | null;
       pending_latitude?: number | null;
@@ -326,7 +328,10 @@ export async function reviewWfhLocationAction(input: {
     const nextLat = residence.pending_latitude ?? residence.latitude;
     const nextLng = residence.pending_longitude ?? residence.longitude;
     const nextRadius =
-      residence.pending_radius_meters ?? residence.geofence_radius_meters ?? 200;
+      residence.pending_radius_meters ??
+      residence.radius_meters ??
+      residence.geofence_radius_meters ??
+      200;
 
     const { error: approveErr } = await admin
       .from("employee_remote_residences")
@@ -334,7 +339,7 @@ export async function reviewWfhLocationAction(input: {
         address: nextAddress,
         latitude: nextLat,
         longitude: nextLng,
-        geofence_radius_meters: nextRadius,
+        radius_meters: nextRadius,
         is_active: true,
         approval_status: "approved",
         pending_address: null,
@@ -345,7 +350,6 @@ export async function reviewWfhLocationAction(input: {
         rejection_reason: null,
         reviewed_by: user.id,
         reviewed_at: nowIso,
-        updated_by: user.id,
         updated_at: nowIso,
       })
       .eq("id", residence.id);
@@ -368,7 +372,6 @@ export async function reviewWfhLocationAction(input: {
         rejection_reason: input.rejectionReason?.trim() || "Declined by HR",
         reviewed_by: user.id,
         reviewed_at: nowIso,
-        updated_by: user.id,
         updated_at: nowIso,
       })
       .eq("id", residence.id);

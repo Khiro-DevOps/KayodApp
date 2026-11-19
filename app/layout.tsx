@@ -3,6 +3,7 @@ import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { LayoutProvider } from "@/context/LayoutContext";
+import { Toaster } from "sonner";
 
 const inter = DM_Sans({
   variable: "--font-inter",
@@ -44,6 +45,7 @@ export default function RootLayout({
         <LayoutProvider>
           <AuthProvider>
             {children}
+            <Toaster position="top-center" richColors />
           </AuthProvider>
         </LayoutProvider>
       </body>

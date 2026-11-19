@@ -23,6 +23,7 @@ export default function WfhResidenceCard({
 
   const [submittedPending, setSubmittedPending] = useState(false);
   const [submitBanner, setSubmitBanner] = useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const isActiveApproved =
     Boolean(remoteResidence) &&
     remoteResidence?.is_active !== false &&
@@ -46,6 +47,7 @@ export default function WfhResidenceCard({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitBanner(null);
+    setErrorBanner(null);
     startTransition(async () => {
       try {
         const resolvedAddress =
@@ -59,7 +61,9 @@ export default function WfhResidenceCard({
         });
 
         if (!res.success) {
-          toast.error(res.error || "Failed to submit WFH location");
+          const errMsg = res.error || "Failed to submit WFH location";
+          toast.error(errMsg);
+          setErrorBanner(errMsg);
           return;
         }
 
@@ -73,7 +77,9 @@ export default function WfhResidenceCard({
         setRelocationReason("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to submit WFH location");
+        const errMsg = err instanceof Error ? err.message : "Failed to submit WFH location";
+        toast.error(errMsg);
+        setErrorBanner(errMsg);
       }
     });
   };
@@ -115,6 +121,12 @@ export default function WfhResidenceCard({
         </div>
       ) : null}
 
+      {errorBanner ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-900">
+          {errorBanner}
+        </div>
+      ) : null}
+
       {isRejected && remoteResidence?.rejection_reason ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
           <p className="font-semibold">Previous submission declined</p>
@@ -134,7 +146,9 @@ export default function WfhResidenceCard({
             <p className="mt-1 text-xs text-slate-600">
               Coordinates: {Number(remoteResidence?.latitude).toFixed(6)},{" "}
               {Number(remoteResidence?.longitude).toFixed(6)} · Radius:{" "}
-              {remoteResidence?.geofence_radius_meters ?? 200}m
+              {(remoteResidence as { radius_meters?: number | null } | null)?.radius_meters ??
+                remoteResidence?.geofence_radius_meters ??
+                200}m
             </p>
           </div>
 
