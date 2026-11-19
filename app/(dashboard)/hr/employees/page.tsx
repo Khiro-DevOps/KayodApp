@@ -37,8 +37,10 @@ export default async function EmployeesPage() {
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (!isHR) redirect("/dashboard");
 
+  const admin = getAdminClient();
+
   const [{ data: employees }, { data: officeBranches }] = await Promise.all([
-    supabase
+    admin
       .from("employees")
       .select(`
         *,
@@ -47,7 +49,7 @@ export default async function EmployeesPage() {
       `)
       .order("created_at", { ascending: false })
       .returns<Employee[]>(),
-    supabase
+    admin
       .from("office_branches")
       .select("id, name")
       .returns<Array<{ id: string; name: string }>>(),
