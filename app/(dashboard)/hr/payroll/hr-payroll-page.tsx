@@ -7,8 +7,8 @@ import type { PayrollPeriod, Payslip, Employee, Profile } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
 import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
 import { resolveOfferCompensation, type OfferSalarySource } from "@/lib/offer-salary";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import {
   createPayrollPeriod,
   generatePayslips,
@@ -270,9 +270,10 @@ export default async function HRPayrollPage({
       return {
         employeeId: empRec.id,
         name,
-        role: resolveEmployeePosition({
-          employeePosition: empRec.job_title,
-          jobTitle: linkedJob?.title,
+        role: resolveEmployeeSourceOfTruth({
+          employee: { job_title: empRec.job_title },
+          offer: linkedJob ? { job_title: linkedJob.offerTitle } : null,
+          jobPosting: linkedJob ? { title: linkedJob.title } : null,
         }).position,
         baseSalary,
         allowancesLabel,

@@ -3,19 +3,15 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { resolveOfferSalary, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
+import {
+  resolveEmployeeSourceOfTruth,
+  type ContractWorkSetup,
+} from "@/lib/work-arrangement";
 import type { Employee, Profile } from "@/lib/types";
 import EmployeesDirectoryClient, {
   type DirectoryEmployee,
 } from "./employees-directory-client";
-
-function normalizeWorkMode(raw: unknown): "onsite" | "hybrid" | "remote" {
-  const value = String(raw ?? "onsite").toLowerCase();
-  if (value === "hybrid") return "hybrid";
-  if (value === "remote" || value === "wfh") return "remote";
-  return "onsite";
-}
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -226,12 +222,35 @@ export default async function EmployeesPage() {
     } | null;
     const dept = emp.departments as unknown as { name?: string } | null;
     const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
-    const resolvedPosition = resolveEmployeePosition({
-      employeePosition: emp.job_title,
-      jobTitle: linkedJob?.title,
-      department: dept?.name,
-      jobDepartment: linkedJob?.departmentName,
+    const effectiveBranchId = linkedJob?.workLocationId ?? emp.work_location_id ?? null;
+    const resolvedBranchName = effectiveBranchId
+      ? branchNameById.get(effectiveBranchId) ?? null
+      : null;
+    const remoteResidence = remoteResidenceByEmpId.get(emp.id);
+
+    const sourceOfTruth = resolveEmployeeSourceOfTruth({
+      employee: {
+        job_title: emp.job_title,
+        department: dept?.name ?? null,
+        work_mode: emp.work_mode,
+      },
+      offer: linkedJob
+        ? {
+            job_title: linkedJob.offerTitle,
+            work_setup: linkedJob.offerWorkSetup,
+          }
+        : null,
+      jobPosting: linkedJob
+        ? {
+            title: linkedJob.title,
+            department: linkedJob.departmentName,
+            work_setup: linkedJob.jobWorkSetup,
+          }
+        : null,
+      officeBranch: resolvedBranchName ? { name: resolvedBranchName } : null,
+      remoteResidence,
     });
+
     const fullName =
       [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
     const storedSalary = Number(emp.base_salary ?? emp.salary ?? 0);
@@ -249,12 +268,7 @@ export default async function EmployeesPage() {
             )
           : 0;
 
-    const effectiveWorkMode = linkedJob?.workMode ?? normalizeWorkMode(emp.work_mode);
-    const effectiveBranchId = linkedJob?.workLocationId ?? emp.work_location_id ?? null;
-    const resolvedBranchName = effectiveBranchId
-      ? branchNameById.get(effectiveBranchId) ?? null
-      : null;
-    const remoteResidence = remoteResidenceByEmpId.get(emp.id);
+    const effectiveWorkMode: ContractWorkSetup = sourceOfTruth.workSetup;
     const hasPendingWfh = remoteResidence?.approval_status === "pending";
     const hasApprovedWfh =
       Boolean(remoteResidence) &&
@@ -263,7 +277,7 @@ export default async function EmployeesPage() {
       (remoteResidence?.approval_status === "approved" ||
         !remoteResidence?.approval_status);
 
-    let branchName = "To be set";
+    let branchName = sourceOfTruth.assignedLocation;
     let branchNeedsSetup = true;
     let branchStatus: "ok" | "pending" | "setup" = "setup";
     if (effectiveWorkMode === "onsite") {
@@ -282,7 +296,7 @@ export default async function EmployeesPage() {
         branchNeedsSetup = false;
         branchStatus = "ok";
       }
-    } else if (effectiveWorkMode === "remote") {
+    } else if (effectiveWorkMode === "remote" || effectiveWorkMode === "wfh") {
       if (hasPendingWfh) {
         branchName = "Pending WFH Approval";
         branchNeedsSetup = true;
@@ -316,11 +330,12 @@ export default async function EmployeesPage() {
       id: emp.id,
       fullName,
       initials: getInitials(fullName),
-      jobTitle: resolvedPosition.position,
-      departmentName: resolvedPosition.department,
+      jobTitle: sourceOfTruth.position,
+      departmentName: sourceOfTruth.department,
       email: p?.email ?? null,
       employmentStatus: emp.employment_status || "active",
       workMode: effectiveWorkMode,
+      workSetupLabel: sourceOfTruth.workSetupLabel,
       branchName,
       branchNeedsSetup,
       branchStatus,

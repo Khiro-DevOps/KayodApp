@@ -5,6 +5,13 @@ import { Palmtree, Banknote, Calendar, CheckCircle2, ClipboardCheck } from "luci
 
 import { getEmployeeOnboardingProgress } from "@/app/actions/onboarding-documents";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import {
+  formatDailyWorkModelLabel,
+  resolveDailyWorkModel,
+  resolveEmployeeSourceOfTruth,
+} from "@/lib/work-arrangement";
 import PageContainer from "@/components/ui/page-container";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import type { LeaveBalance, LeaveRequest, Payslip, Profile, TimeLog } from "@/lib/types";
@@ -65,12 +72,14 @@ export default async function EmployeeDashboardPage({
 
   if (profile && profile.role !== "employee") redirect("/applicant/dashboard");
 
-  const { data: employee } = await supabase
+  const admin = getAdminClient();
+
+  const { data: employee } = await admin
     .from("employees")
-    .select("id")
+    .select("id, job_title, work_mode, work_days, departments(name)")
     .eq("profile_id", user.id)
     .eq("employment_status", "active")
-    .single();
+    .maybeSingle();
 
   if (!employee) {
     return (
@@ -85,7 +94,7 @@ export default async function EmployeeDashboardPage({
     );
   }
 
-  const [balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult] = await Promise.all([
+  const [balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult, linkedJob, latestScheduleResult] = await Promise.all([
     supabase
       .from("leave_balances")
       .select("id, leave_type, year, total_credits, used_credits, remaining, updated_at")
@@ -114,7 +123,46 @@ export default async function EmployeeDashboardPage({
       .limit(3)
       .returns<TimeLog[]>(),
     getEmployeeOnboardingProgress(employee.id),
+    getJobPostingPositionForProfile(user.id),
+    admin
+      .from("schedules")
+      .select("notes")
+      .eq("employee_id", employee.id)
+      .eq("is_published", true)
+      .order("week_start", { ascending: false })
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const sourceOfTruth = resolveEmployeeSourceOfTruth({
+    employee: {
+      job_title: employee.job_title,
+      departments: employee.departments as { name?: string | null } | Array<{ name?: string | null }> | null,
+      work_mode: employee.work_mode,
+    },
+    offer: linkedJob
+      ? {
+          job_title: linkedJob.offerTitle,
+          work_setup: linkedJob.offerWorkSetup,
+        }
+      : null,
+    jobPosting: linkedJob
+      ? {
+          title: linkedJob.title,
+          department: linkedJob.departmentName,
+          work_setup: linkedJob.jobWorkSetup,
+        }
+      : null,
+  });
+
+  const todayWorkModel = resolveDailyWorkModel({
+    contractWorkSetup: sourceOfTruth.workSetup,
+    schedule: {
+      notes: latestScheduleResult.data?.notes ?? null,
+      work_days: Array.isArray(employee.work_days) ? employee.work_days : null,
+    },
+  });
 
   const onboardingProgress = onboardingResult.success ? onboardingResult.data ?? null : null;
 
@@ -135,6 +183,11 @@ export default async function EmployeeDashboardPage({
           eyebrow="Welcome back,"
           title={`Hello, ${firstName}`}
           subtitle={todayLabel}
+          badge={
+            <span className="inline-flex w-fit items-center rounded-full border border-white/20 bg-white/15 px-3.5 py-1 text-xs font-semibold text-white">
+              {sourceOfTruth.position} · {sourceOfTruth.department} · Work Setup: {sourceOfTruth.workSetupLabel} · Today&apos;s Work Model: {formatDailyWorkModelLabel(todayWorkModel)}
+            </span>
+          }
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">

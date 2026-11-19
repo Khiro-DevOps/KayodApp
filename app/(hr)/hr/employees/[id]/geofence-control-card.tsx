@@ -138,7 +138,7 @@ export default function GeofenceControlCard({
 
       <form onSubmit={handleSubmit} className="p-5 space-y-6">
         <div className="space-y-3">
-          <label className="text-sm font-medium text-text-main">Work Model</label>
+          <label className="text-sm font-medium text-text-main">Work Setup</label>
           <select
             name="work_mode"
             value={workMode}

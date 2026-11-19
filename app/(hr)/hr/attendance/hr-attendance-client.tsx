@@ -12,6 +12,7 @@ export type AttendanceRow = {
   avatarUrl: string | null;
   jobTitle: string | null;
   workSetup: "onsite" | "wfh" | "hybrid" | "remote" | null;
+  workModel?: "onsite" | "wfh" | "off" | null;
   isToday: boolean;
   isLate: boolean;
   lateMinutes: number;
@@ -91,25 +92,40 @@ function ZoneBadge({ status }: { status: AttendanceRow["zoneStatus"] }) {
   );
 }
 
-// ─── Work Setup Badge ─────────────────────────────────────────────────────────
-function SetupBadge({ setup }: { setup: AttendanceRow["workSetup"] }) {
-  if (!setup) return <span className="text-text-muted text-xs">—</span>;
+// ─── Work Model Badge ─────────────────────────────────────────────────────────
+function WorkModelBadge({
+  workModel,
+  workSetup,
+}: {
+  workModel?: AttendanceRow["workModel"];
+  workSetup: AttendanceRow["workSetup"];
+}) {
+  const effectiveModel =
+    workModel ??
+    (workSetup === "wfh" || workSetup === "remote" ? "wfh" : workSetup ? "onsite" : null);
+  if (!effectiveModel) return <span className="text-text-muted text-xs">—</span>;
   const map: Record<string, { label: string; cls: string }> = {
     onsite: { label: "Onsite", cls: "bg-blue-100 text-blue-800" },
     wfh: { label: "WFH", cls: "bg-purple-100 text-purple-800" },
-    remote: { label: "Remote", cls: "bg-purple-100 text-purple-800" },
-    hybrid: { label: "Hybrid", cls: "bg-amber-100 text-amber-800" },
+    off: { label: "Off", cls: "bg-slate-100 text-slate-600" },
   };
-  const { label, cls } = map[setup] ?? {
-    label: setup,
+  const { label, cls } = map[effectiveModel] ?? {
+    label: effectiveModel,
     cls: "bg-gray-100 text-gray-700",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${cls}`}
-    >
-      {label}
-    </span>
+    <div className="flex flex-col items-start gap-1">
+      <span
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${cls}`}
+      >
+        {label}
+      </span>
+      {workSetup === "hybrid" && (
+        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+          Work Setup: Hybrid
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -348,7 +364,7 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
                 Break / Status
               </th>
               <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                Work Setup
+                Work Model
               </th>
               <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                 Distance (m)
@@ -485,9 +501,9 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
                     )}
                   </td>
 
-                  {/* Work Setup */}
+                  {/* Work Model */}
                   <td className="px-4 py-3.5">
-                    <SetupBadge setup={row.workSetup} />
+                    <WorkModelBadge workModel={row.workModel} workSetup={row.workSetup} />
                   </td>
 
                   {/* Distance */}

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 export interface PromoteApplicantResult {
   success: boolean;
@@ -108,7 +109,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     // Fetch job posting title & details
     const { data: jobPosting } = await admin
       .from("job_postings")
-      .select("id, title, employment_type, department_id, salary_min, salary_max")
+      .select("id, title, employment_type, department_id, salary_min, salary_max, work_setup, work_location_id")
       .eq("id", application.job_id)
       .maybeSingle();
 
@@ -165,30 +166,51 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     }
 
     // Pull Location & Schedule Parameters
-    let workLocationId: string | null = null;
-    let workMode: "onsite" | "hybrid" | "remote" = "onsite";
+    let workLocationId: string | null =
+      (jobOffer?.work_location_id as string | null | undefined) ??
+      (jobPosting?.work_location_id as string | null | undefined) ??
+      null;
+    const workMode = resolveContractWorkSetup({
+      offerWorkSetup:
+        (jobOffer?.work_setup as string | null | undefined) ??
+        (jobOffer?.work_mode as string | null | undefined) ??
+        ((jobOffer?.logistics as Record<string, unknown> | null | undefined)?.work_mode as string | null | undefined) ??
+        ((jobOfferApp?.terms as Record<string, unknown> | null | undefined)?.workArrangement as string | null | undefined),
+      jobWorkSetup:
+        (jobPosting?.work_setup as string | null | undefined) ?? null,
+    });
     let shiftStart = "08:00:00";
     let shiftEnd = "17:00:00";
     let workDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
     if (jobOffer?.logistics) {
-      const logistics = jobOffer.logistics as any;
-      if (logistics.work_location_id) workLocationId = logistics.work_location_id;
-      if (logistics.work_mode) workMode = String(logistics.work_mode).toLowerCase() as any;
-      if (logistics.shift_start) shiftStart = logistics.shift_start;
-      if (logistics.shift_end) shiftEnd = logistics.shift_end;
-      if (Array.isArray(logistics.work_days)) workDays = logistics.work_days;
+      const logistics = jobOffer.logistics as Record<string, unknown>;
+      if (!workLocationId && typeof logistics.work_location_id === "string") {
+        workLocationId = logistics.work_location_id;
+      }
+      if (typeof logistics.shift_start === "string") shiftStart = logistics.shift_start;
+      if (typeof logistics.shift_end === "string") shiftEnd = logistics.shift_end;
+      if (Array.isArray(logistics.work_days)) workDays = logistics.work_days as string[];
     }
 
-    if (jobOfferApp?.terms) {
-      const terms = jobOfferApp.terms as any;
-      if (terms.workArrangement) {
-        const arr = String(terms.workArrangement).toLowerCase();
-        if (arr.includes("remote")) workMode = "remote";
-        else if (arr.includes("hybrid")) workMode = "hybrid";
-        else workMode = "onsite";
-      }
-    }
+    const resolvedTruth = resolveEmployeeSourceOfTruth({
+      offer: jobOffer
+        ? {
+            job_title:
+              typeof (jobOffer.job_metadata as Record<string, unknown> | null | undefined)?.job_title === "string"
+                ? ((jobOffer.job_metadata as Record<string, unknown>).job_title as string)
+                : null,
+            work_setup: workMode,
+          }
+        : null,
+      jobPosting: jobPosting
+        ? {
+            title: jobPosting.title ?? jobTitle,
+            work_setup: jobPosting.work_setup ?? null,
+          }
+        : { title: jobTitle },
+    });
+    const resolvedJobTitle = resolvedTruth.position;
 
     // If workLocationId is still null, fetch default office branch
     if (!workLocationId) {
@@ -240,7 +262,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
       application_id: applicationId,
       job_offer_id: jobOffer?.id || jobOfferApp?.id || null,
       department_id: jobPosting?.department_id || null,
-      job_title: jobTitle,
+      job_title: resolvedJobTitle,
       employment_type: jobPosting?.employment_type || "full_time",
       employment_status: "onboarding", // Set employment_status = 'onboarding'
       start_date: startDateString,

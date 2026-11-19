@@ -5,6 +5,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { calculateHaversineDistance } from "@/lib/haversine";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import { resolveContractWorkSetup } from "@/lib/work-arrangement";
 
 export type ClockInPayload = {
   latitude: number;
@@ -107,11 +109,18 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
 
   const { latitude, longitude, accuracy_meters, flag_reason } = payload;
 
+  const linkedJob = await getJobPostingPositionForProfile(user.id);
+  const resolvedSetup = resolveContractWorkSetup({
+    offerWorkSetup: linkedJob?.offerWorkSetup,
+    jobWorkSetup: linkedJob?.jobWorkSetup,
+    employeeWorkSetup: employee.work_mode,
+  });
+
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
     id: employee.id,
     tenant_id: tenantId,
-    work_mode: employee.work_mode,
-    work_location_id: employee.work_location_id,
+    work_mode: resolvedSetup,
+    work_location_id: linkedJob?.workLocationId ?? employee.work_location_id,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
   });
@@ -596,11 +605,18 @@ export async function updateLiveAttendanceLocationAction(
     return { success: false, error: "No open attendance log found." };
   }
 
+  const linkedJob = await getJobPostingPositionForProfile(user.id);
+  const resolvedSetup = resolveContractWorkSetup({
+    offerWorkSetup: linkedJob?.offerWorkSetup,
+    jobWorkSetup: linkedJob?.jobWorkSetup,
+    employeeWorkSetup: employee.work_mode,
+  });
+
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
     id: employee.id,
     tenant_id: employee.tenant_id,
-    work_mode: employee.work_mode,
-    work_location_id: employee.work_location_id,
+    work_mode: resolvedSetup,
+    work_location_id: linkedJob?.workLocationId ?? employee.work_location_id,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
   });

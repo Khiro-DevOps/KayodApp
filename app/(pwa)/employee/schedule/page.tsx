@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ScheduleClient from "./schedule-client";
@@ -6,6 +7,11 @@ import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import {
+  formatDailyWorkModelLabel,
+  resolveDailyWorkModel,
+  resolveEmployeeSourceOfTruth,
+} from "@/lib/work-arrangement";
 import {
   DAYS_FULL,
   DEFAULT_SHIFT_END,
@@ -63,9 +69,11 @@ export default async function EmployeeSchedulePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const admin = getAdminClient();
+
   // Keep this lookup independent of optional branch tables/relationships so a
   // newly provisioned development employee can still view the schedule.
-  const { data: employee, error: empError } = await supabase
+  const { data: employee, error: empError } = await admin
     .from("employees")
     .select("*")
     .eq("profile_id", user.id)
@@ -92,10 +100,29 @@ export default async function EmployeeSchedulePage() {
   }
 
   const linkedJob = await getJobPostingPositionForProfile(user.id);
-  const effectiveWorkMode = linkedJob?.workMode ?? employee.work_mode;
+  const sourceOfTruth = resolveEmployeeSourceOfTruth({
+    employee: {
+      job_title: employee.job_title,
+      work_mode: employee.work_mode,
+    },
+    offer: linkedJob
+      ? {
+          job_title: linkedJob.offerTitle,
+          work_setup: linkedJob.offerWorkSetup,
+        }
+      : null,
+    jobPosting: linkedJob
+      ? {
+          title: linkedJob.title,
+          department: linkedJob.departmentName,
+          work_setup: linkedJob.jobWorkSetup,
+        }
+      : null,
+  });
+  const effectiveWorkMode = sourceOfTruth.workSetup;
   const effectiveWorkLocationId = linkedJob?.workLocationId ?? employee.work_location_id;
 
-  const geofence = await resolveEmployeeGeofence(supabase, {
+  const geofence = await resolveEmployeeGeofence(admin, {
     id: employee.id,
     tenant_id: employee.tenant_id,
     work_mode: effectiveWorkMode,
@@ -109,7 +136,7 @@ export default async function EmployeeSchedulePage() {
   // Fetch active attendance log if any
   let activeAttendanceLog = null;
   if (employee?.id) {
-    const { data: activeLog } = await supabase
+    const { data: activeLog } = await admin
       .from("attendance_logs")
       .select(
         "id, clock_in, clock_out, status, verification_type, distance_meters, zone_status, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes, break_log"
@@ -125,7 +152,7 @@ export default async function EmployeeSchedulePage() {
   const thisWeekMonday = getMonday(todayDate);
   const thisWeekMondayStr = `${thisWeekMonday.getFullYear()}-${String(thisWeekMonday.getMonth() + 1).padStart(2, "0")}-${String(thisWeekMonday.getDate()).padStart(2, "0")}`;
 
-  const { data: publishedSchedule } = await supabase
+  const { data: publishedSchedule } = await admin
     .from("schedules")
     .select("id, week_start, shift_start, shift_end, location, notes, is_published, updated_at")
     .eq("employee_id", employee.id)
@@ -136,11 +163,10 @@ export default async function EmployeeSchedulePage() {
 
   const isSchedulePublished = Boolean(publishedSchedule);
 
-  const rawWorkMode = (effectiveWorkMode as string | null) || "onsite";
   const workModel: "onsite" | "wfh" | "hybrid" =
-    rawWorkMode === "remote" || rawWorkMode === "wfh"
+    effectiveWorkMode === "remote" || effectiveWorkMode === "wfh"
       ? "wfh"
-      : rawWorkMode === "hybrid"
+      : effectiveWorkMode === "hybrid"
         ? "hybrid"
         : "onsite";
   const parsedHybrid = parseHybridScheduleNotes(publishedSchedule?.notes);
@@ -163,7 +189,7 @@ export default async function EmployeeSchedulePage() {
   const shiftEnd = publishedSchedule?.shift_end || employee?.shift_end || DEFAULT_SHIFT_END;
   const { lunchStart, lunchEnd } = parseLunchScheduleNotes(publishedSchedule?.notes);
 
-  const { full: todayDayName } = getPhtDayInfo(todayDate);
+  getPhtDayInfo();
   const todayDateStr = todayDate.toISOString().split("T")[0];
 
   const getDayWorkMode = (dayName: string, dayIndex: number): "onsite" | "wfh" | "off" => {
@@ -182,18 +208,24 @@ export default async function EmployeeSchedulePage() {
     return isWeekend ? "off" : "wfh";
   };
 
-  const todayIdx = Math.max(
-    0,
-    DAYS_FULL.findIndex((d) => d.toLowerCase() === todayDayName.toLowerCase())
-  );
-  const isTodayOnsite = getDayWorkMode(todayDayName, todayIdx) === "onsite";
+  const todayDailyModel = resolveDailyWorkModel({
+    contractWorkSetup: effectiveWorkMode,
+    schedule: {
+      notes: publishedSchedule?.notes ?? null,
+      onsite_days: hybridOnsiteDays,
+      wfh_days: hybridWfhDays,
+      work_days: Array.isArray(employee?.work_days) ? employee.work_days : null,
+    },
+    date: todayDate,
+  });
+  const isTodayOnsite = todayDailyModel === "onsite";
 
   const weekDates = getWeekDates(thisWeekMonday);
   const weekStartStr = thisWeekMondayStr;
   const weekEndDate = weekDates[6];
   const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}`;
 
-  const { data: approvedLeaves } = await supabase
+  const { data: approvedLeaves } = await admin
     .from("leave_requests")
     .select("start_date, end_date, leave_type")
     .eq("employee_id", employee.id)
@@ -223,13 +255,13 @@ export default async function EmployeeSchedulePage() {
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
-              <p className="text-xs font-medium text-slate-500">Today&apos;s Mode</p>
+              <p className="text-xs font-medium text-slate-500">Today&apos;s Work Model</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <p className="text-base font-bold text-[#1E1B4B] capitalize sm:text-lg">
-                  {isTodayOnsite ? "Onsite" : "WFH"}
+                <p className="text-base font-bold text-[#1E1B4B] sm:text-lg">
+                  {formatDailyWorkModelLabel(todayDailyModel)}
                 </p>
                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1E1B4B]">
-                  {workModel === "hybrid" ? "Hybrid" : workModel === "wfh" ? "WFH" : "Onsite"}
+                  Work Setup: {sourceOfTruth.workSetupLabel}
                 </span>
               </div>
             </div>

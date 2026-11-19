@@ -315,13 +315,13 @@ export default function HRSchedulesClient({
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-semibold text-text-muted whitespace-nowrap">Work Model:</span>
+          <span className="text-xs font-semibold text-text-muted whitespace-nowrap">Work Setup:</span>
           <select
             value={modelFilter}
             onChange={(e) => setModelFilter(e.target.value as "All" | "Onsite" | "WFH" | "Hybrid")}
             className="rounded-lg border border-border bg-surface-bg px-3 py-2 text-xs font-semibold text-text-main outline-none focus:border-primary focus:bg-card-bg"
           >
-            <option value="All">All Models</option>
+            <option value="All">All Setups</option>
             <option value="Onsite">Onsite</option>
             <option value="WFH">WFH</option>
             <option value="Hybrid">Hybrid</option>
@@ -335,7 +335,7 @@ export default function HRSchedulesClient({
           <thead className="border-b border-border bg-surface-bg uppercase font-semibold text-text-muted">
             <tr>
               <th className="px-4 py-3.5">Employee Name &amp; Role</th>
-              <th className="px-4 py-3.5">Work Model</th>
+              <th className="px-4 py-3.5">Work Setup</th>
               <th className="px-4 py-3.5">Shift Hours</th>
               {DAYS_SHORT.map((day) => (
                 <th key={day} className="px-3 py-3.5 text-center">
@@ -456,7 +456,7 @@ export default function HRSchedulesClient({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Work Mode
+                    Work Setup
                   </label>
                   <select
                     value={workModel}
@@ -528,7 +528,7 @@ export default function HRSchedulesClient({
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-semibold text-slate-700">
-                      Per-Day Hybrid Assignment (Mon–Sun)
+                      Per-Day Hybrid Work Model (Mon–Sun)
                     </label>
                     <span className="text-[11px] font-medium text-slate-500">
                       {DAYS_FULL.filter((d) => hybridDayModes[d] === "onsite").length} Onsite ·{" "}

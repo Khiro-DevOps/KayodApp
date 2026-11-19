@@ -1,10 +1,15 @@
 import { getAdminClient } from "@/lib/supabase/admin";
+import { normalizeWorkSetup, type ContractWorkSetup } from "@/lib/work-arrangement";
 
 export interface JobPostingPositionInfo {
   title: string | null;
+  offerTitle: string | null;
   departmentId: string | null;
   departmentName: string | null;
-  workMode: "onsite" | "hybrid" | "remote" | null;
+  workMode: ContractWorkSetup | null;
+  workSetup: ContractWorkSetup | null;
+  offerWorkSetup: ContractWorkSetup | null;
+  jobWorkSetup: ContractWorkSetup | null;
   workLocationId: string | null;
 }
 
@@ -35,22 +40,19 @@ interface RawOfferRow {
   work_setup?: string | null;
   work_mode?: string | null;
   work_location_id?: string | null;
+  job_metadata?: Record<string, unknown> | null;
 }
 
-function normalizeJobWorkMode(
-  raw: string | null | undefined,
-): "onsite" | "hybrid" | "remote" | null {
-  const val = String(raw ?? "").trim().toLowerCase();
+function normalizeOptionalSetup(raw: string | null | undefined): ContractWorkSetup | null {
+  const val = String(raw ?? "").trim();
   if (!val) return null;
-  if (val === "hybrid") return "hybrid";
-  if (val === "remote" || val === "wfh") return "remote";
-  if (val === "onsite" || val === "on-site" || val === "in_person") return "onsite";
-  return null;
+  return normalizeWorkSetup(val);
 }
 
 /**
  * Batch-fetches the linked job posting title, department, work setup, and office branch
  * for a set of profile IDs, prioritizing hired applications and linked job_offers.
+ * Also falls back to matching profiles by email when applicant_id differs.
  */
 export async function getJobPostingPositionsByProfileIds(
   profileIds: string[],
@@ -69,14 +71,68 @@ export async function getJobPostingPositionsByProfileIds(
     .in("applicant_id", uniqueIds)
     .order("updated_at", { ascending: false });
 
-  const rows = (data ?? []) as unknown as RawApplicationJobRow[];
+  let rows = (data ?? []) as unknown as RawApplicationJobRow[];
+
+  // Fallback: match by email for any profileIds that had no direct applicant_id hit
+  const matchedProfileIds = new Set(rows.map((r) => r.applicant_id).filter(Boolean) as string[]);
+  const missingProfileIds = uniqueIds.filter((id) => !matchedProfileIds.has(id));
+  const emailToTargetProfileId = new Map<string, string>();
+
+  if (missingProfileIds.length > 0) {
+    const { data: missingProfiles } = await admin
+      .from("profiles")
+      .select("id, email")
+      .in("id", missingProfileIds);
+
+    const emails = (missingProfiles ?? [])
+      .map((p) => {
+        const email = p.email?.trim().toLowerCase();
+        if (email) emailToTargetProfileId.set(email, p.id);
+        return p.email?.trim();
+      })
+      .filter((v): v is string => Boolean(v));
+
+    if (emails.length > 0) {
+      const { data: matchingProfiles } = await admin
+        .from("profiles")
+        .select("id, email")
+        .in("email", emails);
+
+      const altProfileIds = (matchingProfiles ?? [])
+        .map((p) => p.id)
+        .filter((id) => !uniqueIds.includes(id));
+
+      if (altProfileIds.length > 0) {
+        const altIdToTargetId = new Map<string, string>();
+        for (const p of matchingProfiles ?? []) {
+          const targetId = p.email ? emailToTargetProfileId.get(p.email.trim().toLowerCase()) : undefined;
+          if (targetId) altIdToTargetId.set(p.id, targetId);
+        }
+
+        const { data: altApps } = await admin
+          .from("job_applications")
+          .select(
+            "id, applicant_id, status, updated_at, created_at, job:job_postings(title, department_id, work_setup, work_location_id, departments(name))",
+          )
+          .in("applicant_id", altProfileIds)
+          .order("updated_at", { ascending: false });
+
+        const mappedAltRows = ((altApps ?? []) as unknown as RawApplicationJobRow[]).map((r) => ({
+          ...r,
+          applicant_id: (r.applicant_id && altIdToTargetId.get(r.applicant_id)) || r.applicant_id,
+        }));
+        rows = [...rows, ...mappedAltRows];
+      }
+    }
+  }
+
   const appIds = Array.from(new Set(rows.map((r) => r.id).filter(Boolean)));
 
   const offerByAppId = new Map<string, RawOfferRow>();
   if (appIds.length > 0) {
     const { data: offers } = await admin
       .from("job_offers")
-      .select("application_id, work_setup, work_mode, work_location_id")
+      .select("application_id, work_setup, work_mode, work_location_id, job_metadata")
       .in("application_id", appIds)
       .order("updated_at", { ascending: false });
 
@@ -95,18 +151,23 @@ export async function getJobPostingPositionsByProfileIds(
     if (!profileId) continue;
 
     const jobObj = Array.isArray(row.job) ? row.job[0] : row.job;
-    const title = jobObj?.title?.trim() || null;
-    if (!title) continue;
-
     const offer = offerByAppId.get(row.id);
+    const metaTitle =
+      offer?.job_metadata && typeof offer.job_metadata.job_title === "string"
+        ? offer.job_metadata.job_title.trim()
+        : null;
+    const title = jobObj?.title?.trim() || metaTitle || null;
+    if (!title && !metaTitle) continue;
+
     const deptObj = Array.isArray(jobObj?.departments)
       ? jobObj?.departments[0]
       : jobObj?.departments;
     const departmentName = deptObj?.name?.trim() || null;
     const departmentId = jobObj?.department_id ?? null;
-    const workMode = normalizeJobWorkMode(
-      offer?.work_mode ?? offer?.work_setup ?? jobObj?.work_setup,
-    );
+
+    const offerWorkSetup = normalizeOptionalSetup(offer?.work_setup ?? offer?.work_mode);
+    const jobWorkSetup = normalizeOptionalSetup(jobObj?.work_setup);
+    const workSetup = offerWorkSetup ?? jobWorkSetup ?? null;
     const workLocationId =
       offer?.work_location_id ?? jobObj?.work_location_id ?? null;
     const isHired = String(row.status ?? "").toLowerCase() === "hired";
@@ -114,9 +175,13 @@ export async function getJobPostingPositionsByProfileIds(
     if (!result[profileId] || (isHired && !hasHired[profileId])) {
       result[profileId] = {
         title,
+        offerTitle: metaTitle,
         departmentId,
         departmentName,
-        workMode,
+        workMode: workSetup,
+        workSetup,
+        offerWorkSetup,
+        jobWorkSetup,
         workLocationId,
       };
       if (isHired) {

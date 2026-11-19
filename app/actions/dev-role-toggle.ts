@@ -2,8 +2,8 @@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 type DevRole = "applicant" | "employee" | "hr_manager";
 
@@ -194,14 +194,19 @@ export async function toggleDevUserRole(
       }
 
       let resolvedEmployeeId: string;
-      const resolvedPosition = resolveEmployeePosition({
-        employeePosition: existingEmployee?.job_title,
-        jobTitle: linkedJob?.title,
-      }).position;
+      const sourceOfTruth = resolveEmployeeSourceOfTruth({
+        employee: existingEmployee ? { job_title: existingEmployee.job_title, work_mode: existingEmployee.work_mode } : null,
+        offer: linkedJob ? { job_title: linkedJob.offerTitle, work_setup: linkedJob.offerWorkSetup } : null,
+        jobPosting: linkedJob ? { title: linkedJob.title, department: linkedJob.departmentName, work_setup: linkedJob.jobWorkSetup } : null,
+      });
+      const resolvedPosition = sourceOfTruth.position;
       const resolvedDepartmentId =
         linkedJob?.departmentId ?? existingEmployee?.department_id ?? null;
-      const resolvedWorkMode =
-        linkedJob?.workMode ?? existingEmployee?.work_mode ?? "onsite";
+      const resolvedWorkMode = resolveContractWorkSetup({
+        offerWorkSetup: linkedJob?.offerWorkSetup,
+        jobWorkSetup: linkedJob?.jobWorkSetup,
+        employeeWorkSetup: existingEmployee?.work_mode,
+      });
       const resolvedWorkLocationId =
         linkedJob?.workLocationId ?? existingEmployee?.work_location_id ?? defaultBranchId;
 

@@ -5,16 +5,21 @@ import { toast } from "sonner";
 import type { Profile, Employee, OfficeBranch, EmployeeRemoteResidence, Department } from "@/lib/types";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
-import { resolveEmployeePosition } from "@/lib/employee-position";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import WfhResidenceCard from "./WfhResidenceCard";
 
 interface EmployeeProfileViewProps {
-  profile: Profile | null;
-  employee: (Employee & { departments?: Department | null; office_branches?: OfficeBranch | null }) | null;
+  profile: (Profile & { emergency_contact?: string | null; bio?: string | null }) | null;
+  employee: (Employee & { departments?: Department | null; office_branches?: OfficeBranch | OfficeBranch[] | null }) | null;
   remoteResidence: EmployeeRemoteResidence | null;
+  officeBranch?: OfficeBranch | null;
   linkedJobTitle?: string | null;
   linkedJobDepartment?: string | null;
   linkedWorkMode?: string | null;
+  resolvedPosition?: string;
+  resolvedDepartment?: string;
+  resolvedWorkSetupLabel?: string;
+  resolvedAssignedLocation?: string;
 }
 
 function calculateProbationDaysRemaining(probationEndDateStr?: string | null): number | null {
@@ -43,15 +48,20 @@ export default function EmployeeProfileView({
   profile,
   employee,
   remoteResidence,
+  officeBranch,
   linkedJobTitle,
   linkedJobDepartment,
   linkedWorkMode,
+  resolvedPosition: resolvedPositionProp,
+  resolvedDepartment: resolvedDepartmentProp,
+  resolvedWorkSetupLabel: resolvedWorkSetupLabelProp,
+  resolvedAssignedLocation: resolvedAssignedLocationProp,
 }: EmployeeProfileViewProps) {
   const [phone, setPhone] = useState(profile?.phone || "");
   const [emergencyContact, setEmergencyContact] = useState(
-    (profile as any)?.emergency_contact || ""
+    profile?.emergency_contact || ""
   );
-  const [bio, setBio] = useState((profile as any)?.bio || "");
+  const [bio, setBio] = useState(profile?.bio || "");
   const [loading, setLoading] = useState(false);
 
   const handleSubmitPersonal = async (e: React.FormEvent) => {
@@ -82,38 +92,45 @@ export default function EmployeeProfileView({
     }
   };
 
-  const workMode = linkedWorkMode || (employee?.work_mode as string) || "onsite";
   const probationDays = calculateProbationDaysRemaining(employee?.probation_end_date);
-  const formattedSalary = employee?.base_salary || employee?.salary
-    ? `₱${(employee?.base_salary || employee?.salary || 0).toLocaleString("en-PH")}`
-    : "₱0";
   const shiftText = employee?.shift_start && employee?.shift_end
     ? `${formatTime12h(employee.shift_start)} – ${formatTime12h(employee.shift_end)}`
     : "08:00 AM – 05:00 PM";
 
-  const assignedBranch = Array.isArray((employee as any)?.office_branches)
-    ? (employee as any)?.office_branches[0]
-    : (employee as any)?.office_branches;
+  const assignedBranch =
+    officeBranch ??
+    (Array.isArray(employee?.office_branches)
+      ? employee.office_branches[0]
+      : employee?.office_branches);
 
-  const locationName = workMode === "wfh" || workMode === "remote"
-    ? "Registered Remote Residence"
-    : assignedBranch?.name || "Company Head Office";
+  const sourceOfTruth = resolveEmployeeSourceOfTruth({
+    employee,
+    jobPosting: {
+      title: linkedJobTitle,
+      department: linkedJobDepartment,
+      work_setup: linkedWorkMode,
+    },
+    officeBranch: assignedBranch,
+    remoteResidence,
+  });
 
-  const locationAddress = workMode === "wfh" || workMode === "remote"
-    ? remoteResidence?.address || "Registered Remote Residence, Metro Manila"
-    : assignedBranch?.address || "Company HQ, Makati City, Metro Manila";
+  const workMode = sourceOfTruth.workSetup;
+  const workSetupLabel = resolvedWorkSetupLabelProp || sourceOfTruth.workSetupLabel;
+  const resolvedPosition = resolvedPositionProp || sourceOfTruth.position;
+  const resolvedDepartment = resolvedDepartmentProp || sourceOfTruth.department;
+  const assignedLocation = resolvedAssignedLocationProp || sourceOfTruth.assignedLocation;
 
-  const geofenceRadius = workMode === "wfh" || workMode === "remote"
-    ? remoteResidence?.geofence_radius_meters || 200
-    : assignedBranch?.radius_meters || 200;
+  const locationHeaderLabel =
+    workMode === "wfh" || workMode === "remote"
+      ? "Remote Residence"
+      : workMode === "hybrid"
+        ? `${assignedBranch?.name || "Branch"} + Remote Residence`
+        : assignedBranch?.name || "Office Branch";
 
-  const { position: resolvedPosition, department: resolvedDepartment } =
-    resolveEmployeePosition({
-      employeePosition: employee?.job_title,
-      jobTitle: linkedJobTitle,
-      department: employee?.departments?.name,
-      jobDepartment: linkedJobDepartment,
-    });
+  const geofenceRadius =
+    workMode === "wfh" || workMode === "remote"
+      ? remoteResidence?.geofence_radius_meters || 200
+      : assignedBranch?.radius_meters || 200;
 
   return (
     <div className="w-full min-w-0">
@@ -232,14 +249,9 @@ export default function EmployeeProfileView({
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
               <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">Work Setup</p>
-              <span className="mt-1 inline-block rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold capitalize text-[#1E1B4B]">
-                {workMode}
+              <span className="mt-1 inline-block rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-[#1E1B4B]">
+                {workSetupLabel}
               </span>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
-              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">Compensation</p>
-              <p className="mt-0.5 text-sm font-bold text-emerald-700">{formattedSalary} / month</p>
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
@@ -254,9 +266,9 @@ export default function EmployeeProfileView({
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 sm:col-span-2">
               <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">
-                Assigned Location — {locationName}
+                Assigned Location — {locationHeaderLabel}
               </p>
-              <p className="mt-0.5 text-sm font-semibold text-gray-800">{locationAddress}</p>
+              <p className="mt-0.5 text-sm font-semibold text-gray-800">{assignedLocation}</p>
             </div>
           </div>
 

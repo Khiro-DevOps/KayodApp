@@ -2,8 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
 import {
   DAYS_FULL,
@@ -198,7 +198,27 @@ export default async function HRSchedulesPage() {
     .map((emp) => {
       const p = emp.profile_id ? profileMap.get(emp.profile_id) ?? null : null;
       const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
-      const rawModel = (emp.work_mode === "remote" ? "wfh" : emp.work_mode) || "onsite";
+      const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
+      const sourceOfTruth = resolveEmployeeSourceOfTruth({
+        employee: {
+          job_title: emp.job_title,
+          work_mode: emp.work_mode,
+        },
+        offer: linkedJob
+          ? {
+              job_title: linkedJob.offerTitle,
+              work_setup: linkedJob.offerWorkSetup,
+            }
+          : null,
+        jobPosting: linkedJob
+          ? {
+              title: linkedJob.title,
+              department: linkedJob.departmentName,
+              work_setup: linkedJob.jobWorkSetup,
+            }
+          : null,
+      });
+      const rawModel = sourceOfTruth.workSetup === "remote" ? "wfh" : sourceOfTruth.workSetup;
       const parsedHybrid = hybridScheduleByEmp.get(emp.id);
       const defaultOnsite = Array.isArray(emp.hybrid_onsite_days)
         ? normalizeDaysToFull(emp.hybrid_onsite_days)
@@ -216,14 +236,10 @@ export default async function HRSchedulesPage() {
       };
       const liveStatus = liveStatusByEmp.get(emp.id) ?? null;
 
-      const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
       return {
         id: emp.id,
         name,
-        role: resolveEmployeePosition({
-          employeePosition: emp.job_title,
-          jobTitle: linkedJob?.title,
-        }).position,
+        role: sourceOfTruth.position,
         work_model: rawModel as HRScheduleEmployee["work_model"],
         hybrid_onsite_days: onsiteDays,
         hybrid_wfh_days: wfhDays,

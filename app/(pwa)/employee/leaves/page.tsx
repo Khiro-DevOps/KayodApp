@@ -7,7 +7,7 @@ import Link from "next/link";
 import { reviewLeaveRequest, cancelLeaveRequest } from "./actions";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
-import { resolveEmployeePosition } from "@/lib/employee-position";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 interface Props {
   searchParams: Promise<{ error?: string; success?: string }>;
@@ -198,7 +198,7 @@ function LeaveCard({ leave, isHR }: { leave: LeaveRequest; isHR: boolean }) {
             )}
             {isHR && emp?.job_title && (
               <p className="text-xs text-text-secondary">
-                {resolveEmployeePosition({ employeePosition: emp.job_title }).position}
+                {resolveEmployeeSourceOfTruth({ employee: { job_title: emp.job_title } }).position}
               </p>
             )}
             <p className={`text-sm font-semibold capitalize ${isHR ? "mt-1 text-text-secondary" : "text-text-primary"}`}>

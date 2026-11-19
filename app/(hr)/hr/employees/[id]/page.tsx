@@ -7,8 +7,8 @@ import GeofenceControlCard from "./geofence-control-card";
 import CompensationEditorCard from "./compensation-editor-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
 import { resolveOfferCompensation, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
 interface Props {
@@ -164,9 +164,10 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const linkedJob = employee.profile_id
     ? await getJobPostingPositionForProfile(employee.profile_id)
     : null;
-  const resolvedRole = resolveEmployeePosition({
-    employeePosition: employee.job_title,
-    jobTitle: linkedJob?.title,
+  const resolvedRole = resolveEmployeeSourceOfTruth({
+    employee: { job_title: employee.job_title },
+    offer: linkedJob ? { job_title: linkedJob.offerTitle } : null,
+    jobPosting: linkedJob ? { title: linkedJob.title } : null,
   }).position;
 
   return (

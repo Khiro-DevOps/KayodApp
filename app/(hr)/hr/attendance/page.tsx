@@ -3,8 +3,11 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { computeUnexcusedAbsences, getTodayPhtIso } from "@/lib/attendance-absent";
-import { resolveEmployeePosition } from "@/lib/employee-position";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
+import {
+  resolveDailyWorkModel,
+  resolveEmployeeSourceOfTruth,
+} from "@/lib/work-arrangement";
 import HRAttendanceClient, { type AttendanceRow } from "./hr-attendance-client";
 
 export const metadata = {
@@ -202,6 +205,30 @@ export default async function HRAttendancePage() {
     allAttendanceProfileIds,
   );
 
+  const allEmployeeIds = Array.from(
+    new Set([
+      ...activeEmpIds,
+      ...logs.map((l) => l.employee_id).filter(Boolean),
+    ]),
+  );
+
+  const scheduleNotesByEmpId = new Map<string, string | null>();
+  if (allEmployeeIds.length > 0) {
+    const { data: pubSchedules } = await admin
+      .from("schedules")
+      .select("employee_id, notes, week_start, updated_at")
+      .in("employee_id", allEmployeeIds)
+      .eq("is_published", true)
+      .order("week_start", { ascending: false })
+      .order("updated_at", { ascending: false });
+
+    for (const s of pubSchedules ?? []) {
+      if (!scheduleNotesByEmpId.has(s.employee_id)) {
+        scheduleNotesByEmpId.set(s.employee_id, s.notes ?? null);
+      }
+    }
+  }
+
   const { data: approvedTodayLeaves } = activeEmpIds.length
     ? await admin
         .from("leave_requests")
@@ -240,15 +267,39 @@ export default async function HRAttendancePage() {
       const linkedJob = (emp as { profile_id?: string | null }).profile_id
         ? jobPostingByProfileId[(emp as { profile_id: string }).profile_id]
         : undefined;
+      const sourceOfTruth = resolveEmployeeSourceOfTruth({
+        employee: {
+          job_title: emp.job_title,
+          work_mode: emp.work_mode,
+        },
+        offer: linkedJob
+          ? {
+              job_title: linkedJob.offerTitle,
+              work_setup: linkedJob.offerWorkSetup,
+            }
+          : null,
+        jobPosting: linkedJob
+          ? {
+              title: linkedJob.title,
+              department: linkedJob.departmentName,
+              work_setup: linkedJob.jobWorkSetup,
+            }
+          : null,
+      });
+      const todayModel = resolveDailyWorkModel({
+        contractWorkSetup: sourceOfTruth.workSetup,
+        schedule: {
+          notes: scheduleNotesByEmpId.get(emp.id) ?? null,
+          work_days: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
+        },
+      });
       absentRows.push({
         id: `absent-${emp.id}-${todayPht}`,
         employeeName: name,
         avatarUrl: p?.avatar_url ?? null,
-        jobTitle: resolveEmployeePosition({
-          employeePosition: emp.job_title,
-          jobTitle: linkedJob?.title,
-        }).position,
-        workSetup: (emp.work_mode as AttendanceRow["workSetup"]) ?? null,
+        jobTitle: sourceOfTruth.position,
+        workSetup: sourceOfTruth.workSetup,
+        workModel: todayModel,
         isToday: true,
         isLate: false,
         lateMinutes: 0,
@@ -300,15 +351,40 @@ export default async function HRAttendancePage() {
     const linkedJob = emp?.profile_id
       ? jobPostingByProfileId[emp.profile_id]
       : undefined;
+    const sourceOfTruth = resolveEmployeeSourceOfTruth({
+      employee: {
+        job_title: emp?.job_title,
+        work_mode: emp?.work_mode,
+      },
+      offer: linkedJob
+        ? {
+            job_title: linkedJob.offerTitle,
+            work_setup: linkedJob.offerWorkSetup,
+          }
+        : null,
+      jobPosting: linkedJob
+        ? {
+            title: linkedJob.title,
+            department: linkedJob.departmentName,
+            work_setup: linkedJob.jobWorkSetup,
+          }
+        : null,
+    });
+    const logDate = l.clock_in ? new Date(l.clock_in) : l.created_at ? new Date(l.created_at) : new Date();
+    const dailyModel = resolveDailyWorkModel({
+      contractWorkSetup: sourceOfTruth.workSetup,
+      schedule: {
+        notes: scheduleNotesByEmpId.get(l.employee_id) ?? null,
+      },
+      date: logDate,
+    });
     return {
       id: l.id,
       employeeName: name,
       avatarUrl: p?.avatar_url ?? null,
-      jobTitle: resolveEmployeePosition({
-        employeePosition: emp?.job_title,
-        jobTitle: linkedJob?.title,
-      }).position,
-      workSetup: (emp?.work_mode as AttendanceRow["workSetup"]) ?? null,
+      jobTitle: sourceOfTruth.position,
+      workSetup: sourceOfTruth.workSetup,
+      workModel: dailyModel,
       isToday,
       isLate,
       lateMinutes,

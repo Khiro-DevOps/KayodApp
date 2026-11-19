@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 export async function updateApplicationStatus(formData: FormData) {
   const supabase = await createClient();
@@ -115,27 +116,55 @@ export async function updateApplicationStatus(formData: FormData) {
 
   // Auto-create employee when hired
   if (dbStatus === "hired") {
-    const { data: app } = await supabase
+    const admin = getAdminClient();
+    const { data: app } = await admin
       .from("job_applications")
-      .select("applicant_id, job:job_postings(title, department_id)")
+      .select("applicant_id, job:job_postings(title, department_id, work_setup, work_location_id)")
       .eq("id", applicationId)
       .single();
 
     if (app) {
-      const { data: existing } = await supabase
+      const { data: latestOffer } = await admin
+        .from("job_offers")
+        .select("work_setup, work_mode, work_location_id, job_metadata")
+        .eq("application_id", applicationId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const { data: existing } = await admin
         .from("employees")
         .select("id")
         .eq("profile_id", app.applicant_id)
         .maybeSingle();
 
       if (!existing) {
-        const job = app.job as unknown as { title?: string | null; department_id?: string | null } | null;
-        const jobTitle = job?.title?.trim() || "Unassigned Role";
-        await supabase.from("employees").insert({
+        const job = app.job as unknown as {
+          title?: string | null;
+          department_id?: string | null;
+          work_setup?: string | null;
+          work_location_id?: string | null;
+        } | null;
+        const resolved = resolveEmployeeSourceOfTruth({
+          offer: latestOffer
+            ? {
+                job_title: (latestOffer.job_metadata as { job_title?: string } | null)?.job_title ?? null,
+                work_setup: latestOffer.work_setup ?? latestOffer.work_mode,
+              }
+            : null,
+          jobPosting: job,
+        });
+        const workMode = resolveContractWorkSetup({
+          offerWorkSetup: latestOffer?.work_setup ?? latestOffer?.work_mode,
+          jobWorkSetup: job?.work_setup,
+        });
+        await admin.from("employees").insert({
           profile_id:        app.applicant_id,
           application_id:    applicationId,
           department_id:     job?.department_id ?? null,
-          job_title:         jobTitle,
+          job_title:         resolved.position,
+          work_mode:         workMode,
+          work_location_id:  latestOffer?.work_location_id ?? job?.work_location_id ?? null,
           start_date:        new Date().toISOString().split("T")[0],
           base_salary:       0,
           employment_status: "active",
@@ -143,7 +172,7 @@ export async function updateApplicationStatus(formData: FormData) {
           pay_frequency:     "monthly",
         });
         // Update profile role to employee
-        await supabase
+        await admin
           .from("profiles")
           .update({ role: "employee" })
           .eq("id", app.applicant_id);

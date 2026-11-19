@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { PwaSignOutButton } from "@/components/layout/pwa-shell";
 import PageContainer from "@/components/ui/page-container";
 import EmployeeProfileView from "./_components/EmployeeProfileView";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
-import type { Profile, Department } from "@/lib/types";
+import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
+import type { Profile, OfficeBranch, Employee, Department } from "@/lib/types";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "My Profile | Kayod",
@@ -23,13 +25,15 @@ export default async function EmployeeProfilePage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const admin = getAdminClient();
+
+  const { data: profile } = await admin
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .maybeSingle<Profile>();
 
-  let { data: employee } = await supabase
+  let { data: employee } = await admin
     .from("employees")
     .select(`
       *,
@@ -40,7 +44,7 @@ export default async function EmployeeProfilePage() {
     .maybeSingle();
 
   if (!employee && user.email) {
-    const { data: empByEmail } = await supabase
+    const { data: empByEmail } = await admin
       .from("employees")
       .select(`
         *,
@@ -54,7 +58,7 @@ export default async function EmployeeProfilePage() {
 
   let remoteResidence = null;
   if (employee?.id) {
-    const { data: remoteData } = await supabase
+    const { data: remoteData } = await admin
       .from("employee_remote_residences")
       .select("*")
       .eq("employee_id", employee.id)
@@ -64,16 +68,60 @@ export default async function EmployeeProfilePage() {
 
   const linkedJob = await getJobPostingPositionForProfile(user.id);
 
+  // If employee's work_location_id points to a branch not joined (or linkedJob has one), fetch via admin
+  type EmployeeWithRelations = Employee & {
+    departments?: Department | null;
+    office_branches?: OfficeBranch | OfficeBranch[] | null;
+  };
+  const empTyped = employee as EmployeeWithRelations | null;
+  let officeBranch: OfficeBranch | null = Array.isArray(empTyped?.office_branches)
+    ? empTyped.office_branches[0] ?? null
+    : empTyped?.office_branches ?? null;
+
+  const branchId = linkedJob?.workLocationId ?? employee?.work_location_id ?? null;
+  if (!officeBranch && branchId) {
+    const { data: branchRow } = await admin
+      .from("office_branches")
+      .select("id, name, address, latitude, longitude, radius_meters")
+      .eq("id", branchId)
+      .maybeSingle<OfficeBranch>();
+    officeBranch = branchRow ?? null;
+  }
+
+  const sourceOfTruth = resolveEmployeeSourceOfTruth({
+    employee,
+    offer: linkedJob
+      ? {
+          job_title: linkedJob.offerTitle,
+          work_setup: linkedJob.offerWorkSetup,
+        }
+      : null,
+    jobPosting: linkedJob
+      ? {
+          title: linkedJob.title,
+          department: linkedJob.departmentName,
+          work_setup: linkedJob.jobWorkSetup,
+        }
+      : null,
+    officeBranch,
+    remoteResidence,
+  });
+
   return (
     <PageContainer>
       <div className="w-full min-w-0 flex flex-col">
         <EmployeeProfileView
           profile={profile ?? null}
-          employee={(employee as any) ?? null}
+          employee={empTyped}
           remoteResidence={remoteResidence}
+          officeBranch={officeBranch}
           linkedJobTitle={linkedJob?.title ?? null}
           linkedJobDepartment={linkedJob?.departmentName ?? null}
-          linkedWorkMode={linkedJob?.workMode ?? null}
+          linkedWorkMode={sourceOfTruth.workSetup}
+          resolvedPosition={sourceOfTruth.position}
+          resolvedDepartment={sourceOfTruth.department}
+          resolvedWorkSetupLabel={sourceOfTruth.workSetupLabel}
+          resolvedAssignedLocation={sourceOfTruth.assignedLocation}
         />
 
         <div className="mx-auto w-full max-w-[1440px] px-4 pb-6 sm:px-6 lg:px-10">

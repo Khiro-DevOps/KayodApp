@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Building2, Home, Laptop, Users } from "lucide-react";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
+import type { ContractWorkSetup } from "@/lib/work-arrangement";
 
 export interface DirectoryEmployee {
   id: string;
@@ -16,7 +17,8 @@ export interface DirectoryEmployee {
   departmentName: string | null;
   email: string | null;
   employmentStatus: string;
-  workMode: "onsite" | "hybrid" | "remote";
+  workMode: ContractWorkSetup;
+  workSetupLabel?: string;
   branchName: string;
   branchNeedsSetup?: boolean;
   branchStatus?: "ok" | "pending" | "setup";
@@ -30,9 +32,9 @@ export interface DirectoryEmployee {
   startDate: string | null;
 }
 
-type WorkModeFilter = "All" | "Onsite" | "Hybrid" | "Remote";
+type WorkModeFilter = "All" | "Onsite" | "Hybrid" | "WFH" | "Remote";
 
-const FILTER_OPTIONS: WorkModeFilter[] = ["All", "Onsite", "Hybrid", "Remote"];
+const FILTER_OPTIONS: WorkModeFilter[] = ["All", "Onsite", "Hybrid", "WFH", "Remote"];
 
 function getStatusBadgeClasses(status: string): string {
   const normalized = status.toLowerCase();
@@ -55,7 +57,7 @@ function getWorkModeBadgeClasses(mode: DirectoryEmployee["workMode"]): string {
   if (mode === "hybrid") {
     return "bg-purple-50 text-purple-700 border-purple-200";
   }
-  if (mode === "remote") {
+  if (mode === "remote" || mode === "wfh") {
     return "bg-indigo-50 text-indigo-700 border-indigo-200";
   }
   return "bg-slate-100 text-slate-700 border-slate-200";
@@ -94,7 +96,7 @@ export default function EmployeesDirectoryClient({
     ).length;
     const onsite = employees.filter((e) => e.workMode === "onsite").length;
     const hybrid = employees.filter((e) => e.workMode === "hybrid").length;
-    const remote = employees.filter((e) => e.workMode === "remote").length;
+    const remote = employees.filter((e) => e.workMode === "remote" || e.workMode === "wfh").length;
 
     return { totalActive, onsite, hybrid, remote };
   }, [employees]);
@@ -122,7 +124,7 @@ export default function EmployeesDirectoryClient({
       <PageHeroHeader
         eyebrow="Organization"
         title="Employees"
-        subtitle="Manage active team members, work modes, compensation, and geofence settings"
+        subtitle="Manage active team members, work setups, compensation, and geofence settings"
         actions={
           <span className="inline-flex w-fit items-center rounded-full border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
             {employees.length} {employees.length === 1 ? "member" : "members"}
@@ -252,11 +254,11 @@ export default function EmployeesDirectoryClient({
                     {emp.employmentStatus.replace("_", " ")}
                   </span>
                   <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold capitalize ${getWorkModeBadgeClasses(
+                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getWorkModeBadgeClasses(
                       emp.workMode
                     )}`}
                   >
-                    {emp.workMode}
+                    Work Setup: {emp.workSetupLabel ?? emp.workMode}
                   </span>
                 </div>
 
