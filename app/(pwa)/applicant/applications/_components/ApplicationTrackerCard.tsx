@@ -110,7 +110,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
             navigateToDetail();
           }
         }}
-        className="w-full min-w-0 rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer"
+        className="w-full min-w-0 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs hover:border-[#1E1B4B]/40 hover:shadow-md transition-all cursor-pointer"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">

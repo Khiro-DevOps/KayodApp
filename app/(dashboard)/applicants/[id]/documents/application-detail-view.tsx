@@ -43,6 +43,8 @@ interface ActiveContractOffer {
     contract_templates: ContractTemplate[] | null;
 }
 
+import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+
 interface ApplicationDetailViewProps {
     application: Application;
     interviews: Interview[];
@@ -161,35 +163,24 @@ export default function ApplicationDetailView({
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
+        <div className="w-full max-w-7xl mx-auto space-y-6 bg-[#FDF8F2]/70 pb-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
 
-            {/* Portal Identity Top Module Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-                <div>
-                    <span className="text-label-caps text-indigo-600 font-bold tracking-wider uppercase block mb-1">
-                        Applicant Portal
-                    </span>
-                    <h2 className="text-2xl md:text-3xl font-bold text-indigo-950 tracking-tight mb-1">
-                        Dashboard
-                    </h2>
-                    <p className="text-body-sm text-on-surface-variant">
-                        Track your role progress, update interview timelines, and monitor onboarding tasks.
-                    </p>
-                </div>
-                <div>
-                    <button className="flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-5 py-2.5 rounded-xl text-body-sm font-semibold transition-all active:scale-95 shadow-sm">
-                        <span className="material-symbols-outlined text-body-md">search</span>
-                        Browse Jobs
-                    </button>
-                </div>
+            {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
+            <div className="-mx-6 -mt-8 rounded-b-[36px] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+                <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                    My Applications
+                </h1>
+                <p className="mt-1 text-sm text-white/75">
+                    Track your role progress and interview stages
+                </p>
             </div>
 
-            {/* Target Application Metadata Row */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-outline-variant/60 pb-6 mb-8 gap-4">
+            {/* Target Application Metadata Card */}
+            <SolidSurfaceCard className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6">
                 <div>
-                    <h3 className="text-xl md:text-2xl font-bold text-indigo-900 mb-1 tracking-tight">
+                    <h2 className="text-xl md:text-2xl font-bold text-[#1E1B4B] mb-1 tracking-tight">
                         {jobTitle}
-                    </h3>
+                    </h2>
                     <div className="flex items-center gap-2 text-body-sm text-on-surface-variant font-medium">
                         <span>{jobPosting?.location ?? "Cebu City"}</span>
                         <span>•</span>
@@ -197,20 +188,20 @@ export default function ApplicationDetailView({
                     </div>
                 </div>
                 <div>
-                    <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm border ${isRejected
+                    <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-xs border ${isRejected
                         ? "bg-error-container/20 text-error border-error/30"
-                        : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                        : "bg-indigo-50 text-[#1E1B4B] border-indigo-200"
                         }`}>
                         {isRejected ? "CLOSED" : rawStatus.replace("_", " ")}
                     </span>
                 </div>
-            </div>
+            </SolidSurfaceCard>
 
             {/* Main Structural Columns Grid Setup */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                 {/* Left Column View: Complete Synced 5-Stage Tracking Pipeline */}
-                <div className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm">
+                <SolidSurfaceCard className="lg:col-span-7 p-6">
                     <div className="flex justify-between items-center mb-8">
                         <h3 className="font-title-lg text-title-lg text-indigo-950">Application Track</h3>
                         <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-label-caps font-bold tracking-wider text-xs">
@@ -301,7 +292,7 @@ export default function ApplicationDetailView({
                             );
                         })}
                     </div>
-                </div>
+                </SolidSurfaceCard>
 
                 {/* Right Column View: Interactive Meeting Scheduler Frame History */}
                 <div className="lg:col-span-5 space-y-8">

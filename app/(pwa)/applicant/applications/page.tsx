@@ -7,6 +7,7 @@ import {
   ApplicationTrackerCard,
 } from "./_components/ApplicationTrackerCard";
 import { ApplicationRealtimeUpdates } from "./_components/ApplicationRealtimeUpdates";
+import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 export const metadata = {
   title: "My Applications | Kayod Platform",
@@ -377,90 +378,90 @@ export default async function ApplicantApplicationsPage() {
   // ============================================================
 
   return (
-    <>
-      <ApplicationRealtimeUpdates userId={user.id}/>
+    <div className="min-h-full space-y-6 bg-[#FDF8F2]/70 pb-8">
+      <ApplicationRealtimeUpdates userId={user.id} />
 
-      {/* Header */}
-      <section className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Application Tracker
-        </h1>
-
-        <p className="mt-2 text-muted-foreground">
-          Monitor your job applications, pipeline stages,
-          and interview progress.
-        </p>
-      </section>
-
-      {/* Overview Stats */}
-      <section className="mb-6 grid grid-cols-3 gap-2.5 sm:gap-4">
-        {/* Active Applications */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
-              Active Applications
-            </p>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#F0ECFF] text-[#1F195E] sm:h-8 sm:w-8">
-              <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
-            <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
-              {activeApplicationsCount}
-            </p>
-            <p className="text-[10px] text-slate-500 sm:text-xs">Open</p>
-          </div>
+      {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
+      <section className="-mx-6 -mt-8 rounded-b-[36px] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            My Applications
+          </h1>
+          <p className="mt-1 text-sm text-white/75">
+            Track your role progress and interview stages
+          </p>
         </div>
 
-        {/* In Pipeline */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
-              In Pipeline
-            </p>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 sm:h-8 sm:w-8">
-              <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </span>
+        {/* Overview KPI Cards */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+          {/* Active Applications */}
+          <div className="flex flex-col justify-between rounded-2xl border border-white/20 bg-white p-3 text-slate-900 shadow-sm sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
+                Active Applications
+              </p>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-[#1E1B4B] sm:h-8 sm:w-8">
+                <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
+              <p className="text-xl font-bold tracking-tight text-[#1E1B4B] tabular-nums sm:text-2xl">
+                {activeApplicationsCount}
+              </p>
+              <p className="text-[10px] text-slate-500 sm:text-xs">Open</p>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
-            <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
-              {inPipelineCount}
-            </p>
-            <p className="text-[10px] text-slate-500 sm:text-xs">Active stage</p>
-          </div>
-        </div>
 
-        {/* Total Submitted */}
-        <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs sm:p-4">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
-              Total Submitted
-            </p>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 sm:h-8 sm:w-8">
-              <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </span>
+          {/* In Pipeline */}
+          <div className="flex flex-col justify-between rounded-2xl border border-white/20 bg-white p-3 text-slate-900 shadow-sm sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
+                In Pipeline
+              </p>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 sm:h-8 sm:w-8">
+                <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
+              <p className="text-xl font-bold tracking-tight text-[#1E1B4B] tabular-nums sm:text-2xl">
+                {inPipelineCount}
+              </p>
+              <p className="text-[10px] text-slate-500 sm:text-xs">Active stage</p>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
-            <p className="text-xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-2xl">
-              {totalSubmitted}
-            </p>
-            <p className="text-[10px] text-slate-500 sm:text-xs">Lifetime</p>
+
+          {/* Total Submitted */}
+          <div className="flex flex-col justify-between rounded-2xl border border-white/20 bg-white p-3 text-slate-900 shadow-sm sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] font-medium leading-tight text-slate-600 sm:text-xs">
+                Total Submitted
+              </p>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 sm:h-8 sm:w-8">
+                <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-1 sm:mt-3">
+              <p className="text-xl font-bold tracking-tight text-[#1E1B4B] tabular-nums sm:text-2xl">
+                {totalSubmitted}
+              </p>
+              <p className="text-[10px] text-slate-500 sm:text-xs">Lifetime</p>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Applications */}
       {formattedApplications.length === 0 ? (
-        <section className="flex flex-col items-center justify-center rounded-lg border bg-card px-6 py-16 text-center">
+        <SolidSurfaceCard className="flex flex-col items-center justify-center px-6 py-16 text-center">
           {/* Empty state icon */}
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-[#1E1B4B]">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
-              className="h-8 w-8 text-muted-foreground"
+              className="h-8 w-8"
               aria-hidden="true"
             >
               <path
@@ -471,26 +472,26 @@ export default async function ApplicantApplicationsPage() {
             </svg>
           </div>
 
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold text-[#1E1B4B]">
             No Applications Found
           </h2>
 
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            You haven't submitted any job applications yet.
+            You haven&apos;t submitted any job applications yet.
             Browse available jobs and submit an application
             to start tracking here.
           </p>
 
           <Link
             href="/jobs"
-            className="mt-6 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-900"
           >
             Explore Openings
           </Link>
-        </section>
+        </SolidSurfaceCard>
       ) : (
-        <section>
-          <h2 className="mb-4 text-xl font-semibold">
+        <section className="space-y-4">
+          <h2 className="text-lg font-bold text-[#1E1B4B]">
             Your Applications
           </h2>
 
@@ -504,6 +505,6 @@ export default async function ApplicantApplicationsPage() {
           </div>
         </section>
       )}
-    </>
+    </div>
   );
 }
