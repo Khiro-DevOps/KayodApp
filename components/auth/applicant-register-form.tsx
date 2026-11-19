@@ -87,27 +87,27 @@ export default function ApplicantRegisterForm({
   const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
-    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-border bg-card-bg shadow-md lg:grid-cols-12">
-      {/* Left Panel: Registration Form */}
-      <div className="flex flex-col justify-between p-5 sm:p-8 lg:col-span-7 lg:p-10">
+    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-white/80 shadow-[0_8px_32px_rgba(30,27,75,0.06)] lg:grid-cols-12">
+      {/* Left Panel: Frosted Glass Registration Form */}
+      <div className="flex flex-col justify-between bg-white/60 p-5 backdrop-blur-xl sm:p-8 lg:col-span-7 lg:p-10">
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <Link
               href="/"
-              className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-brand-navy"
+              className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-[#1E1B4B]"
             >
               Kayod
             </Link>
             <Link
               href="/jobs"
-              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
             >
               Browse jobs
             </Link>
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-text-main sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] sm:text-3xl">
               Create Applicant Account
             </h1>
             <p className="mt-1 text-sm text-text-muted">
@@ -147,7 +147,7 @@ export default function ApplicantRegisterForm({
                   required
                   autoComplete="given-name"
                   placeholder="Juan"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
               </div>
 
@@ -162,7 +162,7 @@ export default function ApplicantRegisterForm({
                   required
                   autoComplete="family-name"
                   placeholder="Dela Cruz"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
               </div>
             </div>
@@ -179,7 +179,7 @@ export default function ApplicantRegisterForm({
                   required
                   autoComplete="email"
                   placeholder="you@example.com"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
               </div>
 
@@ -194,7 +194,7 @@ export default function ApplicantRegisterForm({
                   required
                   autoComplete="tel"
                   placeholder="09XXXXXXXXX"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
               </div>
             </div>
@@ -212,7 +212,7 @@ export default function ApplicantRegisterForm({
                   minLength={8}
                   autoComplete="new-password"
                   placeholder="At least 8 characters"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 />
                 <button
                   type="button"
@@ -238,7 +238,7 @@ export default function ApplicantRegisterForm({
                     setSelectedProvinceId(e.target.value);
                     setSelectedCityId("");
                   }}
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 >
                   <option value="">Select province</option>
                   {provinces.map((province) => (
@@ -258,7 +258,7 @@ export default function ApplicantRegisterForm({
                   name="city_id"
                   value={selectedCityId}
                   onChange={(e) => setSelectedCityId(e.target.value)}
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 >
                   <option value="">Select city</option>
                   {filteredCities.map((city) => (
@@ -278,7 +278,7 @@ export default function ApplicantRegisterForm({
                 id="work_setup"
                 name="work_setup"
                 defaultValue="remote"
-                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
               >
                 <option value="remote">Remote</option>
                 <option value="wfh">Work from home</option>
@@ -293,15 +293,15 @@ export default function ApplicantRegisterForm({
               </label>
               <label
                 htmlFor="resume_file"
-                className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-surface-bg px-4 py-2.5 text-sm text-text-muted transition-colors hover:border-primary hover:bg-primary-light/40"
+                className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-indigo-200 bg-white px-4 py-2.5 text-sm text-text-muted transition-colors hover:border-[#1E1B4B] hover:bg-[#EDE9F9]/40"
               >
                 <span className="flex items-center gap-2 truncate">
-                  <Upload className="h-4 w-4 shrink-0 text-primary" />
+                  <Upload className="h-4 w-4 shrink-0 text-[#1E1B4B]" />
                   <span className="truncate">
                     {resumeFileName || "Upload your resume to apply faster"}
                   </span>
                 </span>
-                <span className="shrink-0 rounded-xl bg-card-bg px-2.5 py-1 text-xs font-semibold text-primary shadow-xs">
+                <span className="shrink-0 rounded-xl bg-[#EDE9F9] px-2.5 py-1 text-xs font-semibold text-[#1E1B4B]">
                   Choose file
                 </span>
               </label>
@@ -315,13 +315,13 @@ export default function ApplicantRegisterForm({
               />
             </div>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border bg-surface-bg p-3.5 text-xs leading-relaxed text-text-muted">
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-indigo-100 bg-white p-3.5 text-xs leading-relaxed text-text-muted">
               <input
                 type="checkbox"
                 name="privacy_consent"
                 value="on"
                 required
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-brand-navy"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-indigo-200 accent-[#1E1B4B]"
               />
               <span>
                 I agree to Kayod&apos;s Privacy Notice (v1.0) and consent to the processing of my profile and application details for recruitment.
@@ -331,7 +331,7 @@ export default function ApplicantRegisterForm({
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-navy px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-brand-navy-light disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1E1B4B] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <span>{pending ? "Creating account..." : "Create Applicant Account"}</span>
               {!pending ? <ArrowRight className="h-4 w-4" /> : null}
@@ -339,16 +339,16 @@ export default function ApplicantRegisterForm({
           </form>
         </div>
 
-        <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4 text-center text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-2 border-t border-indigo-100/80 pt-4 text-center text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
           <span>
             Already have an account?{" "}
-            <Link href={loginHref} className="font-semibold text-primary hover:underline">
+            <Link href={loginHref} className="font-semibold text-[#1E1B4B] hover:text-indigo-900 hover:underline">
               Log in
             </Link>
           </span>
           <span>
             Hiring for a team?{" "}
-            <Link href="/register-choice" className="font-semibold text-primary hover:underline">
+            <Link href="/register-choice" className="font-semibold text-[#1E1B4B] hover:text-indigo-900 hover:underline">
               Employer onboarding
             </Link>
           </span>
@@ -356,9 +356,9 @@ export default function ApplicantRegisterForm({
       </div>
 
       {/* Right Panel: Branded Kayod Value Proposition (Desktop only) */}
-      <div className="hidden flex-col justify-between bg-brand-navy p-10 text-on-primary lg:col-span-5 lg:flex">
+      <div className="hidden flex-col justify-between bg-[#1E1B4B] p-10 text-on-primary lg:col-span-5 lg:flex">
         <div className="space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-brand-navy-light px-3.5 py-1.5 text-xs font-semibold text-primary-fixed">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-primary-fixed">
             <BadgeCheck className="h-4 w-4" />
             <span>For Job Seekers</span>
           </div>
@@ -378,9 +378,9 @@ export default function ApplicantRegisterForm({
               return (
                 <div
                   key={item.title}
-                  className="flex items-start gap-3.5 rounded-2xl border border-white/10 bg-brand-navy-light/70 p-4"
+                  className="flex items-start gap-3.5 rounded-2xl border border-white/10 bg-white/10 p-4"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-on-primary">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div>
