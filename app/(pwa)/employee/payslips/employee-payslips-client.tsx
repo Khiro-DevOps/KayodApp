@@ -59,73 +59,74 @@ export default function EmployeePayslipsClient({
   const ytdEarnings = payslips.reduce((sum, p) => sum + Number(p.net_pay || 0), 0);
 
   return (
-    <div className="w-full max-w-6xl min-w-0 flex flex-col px-4 py-6 lg:px-6 space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#171542]">My Payslips</h1>
-          <p className="mt-1 text-xs text-[#5d5a75]">
-            View your itemized paystubs, statutory contributions, and net earnings history.
-          </p>
-        </div>
-        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
-          Demo Computation
-        </span>
-      </div>
-
-      {/* 3-Card Summary Strip */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#5d5a75]">
-              Latest Net Pay
-            </span>
-            <span className="material-symbols-outlined rounded-lg bg-[#ede9f9] p-1.5 text-[18px] text-[#2d2b68]">
-              payments
-            </span>
+    <div className="mx-auto w-full max-w-[1400px] min-w-0 flex flex-col space-y-6">
+      {/* Deep Royal Purple Hero Band + 3-Card Summary Strip */}
+      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">My Payslips</h1>
+            <p className="mt-1 text-sm text-white/75">
+              View your itemized paystubs, statutory contributions, and net earnings history.
+            </p>
           </div>
-          <p className="mt-2.5 text-2xl font-extrabold tracking-tight text-[#171542]">
-            {latestPayslip ? formatPHP(Number(latestPayslip.net_pay)) : "₱0.00"}
-          </p>
-          <p className="mt-1 text-xs text-[#5d5a75]">
-            {latestPayslip
-              ? `Pay Date: ${formatDate(latestPayslip.pay_date)}`
-              : "No payslips issued yet"}
-          </p>
+          <span className="rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-semibold text-white">
+            Demo Computation
+          </span>
         </div>
 
-        <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#5d5a75]">
-              Published Payslips
-            </span>
-            <span className="material-symbols-outlined rounded-lg bg-emerald-50 p-1.5 text-[18px] text-emerald-700">
-              receipt_long
-            </span>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Latest Net Pay
+              </span>
+              <span className="material-symbols-outlined rounded-lg bg-indigo-50 p-1.5 text-[18px] text-[#1E1B4B]">
+                payments
+              </span>
+            </div>
+            <p className="mt-2 text-2xl font-extrabold tracking-tight text-[#1E1B4B]">
+              {latestPayslip ? formatPHP(Number(latestPayslip.net_pay)) : "₱0.00"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {latestPayslip
+                ? `Pay Date: ${formatDate(latestPayslip.pay_date)}`
+                : "No payslips issued yet"}
+            </p>
           </div>
-          <p className="mt-2.5 text-2xl font-extrabold tracking-tight text-[#171542]">
-            {payslips.length}
-          </p>
-          <p className="mt-1 text-xs text-[#5d5a75]">
-            YTD Net: <span className="font-semibold text-[#171542]">{formatPHP(ytdEarnings)}</span>
-          </p>
-        </div>
 
-        <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#5d5a75]">
-              Pay Cadence
-            </span>
-            <span className="material-symbols-outlined rounded-lg bg-indigo-50 p-1.5 text-[18px] text-indigo-700">
-              calendar_month
-            </span>
+          <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Published Payslips
+              </span>
+              <span className="material-symbols-outlined rounded-lg bg-emerald-50 p-1.5 text-[18px] text-emerald-700">
+                receipt_long
+              </span>
+            </div>
+            <p className="mt-2 text-2xl font-extrabold tracking-tight text-[#1E1B4B]">
+              {payslips.length}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              YTD Net: <span className="font-semibold text-[#1E1B4B]">{formatPHP(ytdEarnings)}</span>
+            </p>
           </div>
-          <p className="mt-2.5 text-2xl font-extrabold tracking-tight text-[#171542]">
-            Semi-Monthly
-          </p>
-          <p className="mt-1 text-xs text-[#5d5a75]">15th &amp; 30th Payroll Cycle</p>
+
+          <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Pay Cadence
+              </span>
+              <span className="material-symbols-outlined rounded-lg bg-indigo-50 p-1.5 text-[18px] text-[#1E1B4B]">
+                calendar_month
+              </span>
+            </div>
+            <p className="mt-2 text-2xl font-extrabold tracking-tight text-[#1E1B4B]">
+              Semi-Monthly
+            </p>
+            <p className="mt-1 text-xs text-slate-500">15th &amp; 30th Payroll Cycle</p>
+          </div>
         </div>
-      </div>
+      </section>
 
       {payslips.length === 0 ? (
         /* Empty State */

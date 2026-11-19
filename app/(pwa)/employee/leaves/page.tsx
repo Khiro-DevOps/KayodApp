@@ -5,6 +5,7 @@ import type { LeaveRequest, LeaveBalance, Profile } from "@/lib/types";
 import { LEAVE_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
 import { reviewLeaveRequest, cancelLeaveRequest } from "./actions";
+import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 interface Props {
   searchParams: Promise<{ error?: string; success?: string }>;
@@ -66,20 +67,44 @@ export default async function LeavesPage({ searchParams }: Props) {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
-
-        {/* ── Section header ── */}
-        {!isHR && (
-          <div className="flex justify-end">
-            <Link
-              href="/employee/leaves/new"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              Request Leave
-            </Link>
+      <div className="mx-auto max-w-[1400px] space-y-6">
+        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Leave Requests
+              </h1>
+              <p className="mt-1 text-sm text-white/75">
+                Track your leave balances and request time off
+              </p>
+            </div>
+            {!isHR && (
+              <Link
+                href="/employee/leaves/new"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                Request Leave
+              </Link>
+            )}
           </div>
-        )}
+
+          {!isHR && balances.length > 0 && (
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+              {balances.map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm"
+                >
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 capitalize">
+                    {b.leave_type.replace("_", " ")}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-[#1E1B4B]">{b.remaining}d left</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* ── Toast banners ── */}
         {error && (
@@ -110,47 +135,24 @@ export default async function LeavesPage({ searchParams }: Props) {
           </div>
         )}
 
-        {/* ── Employee: leave balance tiles ── */}
-        {!isHR && balances.length > 0 && (
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
-              Leave balance
-            </p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {balances.map((b) => (
-                <div
-                  key={b.id}
-                  className="rounded-2xl border border-[#e6e4f0] bg-white p-4 text-center shadow-[0_2px_8px_rgba(39,36,84,0.04)]"
-                >
-                  <p className="text-2xl font-bold text-text-primary">{b.remaining}</p>
-                  <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.1em] text-text-secondary capitalize">
-                    {b.leave_type.replace("_", " ")}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-text-secondary opacity-70">days left</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* ── Leave list ── */}
         <div className="space-y-3">
           {leaveRequests.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[#e6e4f0] bg-white p-8 text-center">
+            <SolidSurfaceCard className="border-dashed p-8 text-center">
               <span className="material-symbols-outlined mb-2 text-[32px] text-text-secondary opacity-40">
                 event_note
               </span>
-              <p className="text-sm font-medium text-text-primary">No leave requests yet</p>
+              <p className="text-sm font-medium text-[#1E1B4B]">No leave requests yet</p>
               {!isHR && (
                 <Link
                   href="/employee/leaves/new"
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1E1B4B]/90"
                 >
                   <span className="material-symbols-outlined text-[16px]">add</span>
                   File your first leave
                 </Link>
               )}
-            </div>
+            </SolidSurfaceCard>
           ) : (
             leaveRequests.map((leave) => (
               <LeaveCard key={leave.id} leave={leave} isHR={isHR} />
