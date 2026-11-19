@@ -4,7 +4,6 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/applications", destination: "/applicant/applications", permanent: false },
-      { source: "/jobs", destination: "/applicant/jobs", permanent: false },
       { source: "/resume", destination: "/applicant/resume", permanent: false },
       { source: "/resume/create", destination: "/applicant/resume/create", permanent: false },
       { source: "/profile", destination: "/applicant/profile", permanent: false },
