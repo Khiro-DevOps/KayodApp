@@ -5,8 +5,10 @@ export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!["hr", "hr_manager", "admin"].includes(String(profile?.role))) return Response.json({ error: "Forbidden" }, { status: 403 });
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!["employee", "hr", "hr_manager", "admin"].includes(String(profile?.role))) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
   const params = new URL(request.url).searchParams;
   const lat = Number(params.get("lat"));
   const lon = Number(params.get("lon"));

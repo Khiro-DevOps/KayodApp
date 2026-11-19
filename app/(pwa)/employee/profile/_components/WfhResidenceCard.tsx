@@ -48,8 +48,11 @@ export default function WfhResidenceCard({
     setSubmitBanner(null);
     startTransition(async () => {
       try {
+        const resolvedAddress =
+          address.trim() ||
+          `Pinned Location (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
         const res = await submitWfhLocationAction({
-          address,
+          address: resolvedAddress,
           latitude,
           longitude,
           relocationReason: isActiveApproved ? relocationReason : undefined,

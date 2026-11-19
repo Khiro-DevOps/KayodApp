@@ -20,11 +20,6 @@ export async function submitWfhLocationAction(input: {
     return { success: false, error: "Not authenticated" };
   }
 
-  const trimmedAddress = input.address.trim();
-  if (!trimmedAddress) {
-    return { success: false, error: "Please search or pin your WFH address." };
-  }
-
   if (
     !Number.isFinite(input.latitude) ||
     !Number.isFinite(input.longitude) ||
@@ -33,6 +28,10 @@ export async function submitWfhLocationAction(input: {
   ) {
     return { success: false, error: "Invalid GPS coordinates." };
   }
+
+  const trimmedAddress =
+    input.address.trim() ||
+    `Pinned Location (${input.latitude.toFixed(5)}, ${input.longitude.toFixed(5)})`;
 
   const admin = getAdminClient();
   let { data: employee } = await admin

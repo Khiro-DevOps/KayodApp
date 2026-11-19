@@ -5,8 +5,8 @@ async function authorized() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
-  const { data } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  return ["hr", "hr_manager", "admin"].includes(String(data?.role));
+  const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  return ["employee", "hr", "hr_manager", "admin"].includes(String(data?.role));
 }
 
 export async function GET(request: Request) {

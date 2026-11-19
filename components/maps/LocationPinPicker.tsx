@@ -56,10 +56,11 @@ export default function LocationPinPicker({
           radius={radius}
           target={target}
           onLocationChange={(lat, lng, nextAddress) => {
+            const fallbackAddress = `Pinned Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
             onChange({
               latitude: lat,
               longitude: lng,
-              address: nextAddress || address,
+              address: (nextAddress && nextAddress.trim()) || address.trim() || fallbackAddress,
             });
           }}
         />
@@ -88,10 +89,11 @@ export default function LocationPinPicker({
                       position.coords.longitude,
                     ];
                     setTarget(next);
+                    const fallbackAddress = `Pinned Location (${next[0].toFixed(5)}, ${next[1].toFixed(5)})`;
                     onChange({
                       latitude: next[0],
                       longitude: next[1],
-                      address,
+                      address: address.trim() || fallbackAddress,
                     });
                   },
                   () => setGeoError("Location permission was denied."),

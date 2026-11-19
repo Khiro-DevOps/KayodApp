@@ -269,7 +269,12 @@ export default async function EmployeesPage() {
           : 0;
 
     const effectiveWorkMode: ContractWorkSetup = sourceOfTruth.workSetup;
-    const hasPendingWfh = remoteResidence?.approval_status === "pending";
+    const hasPendingWfh =
+      remoteResidence?.approval_status === "pending" ||
+      remoteResidence?.pending_latitude != null ||
+      (Boolean(remoteResidence) &&
+        remoteResidence?.is_active === false &&
+        remoteResidence?.approval_status !== "rejected");
     const hasApprovedWfh =
       Boolean(remoteResidence) &&
       remoteResidence?.is_active !== false &&

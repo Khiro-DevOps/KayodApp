@@ -7,7 +7,11 @@ async function nominatim(path: string, key: string) {
   if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
   lastRequestAt = Date.now();
   const response = await fetch(`https://nominatim.openstreetmap.org${path}`, {
-    headers: { "User-Agent": "Kayod HR branch picker/1.0 (support@kayod.app)", Accept: "application/json" },
+    headers: {
+      "User-Agent": "KayodApp/1.0 (contact@kayod.app)",
+      "Accept-Language": "en",
+      Accept: "application/json",
+    },
     next: { revalidate: 3600 },
   });
   if (!response.ok) throw new Error(`Geocoding provider returned ${response.status}`);

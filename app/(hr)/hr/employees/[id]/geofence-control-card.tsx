@@ -46,7 +46,12 @@ export default function GeofenceControlCard({
 
   const needsBranch = workMode === "onsite" || workMode === "hybrid";
   const needsRemote = workMode === "remote" || workMode === "hybrid" || workMode === "wfh";
-  const hasPendingWfh = remoteResidence?.approval_status === "pending";
+  const hasPendingWfh =
+    remoteResidence?.approval_status === "pending" ||
+    remoteResidence?.pending_latitude != null ||
+    (Boolean(remoteResidence) &&
+      remoteResidence?.is_active === false &&
+      remoteResidence?.approval_status !== "rejected");
   const isApprovedWfh =
     Boolean(remoteResidence) &&
     remoteResidence?.is_active !== false &&
