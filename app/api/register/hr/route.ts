@@ -228,6 +228,20 @@ export async function POST(request: Request) {
       console.warn("[register/hr] profile upsert failed:", profileError.message);
     }
 
+    const branchAddress = [address, city, country].filter(Boolean).join(", ") || "Cebu City, Philippines";
+    const { error: branchError } = await adminClient.from("office_branches").insert({
+      tenant_id: tenantRow.id,
+      name: "Main Office",
+      address: branchAddress,
+      latitude: 10.3157,
+      longitude: 123.8854,
+      radius_meters: 200,
+    });
+
+    if (branchError) {
+      console.warn("[register/hr] default office_branches insert failed:", branchError.message);
+    }
+
     return NextResponse.json(
       {
         success: true,

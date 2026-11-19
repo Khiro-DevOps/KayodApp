@@ -66,7 +66,15 @@ function slugifyCompanyName(companyName: string) {
     .replace(/^-|-$/g, "");
 }
 
-export default function BookDemoModal() {
+interface BookDemoModalProps {
+  triggerLabel?: string;
+  triggerClassName?: string;
+}
+
+export default function BookDemoModal({
+  triggerLabel = "Book a Demo",
+  triggerClassName = "inline-flex w-full items-center justify-center rounded-[8px] bg-[#332477] px-3.5 py-2.5 font-[family-name:var(--font-poppins)] text-[14px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95",
+}: BookDemoModalProps = {}) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -139,9 +147,9 @@ export default function BookDemoModal() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex w-full items-center justify-center rounded-[8px] bg-[#332477] px-3.5 py-2.5 font-[family-name:var(--font-poppins)] text-[14px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+        className={triggerClassName}
       >
-        Book a Demo
+        {triggerLabel}
       </button>
     );
   }
@@ -265,9 +273,9 @@ export default function BookDemoModal() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex w-full items-center justify-center rounded-[8px] bg-[#332477] px-3.5 py-2.5 font-[family-name:var(--font-poppins)] text-[14px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+        className={triggerClassName}
       >
-        Book a Demo
+        {triggerLabel}
       </button>
 
       {isOpen
