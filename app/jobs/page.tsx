@@ -170,7 +170,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-[#FDF8F2]/70 via-[#FCFBFF] to-[#F6F5FC] text-text-main">
+    <div className="relative min-h-screen overflow-x-hidden bg-gradient-to-b from-[#FDF8F2]/70 via-[#FCFBFF] to-[#F6F5FC] text-text-main">
       <div className="pointer-events-none absolute inset-x-0 top-16 h-[420px] overflow-hidden">
         <div className="absolute left-1/2 -top-40 h-[560px] w-[560px] -translate-x-1/2 rounded-full border border-[#1E1B4B]/8" />
         <div className="absolute left-1/2 -top-24 h-[380px] w-[380px] -translate-x-1/2 rounded-full border border-[#1E1B4B]/6" />
@@ -296,9 +296,9 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
             </div>
           </form>
 
-          {/* Horizontal scrollable Material 3 filter chips */}
+          {/* Material 3 filter chips */}
           <div className="flex flex-col gap-2 pt-1 lg:flex-row lg:items-center lg:justify-between">
-            <div className="custom-scrollbar -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 lg:pb-0">
+            <div className="flex flex-wrap items-center gap-2">
               {WORK_SETUP_CHIPS.map((chip) => {
                 const active = workSetup === chip.value;
                 return (
@@ -321,7 +321,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
               })}
             </div>
 
-            <div className="custom-scrollbar -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 lg:pb-0">
+            <div className="flex flex-wrap items-center gap-2">
               {EMPLOYMENT_TYPE_CHIPS.map((chip) => {
                 const active = employmentType === chip.value;
                 return (

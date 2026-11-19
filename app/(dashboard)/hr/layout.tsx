@@ -207,7 +207,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FDF8F2]/70 text-text-main">
+    <div className="min-h-screen flex flex-col bg-[#F6F5FC] text-text-main">
       {/* Top Navigation Header (Full Width) */}
       <header className="h-[56px] w-full bg-[#1E1B4B] text-white flex items-center justify-between px-4 sm:px-6 z-30 shrink-0 no-shadow">
         <div className="flex items-center gap-3">
@@ -427,7 +427,7 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main Content Area */}
-        <main className="relative flex-1 w-full min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-[#FDF8F2]/70">
+        <main className="relative flex-1 w-full min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-[#F6F5FC]">
           <AmbientCanvas />
           <div className="relative z-10">{children}</div>
         </main>

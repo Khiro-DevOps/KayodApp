@@ -8,7 +8,7 @@ export function AmbientCanvas({ className = "" }: AmbientCanvasProps) {
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none absolute inset-x-0 top-0 h-[420px] overflow-hidden bg-gradient-to-b from-[#FDF8F2] via-[#FDF8F2]/60 to-transparent ${className}`}
+      className={`pointer-events-none absolute inset-x-0 top-0 h-[420px] overflow-hidden bg-gradient-to-b from-[#F6F5FC] via-[#F6F5FC]/60 to-transparent ${className}`}
     >
       <div className="absolute -right-24 -top-44 h-[520px] w-[520px] rounded-full border border-[#1E1B4B]/[0.06]" />
       <div className="absolute -right-6 -top-28 h-[360px] w-[360px] rounded-full border border-[#1E1B4B]/[0.05]" />
