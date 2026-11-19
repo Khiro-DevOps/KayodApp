@@ -2,29 +2,47 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminClient } from "@/lib/supabase/admin";
 import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
+import { effectiveRole } from "@/lib/roles";
+import { safeNext } from "@/lib/safe-redirect";
+
+function mapLoginErrorMessage(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (normalized.includes("email not confirmed") || normalized.includes("not confirmed")) {
+    return "Please confirm your email address before logging in.";
+  }
+  return "Wrong email or password.";
+}
 
 export async function login(
   _prevState: { error: string | null; success: boolean },
   formData: FormData
-) {
+): Promise<{ error: string | null; success: boolean }> {
   const supabase = await createClient();
-  const email    = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = (formData.get("email") as string) ?? "";
+  const password = (formData.get("password") as string) ?? "";
+  const next = (formData.get("next") as string | null) ?? null;
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) {
     return {
-      error: error.message,
+      error: mapLoginErrorMessage(error?.message ?? ""),
       success: false,
     };
   }
 
-  return {
-    error: null,
-    success: true,
-  };
+  const rawMetadata = ((data.user as { raw_user_meta_data?: Record<string, unknown> })
+    .raw_user_meta_data ?? {}) as Record<string, unknown>;
+  const authRole = (data.user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle<{ role?: string | null }>();
+
+  const role = effectiveRole(profile?.role, authRole);
+  redirect(safeNext(next, role));
 }
 
 function formatPhilippinesPhone(value: string) {
@@ -68,6 +86,7 @@ export async function register(
   const country = formData.get("country") as string;
   const tenantName = formData.get("tenant_name") as string;
   const rawPlan = formData.get("plan") as string | null;
+  const next = (formData.get("next") as string | null) ?? null;
   const plan: SubscriptionPlan = isSubscriptionPlan(rawPlan) ? rawPlan : "starter";
   const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -94,10 +113,17 @@ export async function register(
   // 3. Sign up the Auth user
   // This triggers your 'handle_new_user' function in Postgres
   // NOTE: tenant_id is passed in metadata to be extracted by the trigger
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  const safeRedirectTarget = safeNext(next, role);
+  const emailRedirectTo = appUrl
+    ? `${appUrl}/auth/callback?next=${encodeURIComponent(safeRedirectTarget)}`
+    : undefined;
+
   const { error: signUpError } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
       data: {
         first_name: firstName,
         last_name: lastName,
@@ -115,11 +141,13 @@ export async function register(
   });
 
   if (signUpError) {
-    return redirect(`/register?error=${encodeURIComponent(signUpError.message)}`);
+    const errorBase = role === "candidate" ? "/register/applicant" : "/register";
+    const nextQuery = next ? `&next=${encodeURIComponent(next)}` : "";
+    return redirect(`${errorBase}?error=${encodeURIComponent(signUpError.message)}${nextQuery}`);
   }
 
-  // 4. Success! Redirect to dashboard or verification page
-  return redirect("/dashboard");
+  // 4. Success! Redirect to safe destination or role home
+  return redirect(safeRedirectTarget);
 }
 
 export async function logout() {

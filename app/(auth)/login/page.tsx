@@ -19,6 +19,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const next = searchParams.get("next") ?? "";
   const [state, formAction, pending] = useActionState(login, {
     error: null,
     success: false,
@@ -48,6 +49,7 @@ function LoginForm() {
       )}
 
       <form action={formAction} className="space-y-4">
+        <input type="hidden" name="next" value={next} />
         {/* Email */}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium text-text-primary">
@@ -89,7 +91,10 @@ function LoginForm() {
 
       <p className="text-center text-sm text-text-secondary">
         Don&apos;t have an account?{" "}
-        <Link href="/register" className="font-medium text-primary hover:text-primary-dark">
+        <Link
+          href={next ? `/register/applicant?next=${encodeURIComponent(next)}` : "/register"}
+          className="font-medium text-primary hover:text-primary-dark"
+        >
           Sign up
         </Link>
       </p>

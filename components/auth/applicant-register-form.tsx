@@ -5,11 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { useActionState } from "react";
 import { register } from "@/app/(auth)/actions";
+import { safeNext } from "@/lib/safe-redirect";
 
 export default function ApplicantRegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const next = searchParams.get("next") ?? "";
   const [state, formAction, pending] = useActionState(register, {
     error: null,
     success: false,
@@ -17,9 +19,9 @@ export default function ApplicantRegisterForm() {
 
   useEffect(() => {
     if (state.success) {
-      router.replace("/apply/jobs");
+      router.replace(safeNext(next, "candidate"));
     }
-  }, [router, state.success]);
+  }, [next, router, state.success]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,6 +35,9 @@ export default function ApplicantRegisterForm() {
     fd.set("first_name", first);
     fd.set("last_name", last);
     fd.set("role", "candidate");
+    if (next) {
+      fd.set("next", next);
+    }
 
     // Ensure optional fields are present (server expects these keys)
     if (!fd.get("phone")) fd.set("phone", "");
