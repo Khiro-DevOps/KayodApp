@@ -15,6 +15,7 @@ export interface DirectoryEmployee {
   employmentStatus: string;
   workMode: "onsite" | "hybrid" | "remote";
   branchName: string;
+  branchNeedsSetup?: boolean;
   monthlySalary: number;
   startDate: string | null;
 }
@@ -235,9 +236,15 @@ export default function EmployeesDirectoryClient({
                 <div className="space-y-1.5 border-t border-slate-100 pt-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-slate-500">Assigned Branch</span>
-                    <span className="truncate font-medium text-slate-900">
-                      {emp.branchName}
-                    </span>
+                    {emp.branchNeedsSetup ? (
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                        {emp.branchName}
+                      </span>
+                    ) : (
+                      <span className="truncate font-medium text-slate-900">
+                        {emp.branchName}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-slate-500">Monthly Salary</span>
@@ -263,7 +270,7 @@ export default function EmployeesDirectoryClient({
               <div className="mt-4 border-t border-slate-100 pt-3">
                 <Link
                   href={`/hr/employees/${emp.id}`}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-purple-600 transition-colors hover:border-purple-200 hover:bg-purple-50"
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#1E1B4B]/20 bg-white px-3 py-2 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"
                 >
                   Manage Profile &amp; Geofence
                 </Link>

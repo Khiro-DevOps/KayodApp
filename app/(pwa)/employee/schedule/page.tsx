@@ -5,6 +5,7 @@ import ScheduleClient from "./schedule-client";
 import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import {
   DAYS_FULL,
   DEFAULT_SHIFT_END,
@@ -90,11 +91,15 @@ export default async function EmployeeSchedulePage() {
     );
   }
 
+  const linkedJob = await getJobPostingPositionForProfile(user.id);
+  const effectiveWorkMode = linkedJob?.workMode ?? employee.work_mode;
+  const effectiveWorkLocationId = linkedJob?.workLocationId ?? employee.work_location_id;
+
   const geofence = await resolveEmployeeGeofence(supabase, {
     id: employee.id,
     tenant_id: employee.tenant_id,
-    work_mode: employee.work_mode,
-    work_location_id: employee.work_location_id,
+    work_mode: effectiveWorkMode,
+    work_location_id: effectiveWorkLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
   });
@@ -131,7 +136,7 @@ export default async function EmployeeSchedulePage() {
 
   const isSchedulePublished = Boolean(publishedSchedule);
 
-  const rawWorkMode = (employee?.work_mode as string | null) || "onsite";
+  const rawWorkMode = (effectiveWorkMode as string | null) || "onsite";
   const workModel: "onsite" | "wfh" | "hybrid" =
     rawWorkMode === "remote" || rawWorkMode === "wfh"
       ? "wfh"
@@ -219,9 +224,14 @@ export default async function EmployeeSchedulePage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">Today&apos;s Mode</p>
-              <p className="mt-1 text-base font-bold text-[#1E1B4B] capitalize sm:text-lg">
-                {isTodayOnsite ? "Onsite" : workModel === "wfh" ? "WFH" : workModel}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="text-base font-bold text-[#1E1B4B] capitalize sm:text-lg">
+                  {isTodayOnsite ? "Onsite" : "WFH"}
+                </p>
+                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1E1B4B]">
+                  {workModel === "hybrid" ? "Hybrid" : workModel === "wfh" ? "WFH" : "Onsite"}
+                </span>
+              </div>
             </div>
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">Shift Hours</p>

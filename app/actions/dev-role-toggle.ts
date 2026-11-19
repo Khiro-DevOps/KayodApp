@@ -200,6 +200,10 @@ export async function toggleDevUserRole(
       }).position;
       const resolvedDepartmentId =
         linkedJob?.departmentId ?? existingEmployee?.department_id ?? null;
+      const resolvedWorkMode =
+        linkedJob?.workMode ?? existingEmployee?.work_mode ?? "onsite";
+      const resolvedWorkLocationId =
+        linkedJob?.workLocationId ?? existingEmployee?.work_location_id ?? defaultBranchId;
 
       if (existingEmployee) {
         const nextSalary =
@@ -217,8 +221,8 @@ export async function toggleDevUserRole(
             tenant_id: existingEmployee.tenant_id ?? resolvedTenantId,
             job_title: resolvedPosition,
             department_id: resolvedDepartmentId,
-            work_location_id: existingEmployee.work_location_id ?? defaultBranchId,
-            work_mode: existingEmployee.work_mode ?? "onsite",
+            work_location_id: resolvedWorkLocationId,
+            work_mode: resolvedWorkMode,
             base_salary: nextSalary,
             salary: nextSalary,
             updated_at: new Date().toISOString(),
@@ -244,8 +248,8 @@ export async function toggleDevUserRole(
             department_id: resolvedDepartmentId,
             employment_type: "full_time",
             employment_status: "active",
-            work_mode: "onsite",
-            work_location_id: defaultBranchId,
+            work_mode: resolvedWorkMode,
+            work_location_id: resolvedWorkLocationId,
             start_date: new Date().toISOString().split("T")[0],
             base_salary: 45000,
             salary: 45000,

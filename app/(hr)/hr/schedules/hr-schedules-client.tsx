@@ -168,7 +168,7 @@ export default function HRSchedulesClient({
             : emp
         )
       );
-      toast.success(`Schedule published for ${editingEmp.name}`);
+      toast.success("Schedule saved and published");
       setEditingEmp(null);
     });
   };
@@ -422,10 +422,10 @@ export default function HRSchedulesClient({
       {/* Edit & Publish Schedule Modal */}
       {editingEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
-            <div className="flex items-start justify-between gap-3">
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 bg-white px-6 py-4">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
+                <h3 className="text-base font-bold text-[#1E1B4B]">
                   Publish Weekly Schedule — {editingEmp.name}
                 </h3>
                 <p className="text-xs text-slate-500">{editingEmp.role}</p>
@@ -439,7 +439,8 @@ export default function HRSchedulesClient({
               </button>
             </div>
 
-            <form onSubmit={handleSaveAndPublish} className="space-y-4">
+            <form onSubmit={handleSaveAndPublish} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -618,18 +619,20 @@ export default function HRSchedulesClient({
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              </div>
+
+              <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
                 <button
                   type="button"
                   onClick={() => setEditingEmp(null)}
-                  className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-purple-700 disabled:opacity-50"
+                  className="rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[#1E1B4B]/90 disabled:opacity-50"
                 >
                   {isPending ? "Publishing..." : "Save & Publish Schedule"}
                 </button>

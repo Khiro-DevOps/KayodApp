@@ -89,7 +89,7 @@ export default async function LeavesPage({ searchParams }: Props) {
             ) : undefined
           }
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Leave Credits
@@ -106,7 +106,7 @@ export default async function LeavesPage({ searchParams }: Props) {
               <p className="mt-1 text-2xl font-bold text-amber-700">{pending.length}</p>
               <p className="mt-0.5 text-xs text-slate-500">Awaiting HR review</p>
             </div>
-            <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+            <div className="col-span-2 rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Approved Requests
               </p>

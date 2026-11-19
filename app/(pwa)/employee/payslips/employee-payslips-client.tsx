@@ -70,8 +70,8 @@ export default function EmployeePayslipsClient({
           </span>
         }
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-          <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="col-span-2 rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Latest Net Pay

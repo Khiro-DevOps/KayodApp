@@ -66,7 +66,13 @@ export async function saveAndPublishEmployeeSchedule(
     ? employee.profiles[0]
     : (employee.profiles as { tenant_id?: string | null } | null);
 
+  const DEV_DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+  const isDevTenant =
+    process.env.NODE_ENV === "development" ||
+    empProfile?.tenant_id === DEV_DEFAULT_TENANT_ID;
+
   if (
+    !isDevTenant &&
     hrProfile?.tenant_id &&
     empProfile?.tenant_id &&
     hrProfile.tenant_id !== empProfile.tenant_id

@@ -41,7 +41,7 @@ export default async function EmployeesPage() {
 
   const admin = getAdminClient();
 
-  const [{ data: employees }, { data: officeBranches }] = await Promise.all([
+  const [{ data: employees }, { data: officeBranches }, { data: remoteResidences }] = await Promise.all([
     admin
       .from("employees")
       .select(`
@@ -55,11 +55,29 @@ export default async function EmployeesPage() {
       .from("office_branches")
       .select("id, name")
       .returns<Array<{ id: string; name: string }>>(),
+    admin
+      .from("employee_remote_residences")
+      .select("employee_id, city, address, is_active"),
   ]);
 
   const branchNameById = new Map(
     (officeBranches ?? []).map((b) => [b.id, b.name])
   );
+  const remoteResidenceByEmpId = new Map<
+    string,
+    { city?: string | null; address?: string | null; is_active?: boolean | null }
+  >();
+  for (const res of remoteResidences ?? []) {
+    const row = res as {
+      employee_id?: string | null;
+      city?: string | null;
+      address?: string | null;
+      is_active?: boolean | null;
+    };
+    if (row.employee_id && row.is_active !== false) {
+      remoteResidenceByEmpId.set(row.employee_id, row);
+    }
+  }
 
   const missingSalaryEmployees = (employees ?? []).filter(
     (emp) => Number(emp.base_salary ?? emp.salary ?? 0) <= 0
@@ -213,6 +231,33 @@ export default async function EmployeesPage() {
             )
           : 0;
 
+    const effectiveWorkMode = linkedJob?.workMode ?? normalizeWorkMode(emp.work_mode);
+    const effectiveBranchId = linkedJob?.workLocationId ?? emp.work_location_id ?? null;
+    const resolvedBranchName = effectiveBranchId
+      ? branchNameById.get(effectiveBranchId) ?? null
+      : null;
+    const remoteResidence = remoteResidenceByEmpId.get(emp.id);
+
+    let branchName = "To be set";
+    let branchNeedsSetup = true;
+    if (effectiveWorkMode === "onsite") {
+      if (resolvedBranchName) {
+        branchName = resolvedBranchName;
+        branchNeedsSetup = false;
+      }
+    } else if (effectiveWorkMode === "hybrid") {
+      if (resolvedBranchName && remoteResidence) {
+        branchName = `${resolvedBranchName} + WFH`;
+        branchNeedsSetup = false;
+      }
+    } else if (effectiveWorkMode === "remote") {
+      if (remoteResidence) {
+        const cityLabel = remoteResidence.city?.trim();
+        branchName = cityLabel ? `WFH Verified (${cityLabel})` : "WFH Verified";
+        branchNeedsSetup = false;
+      }
+    }
+
     return {
       id: emp.id,
       fullName,
@@ -221,10 +266,9 @@ export default async function EmployeesPage() {
       departmentName: resolvedPosition.department,
       email: p?.email ?? null,
       employmentStatus: emp.employment_status || "active",
-      workMode: normalizeWorkMode(emp.work_mode),
-      branchName:
-        (emp.work_location_id ? branchNameById.get(emp.work_location_id) : undefined) ||
-        "Main HQ",
+      workMode: effectiveWorkMode,
+      branchName,
+      branchNeedsSetup,
       monthlySalary: resolvedMonthlySalary,
       startDate: emp.start_date ?? null,
     };
@@ -232,9 +276,7 @@ export default async function EmployeesPage() {
 
   return (
     <PageContainer>
-      <div className="w-full px-6 py-6">
-        <EmployeesDirectoryClient employees={directoryEmployees} />
-      </div>
+      <EmployeesDirectoryClient employees={directoryEmployees} />
     </PageContainer>
   );
 }

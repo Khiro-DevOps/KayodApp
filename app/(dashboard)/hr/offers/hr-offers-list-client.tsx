@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Briefcase, Calendar, Clock, DollarSign, ExternalLink, FileText, MapPin, User } from "lucide-react";
+import { Briefcase, Calendar, Clock, DollarSign, FileText, MapPin, User } from "lucide-react";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 export type OfferDirectoryStatus =
@@ -299,7 +299,6 @@ export default function HROffersListClient({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-900"
                 >
                   <span>Open Offer</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               </div>
             </article>
