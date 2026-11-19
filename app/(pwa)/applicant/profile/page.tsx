@@ -107,7 +107,7 @@ export default async function ProfilePage() {
 
   return (
     <PageContainer>
-      <div className="space-y-6">
+      <div className="w-full min-w-0">
         <PwaHeroBanner
           title={displayName}
           subtitle={displayEmail}
@@ -124,7 +124,7 @@ export default async function ProfilePage() {
         />
 
         {/* Responsive 2-Column Desktop Layout */}
-        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:px-10">
+        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-12 lg:px-10">
           {/* Left Column: Account Summary + Links + Sign Out */}
           <div className="space-y-6 lg:col-span-5">
             <SolidSurfaceCard className="space-y-4 p-5 sm:p-6">

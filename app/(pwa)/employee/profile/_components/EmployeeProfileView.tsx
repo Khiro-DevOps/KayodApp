@@ -100,7 +100,7 @@ export default function EmployeeProfileView({
     : assignedBranch?.radius_meters || 200;
 
   return (
-    <div className="w-full min-w-0 space-y-6">
+    <div className="w-full min-w-0">
       <PwaHeroBanner
         title={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Employee Profile"}
         subtitle={profile?.email ?? ""}
@@ -117,7 +117,7 @@ export default function EmployeeProfileView({
       />
 
       {/* Two-Column Desktop Layout */}
-      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:px-10">
+      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-12 lg:px-10">
         {/* Left (lg:col-span-5): Editable Personal Details */}
         <SolidSurfaceCard className="lg:col-span-5 space-y-4 p-5 sm:p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">

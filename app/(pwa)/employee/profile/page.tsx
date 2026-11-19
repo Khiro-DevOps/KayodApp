@@ -63,15 +63,17 @@ export default async function EmployeeProfilePage() {
 
   return (
     <PageContainer>
-      <div className="w-full max-w-xl min-w-0 flex flex-col mx-auto px-4 py-6 space-y-5">
+      <div className="w-full min-w-0 flex flex-col">
         <EmployeeProfileView
           profile={profile ?? null}
           employee={(employee as any) ?? null}
           remoteResidence={remoteResidence}
         />
 
-        <div className="rounded-2xl border border-[#e6e4f0] bg-white p-4 shadow-sm">
-          <PwaSignOutButton />
+        <div className="mx-auto w-full max-w-[1440px] px-4 pb-6 sm:px-6 lg:px-10">
+          <div className="rounded-3xl border border-slate-200/80 bg-white p-4 shadow-xs">
+            <PwaSignOutButton />
+          </div>
         </div>
       </div>
     </PageContainer>

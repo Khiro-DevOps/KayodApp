@@ -23,9 +23,13 @@ export default function PwaHeroBanner({
 }: PwaHeroBannerProps) {
   return (
     <section
-      className={`w-full rounded-b-[2rem] bg-[#1E1B4B] text-white shadow-[0_12px_30px_rgba(30,27,75,0.14)] ${className}`}
+      className={`flex min-h-[210px] w-full flex-col justify-between rounded-b-[2rem] bg-[#1E1B4B] px-4 pt-5 pb-7 text-white shadow-[0_12px_30px_rgba(30,27,75,0.14)] sm:min-h-[225px] sm:px-6 lg:px-10 ${className}`}
     >
-      <div className="mx-auto w-full max-w-[1440px] px-4 pt-5 pb-8 sm:px-6 lg:px-10">
+      <div
+        className={`mx-auto flex w-full max-w-[1440px] flex-1 flex-col ${
+          children ? "justify-between" : "justify-center"
+        }`}
+      >
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div className="flex min-w-0 items-center gap-4">
             {avatar ? <div className="shrink-0">{avatar}</div> : null}
@@ -52,7 +56,7 @@ export default function PwaHeroBanner({
           ) : null}
         </div>
 
-        {children ? <div className="mt-6">{children}</div> : null}
+        {children ? <div className="mt-5">{children}</div> : null}
       </div>
     </section>
   );
