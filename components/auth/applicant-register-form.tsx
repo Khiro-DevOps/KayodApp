@@ -2,16 +2,68 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
-import { useActionState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Briefcase,
+  Eye,
+  EyeOff,
+  FileText,
+  ShieldCheck,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import { register } from "@/app/(auth)/actions";
 import { safeNext } from "@/lib/safe-redirect";
 
-export default function ApplicantRegisterForm() {
+export interface ProvinceOption {
+  id: string;
+  name: string;
+}
+
+export interface CityOption {
+  id: string;
+  name: string;
+  province_id: string | null;
+}
+
+interface ApplicantRegisterFormProps {
+  provinces?: ProvinceOption[];
+  cities?: CityOption[];
+}
+
+const VALUE_PROPS = [
+  {
+    icon: Sparkles,
+    title: "Smart Job Matching",
+    description: "See how your skills align with open roles across the Philippines.",
+  },
+  {
+    icon: FileText,
+    title: "One-Click Resume Profile",
+    description: "Upload your resume once and apply to verified employers in seconds.",
+  },
+  {
+    icon: Briefcase,
+    title: "Track Every Application",
+    description: "Follow interview schedules, offers, and onboarding from your phone.",
+  },
+];
+
+export default function ApplicantRegisterForm({
+  provinces = [],
+  cities = [],
+}: ApplicantRegisterFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const next = searchParams.get("next") ?? "";
+  const [selectedProvinceId, setSelectedProvinceId] = useState("");
+  const [selectedCityId, setSelectedCityId] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState<string | null>(null);
+
   const [state, formAction, pending] = useActionState(register, {
     error: null,
     success: false,
@@ -23,195 +75,330 @@ export default function ApplicantRegisterForm() {
     }
   }, [next, router, state.success]);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
+  const filteredCities = useMemo(() => {
+    if (!selectedProvinceId) return cities;
+    return cities.filter((city) => city.province_id === selectedProvinceId);
+  }, [cities, selectedProvinceId]);
 
-    // Split full name into first/last
-    const full = (fd.get("full_name") as string) || "";
-    const [first, ...rest] = full.trim().split(" ");
-    const last = rest.join(" ") || "";
-    fd.set("first_name", first);
-    fd.set("last_name", last);
-    fd.set("role", "candidate");
-    if (next) {
-      fd.set("next", next);
-    }
+  const selectedCityName = useMemo(() => {
+    return cities.find((city) => city.id === selectedCityId)?.name ?? "";
+  }, [cities, selectedCityId]);
 
-    // Ensure optional fields are present (server expects these keys)
-    if (!fd.get("phone")) fd.set("phone", "");
-    if (!fd.get("date_of_birth")) fd.set("date_of_birth", "");
-    if (!fd.get("address")) fd.set("address", "");
-    if (!fd.get("city")) fd.set("city", "");
-    if (!fd.get("country")) fd.set("country", "Philippines");
-    if (!fd.get("work_setup")) fd.set("work_setup", "remote");
-
-    await formAction(fd as unknown as FormData);
-  }
+  const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
-    <div className="mx-auto w-full max-w-[420px]">
-      <div className="space-y-6">
-        <div className="text-center">
-          <h1 className="font-(family-name:--font-heading) text-2xl font-bold text-text-primary">
-            Create Applicant Account
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">Quick applicant signup</p>
+    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-border bg-card-bg shadow-md lg:grid-cols-12">
+      {/* Left Panel: Registration Form */}
+      <div className="flex flex-col justify-between p-5 sm:p-8 lg:col-span-7 lg:p-10">
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <Link
+              href="/"
+              className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-brand-navy"
+            >
+              Kayod
+            </Link>
+            <Link
+              href="/jobs"
+              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+            >
+              Browse jobs
+            </Link>
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-text-main sm:text-3xl">
+              Create Applicant Account
+            </h1>
+            <p className="mt-1 text-sm text-text-muted">
+              Start applying to verified roles across the Philippines
+            </p>
+          </div>
+
+          {(error || state.error) && (
+            <div
+              role="alert"
+              className="rounded-2xl border border-error/25 bg-error-bg px-4 py-3 text-sm font-medium text-error"
+            >
+              {state.error || error}
+            </div>
+          )}
+
+          <form
+            action={formAction}
+            className="space-y-4"
+            aria-label="Applicant registration form"
+          >
+            <input type="hidden" name="role" value="candidate" />
+            <input type="hidden" name="next" value={next} />
+            <input type="hidden" name="country" value="Philippines" />
+            <input type="hidden" name="city" value={selectedCityName} />
+            <input type="hidden" name="privacy_consent_version" value="v1.0" />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="first_name" className="block text-sm font-semibold text-text-main">
+                  First name
+                </label>
+                <input
+                  id="first_name"
+                  name="first_name"
+                  type="text"
+                  required
+                  autoComplete="given-name"
+                  placeholder="Juan"
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="last_name" className="block text-sm font-semibold text-text-main">
+                  Last name
+                </label>
+                <input
+                  id="last_name"
+                  name="last_name"
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  placeholder="Dela Cruz"
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="email" className="block text-sm font-semibold text-text-main">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="phone" className="block text-sm font-semibold text-text-main">
+                  Phone number
+                </label>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  placeholder="09XXXXXXXXX"
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="block text-sm font-semibold text-text-main">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-1 top-1/2 flex h-[40px] w-[40px] -translate-y-1/2 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="province_id" className="block text-sm font-semibold text-text-main">
+                  Province
+                </label>
+                <select
+                  id="province_id"
+                  name="province_id"
+                  value={selectedProvinceId}
+                  onChange={(e) => {
+                    setSelectedProvinceId(e.target.value);
+                    setSelectedCityId("");
+                  }}
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">Select province</option>
+                  {provinces.map((province) => (
+                    <option key={province.id} value={province.id}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="city_id" className="block text-sm font-semibold text-text-main">
+                  City / Municipality
+                </label>
+                <select
+                  id="city_id"
+                  name="city_id"
+                  value={selectedCityId}
+                  onChange={(e) => setSelectedCityId(e.target.value)}
+                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">Select city</option>
+                  {filteredCities.map((city) => (
+                    <option key={city.id} value={city.id}>
+                      {city.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="work_setup" className="block text-sm font-semibold text-text-main">
+                Preferred work setup
+              </label>
+              <select
+                id="work_setup"
+                name="work_setup"
+                defaultValue="remote"
+                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="remote">Remote</option>
+                <option value="wfh">Work from home</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">On-site</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="resume_file" className="block text-sm font-semibold text-text-main">
+                Resume <span className="font-normal text-text-muted">(optional, PDF or TXT)</span>
+              </label>
+              <label
+                htmlFor="resume_file"
+                className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-surface-bg px-4 py-2.5 text-sm text-text-muted transition-colors hover:border-primary hover:bg-primary-light/40"
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Upload className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="truncate">
+                    {resumeFileName || "Upload your resume to apply faster"}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-xl bg-card-bg px-2.5 py-1 text-xs font-semibold text-primary shadow-xs">
+                  Choose file
+                </span>
+              </label>
+              <input
+                id="resume_file"
+                name="resume_file"
+                type="file"
+                accept=".pdf,.txt"
+                onChange={(e) => setResumeFileName(e.target.files?.[0]?.name ?? null)}
+                className="sr-only"
+              />
+            </div>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border bg-surface-bg p-3.5 text-xs leading-relaxed text-text-muted">
+              <input
+                type="checkbox"
+                name="privacy_consent"
+                value="on"
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-brand-navy"
+              />
+              <span>
+                I agree to Kayod&apos;s Privacy Notice (v1.0) and consent to the processing of my profile and application details for recruitment.
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={pending}
+              className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-navy px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-brand-navy-light disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span>{pending ? "Creating account..." : "Create Applicant Account"}</span>
+              {!pending ? <ArrowRight className="h-4 w-4" /> : null}
+            </button>
+          </form>
         </div>
 
-        {(error || state.error) && (
-          <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-danger">
-            {state.error || error}
-          </div>
-        )}
+        <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4 text-center text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Already have an account?{" "}
+            <Link href={loginHref} className="font-semibold text-primary hover:underline">
+              Log in
+            </Link>
+          </span>
+          <span>
+            Hiring for a team?{" "}
+            <Link href="/register-choice" className="font-semibold text-primary hover:underline">
+              Employer onboarding
+            </Link>
+          </span>
+        </div>
+      </div>
 
-        <form onSubmit={onSubmit} className="space-y-4" aria-label="Applicant registration form">
-          <div className="space-y-1">
-            <label htmlFor="full_name" className="text-sm font-medium text-text-primary">
-              Full name
-            </label>
-            <input
-              id="full_name"
-              name="full_name"
-              type="text"
-              required
-              placeholder="Jane Doe"
-              aria-label="Full name"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="email" className="text-sm font-medium text-text-primary">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              placeholder="you@example.com"
-              aria-label="Email"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
+      {/* Right Panel: Branded Kayod Value Proposition (Desktop only) */}
+      <div className="hidden flex-col justify-between bg-brand-navy p-10 text-on-primary lg:col-span-5 lg:flex">
+        <div className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-brand-navy-light px-3.5 py-1.5 text-xs font-semibold text-primary-fixed">
+            <BadgeCheck className="h-4 w-4" />
+            <span>For Job Seekers</span>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="password" className="text-sm font-medium text-text-primary">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              placeholder="••••••••"
-              aria-label="Password"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
+          <div className="space-y-3">
+            <h2 className="text-3xl font-bold leading-tight tracking-tight text-on-primary">
+              Your next role, simplified.
+            </h2>
+            <p className="text-sm leading-relaxed text-primary-fixed-dim">
+              Create your candidate profile once, match with verified Philippine employers, and manage interviews and job offers in one place.
+            </p>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="phone" className="text-sm font-medium text-text-primary">
-              Phone
-            </label>
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              placeholder="09XXXXXXXXX"
-              aria-label="Phone"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
+          <div className="grid grid-cols-1 gap-3 pt-2">
+            {VALUE_PROPS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.title}
+                  className="flex items-start gap-3.5 rounded-2xl border border-white/10 bg-brand-navy-light/70 p-4"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-on-primary">{item.title}</h3>
+                    <p className="mt-0.5 text-xs leading-relaxed text-primary-fixed-dim">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        </div>
 
-          <div className="space-y-1">
-            <label htmlFor="date_of_birth" className="text-sm font-medium text-text-primary">
-              Date of birth
-            </label>
-            <input
-              id="date_of_birth"
-              name="date_of_birth"
-              type="date"
-              aria-label="Date of birth"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="address" className="text-sm font-medium text-text-primary">
-              Address
-            </label>
-            <input
-              id="address"
-              name="address"
-              type="text"
-              placeholder="Street, Barangay, Building"
-              aria-label="Address"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label htmlFor="city" className="text-sm font-medium text-text-primary">
-                City
-              </label>
-              <input
-                id="city"
-                name="city"
-                type="text"
-                placeholder="Manila"
-                aria-label="City"
-                className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="country" className="text-sm font-medium text-text-primary">
-                Country
-              </label>
-              <input
-                id="country"
-                name="country"
-                type="text"
-                defaultValue="Philippines"
-                aria-label="Country"
-                className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="work_setup" className="text-sm font-medium text-text-primary">
-              Work setup preference
-            </label>
-            <select
-              id="work_setup"
-              name="work_setup"
-              aria-label="Work setup"
-              className="w-full rounded-[4px] border border-border px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="remote">Remote</option>
-              <option value="wfh">Work from home</option>
-              <option value="onsite">Onsite</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-          </div>
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-lg bg-primary py-3 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
-          >
-            {pending ? "Creating..." : "Create Applicant Account"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-text-secondary">
-          Looking to hire talent? <Link href="/register" className="font-medium text-primary">Register as an Employer</Link>
-        </p>
+        <div className="mt-8 flex items-center gap-2 border-t border-white/10 pt-5 text-xs text-primary-fixed-dim">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-primary-fixed" />
+          <span>No government IDs required at sign-up</span>
+        </div>
       </div>
     </div>
   );

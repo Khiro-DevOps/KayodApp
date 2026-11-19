@@ -1,7 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { extractText } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { getResumeBucketName } from "@/lib/supabase/storage";
 import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
 import { effectiveRole } from "@/lib/roles";
 import { safeNext } from "@/lib/safe-redirect";
@@ -45,54 +48,121 @@ export async function login(
   redirect(safeNext(next, role));
 }
 
-function formatPhilippinesPhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits === "0") return "0";
-  if (digits === "63") return "+63";
+function getStringField(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  let local = digits;
-  if (digits.startsWith("0")) {
-    local = digits.slice(1);
-  } else if (digits.startsWith("63")) {
-    local = digits.slice(2);
+async function saveOptionalRegistrationResume(
+  userId: string,
+  fullName: string,
+  resumeFile: File
+): Promise<void> {
+  const adminClient = getAdminClient();
+  const bucket = getResumeBucketName();
+  const safeName = resumeFile.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "resume.pdf";
+  const storagePath = `${userId}/${Date.now()}_${safeName}`;
+  const arrayBuffer = await resumeFile.arrayBuffer();
+
+  let extractedText = "";
+  try {
+    if (resumeFile.type === "application/pdf" || safeName.toLowerCase().endsWith(".pdf")) {
+      const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
+      extractedText = text ?? "";
+    } else if (resumeFile.type.startsWith("text/") || safeName.toLowerCase().endsWith(".txt")) {
+      extractedText = new TextDecoder().decode(arrayBuffer);
+    }
+  } catch (extractErr) {
+    console.warn("[register] resume text extraction warning:", extractErr);
   }
 
-  local = local.slice(0, 10);
+  let publicUrl: string | null = null;
+  try {
+    const { error: uploadError } = await adminClient.storage
+      .from(bucket)
+      .upload(storagePath, Buffer.from(arrayBuffer), {
+        contentType: resumeFile.type || "application/pdf",
+        upsert: false,
+      });
 
-  if (!local) return digits;
-  if (local.length <= 3) return `+63 ${local}`.trim();
-  if (local.length <= 6) return `+63 ${local.slice(0, 3)} ${local.slice(3)}`;
-  return `+63 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
+    if (!uploadError) {
+      const { data } = adminClient.storage.from(bucket).getPublicUrl(storagePath);
+      publicUrl = data.publicUrl || null;
+    } else {
+      console.warn("[register] resume storage upload warning:", uploadError.message);
+    }
+  } catch (storageErr) {
+    console.warn("[register] resume storage exception:", storageErr);
+  }
+
+  const { error: dbError } = await adminClient.from("resumes").insert({
+    candidate_id: userId,
+    title: fullName ? `${fullName} - Resume` : safeName,
+    input_data: {
+      source: "registration_upload",
+      file_name: resumeFile.name,
+    },
+    generated_content: {},
+    content_text: extractedText.trim().slice(0, 50000) || null,
+    pdf_url: publicUrl,
+    is_primary: true,
+  });
+
+  if (dbError) {
+    console.warn("[register] resume insert warning:", dbError.message);
+  }
 }
 
 export async function register(
   _prevState: { error: string | null; success: boolean },
   formData: FormData
-) {
+): Promise<{ error: string | null; success: boolean }> {
   const supabase = await createClient();
 
-  // 1. Extract form data
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const role = formData.get("role") as string; // 'candidate' or 'hr_manager'
-  const firstName = formData.get("first_name") as string;
-  const lastName = formData.get("last_name") as string;
-  const phone = formData.get("phone") as string;
-  const dob = formData.get("date_of_birth") as string;
-  const age = formData.get("age") as string;
-  const address = formData.get("address") as string;
-  const city = formData.get("city") as string;
-  const country = formData.get("country") as string;
-  const tenantName = formData.get("tenant_name") as string;
+  const email = getStringField(formData, "email");
+  const password = getStringField(formData, "password");
+  const role = getStringField(formData, "role") || "candidate";
+  const firstName = getStringField(formData, "first_name");
+  const lastName = getStringField(formData, "last_name");
+  const phone = getStringField(formData, "phone");
+  const dob = getStringField(formData, "date_of_birth");
+  const age = getStringField(formData, "age");
+  const address = getStringField(formData, "address");
+  const city = getStringField(formData, "city");
+  const country = getStringField(formData, "country") || "Philippines";
+  const provinceId = getStringField(formData, "province_id") || null;
+  const cityId = getStringField(formData, "city_id") || null;
+  const workSetup = getStringField(formData, "work_setup") || null;
+  const privacyConsent = getStringField(formData, "privacy_consent");
+  const privacyConsentVersion = getStringField(formData, "privacy_consent_version") || "v1.0";
+  const privacyConsentedAt =
+    getStringField(formData, "privacy_consented_at") || new Date().toISOString();
+  const tenantName = getStringField(formData, "tenant_name");
   const rawPlan = formData.get("plan") as string | null;
-  const next = (formData.get("next") as string | null) ?? null;
+  const next = getStringField(formData, "next") || null;
+  const resumeFile = formData.get("resume_file");
+
+  if (!firstName || !lastName) {
+    return { error: "First name and last name are required.", success: false };
+  }
+
+  if (!email || !password) {
+    return { error: "Email and password are required.", success: false };
+  }
+
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters.", success: false };
+  }
+
+  if (role === "candidate" && privacyConsent !== "on" && privacyConsent !== "true") {
+    return { error: "Please accept the Privacy Notice to create an account.", success: false };
+  }
+
   const plan: SubscriptionPlan = isSubscriptionPlan(rawPlan) ? rawPlan : "starter";
   const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  let tenantId = null;
+  let tenantId: string | null = null;
 
-  // 2. If HR, create the tenant record first
   if (role === "hr_manager" && tenantName) {
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
@@ -105,21 +175,18 @@ export async function register(
       .single();
 
     if (tenantError) {
-      return redirect(`/register?error=${encodeURIComponent("Failed to create tenant record.")}`);
+      return { error: "Failed to create tenant record.", success: false };
     }
     tenantId = tenant.id;
   }
 
-  // 3. Sign up the Auth user
-  // This triggers your 'handle_new_user' function in Postgres
-  // NOTE: tenant_id is passed in metadata to be extracted by the trigger
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
   const safeRedirectTarget = safeNext(next, role);
   const emailRedirectTo = appUrl
     ? `${appUrl}/auth/callback?next=${encodeURIComponent(safeRedirectTarget)}`
     : undefined;
 
-  const { error: signUpError } = await supabase.auth.signUp({
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -127,27 +194,40 @@ export async function register(
       data: {
         first_name: firstName,
         last_name: lastName,
-        phone: phone,
-        role: role,
-        date_of_birth: dob,
-        age: age,
-        address: address,
-        city: city,
-        country: country,
-        // Pass tenant_id to the trigger so it saves to profiles.tenant_id
+        phone,
+        role,
+        date_of_birth: dob || null,
+        age: age || null,
+        address: address || null,
+        city: city || null,
+        country,
+        work_setup: workSetup,
+        province_id: provinceId,
+        city_id: cityId,
         tenant_id: tenantId,
+        privacy_consent_version: privacyConsentVersion,
+        privacy_consented_at: privacyConsentedAt,
       },
     },
   });
 
   if (signUpError) {
-    const errorBase = role === "candidate" ? "/register/applicant" : "/register";
-    const nextQuery = next ? `&next=${encodeURIComponent(next)}` : "";
-    return redirect(`${errorBase}?error=${encodeURIComponent(signUpError.message)}${nextQuery}`);
+    return { error: signUpError.message, success: false };
   }
 
-  // 4. Success! Redirect to safe destination or role home
-  return redirect(safeRedirectTarget);
+  if (signUpData.user && resumeFile instanceof File && resumeFile.size > 0) {
+    try {
+      await saveOptionalRegistrationResume(
+        signUpData.user.id,
+        `${firstName} ${lastName}`.trim(),
+        resumeFile
+      );
+    } catch (err) {
+      console.warn("[register] optional resume save failed:", err);
+    }
+  }
+
+  redirect(safeRedirectTarget);
 }
 
 export async function logout() {
