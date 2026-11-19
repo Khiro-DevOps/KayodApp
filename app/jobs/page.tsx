@@ -170,19 +170,24 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-surface-bg text-text-main">
-      <header className="sticky top-0 z-30 border-b border-border bg-card-bg/95 backdrop-blur-md">
+    <div className="relative min-h-screen bg-gradient-to-b from-[#FDF8F2]/70 via-[#FCFBFF] to-[#F6F5FC] text-text-main">
+      <div className="pointer-events-none absolute inset-x-0 top-16 h-[420px] overflow-hidden">
+        <div className="absolute left-1/2 -top-40 h-[560px] w-[560px] -translate-x-1/2 rounded-full border border-[#1E1B4B]/8" />
+        <div className="absolute left-1/2 -top-24 h-[380px] w-[380px] -translate-x-1/2 rounded-full border border-[#1E1B4B]/6" />
+      </div>
+
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#1E1B4B] text-white shadow-[0_2px_24px_rgba(26,27,33,0.08)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="inline-flex min-h-[44px] items-center text-xl font-bold tracking-tight text-brand-navy"
+              className="inline-flex min-h-[44px] items-center font-[family-name:var(--font-poppins)] text-xl font-bold tracking-tight text-white"
             >
               Kayod
             </Link>
             <Link
               href="/jobs"
-              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-sm font-semibold text-primary"
+              className="inline-flex min-h-[44px] items-center rounded-full bg-white/15 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/20"
             >
               Jobs
             </Link>
@@ -192,7 +197,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
             {dashboardHref ? (
               <Link
                 href={dashboardHref}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-brand-navy px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-brand-navy-light"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-50"
               >
                 <LayoutDashboard className="h-4 w-4" />
                 <span>Dashboard</span>
@@ -201,13 +206,13 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
               <>
                 <Link
                   href="/login"
-                  className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
+                  className="inline-flex min-h-[44px] items-center rounded-full px-3 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   Log in
                 </Link>
                 <Link
                   href="/register/applicant"
-                  className="inline-flex min-h-[44px] items-center rounded-xl bg-brand-navy px-4 font-semibold text-on-primary transition-colors hover:bg-brand-navy-light"
+                  className="inline-flex min-h-[44px] items-center rounded-full bg-white px-5 font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-50"
                 >
                   Register
                 </Link>
@@ -217,11 +222,11 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 lg:py-8">
+      <main className="relative mx-auto max-w-6xl px-4 py-5 sm:px-6 lg:py-8">
         {/* Compact PWA Header */}
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-text-main lg:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] lg:text-3xl">
               Open Jobs
             </h1>
             <p className="mt-0.5 text-sm text-text-muted">
@@ -231,7 +236,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
           {hasFilters ? (
             <Link
               href="/jobs"
-              className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-card-bg px-4 text-xs font-semibold text-primary transition-colors hover:bg-primary-light"
+              className="inline-flex min-h-[44px] items-center rounded-full border border-indigo-100/80 bg-white/80 px-4 text-xs font-semibold text-[#1E1B4B] backdrop-blur-md transition-colors hover:bg-white"
             >
               Clear filters
             </Link>
@@ -239,7 +244,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
         </div>
 
         {/* Search & Filter Surface */}
-        <section className="mb-6 space-y-3 rounded-3xl border border-border bg-card-bg p-4 shadow-sm sm:p-5">
+        <section className="mb-6 space-y-3 rounded-3xl border border-indigo-100/80 bg-white/80 p-4 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md sm:p-5">
           <form
             method="get"
             action="/jobs"
@@ -252,7 +257,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                 name="q"
                 defaultValue={q}
                 placeholder="Search role title or keywords"
-                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg py-2.5 pl-10 pr-3.5 text-sm text-text-main placeholder:text-text-muted focus:border-primary focus:outline-none"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-10 pr-3.5 text-sm text-text-main placeholder:text-text-muted focus:border-[#1E1B4B] focus:outline-none"
               />
             </div>
 
@@ -262,7 +267,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                 name="location"
                 defaultValue={location}
                 placeholder="Location (e.g. Cebu, Manila)"
-                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main placeholder:text-text-muted focus:border-primary focus:outline-none"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main placeholder:text-text-muted focus:border-[#1E1B4B] focus:outline-none"
               />
             </div>
 
@@ -272,7 +277,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                 name="job_category"
                 defaultValue={jobCategory}
                 placeholder="Category"
-                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-3.5 py-2.5 text-sm text-text-main placeholder:text-text-muted focus:border-primary focus:outline-none"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main placeholder:text-text-muted focus:border-[#1E1B4B] focus:outline-none"
               />
             </div>
 
@@ -284,7 +289,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
             <div className="lg:col-span-2">
               <button
                 type="submit"
-                className="min-h-[44px] w-full rounded-2xl bg-brand-navy px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-brand-navy-light"
+                className="min-h-[44px] w-full rounded-2xl bg-[#1E1B4B] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-900"
               >
                 Search Jobs
               </button>
@@ -306,8 +311,8 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                     })}
                     className={`inline-flex min-h-[44px] shrink-0 items-center rounded-full border px-4 text-xs font-semibold transition-colors ${
                       active
-                        ? "border-brand-navy bg-brand-navy text-on-primary"
-                        : "border-border bg-surface-bg text-text-muted hover:border-primary/40 hover:text-text-main"
+                        ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
+                        : "border-indigo-100 bg-white text-text-muted hover:border-[#1E1B4B]/40 hover:text-[#1E1B4B]"
                     }`}
                   >
                     {chip.label}
@@ -329,8 +334,8 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                     })}
                     className={`inline-flex min-h-[44px] shrink-0 items-center rounded-full border px-4 text-xs font-semibold transition-colors ${
                       active
-                        ? "border-primary bg-primary-light text-primary"
-                        : "border-border bg-card-bg text-text-muted hover:border-primary/40 hover:text-text-main"
+                        ? "border-[#1E1B4B] bg-[#EDE9F9] text-[#1E1B4B]"
+                        : "border-indigo-100 bg-white text-text-muted hover:border-[#1E1B4B]/40 hover:text-[#1E1B4B]"
                     }`}
                   >
                     {chip.label}
@@ -342,9 +347,9 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
         </section>
 
         {jobs.length === 0 ? (
-          <div className="rounded-3xl border border-border bg-card-bg p-10 text-center shadow-sm">
+          <div className="rounded-3xl border border-slate-200/80 bg-white p-10 text-center shadow-[0_4px_20px_rgb(30,27,75,0.04)]">
             <Briefcase className="mx-auto h-10 w-10 text-text-muted" />
-            <h2 className="mt-3 text-lg font-bold text-text-main">No jobs found</h2>
+            <h2 className="mt-3 text-lg font-bold text-[#1E1B4B]">No jobs found</h2>
             <p className="mt-1 text-sm text-text-muted">
               {hasFilters
                 ? "Try adjusting or clearing your search filters."
@@ -353,7 +358,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
             {hasFilters ? (
               <Link
                 href="/jobs"
-                className="mt-5 inline-flex min-h-[44px] items-center rounded-2xl bg-primary-light px-5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+                className="mt-5 inline-flex min-h-[44px] items-center rounded-2xl bg-[#EDE9F9] px-5 text-sm font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
               >
                 Clear filters
               </Link>
@@ -369,34 +374,41 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
               );
               const posted = formatPostedDate(job.published_at);
               const benefits = normalizeBenefits(job.public_benefits).slice(0, 2);
+              const companyName = job.company_name?.trim() || "Verified Employer";
+              const companyInitial = companyName.charAt(0).toUpperCase();
 
               return (
                 <Link
                   key={job.id}
                   href={`/jobs/${job.id}`}
-                  className="group flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card-bg p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
+                  className="group flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_4px_20px_rgb(30,27,75,0.04)] transition-all hover:border-[#1E1B4B]/40 hover:shadow-[0_8px_30px_rgb(30,27,75,0.08)]"
                 >
                   <div className="space-y-3">
-                    <div>
-                      <h2 className="text-base font-bold text-text-main transition-colors group-hover:text-brand-navy line-clamp-2 sm:text-lg">
-                        {job.title}
-                      </h2>
-                      <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted sm:text-sm">
-                        <Building2 className="h-3.5 w-3.5 shrink-0 text-brand-navy" />
-                        <span className="truncate font-medium text-text-main">
-                          {job.company_name?.trim() || "Verified Employer"}
-                        </span>
-                        {job.location ? (
-                          <span className="inline-flex items-center gap-0.5 truncate text-text-muted">
-                            <span>•</span>
-                            <MapPin className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{job.location}</span>
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EDE9F9] text-sm font-bold text-[#1E1B4B]">
+                        {companyInitial}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-bold text-[#1E1B4B] transition-colors group-hover:text-indigo-900 line-clamp-2 sm:text-lg">
+                          {job.title}
+                        </h2>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted sm:text-sm">
+                          <Building2 className="h-3.5 w-3.5 shrink-0 text-[#1E1B4B]" />
+                          <span className="truncate font-medium text-text-main">
+                            {companyName}
                           </span>
-                        ) : null}
-                      </p>
+                          {job.location ? (
+                            <span className="inline-flex items-center gap-0.5 truncate text-text-muted">
+                              <span>•</span>
+                              <MapPin className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{job.location}</span>
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 rounded-xl bg-slate-50/80 p-3">
                       {salary ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                           <Wallet className="h-3.5 w-3.5 shrink-0" />
@@ -412,7 +424,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                         <Laptop className="h-3.5 w-3.5 shrink-0" />
                         {formatWorkSetup(job.work_setup, job.is_remote)}
                       </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-primary-light px-2.5 py-1 text-xs font-semibold text-brand-navy">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-[#EDE9F9] px-2.5 py-1 text-xs font-semibold text-[#1E1B4B]">
                         <Briefcase className="h-3.5 w-3.5 shrink-0" />
                         {formatEmploymentType(job.employment_type)}
                       </span>
@@ -427,7 +439,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                         {benefits.map((benefit, index) => (
                           <span
                             key={`${job.id}-benefit-${index}`}
-                            className="rounded-full bg-surface-container-low px-2.5 py-0.5 text-xs font-medium text-primary"
+                            className="rounded-full bg-[#EDE9F9]/70 px-2.5 py-0.5 text-xs font-medium text-[#1E1B4B]"
                           >
                             {formatBenefitChip(benefit)}
                           </span>
@@ -436,12 +448,12 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                     ) : null}
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                     <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
                       <Calendar className="h-3.5 w-3.5" />
                       {posted ? `Posted ${posted}` : "Open now"}
                     </span>
-                    <span className="inline-flex min-h-[36px] items-center rounded-xl bg-brand-navy px-3.5 text-xs font-semibold text-on-primary transition-colors group-hover:bg-brand-navy-light">
+                    <span className="inline-flex min-h-[36px] items-center rounded-xl bg-[#1E1B4B] px-3.5 text-xs font-semibold text-white transition-colors group-hover:bg-indigo-900">
                       View Details
                     </span>
                   </div>
@@ -452,7 +464,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
         )}
 
         {totalPages > 1 ? (
-          <div className="mt-8 flex items-center justify-between gap-3 rounded-2xl border border-border bg-card-bg px-4 py-3 shadow-xs">
+          <div className="mt-8 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-xs">
             <span className="text-xs font-semibold text-text-muted sm:text-sm">
               Page {currentPage} of {totalPages}
             </span>
@@ -463,7 +475,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                     ...filterParams,
                     page: String(currentPage - 1),
                   })}
-                  className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card-bg px-4 text-xs font-semibold text-text-main transition-colors hover:border-primary"
+                  className="inline-flex min-h-[44px] items-center rounded-xl border border-indigo-100 bg-white px-4 text-xs font-semibold text-[#1E1B4B] transition-colors hover:border-[#1E1B4B]"
                 >
                   Previous
                 </Link>
@@ -474,7 +486,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
                     ...filterParams,
                     page: String(currentPage + 1),
                   })}
-                  className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card-bg px-4 text-xs font-semibold text-text-main transition-colors hover:border-primary"
+                  className="inline-flex min-h-[44px] items-center rounded-xl border border-indigo-100 bg-white px-4 text-xs font-semibold text-[#1E1B4B] transition-colors hover:border-[#1E1B4B]"
                 >
                   Next
                 </Link>
