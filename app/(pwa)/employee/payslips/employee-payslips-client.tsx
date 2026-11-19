@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { EmployeePayslip } from "@/lib/types";
 import PayslipDetailModal from "./_components/PayslipDetailModal";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 interface EmployeePayslipsClientProps {
   payslips: EmployeePayslip[];
@@ -59,21 +60,16 @@ export default function EmployeePayslipsClient({
   const ytdEarnings = payslips.reduce((sum, p) => sum + Number(p.net_pay || 0), 0);
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] min-w-0 flex flex-col space-y-6">
-      {/* Deep Royal Purple Hero Band + 3-Card Summary Strip */}
-      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">My Payslips</h1>
-            <p className="mt-1 text-sm text-white/75">
-              View your itemized paystubs, statutory contributions, and net earnings history.
-            </p>
-          </div>
+    <div className="w-full min-w-0 flex flex-col space-y-6">
+      <PwaHeroBanner
+        title="My Payslips"
+        subtitle="View your itemized paystubs, statutory contributions, and net earnings history."
+        badge={
           <span className="rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-semibold text-white">
             Demo Computation
           </span>
-        </div>
-
+        }
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between">
@@ -126,7 +122,9 @@ export default function EmployeePayslipsClient({
             <p className="mt-1 text-xs text-slate-500">15th &amp; 30th Payroll Cycle</p>
           </div>
         </div>
-      </section>
+      </PwaHeroBanner>
+
+      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 sm:px-6 lg:px-10">
 
       {payslips.length === 0 ? (
         /* Empty State */
@@ -234,6 +232,7 @@ export default function EmployeePayslipsClient({
           </div>
         </>
       )}
+      </div>
 
       {/* Payslip Detail Drawer / Modal */}
       <PayslipDetailModal

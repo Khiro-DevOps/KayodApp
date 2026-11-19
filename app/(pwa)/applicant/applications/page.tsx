@@ -8,6 +8,7 @@ import {
 } from "./_components/ApplicationTrackerCard";
 import { ApplicationRealtimeUpdates } from "./_components/ApplicationRealtimeUpdates";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 export const metadata = {
   title: "My Applications | Kayod Platform",
@@ -378,20 +379,13 @@ export default async function ApplicantApplicationsPage() {
   // ============================================================
 
   return (
-    <div className="mx-auto min-h-full max-w-[1400px] space-y-6 pb-8">
+    <div className="min-h-full space-y-6 pb-8">
       <ApplicationRealtimeUpdates userId={user.id} />
 
-      {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
-      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            My Applications
-          </h1>
-          <p className="mt-1 text-sm text-white/75">
-            Track your role progress and interview stages
-          </p>
-        </div>
-
+      <PwaHeroBanner
+        title="My Applications"
+        subtitle="Track your role progress and interview stages"
+      >
         {/* Overview KPI Cards */}
         <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
           {/* Active Applications */}
@@ -448,10 +442,11 @@ export default async function ApplicantApplicationsPage() {
             </div>
           </div>
         </div>
-      </section>
+      </PwaHeroBanner>
 
-      {/* Applications */}
-      {formattedApplications.length === 0 ? (
+      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 sm:px-6 lg:px-10">
+        {/* Applications */}
+        {formattedApplications.length === 0 ? (
         <SolidSurfaceCard className="flex flex-col items-center justify-center px-6 py-16 text-center">
           {/* Empty state icon */}
           <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-[#1E1B4B]">
@@ -505,6 +500,7 @@ export default async function ApplicantApplicationsPage() {
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }

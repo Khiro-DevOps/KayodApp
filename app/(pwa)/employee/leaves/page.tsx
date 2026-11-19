@@ -6,6 +6,7 @@ import { LEAVE_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
 import { reviewLeaveRequest, cancelLeaveRequest } from "./actions";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 interface Props {
   searchParams: Promise<{ error?: string; success?: string }>;
@@ -64,21 +65,19 @@ export default async function LeavesPage({ searchParams }: Props) {
   }
 
   const pending = leaveRequests.filter((l) => l.status === "pending");
+  const approved = leaveRequests.filter((l) => l.status === "approved");
+  const totalLeaveCredits = balances.reduce((sum, b) => sum + (b.remaining ?? 0), 0);
+  const vlRemaining = balances.find((b) => String(b.leave_type).toLowerCase() === "vacation")?.remaining ?? 0;
+  const slRemaining = balances.find((b) => String(b.leave_type).toLowerCase() === "sick")?.remaining ?? 0;
 
   return (
     <PageContainer>
-      <div className="mx-auto max-w-[1400px] space-y-6">
-        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Leave Requests
-              </h1>
-              <p className="mt-1 text-sm text-white/75">
-                Track your leave balances and request time off
-              </p>
-            </div>
-            {!isHR && (
+      <div className="space-y-6">
+        <PwaHeroBanner
+          title="Leave Requests"
+          subtitle="Track your leave balances and request time off"
+          actions={
+            !isHR ? (
               <Link
                 href="/employee/leaves/new"
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-50"
@@ -86,25 +85,37 @@ export default async function LeavesPage({ searchParams }: Props) {
                 <span className="material-symbols-outlined text-[16px]">add</span>
                 Request Leave
               </Link>
-            )}
-          </div>
-
-          {!isHR && balances.length > 0 && (
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-              {balances.map((b) => (
-                <div
-                  key={b.id}
-                  className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm"
-                >
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 capitalize">
-                    {b.leave_type.replace("_", " ")}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-[#1E1B4B]">{b.remaining}d left</p>
-                </div>
-              ))}
+            ) : undefined
+          }
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Leave Credits
+              </p>
+              <p className="mt-1 text-2xl font-bold text-[#1E1B4B]">{totalLeaveCredits}d</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                VL {vlRemaining}d · SL {slRemaining}d
+              </p>
             </div>
-          )}
-        </section>
+            <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Pending Requests
+              </p>
+              <p className="mt-1 text-2xl font-bold text-amber-700">{pending.length}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Awaiting HR review</p>
+            </div>
+            <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Approved Requests
+              </p>
+              <p className="mt-1 text-2xl font-bold text-emerald-700">{approved.length}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Confirmed time off</p>
+            </div>
+          </div>
+        </PwaHeroBanner>
+
+        <div className="mx-auto w-full max-w-[1440px] space-y-5 px-4 sm:px-6 lg:px-10">
 
         {/* ── Toast banners ── */}
         {error && (
@@ -158,6 +169,7 @@ export default async function LeavesPage({ searchParams }: Props) {
               <LeaveCard key={leave.id} leave={leave} isHR={isHR} />
             ))
           )}
+        </div>
         </div>
       </div>
     </PageContainer>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { Profile, Employee, OfficeBranch, EmployeeRemoteResidence, Department } from "@/lib/types";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 interface EmployeeProfileViewProps {
   profile: Profile | null;
@@ -99,29 +100,24 @@ export default function EmployeeProfileView({
     : assignedBranch?.radius_meters || 200;
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] min-w-0 space-y-6">
-      {/* Deep Royal Purple Profile Hero Header */}
-      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-xl font-extrabold text-white">
-              {profile?.first_name ? profile.first_name.charAt(0).toUpperCase() : "E"}
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold text-white sm:text-3xl">
-                {profile?.first_name} {profile?.last_name}
-              </h1>
-              <p className="truncate text-sm text-white/75">{profile?.email}</p>
-            </div>
+    <div className="w-full min-w-0 space-y-6">
+      <PwaHeroBanner
+        title={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Employee Profile"}
+        subtitle={profile?.email ?? ""}
+        avatar={
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-xl font-extrabold text-white">
+            {profile?.first_name ? profile.first_name.charAt(0).toUpperCase() : "E"}
           </div>
+        }
+        badge={
           <span className="inline-flex w-fit items-center rounded-full border border-white/20 bg-white/15 px-3.5 py-1 text-xs font-semibold text-white">
             {employee?.job_title || "Team Member"} · {employee?.departments?.name || "General"}
           </span>
-        </div>
-      </section>
+        }
+      />
 
       {/* Two-Column Desktop Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:px-10">
         {/* Left (lg:col-span-5): Editable Personal Details */}
         <SolidSurfaceCard className="lg:col-span-5 space-y-4 p-5 sm:p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">

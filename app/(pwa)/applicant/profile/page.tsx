@@ -8,6 +8,7 @@ import Link from "next/link";
 import { effectiveRole, roleLabel, isCandidateRole } from "@/lib/roles";
 import ProfileDetailsForm from "./profile-details-form";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -106,27 +107,24 @@ export default async function ProfilePage() {
 
   return (
     <PageContainer>
-      <div className="mx-auto max-w-[1400px] space-y-6">
-        {/* Deep Royal Purple Profile Hero Band */}
-        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold text-white border border-white/20">
-                {displayName.charAt(0).toUpperCase() || "?"}
-              </div>
-              <div className="min-w-0">
-                <h1 className="truncate text-2xl font-bold text-white sm:text-3xl">{displayName}</h1>
-                <p className="truncate text-sm text-white/75">{displayEmail}</p>
-              </div>
+      <div className="space-y-6">
+        <PwaHeroBanner
+          title={displayName}
+          subtitle={displayEmail}
+          avatar={
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-xl font-bold text-white">
+              {displayName.charAt(0).toUpperCase() || "?"}
             </div>
+          }
+          badge={
             <span className="inline-flex w-fit items-center rounded-full border border-white/20 bg-white/15 px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-white">
               {roleLabel(effective)}
             </span>
-          </div>
-        </section>
+          }
+        />
 
         {/* Responsive 2-Column Desktop Layout */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:px-10">
           {/* Left Column: Account Summary + Links + Sign Out */}
           <div className="space-y-6 lg:col-span-5">
             <SolidSurfaceCard className="space-y-4 p-5 sm:p-6">

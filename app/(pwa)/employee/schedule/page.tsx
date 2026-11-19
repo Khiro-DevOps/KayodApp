@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import ScheduleClient from "./schedule-client";
 import ScheduleOverviewCard from "./_components/ScheduleOverviewCard";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 import {
   DAYS_FULL,
@@ -210,16 +211,11 @@ export default async function EmployeeSchedulePage() {
 
   return (
     <PageContainer>
-      <div className="mx-auto w-full max-w-[1400px] min-w-0 space-y-6">
-        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-          <div className="mb-5">
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              My Schedule &amp; Attendance
-            </h1>
-            <p className="mt-1 text-sm text-white/75">
-              Clock in from your assigned zone and track your weekly shifts
-            </p>
-          </div>
+      <div className="w-full min-w-0 space-y-6">
+        <PwaHeroBanner
+          title="My Schedule & Attendance"
+          subtitle="Clock in from your assigned zone and track your weekly shifts"
+        >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">Today&apos;s Mode</p>
@@ -236,9 +232,9 @@ export default async function EmployeeSchedulePage() {
               <p className="mt-1 truncate text-base font-bold text-[#1E1B4B] sm:text-lg">{locationName}</p>
             </div>
           </div>
-        </section>
+        </PwaHeroBanner>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 items-start gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:px-10">
           {/* Left Column: Attendance Clock-In & Workspace Geofence */}
           <div className="lg:col-span-6 space-y-5 min-w-0">
             <ScheduleClient

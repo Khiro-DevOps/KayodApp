@@ -305,8 +305,8 @@ export default function PwaShell({
         <div className={`${pwaAppFrame} pt-[72px]`}>
           <PwaDesktopNav variant={variant} navItems={resolvedConfig.navItems} />
 
-          <div className="flex min-w-0 flex-1 flex-col px-6 py-6 md:px-8 md:py-8">
-            <main className="flex-1 w-full min-w-0 bg-transparent pb-24 pt-2 md:pb-6 md:pt-2">{children}</main>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <main className="flex-1 w-full min-w-0 bg-transparent pb-24 md:pb-10">{children}</main>
             <PwaMobileNav navItems={resolvedConfig.navItems} />
           </div>
         </div>

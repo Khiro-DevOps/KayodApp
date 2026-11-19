@@ -12,6 +12,7 @@ import Link from "next/link";
 import { JOB_INDUSTRIES } from "@/lib/constants";
 import ApplicantJobsClient from "./jobs-client";
 import JobsFilterBar from "./jobs-filter-bar";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
 interface Props {
   searchParams: Promise<{ resume_id?: string; payMin?: string; payMax?: string; location?: string; work_setup?: string; q?: string }>;
@@ -372,17 +373,11 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6">
-      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Browse Jobs
-          </h1>
-          <p className="mt-1 text-sm text-white/75">
-            Explore open roles matched to your resume and skills
-          </p>
-        </div>
-
+    <div className="space-y-6">
+      <PwaHeroBanner
+        title="Browse Jobs"
+        subtitle="Explore open roles matched to your resume and skills"
+      >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
             <p className="text-xs font-medium text-slate-500">Top Matches</p>
@@ -399,25 +394,27 @@ export default async function JobsPage({ searchParams }: Props) {
             </p>
           </div>
         </div>
-      </section>
+      </PwaHeroBanner>
 
-      <JobsFilterBar
-        resumes={(resumes ?? []).map((r) => ({ id: r.id, title: r.title, created_at: r.created_at }))}
-        selectedResumeId={selectedResume?.id ?? ""}
-        initialQuery={searchQuery}
-        initialPayMin={payMin}
-        initialPayMax={payMax}
-        initialLocation={location ?? "all"}
-        initialWorkSetup={work_setup ?? ""}
-      />
+      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 sm:px-6 lg:px-10">
+        <JobsFilterBar
+          resumes={(resumes ?? []).map((r) => ({ id: r.id, title: r.title, created_at: r.created_at }))}
+          selectedResumeId={selectedResume?.id ?? ""}
+          initialQuery={searchQuery}
+          initialPayMin={payMin}
+          initialPayMax={payMax}
+          initialLocation={location ?? "all"}
+          initialWorkSetup={work_setup ?? ""}
+        />
 
-      <ApplicantJobsClient
-        recommendedJobs={recommendedJobs}
-        allJobs={allJobs}
-        selectedResumeTitle={selectedResume?.title ?? undefined}
-        applicationsMap={applicationsMap}
-        isCandidate={isCandidate}
-      />
+        <ApplicantJobsClient
+          recommendedJobs={recommendedJobs}
+          allJobs={allJobs}
+          selectedResumeTitle={selectedResume?.title ?? undefined}
+          applicationsMap={applicationsMap}
+          isCandidate={isCandidate}
+        />
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Palmtree, Banknote, Calendar, CheckCircle2, ClipboardCheck } from "luci
 import { getEmployeeOnboardingProgress } from "@/app/actions/onboarding-documents";
 import { createClient } from "@/lib/supabase/server";
 import PageContainer from "@/components/ui/page-container";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import type { LeaveBalance, LeaveRequest, Payslip, Profile, TimeLog } from "@/lib/types";
 import { LEAVE_STATUS_COLORS, PAYROLL_STATUS_COLORS } from "@/lib/types";
 
@@ -129,18 +130,12 @@ export default async function EmployeeDashboardPage({
 
   return (
     <PageContainer>
-      <div className="mx-auto max-w-[1400px] space-y-6">
-        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <span className="text-sm text-white/75">Welcome back,</span>
-              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
-                Hello, {firstName}
-              </h1>
-            </div>
-            <p className="text-xs font-medium text-white/75">{todayLabel}</p>
-          </div>
-
+      <div className="space-y-6">
+        <PwaHeroBanner
+          eyebrow="Welcome back,"
+          title={`Hello, ${firstName}`}
+          subtitle={todayLabel}
+        >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">Leave Credits</p>
@@ -163,7 +158,9 @@ export default async function EmployeeDashboardPage({
               </p>
             </div>
           </div>
-        </section>
+        </PwaHeroBanner>
+
+        <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 sm:px-6 lg:px-10">
 
         {showWelcome && (
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm font-medium text-emerald-900 shadow-sm">
@@ -416,6 +413,7 @@ export default async function EmployeeDashboardPage({
             </div>
           </SurfaceCard>
         </section>
+      </div>
       </div>
     </PageContainer>
   );
