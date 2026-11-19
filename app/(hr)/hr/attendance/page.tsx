@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { computeUnexcusedAbsences, getTodayPhtIso } from "@/lib/attendance-absent";
@@ -61,7 +62,9 @@ export default async function HRAttendancePage() {
     user.user_metadata?.role ?? rawMeta.role
   ) as string | undefined;
 
-  const { data: profile } = await supabase
+  const admin = getAdminClient();
+
+  const { data: profile } = await admin
     .from("profiles")
     .select("role, tenant_id")
     .eq("id", user.id)
@@ -70,13 +73,11 @@ export default async function HRAttendancePage() {
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  const tenantId = profile?.tenant_id ?? null;
-
   // ── Fetch attendance_logs (last 30 days) joined with employees + profiles ──
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  let query = supabase
+  const { data: rawLogs } = await admin
     .from("attendance_logs")
     .select(
       `
@@ -111,14 +112,6 @@ export default async function HRAttendancePage() {
     .gte("created_at", thirtyDaysAgo.toISOString())
     .order("created_at", { ascending: false })
     .limit(500);
-
-  // Tenant-scope when tenant_id is available (RLS may already enforce this,
-  // but being explicit is safer)
-  if (tenantId) {
-    query = query.eq("tenant_id", tenantId);
-  }
-
-  const { data: rawLogs } = await query;
 
   const logs = (rawLogs ?? []) as unknown as RawAttendanceLog[];
 
@@ -160,26 +153,19 @@ export default async function HRAttendancePage() {
   let onLeaveCount = 0;
   {
     const todayISO = new Date().toISOString().slice(0, 10);
-    let leaveQuery = supabase
+    const { count } = await admin
       .from("leave_requests")
       .select("id", { count: "exact", head: true })
       .in("status", ["approved", "pending"])
       .lte("start_date", todayISO)
       .gte("end_date", todayISO);
-
-    if (tenantId) {
-      // Filter via employees join (leave_requests has employee_id FK)
-      leaveQuery = leaveQuery.not("id", "is", null);
-    }
-
-    const { count } = await leaveQuery;
     onLeaveCount = count ?? 0;
   }
 
   // ── Compute today's unexcused absences for active employees ────────────────
   const todayPht = getTodayPhtIso();
 
-  let activeEmpQuery = supabase
+  const { data: activeEmployees } = await admin
     .from("employees")
     .select(
       `
@@ -196,16 +182,10 @@ export default async function HRAttendancePage() {
     `
     )
     .eq("employment_status", "active");
-
-  if (tenantId) {
-    activeEmpQuery = activeEmpQuery.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
-  }
-
-  const { data: activeEmployees } = await activeEmpQuery;
   const activeEmpIds = (activeEmployees ?? []).map((e) => e.id);
 
   const { data: approvedTodayLeaves } = activeEmpIds.length
-    ? await supabase
+    ? await admin
         .from("leave_requests")
         .select("employee_id, start_date, end_date, status")
         .in("employee_id", activeEmpIds)
