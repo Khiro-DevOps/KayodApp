@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Briefcase, Calendar, MapPin, Search } from "lucide-react";
 
@@ -9,9 +10,21 @@ import {
   formatPostedDate,
   formatSalaryRange,
   formatWorkSetup,
+  getAppUrl,
   normalizeBenefits,
   type PublicJobPosting,
 } from "@/lib/public-jobs";
+
+export const metadata: Metadata = {
+  title: "Open Jobs | Kayod",
+  description: "Browse open job opportunities on Kayod across the Philippines.",
+  openGraph: {
+    title: "Open Jobs | Kayod",
+    description: "Browse open job opportunities on Kayod across the Philippines.",
+    url: getAppUrl("/jobs"),
+    type: "website",
+  },
+};
 
 const PAGE_SIZE = 12;
 

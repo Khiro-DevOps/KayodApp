@@ -142,3 +142,38 @@ export function formatBenefitChip(benefit: PublicJobBenefit): string {
   }
   return benefit.label;
 }
+
+export function getAppUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  return base ? `${base}${normalizedPath}` : normalizedPath;
+}
+
+export function stripMarkup(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[#*_`~>\[\]]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function truncateDescription(text: string | null | undefined, max = 160): string {
+  const clean = stripMarkup(text);
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
+}
+
+export function mapJsonLdEmploymentType(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  const map: Record<string, string> = {
+    full_time: "FULL_TIME",
+    part_time: "PART_TIME",
+    contract: "CONTRACTOR",
+    temporary: "TEMPORARY",
+    internship: "INTERN",
+    freelance: "CONTRACTOR",
+  };
+  return map[normalized] ?? "OTHER";
+}

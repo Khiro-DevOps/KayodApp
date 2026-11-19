@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Briefcase, Building2, Calendar, Clock, MapPin } from "lucide-react";
@@ -11,12 +12,51 @@ import {
   formatPostedDate,
   formatSalaryRange,
   formatWorkSetup,
+  getAppUrl,
+  mapJsonLdEmploymentType,
   normalizeBenefits,
+  stripMarkup,
+  truncateDescription,
   type PublicJobPosting,
 } from "@/lib/public-jobs";
 
 interface PublicJobDetailPageProps {
   params: Promise<{ id: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: PublicJobDetailPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const { data: job } = await supabase
+    .from("public_job_postings")
+    .select("id, title, description, company_name")
+    .eq("id", id)
+    .maybeSingle<Pick<PublicJobPosting, "id" | "title" | "description" | "company_name">>();
+
+  if (!job) {
+    return {
+      title: "Job Not Found | Kayod",
+    };
+  }
+
+  const title = job.company_name ? `${job.title} at ${job.company_name} | Kayod` : `${job.title} | Kayod`;
+  const description =
+    truncateDescription(job.description, 160) ||
+    `Apply for ${job.title}${job.company_name ? ` at ${job.company_name}` : ""} on Kayod.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: getAppUrl(`/jobs/${id}`),
+      type: "article",
+    },
+  };
 }
 
 export default async function PublicJobDetailPage({ params }: PublicJobDetailPageProps) {
@@ -61,9 +101,62 @@ export default async function PublicJobDetailPage({ params }: PublicJobDetailPag
     ? job.required_skills.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
   const nextPath = encodeURIComponent(`/jobs/${id}`);
+  const hasSalaryRange =
+    typeof job.salary_min === "number" &&
+    Number.isFinite(job.salary_min) &&
+    typeof job.salary_max === "number" &&
+    Number.isFinite(job.salary_max);
+  const employmentTypeJsonLd = mapJsonLdEmploymentType(job.employment_type);
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description: stripMarkup(job.description) || job.title,
+    ...(job.published_at ? { datePosted: job.published_at } : {}),
+    ...(job.closes_at ? { validThrough: job.closes_at } : {}),
+    ...(employmentTypeJsonLd ? { employmentType: employmentTypeJsonLd } : {}),
+    ...(job.company_name
+      ? {
+          hiringOrganization: {
+            "@type": "Organization",
+            name: job.company_name,
+          },
+        }
+      : {}),
+    ...(job.location
+      ? {
+          jobLocation: {
+            "@type": "Place",
+            address: {
+              "@type": "PostalAddress",
+              streetAddress: job.location,
+            },
+          },
+        }
+      : {}),
+    ...(hasSalaryRange
+      ? {
+          baseSalary: {
+            "@type": "MonetaryAmount",
+            currency: job.currency || "PHP",
+            value: {
+              "@type": "QuantitativeValue",
+              minValue: job.salary_min,
+              maxValue: job.salary_max,
+              unitText: "MONTH",
+            },
+          },
+        }
+      : {}),
+  };
+  const jsonLdHtml = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
 
   return (
     <div className="min-h-screen bg-surface-bg text-text-main">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: jsonLdHtml }}
+      />
       <header className="border-b border-border bg-card-bg">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="text-lg font-bold tracking-tight text-brand-navy">
