@@ -70,127 +70,135 @@ function LoginForm() {
     : "/register/applicant";
 
   return (
-    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-border bg-card-bg shadow-md lg:grid-cols-12">
-      {/* Left Panel: Auth Form */}
-      <div className="flex flex-col justify-between p-5 sm:p-8 lg:col-span-6 lg:p-10">
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/"
-              className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-brand-navy"
-            >
-              Kayod
-            </Link>
-            <Link
-              href="/jobs"
-              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
-            >
-              Browse jobs
-            </Link>
-          </div>
-
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-text-main sm:text-3xl">
-              Welcome Back
-            </h1>
-            <p className="mt-1 text-sm text-text-muted">
-              Log in to your Kayod account
-            </p>
-          </div>
-
-          {(error || state.error) && (
-            <div
-              role="alert"
-              className="rounded-2xl border border-error/25 bg-error-bg px-4 py-3 text-sm font-medium text-error"
-            >
-              {state.error || error}
-            </div>
-          )}
-
-          <form action={formAction} className="space-y-4">
-            <input type="hidden" name="next" value={next} />
-
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="block text-sm font-semibold text-text-main">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="you@example.com"
-                className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm font-semibold text-text-main">
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="inline-flex min-h-[32px] items-center text-xs font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  placeholder="Enter your password"
-                  className="min-h-[44px] w-full rounded-2xl border border-border bg-surface-bg py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-primary focus:bg-card-bg focus:ring-2 focus:ring-primary/20"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-1 top-1/2 flex h-[40px] w-[40px] -translate-y-1/2 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={pending}
-              className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-navy px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-brand-navy-light disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span>{pending ? "Logging in..." : "Log In"}</span>
-              {!pending ? <ArrowRight className="h-4 w-4" /> : null}
-            </button>
-          </form>
+    <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-indigo-100/80 bg-[#FDF8F2]/60 shadow-[0_8px_30px_rgb(30,27,75,0.08)] lg:grid-cols-12">
+      {/* Left Panel: Warm Cream Canvas + Concentric Rings + Frosted Glass Auth Card */}
+      <div className="relative flex flex-col justify-center overflow-hidden bg-[#FDF8F2]/60 p-4 sm:p-8 lg:col-span-6 lg:p-10">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(253,248,242,0.95),_rgba(252,251,255,0.75)_70%)]" />
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full border border-[#1E1B4B]/10" />
+          <div className="absolute -left-10 -top-10 h-[260px] w-[260px] rounded-full border border-[#1E1B4B]/8" />
         </div>
 
-        <div className="mt-6 border-t border-border pt-4 text-center text-sm text-text-muted">
-          New here?{" "}
-          <Link
-            href="/jobs"
-            className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-          >
-            Browse jobs
-          </Link>{" "}
-          or{" "}
-          <Link
-            href={registerHref}
-            className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-          >
-            create an account
-          </Link>
+        <div className="relative flex flex-col justify-between rounded-3xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.06)] backdrop-blur-xl sm:p-7">
+          <div className="space-y-4 sm:space-y-5">
+            <div className="flex items-center justify-between">
+              <Link
+                href="/"
+                className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-[#1E1B4B]"
+              >
+                Kayod
+              </Link>
+              <Link
+                href="/jobs"
+                className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
+              >
+                Browse jobs
+              </Link>
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] sm:text-3xl">
+                Welcome Back
+              </h1>
+              <p className="mt-1 text-sm text-text-muted">
+                Log in to your Kayod account
+              </p>
+            </div>
+
+            {(error || state.error) && (
+              <div
+                role="alert"
+                className="rounded-2xl border border-error/25 bg-error-bg px-4 py-3 text-sm font-medium text-error"
+              >
+                {state.error || error}
+              </div>
+            )}
+
+            <form action={formAction} className="space-y-4">
+              <input type="hidden" name="next" value={next} />
+
+              <div className="space-y-1.5">
+                <label htmlFor="email" className="block text-sm font-semibold text-text-main">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="you@example.com"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white/90 px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="block text-sm font-semibold text-text-main">
+                    Password
+                  </label>
+                  <Link
+                    href="/forgot-password"
+                    className="inline-flex min-h-[32px] items-center text-xs font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    placeholder="Enter your password"
+                    className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white/90 py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-1 top-1/2 flex h-[40px] w-[40px] -translate-y-1/2 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={pending}
+                className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1E1B4B] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>{pending ? "Logging in..." : "Log In"}</span>
+                {!pending ? <ArrowRight className="h-4 w-4" /> : null}
+              </button>
+            </form>
+          </div>
+
+          <div className="mt-5 border-t border-indigo-100/80 pt-4 text-center text-sm text-text-muted">
+            New here?{" "}
+            <Link
+              href="/jobs"
+              className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
+            >
+              Browse jobs
+            </Link>{" "}
+            or{" "}
+            <Link
+              href={registerHref}
+              className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
+            >
+              create an account
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* Right Panel: Branded Kayod Value Proposition (Desktop only) */}
-      <div className="hidden flex-col justify-between bg-brand-navy p-10 text-on-primary lg:col-span-6 lg:flex">
+      <div className="hidden flex-col justify-between bg-[#1E1B4B] p-10 text-on-primary lg:col-span-6 lg:flex">
         <div className="space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-brand-navy-light px-3.5 py-1.5 text-xs font-semibold text-primary-fixed">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-primary-fixed">
             <BadgeCheck className="h-4 w-4" />
             <span>Built for Philippine Teams &amp; Talent</span>
           </div>
@@ -210,9 +218,9 @@ function LoginForm() {
               return (
                 <div
                   key={item.title}
-                  className="flex items-start gap-3.5 rounded-2xl border border-white/10 bg-brand-navy-light/70 p-4"
+                  className="flex items-start gap-3.5 rounded-2xl border border-white/10 bg-white/10 p-4"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-on-primary">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div>
