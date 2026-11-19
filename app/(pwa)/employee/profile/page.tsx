@@ -73,6 +73,7 @@ export default async function EmployeeProfilePage() {
           remoteResidence={remoteResidence}
           linkedJobTitle={linkedJob?.title ?? null}
           linkedJobDepartment={linkedJob?.departmentName ?? null}
+          linkedWorkMode={linkedJob?.workMode ?? null}
         />
 
         <div className="mx-auto w-full max-w-[1440px] px-4 pb-6 sm:px-6 lg:px-10">

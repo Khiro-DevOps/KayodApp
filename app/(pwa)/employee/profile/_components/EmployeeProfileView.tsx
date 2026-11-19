@@ -6,6 +6,7 @@ import type { Profile, Employee, OfficeBranch, EmployeeRemoteResidence, Departme
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { resolveEmployeePosition } from "@/lib/employee-position";
+import WfhResidenceCard from "./WfhResidenceCard";
 
 interface EmployeeProfileViewProps {
   profile: Profile | null;
@@ -13,6 +14,7 @@ interface EmployeeProfileViewProps {
   remoteResidence: EmployeeRemoteResidence | null;
   linkedJobTitle?: string | null;
   linkedJobDepartment?: string | null;
+  linkedWorkMode?: string | null;
 }
 
 function calculateProbationDaysRemaining(probationEndDateStr?: string | null): number | null {
@@ -43,6 +45,7 @@ export default function EmployeeProfileView({
   remoteResidence,
   linkedJobTitle,
   linkedJobDepartment,
+  linkedWorkMode,
 }: EmployeeProfileViewProps) {
   const [phone, setPhone] = useState(profile?.phone || "");
   const [emergencyContact, setEmergencyContact] = useState(
@@ -79,7 +82,7 @@ export default function EmployeeProfileView({
     }
   };
 
-  const workMode = (employee?.work_mode as string) || "onsite";
+  const workMode = linkedWorkMode || (employee?.work_mode as string) || "onsite";
   const probationDays = calculateProbationDaysRemaining(employee?.probation_end_date);
   const formattedSalary = employee?.base_salary || employee?.salary
     ? `₱${(employee?.base_salary || employee?.salary || 0).toLocaleString("en-PH")}`
@@ -274,6 +277,12 @@ export default function EmployeeProfileView({
           )}
         </SolidSurfaceCard>
       </div>
+
+      {["hybrid", "wfh", "remote"].includes(workMode.toLowerCase()) ? (
+        <div className="mx-auto w-full max-w-[1440px] px-4 pb-2 sm:px-6 lg:px-10">
+          <WfhResidenceCard remoteResidence={remoteResidence} />
+        </div>
+      ) : null}
     </div>
   );
 }

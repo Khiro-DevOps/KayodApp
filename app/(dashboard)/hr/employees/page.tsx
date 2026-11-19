@@ -57,7 +57,7 @@ export default async function EmployeesPage() {
       .returns<Array<{ id: string; name: string }>>(),
     admin
       .from("employee_remote_residences")
-      .select("employee_id, city, address, is_active"),
+      .select("*"),
   ]);
 
   const branchNameById = new Map(
@@ -65,7 +65,18 @@ export default async function EmployeesPage() {
   );
   const remoteResidenceByEmpId = new Map<
     string,
-    { city?: string | null; address?: string | null; is_active?: boolean | null }
+    {
+      city?: string | null;
+      address?: string | null;
+      is_active?: boolean | null;
+      approval_status?: string | null;
+      pending_address?: string | null;
+      pending_latitude?: number | null;
+      pending_longitude?: number | null;
+      relocation_reason?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    }
   >();
   for (const res of remoteResidences ?? []) {
     const row = res as {
@@ -73,8 +84,15 @@ export default async function EmployeesPage() {
       city?: string | null;
       address?: string | null;
       is_active?: boolean | null;
+      approval_status?: string | null;
+      pending_address?: string | null;
+      pending_latitude?: number | null;
+      pending_longitude?: number | null;
+      relocation_reason?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
     };
-    if (row.employee_id && row.is_active !== false) {
+    if (row.employee_id) {
       remoteResidenceByEmpId.set(row.employee_id, row);
     }
   }
@@ -237,26 +255,62 @@ export default async function EmployeesPage() {
       ? branchNameById.get(effectiveBranchId) ?? null
       : null;
     const remoteResidence = remoteResidenceByEmpId.get(emp.id);
+    const hasPendingWfh = remoteResidence?.approval_status === "pending";
+    const hasApprovedWfh =
+      Boolean(remoteResidence) &&
+      remoteResidence?.is_active !== false &&
+      remoteResidence?.approval_status !== "rejected" &&
+      (remoteResidence?.approval_status === "approved" ||
+        !remoteResidence?.approval_status);
 
     let branchName = "To be set";
     let branchNeedsSetup = true;
+    let branchStatus: "ok" | "pending" | "setup" = "setup";
     if (effectiveWorkMode === "onsite") {
       if (resolvedBranchName) {
         branchName = resolvedBranchName;
         branchNeedsSetup = false;
+        branchStatus = "ok";
       }
     } else if (effectiveWorkMode === "hybrid") {
-      if (resolvedBranchName && remoteResidence) {
+      if (hasPendingWfh) {
+        branchName = "Pending WFH Approval";
+        branchNeedsSetup = true;
+        branchStatus = "pending";
+      } else if (resolvedBranchName && hasApprovedWfh) {
         branchName = `${resolvedBranchName} + WFH`;
         branchNeedsSetup = false;
+        branchStatus = "ok";
       }
     } else if (effectiveWorkMode === "remote") {
-      if (remoteResidence) {
-        const cityLabel = remoteResidence.city?.trim();
+      if (hasPendingWfh) {
+        branchName = "Pending WFH Approval";
+        branchNeedsSetup = true;
+        branchStatus = "pending";
+      } else if (hasApprovedWfh) {
+        const cityLabel = remoteResidence?.city?.trim();
         branchName = cityLabel ? `WFH Verified (${cityLabel})` : "WFH Verified";
         branchNeedsSetup = false;
+        branchStatus = "ok";
       }
     }
+
+    const pendingWfhRequest =
+      hasPendingWfh && remoteResidence
+        ? {
+            address:
+              remoteResidence.pending_address ?? remoteResidence.address ?? "",
+            latitude: Number(
+              remoteResidence.pending_latitude ?? remoteResidence.latitude ?? 0,
+            ),
+            longitude: Number(
+              remoteResidence.pending_longitude ??
+                remoteResidence.longitude ??
+                0,
+            ),
+            reason: remoteResidence.relocation_reason ?? null,
+          }
+        : null;
 
     return {
       id: emp.id,
@@ -269,6 +323,8 @@ export default async function EmployeesPage() {
       workMode: effectiveWorkMode,
       branchName,
       branchNeedsSetup,
+      branchStatus,
+      pendingWfhRequest,
       monthlySalary: resolvedMonthlySalary,
       startDate: emp.start_date ?? null,
     };

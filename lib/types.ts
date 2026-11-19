@@ -559,6 +559,16 @@ export interface EmployeeRemoteResidence {
   latitude: number;
   longitude: number;
   geofence_radius_meters: number;
+  is_active?: boolean;
+  approval_status?: "pending" | "approved" | "rejected" | string | null;
+  pending_address?: string | null;
+  pending_latitude?: number | null;
+  pending_longitude?: number | null;
+  pending_radius_meters?: number | null;
+  relocation_reason?: string | null;
+  rejection_reason?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
   updated_by?: string | null;
   created_at: string;
   updated_at: string;

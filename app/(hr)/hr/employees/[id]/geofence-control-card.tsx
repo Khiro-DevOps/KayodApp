@@ -1,8 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { updateEmployeeLocationAction } from "./employee-location-actions";
+import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
 import type { OfficeBranch, EmployeeRemoteResidence, WorkSetup } from "@/lib/types";
 
 const Map = dynamic(() => import("../../settings/branches/branch-map"), { ssr: false });
@@ -22,6 +25,8 @@ export default function GeofenceControlCard({
   officeBranches,
   remoteResidence
 }: Props) {
+  const router = useRouter();
+  const [isReviewPending, startReviewTransition] = useTransition();
   const [workMode, setWorkMode] = useState<string>(initialWorkMode || "onsite");
   const [isPending, setIsPending] = useState(false);
   const [address, setAddress] = useState<string>(remoteResidence?.address ?? "");
@@ -62,6 +67,23 @@ export default function GeofenceControlCard({
 
   const needsBranch = workMode === "onsite" || workMode === "hybrid";
   const needsRemote = workMode === "remote" || workMode === "hybrid" || workMode === "wfh";
+  const hasPendingWfh = remoteResidence?.approval_status === "pending";
+
+  const handleReviewWfh = (decision: "approve" | "reject") => {
+    startReviewTransition(async () => {
+      const res = await reviewWfhLocationAction({ employeeId, decision });
+      if (!res.success) {
+        toast.error(res.error || "Failed to review WFH request");
+        return;
+      }
+      toast.success(
+        decision === "approve"
+          ? "WFH residence location approved"
+          : "WFH residence request declined",
+      );
+      router.refresh();
+    });
+  };
 
   return (
     <div className="rounded-xl border border-border bg-card-bg shadow-sm overflow-hidden">
@@ -73,6 +95,46 @@ export default function GeofenceControlCard({
           Configure the employee&apos;s work arrangement and geofencing parameters for attendance tracking.
         </p>
       </div>
+
+      {hasPendingWfh && remoteResidence ? (
+        <div className="mx-5 mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+              Pending WFH / Relocation Request
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isReviewPending}
+                onClick={() => handleReviewWfh("reject")}
+                className="rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                disabled={isReviewPending}
+                onClick={() => handleReviewWfh("approve")}
+                className="rounded-xl bg-[#1E1B4B] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E1B4B]/90 disabled:opacity-50"
+              >
+                {isReviewPending ? "Saving..." : "Approve WFH Location"}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs font-medium text-amber-950">
+            Requested Address: {remoteResidence.pending_address ?? remoteResidence.address}
+          </p>
+          <p className="text-[11px] text-amber-800">
+            Coordinates: {Number(remoteResidence.pending_latitude ?? remoteResidence.latitude).toFixed(6)},{" "}
+            {Number(remoteResidence.pending_longitude ?? remoteResidence.longitude).toFixed(6)}
+          </p>
+          {remoteResidence.relocation_reason ? (
+            <p className="text-xs text-amber-900">
+              Reason: {remoteResidence.relocation_reason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="p-5 space-y-6">
         <div className="space-y-3">

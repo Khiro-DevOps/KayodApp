@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Building2, Home, Laptop, Users } from "lucide-react";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
 
 export interface DirectoryEmployee {
   id: string;
@@ -16,6 +19,13 @@ export interface DirectoryEmployee {
   workMode: "onsite" | "hybrid" | "remote";
   branchName: string;
   branchNeedsSetup?: boolean;
+  branchStatus?: "ok" | "pending" | "setup";
+  pendingWfhRequest?: {
+    address: string;
+    latitude: number;
+    longitude: number;
+    reason: string | null;
+  } | null;
   monthlySalary: number;
   startDate: string | null;
 }
@@ -56,8 +66,26 @@ export default function EmployeesDirectoryClient({
 }: {
   employees: DirectoryEmployee[];
 }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [searchQuery, setSearchQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<WorkModeFilter>("All");
+
+  const handleReviewWfh = (employeeId: string, decision: "approve" | "reject") => {
+    startTransition(async () => {
+      const res = await reviewWfhLocationAction({ employeeId, decision });
+      if (!res.success) {
+        toast.error(res.error || "Failed to review WFH request");
+        return;
+      }
+      toast.success(
+        decision === "approve"
+          ? "WFH residence location approved"
+          : "WFH residence request declined",
+      );
+      router.refresh();
+    });
+  };
 
   const kpis = useMemo(() => {
     const activeStatuses = new Set(["active", "probation", "onboarding"]);
@@ -267,7 +295,37 @@ export default function EmployeesDirectoryClient({
                 </div>
               </div>
 
-              <div className="mt-4 border-t border-slate-100 pt-3">
+              <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                {emp.pendingWfhRequest ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-2.5 text-[11px] text-amber-950 space-y-2">
+                    <p className="font-semibold line-clamp-2">
+                      WFH Request: {emp.pendingWfhRequest.address}
+                    </p>
+                    {emp.pendingWfhRequest.reason ? (
+                      <p className="text-amber-800 line-clamp-1">
+                        Reason: {emp.pendingWfhRequest.reason}
+                      </p>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleReviewWfh(emp.id, "approve")}
+                        className="flex-1 rounded-lg bg-[#1E1B4B] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1E1B4B]/90 disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleReviewWfh(emp.id, "reject")}
+                        className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <Link
                   href={`/hr/employees/${emp.id}`}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#1E1B4B]/20 bg-white px-3 py-2 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"

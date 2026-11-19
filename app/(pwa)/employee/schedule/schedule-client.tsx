@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   clockInAction,
@@ -716,6 +717,14 @@ export default function ScheduleClient({
               <p className="text-xs font-semibold text-gray-800">
                 {geofenceError || "Geofence coordinates not configured for your account."}
               </p>
+              {(!isTodayOnsite || workModel === "wfh" || workModel === "hybrid") ? (
+                <Link
+                  href="/employee/profile"
+                  className="mt-1 inline-flex items-center gap-1 rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E1B4B]/90"
+                >
+                  Set up WFH Location in Profile →
+                </Link>
+              ) : null}
             </div>
           )}
         </div>
