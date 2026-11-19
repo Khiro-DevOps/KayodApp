@@ -44,6 +44,97 @@ function formatDateRange(startDateStr?: string, endDateStr?: string): string {
   return `${start} – ${end}`;
 }
 
+function formatFrequencyLabel(raw: string): string {
+  const lower = raw.trim().toLowerCase();
+  if (lower === "semi_monthly" || lower === "semi-monthly") return "Semi-Monthly";
+  if (lower === "biweekly" || lower === "bi-weekly") return "Biweekly";
+  if (lower === "monthly") return "Monthly";
+  if (lower === "weekly") return "Weekly";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatPesoTokens(text: string): string {
+  return text.replace(/₱(\d+(?:\.\d{1,2})?)/g, (_, numStr: string) => {
+    const num = Number(numStr);
+    if (!Number.isFinite(num)) return `₱${numStr}`;
+    return `₱${num.toLocaleString("en-PH", {
+      minimumFractionDigits: numStr.includes(".") ? 2 : 0,
+      maximumFractionDigits: 2,
+    })}`;
+  });
+}
+
+type BreakdownItem = {
+  label: string;
+  value: string;
+  tone: "neutral" | "positive" | "warning" | "deduction";
+};
+
+function parseComputationBreakdown(rawRemarks: string): BreakdownItem[] {
+  const segments = rawRemarks
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const items: BreakdownItem[] = [];
+
+  for (const seg of segments) {
+    const demoMatch = seg.match(/^Demo Computation\s*\(([^)]+)\)$/i);
+    if (demoMatch) {
+      items.push({
+        label: "Pay Cycle",
+        value: formatFrequencyLabel(demoMatch[1]),
+        tone: "neutral",
+      });
+      continue;
+    }
+
+    // Hide zero-value noise segments (OT 0.00h, Night Diff 0.00h, Late 0m, Absent 0d)
+    if (
+      /^OT:\s*0(?:\.0+)?h\s*\(₱0(?:\.0+)?\)$/i.test(seg) ||
+      /^Night Diff:\s*0(?:\.0+)?h\s*\(₱0(?:\.0+)?\)$/i.test(seg) ||
+      /^Late:\s*0m\s*\(-?₱0(?:\.0+)?\)$/i.test(seg) ||
+      /^Absent:\s*0d\s*\(-?₱0(?:\.0+)?\)$/i.test(seg)
+    ) {
+      continue;
+    }
+
+    const colonIdx = seg.indexOf(":");
+    if (colonIdx > 0) {
+      const label = seg.slice(0, colonIdx).trim();
+      const value = formatPesoTokens(seg.slice(colonIdx + 1).trim());
+      const lowerLabel = label.toLowerCase();
+      const tone: BreakdownItem["tone"] =
+        lowerLabel.includes("late") ||
+        lowerLabel.includes("absent") ||
+        lowerLabel.includes("overbreak") ||
+        lowerLabel.includes("deduction")
+          ? "deduction"
+          : lowerLabel.includes("allowance") ||
+              lowerLabel.includes("incentive") ||
+              lowerLabel.includes("ot") ||
+              lowerLabel.includes("night diff")
+            ? "positive"
+            : "neutral";
+      items.push({ label, value, tone });
+      continue;
+    }
+
+    const formatted = formatPesoTokens(seg);
+    const lowerSeg = formatted.toLowerCase();
+    const tone: BreakdownItem["tone"] = lowerSeg.includes("forfeited")
+      ? "warning"
+      : lowerSeg.includes("earned") || lowerSeg.includes("prorated")
+        ? "positive"
+        : "neutral";
+    items.push({ label: "Note", value: formatted, tone });
+  }
+
+  return items;
+}
+
 export default function PayslipDetailModal({
   payslip,
   employeeName,
@@ -74,8 +165,8 @@ export default function PayslipDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl print:max-h-none print:w-full print:max-w-none print:rounded-none print:p-0 print:shadow-none">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-6">
+      <div className="relative max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 sm:p-6 shadow-2xl print:max-h-none print:w-full print:max-w-none print:rounded-none print:p-0 print:shadow-none">
         {/* Modal Top Header Actions (hidden when printing) */}
         <div className="flex items-center justify-between border-b border-[#e6e4f0] pb-4 print:hidden">
           <div className="flex items-center gap-2">
@@ -216,12 +307,38 @@ export default function PayslipDetailModal({
             </div>
           </div>
 
-          {remarks && (
-            <div className="rounded-2xl border border-[#e6e4f0] bg-[#f7f6fc] px-4 py-3 text-xs text-[#5d5a75]">
-              <p className="font-semibold text-[#171542] mb-0.5">Computation Breakdown</p>
-              <p className="leading-relaxed">{remarks}</p>
-            </div>
-          )}
+          {remarks && (() => {
+            const breakdownItems = parseComputationBreakdown(remarks);
+            if (breakdownItems.length === 0) return null;
+            return (
+              <div className="rounded-2xl border border-[#e6e4f0] bg-[#f7f6fc] p-4 text-xs space-y-2.5">
+                <p className="font-bold uppercase tracking-wider text-[11px] text-[#171542]">
+                  Computation Breakdown
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {breakdownItems.map((item, idx) => {
+                    const pillClass =
+                      item.tone === "positive"
+                        ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                        : item.tone === "deduction"
+                          ? "border-rose-200 bg-rose-50/70 text-rose-900"
+                          : item.tone === "warning"
+                            ? "border-amber-200 bg-amber-50/70 text-amber-900"
+                            : "border-[#e6e4f0] bg-white text-[#171542]";
+                    return (
+                      <div
+                        key={`${item.label}-${idx}`}
+                        className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${pillClass}`}
+                      >
+                        <span className="font-semibold opacity-80 shrink-0">{item.label}</span>
+                        <span className="font-bold text-right">{item.value}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Highlight Footer: NET TAKE-HOME PAY (purple background) */}
           <div className="rounded-2xl bg-[#1F195E] p-5 text-white shadow-md">
