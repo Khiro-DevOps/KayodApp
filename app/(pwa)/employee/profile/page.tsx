@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PwaSignOutButton } from "@/components/layout/pwa-shell";
 import PageContainer from "@/components/ui/page-container";
 import EmployeeProfileView from "./_components/EmployeeProfileView";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import type { Profile, Department } from "@/lib/types";
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +62,8 @@ export default async function EmployeeProfilePage() {
     remoteResidence = remoteData;
   }
 
+  const linkedJob = await getJobPostingPositionForProfile(user.id);
+
   return (
     <PageContainer>
       <div className="w-full min-w-0 flex flex-col">
@@ -68,6 +71,8 @@ export default async function EmployeeProfilePage() {
           profile={profile ?? null}
           employee={(employee as any) ?? null}
           remoteResidence={remoteResidence}
+          linkedJobTitle={linkedJob?.title ?? null}
+          linkedJobDepartment={linkedJob?.departmentName ?? null}
         />
 
         <div className="mx-auto w-full max-w-[1440px] px-4 pb-6 sm:px-6 lg:px-10">

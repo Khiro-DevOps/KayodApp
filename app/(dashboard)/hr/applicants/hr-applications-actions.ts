@@ -117,7 +117,7 @@ export async function updateApplicationStatus(formData: FormData) {
   if (dbStatus === "hired") {
     const { data: app } = await supabase
       .from("job_applications")
-      .select("applicant_id, job:job_postings(title)")
+      .select("applicant_id, job:job_postings(title, department_id)")
       .eq("id", applicationId)
       .single();
 
@@ -129,10 +129,12 @@ export async function updateApplicationStatus(formData: FormData) {
         .maybeSingle();
 
       if (!existing) {
-        const jobTitle = (app.job as unknown as { title: string })?.title ?? "Employee";
+        const job = app.job as unknown as { title?: string | null; department_id?: string | null } | null;
+        const jobTitle = job?.title?.trim() || "Unassigned Role";
         await supabase.from("employees").insert({
           profile_id:        app.applicant_id,
           application_id:    applicationId,
+          department_id:     job?.department_id ?? null,
           job_title:         jobTitle,
           start_date:        new Date().toISOString().split("T")[0],
           base_salary:       0,

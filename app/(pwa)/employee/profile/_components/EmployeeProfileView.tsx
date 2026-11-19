@@ -5,11 +5,14 @@ import { toast } from "sonner";
 import type { Profile, Employee, OfficeBranch, EmployeeRemoteResidence, Department } from "@/lib/types";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
+import { resolveEmployeePosition } from "@/lib/employee-position";
 
 interface EmployeeProfileViewProps {
   profile: Profile | null;
   employee: (Employee & { departments?: Department | null; office_branches?: OfficeBranch | null }) | null;
   remoteResidence: EmployeeRemoteResidence | null;
+  linkedJobTitle?: string | null;
+  linkedJobDepartment?: string | null;
 }
 
 function calculateProbationDaysRemaining(probationEndDateStr?: string | null): number | null {
@@ -38,6 +41,8 @@ export default function EmployeeProfileView({
   profile,
   employee,
   remoteResidence,
+  linkedJobTitle,
+  linkedJobDepartment,
 }: EmployeeProfileViewProps) {
   const [phone, setPhone] = useState(profile?.phone || "");
   const [emergencyContact, setEmergencyContact] = useState(
@@ -99,6 +104,14 @@ export default function EmployeeProfileView({
     ? remoteResidence?.geofence_radius_meters || 200
     : assignedBranch?.radius_meters || 200;
 
+  const { position: resolvedPosition, department: resolvedDepartment } =
+    resolveEmployeePosition({
+      employeePosition: employee?.job_title,
+      jobTitle: linkedJobTitle,
+      department: employee?.departments?.name,
+      jobDepartment: linkedJobDepartment,
+    });
+
   return (
     <div className="w-full min-w-0">
       <PwaHeroBanner
@@ -111,7 +124,7 @@ export default function EmployeeProfileView({
         }
         badge={
           <span className="inline-flex w-fit items-center rounded-full border border-white/20 bg-white/15 px-3.5 py-1 text-xs font-semibold text-white">
-            {employee?.job_title || "Team Member"} · {employee?.departments?.name || "General"}
+            {resolvedPosition} · {resolvedDepartment}
           </span>
         }
       />
@@ -188,12 +201,12 @@ export default function EmployeeProfileView({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
               <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">Position</p>
-              <p className="mt-0.5 text-sm font-bold text-[#1E1B4B]">{employee?.job_title || "Team Member"}</p>
+              <p className="mt-0.5 text-sm font-bold text-[#1E1B4B]">{resolvedPosition}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
               <p className="text-[10px] uppercase tracking-wider text-text-secondary font-medium">Department</p>
-              <p className="mt-0.5 text-sm font-bold text-[#1E1B4B]">{employee?.departments?.name || "General"}</p>
+              <p className="mt-0.5 text-sm font-bold text-[#1E1B4B]">{resolvedDepartment}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">

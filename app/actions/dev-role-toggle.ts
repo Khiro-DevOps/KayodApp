@@ -2,6 +2,8 @@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 
 type DevRole = "applicant" | "employee" | "hr_manager";
 
@@ -164,9 +166,11 @@ export async function toggleDevUserRole(
         defaultBranchId = anyBranch?.id ?? null;
       }
 
+      const linkedJob = await getJobPostingPositionForProfile(userId);
+
       const { data: existingEmployee, error: employeeLookupError } = await admin
         .from("employees")
-        .select("id, tenant_id, work_location_id, work_mode, base_salary, salary")
+        .select("id, tenant_id, work_location_id, work_mode, base_salary, salary, job_title, department_id")
         .eq("profile_id", userId)
         .maybeSingle<{
           id: string;
@@ -175,6 +179,8 @@ export async function toggleDevUserRole(
           work_mode: string | null;
           base_salary: number | null;
           salary: number | null;
+          job_title: string | null;
+          department_id: string | null;
         }>();
 
       if (employeeLookupError) {
@@ -188,6 +194,12 @@ export async function toggleDevUserRole(
       }
 
       let resolvedEmployeeId: string;
+      const resolvedPosition = resolveEmployeePosition({
+        employeePosition: existingEmployee?.job_title,
+        jobTitle: linkedJob?.title,
+      }).position;
+      const resolvedDepartmentId =
+        linkedJob?.departmentId ?? existingEmployee?.department_id ?? null;
 
       if (existingEmployee) {
         const nextSalary =
@@ -203,6 +215,8 @@ export async function toggleDevUserRole(
             employment_status: "active",
             end_date: null,
             tenant_id: existingEmployee.tenant_id ?? resolvedTenantId,
+            job_title: resolvedPosition,
+            department_id: resolvedDepartmentId,
             work_location_id: existingEmployee.work_location_id ?? defaultBranchId,
             work_mode: existingEmployee.work_mode ?? "onsite",
             base_salary: nextSalary,
@@ -226,7 +240,8 @@ export async function toggleDevUserRole(
           .insert({
             profile_id: userId,
             tenant_id: resolvedTenantId,
-            job_title: "Development Employee",
+            job_title: resolvedPosition,
+            department_id: resolvedDepartmentId,
             employment_type: "full_time",
             employment_status: "active",
             work_mode: "onsite",

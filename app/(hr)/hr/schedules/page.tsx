@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
 import {
   DAYS_FULL,
@@ -68,6 +70,7 @@ export default async function HRSchedulesPage() {
     )
   );
   const profileMap = new Map<string, { first_name?: string | null; last_name?: string | null }>();
+  const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(profileIds);
   if (profileIds.length > 0) {
     const { data: profRows } = await admin
       .from("profiles")
@@ -213,10 +216,14 @@ export default async function HRSchedulesPage() {
       };
       const liveStatus = liveStatusByEmp.get(emp.id) ?? null;
 
+      const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
       return {
         id: emp.id,
         name,
-        role: emp.job_title || "Staff",
+        role: resolveEmployeePosition({
+          employeePosition: emp.job_title,
+          jobTitle: linkedJob?.title,
+        }).position,
         work_model: rawModel as HRScheduleEmployee["work_model"],
         hybrid_onsite_days: onsiteDays,
         hybrid_wfh_days: wfhDays,

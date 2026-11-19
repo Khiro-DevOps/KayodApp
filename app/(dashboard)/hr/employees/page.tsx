@@ -3,6 +3,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { resolveOfferSalary, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import type { Employee, Profile } from "@/lib/types";
 import EmployeesDirectoryClient, {
   type DirectoryEmployee,
@@ -175,6 +177,11 @@ export default async function EmployeesPage() {
     }
   }
 
+  const allProfileIds = Array.from(
+    new Set((employees ?? []).map((emp) => emp.profile_id).filter(Boolean))
+  );
+  const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(allProfileIds);
+
   const directoryEmployees: DirectoryEmployee[] = (employees ?? []).map((emp) => {
     const p = emp.profiles as unknown as {
       first_name?: string;
@@ -182,6 +189,13 @@ export default async function EmployeesPage() {
       email?: string;
     } | null;
     const dept = emp.departments as unknown as { name?: string } | null;
+    const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
+    const resolvedPosition = resolveEmployeePosition({
+      employeePosition: emp.job_title,
+      jobTitle: linkedJob?.title,
+      department: dept?.name,
+      jobDepartment: linkedJob?.departmentName,
+    });
     const fullName =
       [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
     const storedSalary = Number(emp.base_salary ?? emp.salary ?? 0);
@@ -203,8 +217,8 @@ export default async function EmployeesPage() {
       id: emp.id,
       fullName,
       initials: getInitials(fullName),
-      jobTitle: emp.job_title || "Staff",
-      departmentName: dept?.name ?? null,
+      jobTitle: resolvedPosition.position,
+      departmentName: resolvedPosition.department,
       email: p?.email ?? null,
       employmentStatus: emp.employment_status || "active",
       workMode: normalizeWorkMode(emp.work_mode),

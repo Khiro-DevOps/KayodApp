@@ -7,6 +7,8 @@ import GeofenceControlCard from "./geofence-control-card";
 import CompensationEditorCard from "./compensation-editor-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
 import { resolveOfferCompensation, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import type { OfficeBranch, EmployeeRemoteResidence, Profile, WorkSetup } from "@/lib/types";
 
 interface Props {
@@ -159,6 +161,13 @@ export default async function EmployeeDetailPage({ params }: Props) {
   }
     
   const p = employee.profiles as unknown as { first_name: string; last_name: string; email: string; };
+  const linkedJob = employee.profile_id
+    ? await getJobPostingPositionForProfile(employee.profile_id)
+    : null;
+  const resolvedRole = resolveEmployeePosition({
+    employeePosition: employee.job_title,
+    jobTitle: linkedJob?.title,
+  }).position;
 
   return (
     <PageContainer>
@@ -175,7 +184,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
               {p ? `${p.first_name} ${p.last_name}` : "Employee Details"}
             </h1>
             <p className="text-sm text-text-muted">
-              {employee.job_title} • {employee.employee_number}
+              {resolvedRole} • {employee.employee_number}
             </p>
           </div>
         </div>

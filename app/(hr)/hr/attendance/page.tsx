@@ -3,6 +3,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import { computeUnexcusedAbsences, getTodayPhtIso } from "@/lib/attendance-absent";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import HRAttendanceClient, { type AttendanceRow } from "./hr-attendance-client";
 
 export const metadata = {
@@ -34,6 +36,7 @@ type RawAttendanceLog = {
   flag_reason: string | null;
   created_at: string | null;
   employees: {
+    profile_id?: string | null;
     job_title: string | null;
     work_mode: string | null;
     shift_start: string | null;
@@ -98,6 +101,7 @@ export default async function HRAttendancePage() {
       flag_reason,
       created_at,
       employees (
+        profile_id,
         job_title,
         work_mode,
         shift_start,
@@ -170,6 +174,7 @@ export default async function HRAttendancePage() {
     .select(
       `
       id,
+      profile_id,
       job_title,
       work_mode,
       work_days,
@@ -183,6 +188,19 @@ export default async function HRAttendancePage() {
     )
     .eq("employment_status", "active");
   const activeEmpIds = (activeEmployees ?? []).map((e) => e.id);
+  const allAttendanceProfileIds = Array.from(
+    new Set([
+      ...(activeEmployees ?? [])
+        .map((e) => (e as { profile_id?: string | null }).profile_id)
+        .filter((pid): pid is string => Boolean(pid)),
+      ...logs
+        .map((l) => l.employees?.profile_id)
+        .filter((pid): pid is string => Boolean(pid)),
+    ]),
+  );
+  const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(
+    allAttendanceProfileIds,
+  );
 
   const { data: approvedTodayLeaves } = activeEmpIds.length
     ? await admin
@@ -219,11 +237,17 @@ export default async function HRAttendancePage() {
       const name =
         [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || "Employee";
 
+      const linkedJob = (emp as { profile_id?: string | null }).profile_id
+        ? jobPostingByProfileId[(emp as { profile_id: string }).profile_id]
+        : undefined;
       absentRows.push({
         id: `absent-${emp.id}-${todayPht}`,
         employeeName: name,
         avatarUrl: p?.avatar_url ?? null,
-        jobTitle: emp.job_title ?? null,
+        jobTitle: resolveEmployeePosition({
+          employeePosition: emp.job_title,
+          jobTitle: linkedJob?.title,
+        }).position,
         workSetup: (emp.work_mode as AttendanceRow["workSetup"]) ?? null,
         isToday: true,
         isLate: false,
@@ -273,11 +297,17 @@ export default async function HRAttendancePage() {
       }
     }
 
+    const linkedJob = emp?.profile_id
+      ? jobPostingByProfileId[emp.profile_id]
+      : undefined;
     return {
       id: l.id,
       employeeName: name,
       avatarUrl: p?.avatar_url ?? null,
-      jobTitle: emp?.job_title ?? null,
+      jobTitle: resolveEmployeePosition({
+        employeePosition: emp?.job_title,
+        jobTitle: linkedJob?.title,
+      }).position,
       workSetup: (emp?.work_mode as AttendanceRow["workSetup"]) ?? null,
       isToday,
       isLate,

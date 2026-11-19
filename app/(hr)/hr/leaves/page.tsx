@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { reviewLeaveRequest } from "@/app/(pwa)/employee/leaves/actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 type LeaveRequestWithEmployee = {
@@ -109,6 +111,7 @@ export default async function HRLeavesPage({
     string,
     { id: string; first_name: string | null; last_name: string | null; avatar_url: string | null }
   >();
+  const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(profileIds);
   if (profileIds.length > 0) {
     const { data: profRows } = await admin
       .from("profiles")
@@ -122,13 +125,18 @@ export default async function HRLeavesPage({
   const leaveRequests: LeaveRequestWithEmployee[] = rawRequests.map((r) => {
     const emp = empMap.get(r.employee_id);
     const prof = emp?.profile_id ? profileMap.get(emp.profile_id) ?? null : null;
+    const linkedJob = emp?.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
+    const resolvedPos = resolveEmployeePosition({
+      employeePosition: emp?.job_title,
+      jobTitle: linkedJob?.title,
+    }).position;
     const normalizedStatus = String(r.status ?? "pending").toLowerCase() as LeaveRequestWithEmployee["status"];
     return {
       ...r,
       status: normalizedStatus,
       employees: emp
         ? {
-            job_title: emp.job_title ?? null,
+            job_title: resolvedPos,
             profiles: prof
               ? {
                   first_name: prof.first_name ?? null,

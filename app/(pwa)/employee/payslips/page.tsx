@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import EmployeePayslipsClient from "./employee-payslips-client";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import type { EmployeePayslip } from "@/lib/types";
 
 export default async function EmployeePayslipsPage() {
@@ -90,7 +92,11 @@ export default async function EmployeePayslipsPage() {
     ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim()
     : "Employee";
   const employeeIdNumber = employee.employee_number ?? "N/A";
-  const jobTitle = employee.job_title ?? "Employee";
+  const linkedJob = await getJobPostingPositionForProfile(user.id);
+  const jobTitle = resolveEmployeePosition({
+    employeePosition: employee.job_title,
+    jobTitle: linkedJob?.title,
+  }).position;
 
   return (
     <EmployeePayslipsClient

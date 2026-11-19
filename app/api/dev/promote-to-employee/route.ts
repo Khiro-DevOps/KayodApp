@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
     }
 
     const rawJobTitle = jobInfo?.title
-    const jobTitle = rawJobTitle && rawJobTitle !== "Development Employee" ? rawJobTitle : "Software Engineer"
+    const jobTitle = rawJobTitle && rawJobTitle.toLowerCase() !== "development employee" ? rawJobTitle : "Unassigned Role"
     const {
       baseSalary,
       monthlyAllowance,
@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
     } else {
       const patch: Record<string, unknown> = {}
       if (!existingEmployee.tenant_id && resolvedTenantId) patch.tenant_id = resolvedTenantId
-      if (!existingEmployee.job_title || existingEmployee.job_title === "Development Employee") patch.job_title = jobTitle
+      if (!existingEmployee.job_title || existingEmployee.job_title.toLowerCase() === "development employee") patch.job_title = jobTitle
       if (!existingEmployee.base_salary || Number(existingEmployee.base_salary) <= 0) {
         patch.base_salary = baseSalary
         patch.salary = baseSalary

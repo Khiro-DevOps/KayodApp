@@ -7,6 +7,8 @@ import type { PayrollPeriod, Payslip, Employee, Profile } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
 import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
 import { resolveOfferCompensation, type OfferSalarySource } from "@/lib/offer-salary";
+import { resolveEmployeePosition } from "@/lib/employee-position";
+import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import {
   createPayrollPeriod,
   generatePayslips,
@@ -54,6 +56,10 @@ export default async function HRPayrollPage({
     .returns<PayrollPeriod[]>();
 
   const activeEmployeeCount = employees?.length ?? 0;
+  const payrollProfileIds = Array.from(
+    new Set((employees ?? []).map((e) => e.profile_id).filter(Boolean))
+  );
+  const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(payrollProfileIds);
 
   // For the most recent draft period, preview hours worked
   const draftPeriod = periods?.find((p) => p.status === "draft") ?? null;
@@ -170,6 +176,7 @@ export default async function HRPayrollPage({
     preRunRoster = activeEmpList.map((emp) => {
       const empRec = emp as unknown as {
         id: string;
+        profile_id?: string | null;
         job_title?: string | null;
         base_salary?: number | null;
         salary?: number | null;
@@ -259,10 +266,14 @@ export default async function HRPayrollPage({
           ? contractIncentives.map((i) => `${i.label} ₱${i.amount.toLocaleString()}`).join(", ")
           : "None";
 
+      const linkedJob = empRec.profile_id ? jobPostingByProfileId[empRec.profile_id] : undefined;
       return {
         employeeId: empRec.id,
         name,
-        role: empRec.job_title || "Staff",
+        role: resolveEmployeePosition({
+          employeePosition: empRec.job_title,
+          jobTitle: linkedJob?.title,
+        }).position,
         baseSalary,
         allowancesLabel,
         incentivesLabel,
