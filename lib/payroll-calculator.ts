@@ -220,23 +220,32 @@ export function computeEmployeeDemoPayslip(
     const phtDay = toPhtDateStr(clockInMs);
     const shiftStartMs = phtDateHmToUtcMs(phtDay, shiftStartH, shiftStartM);
 
+    let rawLateMinutes = 0;
     if (typeof log.late_minutes === "number" && log.late_minutes > 0) {
-      totalLateMinutes += Math.floor(log.late_minutes);
+      rawLateMinutes = Math.floor(log.late_minutes);
     } else {
       const diffLate = Math.floor((clockInMs - shiftStartMs) / 60_000);
       if (diffLate > 5) {
-        totalLateMinutes += diffLate;
+        rawLateMinutes = diffLate;
       }
     }
+    const effectiveLateMinutes = Math.min(480, Math.max(0, rawLateMinutes));
+    totalLateMinutes += effectiveLateMinutes;
 
+    let rawOverbreakMinutes = 0;
     const explicitOverbreak = Number(log.overbreak_minutes ?? 0);
     if (explicitOverbreak > 0) {
-      totalOverbreakMinutes += Math.floor(explicitOverbreak);
+      rawOverbreakMinutes = Math.floor(explicitOverbreak);
     } else {
       const lunchOver = Math.max(0, Number(log.total_lunch_minutes ?? 0) - 60);
       const shortOver = Math.max(0, Number(log.total_break_minutes ?? 0) - 30);
-      totalOverbreakMinutes += Math.floor(lunchOver + shortOver);
+      rawOverbreakMinutes = Math.floor(lunchOver + shortOver);
     }
+    const effectiveOverbreakMinutes = Math.min(
+      Math.max(0, 480 - effectiveLateMinutes),
+      Math.max(0, rawOverbreakMinutes)
+    );
+    totalOverbreakMinutes += effectiveOverbreakMinutes;
 
     if (!log.clock_out) continue;
     const clockOutMs = Date.parse(log.clock_out);
@@ -247,9 +256,13 @@ export function computeEmployeeDemoPayslip(
       shiftEndMs += 24 * 60 * 60_000;
     }
 
-    const rawOtMinutes = Math.floor((clockOutMs - shiftEndMs) / 60_000);
-    if (rawOtMinutes >= 30) {
-      eligibleOtMinutes += Math.min(rawOtMinutes, 120);
+    const elapsedClockMinutes = Math.floor((clockOutMs - clockInMs) / 60_000);
+    const unpaidLunchMinutes = Math.max(60, Number(log.total_lunch_minutes ?? 60));
+    const netWorkedMinutes = Math.max(0, elapsedClockMinutes - unpaidLunchMinutes);
+
+    const otPastShiftEndMinutes = Math.floor((clockOutMs - shiftEndMs) / 60_000);
+    if (otPastShiftEndMinutes >= 30 && netWorkedMinutes > 480) {
+      eligibleOtMinutes += Math.min(120, otPastShiftEndMinutes, netWorkedMinutes - 480);
     }
 
     nightDiffMinutes += computeNightDiffMinutes(clockInMs, clockOutMs);
