@@ -66,8 +66,8 @@ const activityItems = [
 
 export default function Home() {
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F5F4FC] text-[#1A1B21]">
-      <header className="fixed left-0 top-0 z-50 flex h-16 w-full items-center justify-between border-b border-white/10 bg-[#2A2650] px-6 shadow-[0_2px_24px_rgba(26,27,33,0.08)]">
+    <div className="min-h-screen overflow-x-hidden bg-[#FCFBFF] text-[#1A1B21]">
+      <header className="fixed left-0 top-0 z-50 flex h-16 w-full items-center justify-between border-b border-white/10 bg-[#1E1B4B] px-6 shadow-[0_2px_24px_rgba(26,27,33,0.08)]">
         <div className="flex items-center gap-6">
           <Link
             href="/"
@@ -84,14 +84,14 @@ export default function Home() {
             </Link>
             <SmoothScrollButton
               targetId="features"
-              offset={72}
+              offset={64}
               className="text-[15px] text-white/80 transition-colors hover:text-white"
             >
               Features
             </SmoothScrollButton>
             <SmoothScrollButton
               targetId="pricing"
-              offset={72}
+              offset={64}
               className="text-[15px] text-white/80 transition-colors hover:text-white"
             >
               Pricing
@@ -105,7 +105,7 @@ export default function Home() {
           </Link>
           <Link
             href="/register"
-            className="rounded-[8px] bg-white px-6 py-2 font-[family-name:var(--font-poppins)] text-[15px] font-bold text-[#332477] transition-all hover:bg-white/90 active:scale-95"
+            className="rounded-full bg-white px-6 py-2 font-[family-name:var(--font-poppins)] text-[15px] font-bold text-[#1E1B4B] transition-all hover:bg-white/90 active:scale-95"
           >
             Get Started
           </Link>
@@ -113,16 +113,17 @@ export default function Home() {
       </header>
 
       <main className="pt-16">
-        <section className="relative overflow-hidden bg-[#F5F4FC] px-6 pt-2 pb-6 text-center text-[#1A1B21]">
+        <section className="relative flex min-h-[calc(100svh-4rem)] flex-col justify-center overflow-hidden bg-[#FCFBFF] px-6 py-12 text-center text-[#1A1B21] lg:py-20">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(253,248,242,0.95),_transparent_60%)]" />
           <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-1/2 top-1/2 h-[820px] w-[820px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#332477]/12" />
-            <div className="absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#332477]/8" />
+            <div className="absolute left-1/2 top-1/2 h-[820px] w-[820px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#1E1B4B]/10" />
+            <div className="absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#1E1B4B]/8" />
           </div>
 
-          <div className="w-full max-w-7xl mx-auto px-4 md:px-8 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-8 px-4 md:px-8 lg:grid-cols-12">
             {/* Left Text Column - Span 6 or 7 columns */}
             <div className="lg:col-span-6 flex flex-col space-y-6 text-left min-w-0">
-              <span className="inline-flex w-fit rounded-full bg-[#DFDCFF] px-4 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
+              <span className="inline-flex w-fit rounded-full bg-[#DFDCFF] px-4 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#1E1B4B]">
                 Efficiency Elevated
               </span>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-tight">
@@ -135,11 +136,11 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <BookDemoModal
                   triggerLabel="I'm hiring"
-                  triggerClassName="rounded-[8px] bg-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+                  triggerClassName="rounded-[8px] bg-[#1E1B4B] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-indigo-900 active:scale-95"
                 />
                 <Link
                   href="/jobs"
-                  className="inline-flex items-center justify-center rounded-[8px] border border-[#332477] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#332477] transition-all hover:bg-[#332477]/5 active:scale-95"
+                  className="inline-flex items-center justify-center rounded-[8px] border border-[#1E1B4B] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-[#1E1B4B]/5 active:scale-95"
                 >
                   Browse jobs
                 </Link>
@@ -241,13 +242,16 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="applicant-journey" className="bg-white px-6 py-14">
-          <div className="mx-auto max-w-6xl">
+        <section
+          id="journey"
+          className="flex min-h-[100svh] scroll-mt-16 flex-col justify-center overflow-hidden bg-[#FDF8F2] px-6 py-20 lg:py-24"
+        >
+          <div className="mx-auto w-full max-w-6xl">
             <div className="max-w-2xl">
               <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
                 Applicant Journey
               </span>
-              <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1A1B21]">
+              <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1E1B4B]">
                 One system for the full applicant flow
               </h2>
               <p className="mt-3 text-[15px] leading-[22px] text-[#484551]">
@@ -257,11 +261,11 @@ export default function Home() {
             </div>
 
             <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF] p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#332477]">
+              <article className="rounded-2xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#1E1B4B]">
                   <Sparkles className="h-5 w-5" />
                 </div>
-                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1A1B21]">
+                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1E1B4B]">
                   AI resume generation
                 </h3>
                 <p className="mt-2 text-[15px] leading-[22px] text-[#484551]">
@@ -269,11 +273,11 @@ export default function Home() {
                 </p>
               </article>
 
-              <article className="rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF] p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#332477]">
+              <article className="rounded-2xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#1E1B4B]">
                   <BadgeCheck className="h-5 w-5" />
                 </div>
-                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1A1B21]">
+                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1E1B4B]">
                   Smart score matching
                 </h3>
                 <p className="mt-2 text-[15px] leading-[22px] text-[#484551]">
@@ -281,11 +285,11 @@ export default function Home() {
                 </p>
               </article>
 
-              <article className="rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF] p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#332477]">
+              <article className="rounded-2xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#1E1B4B]">
                   <FileText className="h-5 w-5" />
                 </div>
-                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1A1B21]">
+                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1E1B4B]">
                   Digital application flow
                 </h3>
                 <p className="mt-2 text-[15px] leading-[22px] text-[#484551]">
@@ -293,11 +297,11 @@ export default function Home() {
                 </p>
               </article>
 
-              <article className="rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF] p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#332477]">
+              <article className="rounded-2xl border border-indigo-100/80 bg-white/80 p-5 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#1E1B4B]">
                   <Workflow className="h-5 w-5" />
                 </div>
-                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1A1B21]">
+                <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1E1B4B]">
                   End-to-end journey
                 </h3>
                 <p className="mt-2 text-[15px] leading-[22px] text-[#484551]">
@@ -306,16 +310,16 @@ export default function Home() {
               </article>
             </div>
 
-            <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-[12px] border border-[#E8E6F8] bg-[#FAF8FF] px-5 py-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] md:flex-row md:items-center">
+            <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100/80 bg-white/80 px-5 py-4 shadow-[0_8px_30px_rgb(30,27,75,0.05)] backdrop-blur-md md:flex-row md:items-center">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">For applicants</p>
-                <p className="mt-1 font-[family-name:var(--font-poppins)] text-[18px] font-semibold text-[#1A1B21]">
+                <p className="mt-1 font-[family-name:var(--font-poppins)] text-[18px] font-semibold text-[#1E1B4B]">
                   Start your application path in one tap.
                 </p>
               </div>
               <Link
                 href="/register"
-                className="inline-flex items-center gap-2 rounded-[8px] bg-[#332477] px-6 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-[#4A3D8F] active:scale-95"
+                className="inline-flex items-center gap-2 rounded-[8px] bg-[#1E1B4B] px-6 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-indigo-900 active:scale-95"
               >
                 Create an account
                 <ArrowRight className="h-4 w-4" />
@@ -324,11 +328,19 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="features" className="scroll-mt-20 bg-white px-6 py-20 lg:scroll-mt-24">
-          <div className="mx-auto max-w-6xl">
+        <section
+          id="features"
+          className="relative flex min-h-[100svh] scroll-mt-16 flex-col justify-center overflow-hidden bg-[#F6F5FC] px-6 py-20 lg:py-24"
+        >
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -left-44 -top-44 h-[520px] w-[520px] rounded-full border border-[#1E1B4B]/10" />
+            <div className="absolute -left-24 -top-24 h-[340px] w-[340px] rounded-full border border-[#1E1B4B]/8" />
+          </div>
+
+          <div className="relative mx-auto w-full max-w-6xl">
             <div className="max-w-2xl">
               <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Capabilities</span>
-              <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1A1B21]">
+              <h2 className="mt-2 font-[family-name:var(--font-poppins)] text-[32px] font-bold tracking-tight text-[#1E1B4B]">
                 Platform features built for modern HR teams
               </h2>
               <p className="mt-3 text-[15px] leading-[22px] text-[#484551]">
@@ -343,12 +355,12 @@ export default function Home() {
                 return (
                   <article
                     key={feature.title}
-                    className="rounded-[12px] border border-[#E8E6F8] bg-white p-5 shadow-[0_4px_12px_rgba(46,37,102,0.05)] transition-transform duration-200 hover:-translate-y-0.5"
+                    className="rounded-2xl border border-indigo-100/80 bg-white p-5 shadow-[0_4px_20px_rgb(30,27,75,0.04)] transition-transform duration-200 hover:-translate-y-0.5"
                   >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#332477]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#DFDCFF] text-[#1E1B4B]">
                       <Icon className="h-5 w-5" />
                     </div>
-                    <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1A1B21]">
+                    <h3 className="mt-4 font-[family-name:var(--font-poppins)] text-[17px] font-semibold text-[#1E1B4B]">
                       {feature.title}
                     </h3>
                     <p className="mt-2 text-[15px] leading-[22px] text-[#484551]">{feature.description}</p>
@@ -359,15 +371,16 @@ export default function Home() {
           </div>
         </section>
 
-        <FindYourJobSection />
-
-        {/* FIXED PRICING SECTION */}
-        <section id="pricing" className="scroll-mt-20 bg-[#FAF8FF] px-6 py-10 lg:scroll-mt-24 lg:py-12">
-          <div className="mx-auto max-w-6xl">
+        {/* PRICING SECTION */}
+        <section
+          id="pricing"
+          className="flex min-h-[100svh] scroll-mt-16 flex-col justify-center overflow-hidden bg-[#FCFBFF] px-6 py-20 lg:py-24"
+        >
+          <div className="mx-auto w-full max-w-6xl">
             <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12">
               <div className="lg:col-span-6 w-full min-w-0 text-center lg:pt-0 lg:text-left pr-0 lg:pr-6">
                 <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">Pricing</span>
-                <h2 className="mt-2 font-[family-name:var(--font-poppins)] w-full text-3xl md:text-5xl font-bold tracking-tight text-gray-900 leading-tight block break-words whitespace-normal">
+                <h2 className="mt-2 font-[family-name:var(--font-poppins)] w-full text-3xl md:text-5xl font-bold tracking-tight text-[#1E1B4B] leading-tight block break-words whitespace-normal">
                   Enterprise pricing for teams that need everything
                 </h2>
                 <p className="mx-auto mt-3 w-full max-w-2xl text-[15px] leading-[22px] text-[#484551] lg:mx-0 block break-words whitespace-normal">
@@ -376,24 +389,24 @@ export default function Home() {
               </div>
 
               <div className="lg:col-span-6 flex justify-center lg:justify-end min-w-0">
-                <article className="flex w-full max-w-[540px] flex-col rounded-[12px] border border-[#332477] bg-white p-4 shadow-[0_4px_12px_rgba(46,37,102,0.05)] ring-2 ring-[#332477]/10 sm:p-5">
-                  <div className="flex flex-col gap-3 sm:gap-4">
+                <article className="flex w-full max-w-[540px] flex-col rounded-3xl border border-[#1E1B4B] bg-[#1E1B4B] p-6 text-white shadow-[0_20px_50px_rgba(30,27,75,0.22)] sm:p-8">
+                  <div className="flex flex-col gap-4 sm:gap-5">
                     <div>
-                      <span className="inline-flex rounded-full bg-[#DFDCFF] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#61607D]">
+                      <span className="inline-flex rounded-full bg-white/15 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-indigo-100">
                         Enterprise
                       </span>
-                      <h3 className="mt-3 font-[family-name:var(--font-poppins)] text-[18px] font-semibold text-[#1A1B21] sm:mt-4 sm:text-[20px]">
+                      <h3 className="mt-3 font-[family-name:var(--font-poppins)] text-[20px] font-semibold text-white sm:mt-4 sm:text-[22px]">
                         Kayod Enterprise
                       </h3>
-                      <p className="mt-1 text-[13px] text-[#484551] sm:text-[14px]">
+                      <p className="mt-1 text-[13px] text-indigo-200 sm:text-[14px]">
                         Unlimited listings · Unlimited applicants · Full AI suite
                       </p>
-                      <p className="mt-3 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-[#1A1B21] sm:mt-4 sm:text-[32px]">
+                      <p className="mt-3 font-[family-name:var(--font-poppins)] text-[28px] font-bold tracking-tight text-white sm:mt-4 sm:text-[32px]">
                         Custom pricing
                       </p>
                     </div>
 
-                    <ul className="grid gap-2.5 text-[13px] leading-[18px] text-[#1A1B21] sm:grid-cols-2 sm:gap-3 sm:text-[14px] sm:leading-[20px]">
+                    <ul className="grid gap-2.5 text-[13px] leading-[18px] text-indigo-50 sm:grid-cols-2 sm:gap-3 sm:text-[14px] sm:leading-[20px]">
                       {[
                         "Pipeline",
                         "DocuSeal",
@@ -406,7 +419,7 @@ export default function Home() {
                         "Employee portal",
                       ].map((feature) => (
                         <li key={feature} className="flex items-start gap-2.5 sm:gap-3">
-                          <span className="mt-1 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#DFDCFF] text-[#332477]">
+                          <span className="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-white/15 text-white">
                             <BadgeCheck className="h-3.5 w-3.5" />
                           </span>
                           <span>{feature}</span>
@@ -414,7 +427,9 @@ export default function Home() {
                       ))}
                     </ul>
 
-                    <BookDemoModal />
+                    <BookDemoModal
+                      triggerClassName="w-full rounded-xl bg-white px-6 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-indigo-50 active:scale-95"
+                    />
                   </div>
                 </article>
               </div>
@@ -422,41 +437,46 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="bg-[#332477] px-6 py-20 text-white">
-          <div className="mx-auto flex max-w-4xl flex-col items-center gap-4 text-center">
-            <h2 className="font-[family-name:var(--font-poppins)] text-[36px] font-bold tracking-tight md:text-[44px]">
-              Ready to transform your hiring process?
-            </h2>
-            <p className="max-w-2xl text-[15px] leading-[22px] text-white/80">
-              Join teams using Kayod for a smoother, faster, and more professional HR experience.
-            </p>
-            <Link
-              href="/register"
-              className="mt-4 inline-flex items-center gap-2 rounded-[8px] bg-white px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#332477] transition-all hover:bg-white/90 active:scale-95"
-            >
-              Start 14-Day Free Trial
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </section>
+        <FindYourJobSection />
       </main>
 
-      <footer id="resources" className="mt-12 border-t border-[#E0D9FC] bg-white px-6 py-8">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center md:flex-row md:text-left">
+      <footer id="resources" className="bg-[#1E1B4B] px-6 py-12 text-white">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 border-b border-white/10 pb-10 text-center md:flex-row md:text-left">
           <div>
-            <p className="font-[family-name:var(--font-poppins)] text-[22px] font-bold tracking-tight text-[#332477]">
+            <h2 className="font-[family-name:var(--font-poppins)] text-2xl font-bold tracking-tight md:text-3xl">
+              Ready to transform your hiring process?
+            </h2>
+            <p className="mt-2 max-w-xl text-[14px] leading-[22px] text-indigo-200">
+              Join teams using Kayod for a smoother, faster, and more professional HR experience.
+            </p>
+          </div>
+          <Link
+            href="/register"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-7 py-3.5 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-indigo-50 active:scale-95"
+          >
+            Start 14-Day Free Trial
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        <div className="mx-auto mt-8 flex max-w-6xl flex-col items-center justify-between gap-4 text-center md:flex-row md:text-left">
+          <div>
+            <p className="font-[family-name:var(--font-poppins)] text-[22px] font-bold tracking-tight text-white">
               Kayod
             </p>
-            <p className="mt-1 text-[13px] text-[#484551]">© 2026 Kayod HRIS. Built for modern teams.</p>
+            <p className="mt-1 text-[13px] text-indigo-200">© 2026 Kayod HRIS. Built for modern teams.</p>
           </div>
-          <div className="flex items-center gap-6 text-[15px] text-[#484551]">
-            <Link className="transition-colors hover:text-[#332477]" href="/login">
+          <div className="flex items-center gap-6 text-[15px] text-indigo-100">
+            <Link className="transition-colors hover:text-white" href="/jobs">
+              Jobs
+            </Link>
+            <Link className="transition-colors hover:text-white" href="/login">
               Login
             </Link>
-            <Link className="transition-colors hover:text-[#332477]" href="/register">
+            <Link className="transition-colors hover:text-white" href="/register">
               Register
             </Link>
-            <a className="transition-colors hover:text-[#332477]" href="#features">
+            <a className="transition-colors hover:text-white" href="#features">
               Features
             </a>
           </div>
