@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { devRouteGuard } from "@/lib/dev-guard";
 import { validateSupabaseConfig } from "@/lib/supabase/config-checker";
 
 /**
@@ -6,6 +7,9 @@ import { validateSupabaseConfig } from "@/lib/supabase/config-checker";
  * GET /api/dev/supabase-health
  */
 export async function GET() {
+  const guard = await devRouteGuard();
+  if (guard) return guard;
+
   // Only available in development
   if (process.env.NODE_ENV !== "development") {
     return NextResponse.json(

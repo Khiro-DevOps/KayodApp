@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { notFound } from "next/navigation";
 import { toast } from "sonner";
 import { toggleDevUserRole } from "@/app/actions/dev-role-toggle";
 import { resetApplicantTestData } from "@/app/actions/debug";
@@ -51,7 +52,7 @@ export default function DevToolsPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (process.env.NODE_ENV === "production") {
-    return null;
+    notFound();
   }
 
   const trimmedAppId = applicationId.trim();
@@ -310,11 +311,10 @@ export default function DevToolsPage() {
                         postStatus(canonical, stage.key);
                       }
                     }}
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      isActive
+                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${isActive
                         ? "border-purple-500 bg-purple-600 text-white"
                         : "border-slate-700 bg-slate-950 text-slate-200 hover:border-purple-500/60 hover:bg-slate-800"
-                    }`}
+                      }`}
                   >
                     {stage.label}
                   </button>
@@ -351,11 +351,10 @@ export default function DevToolsPage() {
                       disabled={controlsDisabled}
                       aria-pressed={isSelected}
                       onClick={() => postStatus(status, activeStage)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isSelected
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${isSelected
                           ? "border-purple-400 bg-purple-600 text-white"
                           : "border-slate-700 bg-slate-950 text-slate-300 hover:border-purple-500/60 hover:bg-slate-800"
-                      }`}
+                        }`}
                     >
                       <span>{status}</span>
                       {isDefault && (
@@ -394,11 +393,10 @@ export default function DevToolsPage() {
                   type="button"
                   disabled={controlsDisabled}
                   onClick={() => postStatus(status)}
-                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    activeStatus === status
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${activeStatus === status
                       ? "border-purple-500 bg-purple-600 text-white"
                       : "border-slate-700 bg-slate-950 text-slate-200 hover:border-purple-500/60 hover:bg-slate-800"
-                  }`}
+                    }`}
                 >
                   {status}
                 </button>

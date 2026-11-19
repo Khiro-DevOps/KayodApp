@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { devRouteGuard } from "@/lib/dev-guard";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
+  const guard = await devRouteGuard();
+  if (guard) return guard;
+
   const url = new URL(request.url);
   const interviewId = url.searchParams.get("interviewId");
   const applicationId = url.searchParams.get("applicationId");
