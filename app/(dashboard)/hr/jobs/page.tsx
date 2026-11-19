@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import type { JobListing, JobPosting, Profile } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
@@ -6,6 +7,7 @@ import ManageJobsWorkspace from "./manage-jobs-workspace";
 import { getHrJobScope } from "@/lib/hr-job-scope";
 
 type WorkspaceProfile = Pick<Profile, "role" | "tenant_id"> & {
+  tenant_name?: string | null;
   tenants?: { name?: string | null } | null;
 };
 
@@ -50,9 +52,10 @@ export default async function ManageJobsPage() {
   const authRole =
     (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
 
-  const { data: profile, error: profileError } = await supabase
+  const admin = getAdminClient();
+  const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("role, tenant_id, tenants(name)")
+    .select("role, tenant_id, tenant_name, tenants(name)")
     .eq("id", user.id)
     .maybeSingle<WorkspaceProfile>();
 
@@ -68,7 +71,21 @@ export default async function ManageJobsPage() {
 
   const jobScope = await getHrJobScope(supabase, user.id);
   const tenantId = jobScope.tenantId ?? "";
-  const companyName = profile?.tenants?.name?.trim() || "Your Company";
+  let companyName =
+    profile?.tenants?.name?.trim() ||
+    profile?.tenant_name?.trim() ||
+    "";
+  if (!companyName && tenantId) {
+    const { data: tenantRow } = await admin
+      .from("tenants")
+      .select("name")
+      .eq("id", tenantId)
+      .maybeSingle<{ name?: string | null }>();
+    companyName = tenantRow?.name?.trim() || "";
+  }
+  if (!companyName) {
+    companyName = "Your Company";
+  }
 
   const currentJobsQuery = supabase
     .from("job_postings")

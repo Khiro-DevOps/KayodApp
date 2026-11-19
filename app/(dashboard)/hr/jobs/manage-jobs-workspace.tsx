@@ -156,7 +156,6 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
   return (
     <div className="flex flex-col gap-6">
       <PageHeroHeader
-        eyebrow={companyName}
         title="Manage Jobs"
         subtitle="Create, publish, and manage open roles across your workspace"
         actions={

@@ -225,9 +225,8 @@ export default function DashboardLayout({
             Kayod
           </Link>
           <div className="h-4 w-[1px] bg-white/20 mx-1"></div>
-          <div className="bg-white/10 text-white/90 px-3 py-1 rounded-md text-xs font-medium border border-white/10 flex items-center gap-1.5">
+          <div className="bg-white/10 text-white/90 px-3 py-1 rounded-md text-xs font-medium border border-white/10 flex items-center">
             <span>{companyName}</span>
-            <span className="material-symbols-outlined text-[14px] text-white/60">expand_more</span>
           </div>
         </div>
 
