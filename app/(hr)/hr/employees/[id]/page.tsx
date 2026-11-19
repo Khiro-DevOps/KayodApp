@@ -42,11 +42,11 @@ export default async function EmployeeDetailPage({ params }: Props) {
   if (!employee) redirect("/hr/employees");
 
   const [{ data: workLocations }, { data: officeBranches }] = await Promise.all([
-    supabase
+    admin
       .from("work_locations")
       .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_default, created_at")
       .order("name", { ascending: true }),
-    supabase
+    admin
       .from("office_branches")
       .select("*")
       .order("name", { ascending: true })
@@ -66,7 +66,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
     return Array.from(byId.values());
   })();
 
-  const { data: remoteResidence } = await supabase
+  const { data: remoteResidence } = await admin
     .from("employee_remote_residences")
     .select("*")
     .eq("employee_id", employeeId)
@@ -164,11 +164,16 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const linkedJob = employee.profile_id
     ? await getJobPostingPositionForProfile(employee.profile_id)
     : null;
-  const resolvedRole = resolveEmployeeSourceOfTruth({
-    employee: { job_title: employee.job_title },
-    offer: linkedJob ? { job_title: linkedJob.offerTitle } : null,
-    jobPosting: linkedJob ? { title: linkedJob.title } : null,
-  }).position;
+  const sourceOfTruth = resolveEmployeeSourceOfTruth({
+    employee: { job_title: employee.job_title, work_mode: employee.work_mode },
+    offer: linkedJob
+      ? { job_title: linkedJob.offerTitle, work_setup: linkedJob.offerWorkSetup }
+      : null,
+    jobPosting: linkedJob
+      ? { title: linkedJob.title, work_setup: linkedJob.jobWorkSetup }
+      : null,
+  });
+  const resolvedRole = sourceOfTruth.position;
 
   return (
     <PageContainer>
@@ -203,8 +208,8 @@ export default async function EmployeeDetailPage({ params }: Props) {
         {/* Location & Geofence Control */}
         <GeofenceControlCard
           employeeId={employee.id}
-          initialWorkMode={(employee.work_mode ?? "onsite") as WorkSetup}
-          initialBranchId={employee.work_location_id || null}
+          initialWorkMode={sourceOfTruth.workSetup as WorkSetup}
+          initialBranchId={linkedJob?.workLocationId || employee.work_location_id || null}
           officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
         />

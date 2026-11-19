@@ -37,16 +37,26 @@ export async function submitWfhLocationAction(input: {
   const admin = getAdminClient();
   let { data: employee } = await admin
     .from("employees")
-    .select("id, tenant_id")
+    .select("id, tenant_id, profile_id, profiles(first_name, last_name)")
     .eq("profile_id", user.id)
-    .maybeSingle<{ id: string; tenant_id: string | null }>();
+    .maybeSingle<{
+      id: string;
+      tenant_id: string | null;
+      profile_id: string | null;
+      profiles?: { first_name?: string | null; last_name?: string | null } | Array<{ first_name?: string | null; last_name?: string | null }> | null;
+    }>();
 
   if (!employee && user.email) {
     const { data: empByEmail } = await admin
       .from("employees")
-      .select("id, tenant_id")
+      .select("id, tenant_id, profile_id, profiles(first_name, last_name)")
       .eq("email", user.email)
-      .maybeSingle<{ id: string; tenant_id: string | null }>();
+      .maybeSingle<{
+        id: string;
+        tenant_id: string | null;
+        profile_id: string | null;
+        profiles?: { first_name?: string | null; last_name?: string | null } | Array<{ first_name?: string | null; last_name?: string | null }> | null;
+      }>();
     employee = empByEmail;
   }
 
@@ -209,6 +219,47 @@ export async function submitWfhLocationAction(input: {
     }
   }
 
+  // Notify all HR managers / admins (across tenant + active HR profiles)
+  try {
+    const empProfile = Array.isArray(employee.profiles)
+      ? employee.profiles[0]
+      : employee.profiles;
+    const employeeName =
+      [empProfile?.first_name, empProfile?.last_name].filter(Boolean).join(" ").trim() ||
+      user.email ||
+      "An employee";
+    const reasonSuffix = input.relocationReason?.trim()
+      ? ` — Reason: ${input.relocationReason.trim()}`
+      : "";
+
+    const { data: hrProfiles } = await admin
+      .from("profiles")
+      .select("id")
+      .in("role", ["hr_manager", "hr", "admin"]);
+
+    const recipientIds = Array.from(
+      new Set((hrProfiles ?? []).map((p) => p.id).filter((id) => Boolean(id) && id !== user.id)),
+    );
+
+    if (recipientIds.length > 0) {
+      const { error: notifErr } = await admin.from("notifications").insert(
+        recipientIds.map((recipientId) => ({
+          recipient_id: recipientId,
+          sender_id: user.id,
+          type: "schedule_published",
+          title: "WFH Geofence Approval Request",
+          body: `${employeeName} submitted WFH residence: ${trimmedAddress}${reasonSuffix}`,
+          action_url: "/hr/employees",
+        })),
+      );
+      if (notifErr) {
+        console.error("submitWfhLocationAction: notification insert failed:", notifErr.message);
+      }
+    }
+  } catch (notifCatchErr) {
+    console.error("submitWfhLocationAction: notification error:", notifCatchErr);
+  }
+
   revalidatePath("/employee/profile");
   revalidatePath("/employee/schedule");
   revalidatePath("/hr/employees");
@@ -326,6 +377,34 @@ export async function reviewWfhLocationAction(input: {
     if (rejectErr) {
       return { success: false, error: rejectErr.message };
     }
+  }
+
+  // Notify employee of HR decision
+  try {
+    const { data: empRow } = await admin
+      .from("employees")
+      .select("profile_id")
+      .eq("id", input.employeeId)
+      .maybeSingle<{ profile_id: string | null }>();
+
+    if (empRow?.profile_id) {
+      const isApproved = input.decision === "approve";
+      const { error: empNotifErr } = await admin.from("notifications").insert({
+        recipient_id: empRow.profile_id,
+        sender_id: user.id,
+        type: "schedule_published",
+        title: isApproved ? "WFH Location Approved" : "WFH Location Rejected",
+        body: isApproved
+          ? "Your WFH residence geofence has been approved by HR."
+          : `Your WFH residence request was declined: ${input.rejectionReason?.trim() || "Declined by HR"}`,
+        action_url: "/employee/profile",
+      });
+      if (empNotifErr) {
+        console.error("reviewWfhLocationAction: employee notification failed:", empNotifErr.message);
+      }
+    }
+  } catch (empNotifCatchErr) {
+    console.error("reviewWfhLocationAction: notification error:", empNotifCatchErr);
   }
 
   revalidatePath("/hr/employees");

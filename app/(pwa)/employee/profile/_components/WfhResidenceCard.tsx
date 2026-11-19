@@ -21,13 +21,15 @@ export default function WfhResidenceCard({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
+  const [submittedPending, setSubmittedPending] = useState(false);
+  const [submitBanner, setSubmitBanner] = useState<string | null>(null);
   const isActiveApproved =
     Boolean(remoteResidence) &&
     remoteResidence?.is_active !== false &&
     (remoteResidence?.approval_status === "approved" ||
       !remoteResidence?.approval_status);
-  const isPendingApproval = remoteResidence?.approval_status === "pending";
-  const isRejected = remoteResidence?.approval_status === "rejected";
+  const isPendingApproval = submittedPending || remoteResidence?.approval_status === "pending";
+  const isRejected = !submittedPending && remoteResidence?.approval_status === "rejected";
 
   const [showRelocationForm, setShowRelocationForm] = useState(false);
   const [address, setAddress] = useState(
@@ -43,27 +45,33 @@ export default function WfhResidenceCard({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitBanner(null);
     startTransition(async () => {
-      const res = await submitWfhLocationAction({
-        address,
-        latitude,
-        longitude,
-        relocationReason: isActiveApproved ? relocationReason : undefined,
-      });
+      try {
+        const res = await submitWfhLocationAction({
+          address,
+          latitude,
+          longitude,
+          relocationReason: isActiveApproved ? relocationReason : undefined,
+        });
 
-      if (!res.success) {
-        toast.error(res.error || "Failed to submit WFH location");
-        return;
-      }
+        if (!res.success) {
+          toast.error(res.error || "Failed to submit WFH location");
+          return;
+        }
 
-      toast.success(
-        isActiveApproved
+        const successMsg = isActiveApproved
           ? "Relocation request submitted for HR approval"
-          : "WFH location submitted for HR approval",
-      );
-      setShowRelocationForm(false);
-      setRelocationReason("");
-      router.refresh();
+          : "WFH location submitted for HR approval";
+        toast.success(successMsg);
+        setSubmittedPending(true);
+        setSubmitBanner(`${successMsg}. HR has been notified.`);
+        setShowRelocationForm(false);
+        setRelocationReason("");
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to submit WFH location");
+      }
     });
   };
 
@@ -97,6 +105,12 @@ export default function WfhResidenceCard({
           </span>
         )}
       </div>
+
+      {submitBanner ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-900">
+          {submitBanner}
+        </div>
+      ) : null}
 
       {isRejected && remoteResidence?.rejection_reason ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">

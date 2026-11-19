@@ -1,14 +1,11 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateEmployeeLocationAction } from "./employee-location-actions";
 import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
 import type { OfficeBranch, EmployeeRemoteResidence, WorkSetup } from "@/lib/types";
-
-const Map = dynamic(() => import("../../settings/branches/branch-map"), { ssr: false });
 
 interface Props {
   employeeId: string;
@@ -23,31 +20,12 @@ export default function GeofenceControlCard({
   initialWorkMode,
   initialBranchId,
   officeBranches,
-  remoteResidence
+  remoteResidence,
 }: Props) {
   const router = useRouter();
   const [isReviewPending, startReviewTransition] = useTransition();
   const [workMode, setWorkMode] = useState<string>(initialWorkMode || "onsite");
   const [isPending, setIsPending] = useState(false);
-  const [address, setAddress] = useState<string>(remoteResidence?.address ?? "");
-  const [latitude, setLatitude] = useState<number>(remoteResidence?.latitude ?? 12.8797);
-  const [longitude, setLongitude] = useState<number>(remoteResidence?.longitude ?? 121.774);
-  const [radius, setRadius] = useState<number>(remoteResidence?.geofence_radius_meters ?? 200);
-  const [search, setSearch] = useState<string>("");
-  const [results, setResults] = useState<Array<{ lat: string; lon: string; display_name: string }>>([]);
-  const [target, setTarget] = useState<[number, number] | null>(null);
-
-  useEffect(() => {
-    if (search.trim().length < 3) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void fetch(`/api/geocode/search?q=${encodeURIComponent(search.trim())}`)
-        .then((response) => (response.ok ? response.json() : null))
-        .then((data) => setResults(data?.data ?? []));
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [search]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -57,9 +35,10 @@ export default function GeofenceControlCard({
 
     try {
       await updateEmployeeLocationAction(formData);
-      alert("Location settings updated successfully");
+      toast.success("Location settings updated successfully");
+      router.refresh();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to update location settings");
+      toast.error(err instanceof Error ? err.message : "Failed to update location settings");
     } finally {
       setIsPending(false);
     }
@@ -68,6 +47,10 @@ export default function GeofenceControlCard({
   const needsBranch = workMode === "onsite" || workMode === "hybrid";
   const needsRemote = workMode === "remote" || workMode === "hybrid" || workMode === "wfh";
   const hasPendingWfh = remoteResidence?.approval_status === "pending";
+  const isApprovedWfh =
+    Boolean(remoteResidence) &&
+    remoteResidence?.is_active !== false &&
+    (remoteResidence?.approval_status === "approved" || !remoteResidence?.approval_status);
 
   const handleReviewWfh = (decision: "approve" | "reject") => {
     startReviewTransition(async () => {
@@ -89,10 +72,10 @@ export default function GeofenceControlCard({
     <div className="rounded-xl border border-border bg-card-bg shadow-sm overflow-hidden">
       <div className="bg-surface-bg px-5 py-4 border-b border-border">
         <h3 className="font-h3 text-lg font-bold text-text-main">
-          Work Setup & Geofence Control
+          Work Setup &amp; Geofence Control
         </h3>
         <p className="text-sm text-text-muted mt-1">
-          Configure the employee&apos;s work arrangement and geofencing parameters for attendance tracking.
+          Configure the employee&apos;s work arrangement, assigned office branch, and review employee-submitted WFH geofence requests.
         </p>
       </div>
 
@@ -126,7 +109,8 @@ export default function GeofenceControlCard({
           </p>
           <p className="text-[11px] text-amber-800">
             Coordinates: {Number(remoteResidence.pending_latitude ?? remoteResidence.latitude).toFixed(6)},{" "}
-            {Number(remoteResidence.pending_longitude ?? remoteResidence.longitude).toFixed(6)}
+            {Number(remoteResidence.pending_longitude ?? remoteResidence.longitude).toFixed(6)} · Radius:{" "}
+            {remoteResidence.pending_radius_meters ?? remoteResidence.geofence_radius_meters ?? 200}m
           </p>
           {remoteResidence.relocation_reason ? (
             <p className="text-xs text-amber-900">
@@ -147,7 +131,8 @@ export default function GeofenceControlCard({
           >
             <option value="onsite">On-site</option>
             <option value="hybrid">Hybrid</option>
-            <option value="remote">Remote (WFH)</option>
+            <option value="wfh">WFH</option>
+            <option value="remote">Remote</option>
           </select>
         </div>
 
@@ -161,101 +146,50 @@ export default function GeofenceControlCard({
               className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               <option value="" disabled>Select a branch...</option>
-              {officeBranches.map(b => (
-                <option key={b.id} value={b.id}>{b.name} ({b.address})</option>
+              {officeBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.address})
+                </option>
               ))}
             </select>
           </div>
         )}
 
         {needsRemote && (
-          <div className="space-y-4 pt-4 border-t border-border">
-            <h4 className="text-sm font-semibold text-text-main">Registered Remote Residence</h4>
+          <div className="space-y-3 pt-4 border-t border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-text-main">
+                Employee-Submitted WFH Residence Geofence
+              </h4>
+              {isApprovedWfh ? (
+                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
+                  WFH Verified
+                </span>
+              ) : hasPendingWfh ? (
+                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                  Pending HR Approval
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                  Awaiting employee submission
+                </span>
+              )}
+            </div>
 
-            <input type="hidden" name="remote_lat" value={latitude} />
-            <input type="hidden" name="remote_lng" value={longitude} />
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                Search Address
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => {
-                    const nextValue = e.target.value;
-                    setSearch(nextValue);
-                    if (nextValue.trim().length < 3) {
-                      setResults([]);
-                    }
-                  }}
-                  placeholder="Search Philippine address"
-                  className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-                {results.length > 0 && (
-                  <div className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-card-bg shadow">
-                    {results.map((result) => (
-                      <button
-                        key={`${result.lat}-${result.lon}`}
-                        type="button"
-                        onClick={() => {
-                          const next: [number, number] = [Number(result.lat), Number(result.lon)];
-                          setTarget(next);
-                          setLatitude(next[0]);
-                          setLongitude(next[1]);
-                          setAddress(result.display_name);
-                          setResults([]);
-                          setSearch("");
-                        }}
-                        className="block w-full border-b border-border px-3 py-2 text-left text-xs text-text-main last:border-0 hover:bg-surface-bg transition-colors"
-                      >
-                        {result.display_name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+            {isApprovedWfh && remoteResidence ? (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs space-y-1">
+                <p className="font-semibold text-slate-900">{remoteResidence.address}</p>
+                <p className="text-slate-600">
+                  Coordinates: {Number(remoteResidence.latitude).toFixed(6)},{" "}
+                  {Number(remoteResidence.longitude).toFixed(6)} · Radius:{" "}
+                  {remoteResidence.geofence_radius_meters ?? 200}m
+                </p>
               </div>
-            </div>
-
-            <div className="relative h-[280px] overflow-hidden rounded-lg border border-border bg-surface-bg">
-              <Map
-                latitude={latitude}
-                longitude={longitude}
-                radius={radius}
-                target={target}
-                onLocationChange={(lat, lng, nextAddress) => {
-                  setLatitude(lat);
-                  setLongitude(lng);
-                  if (nextAddress) setAddress(nextAddress);
-                }}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider">Address</label>
-              <textarea
-                name="remote_address"
-                required={needsRemote}
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider">Geofence Radius (meters)</label>
-              <input
-                name="remote_radius"
-                type="number"
-                min={1}
-                required={needsRemote}
-                value={radius}
-                onChange={(e) => setRadius(Number(e.target.value) || 200)}
-                className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
+            ) : !hasPendingWfh ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-600">
+                Awaiting employee submission. WFH residence coordinates are pinned by the employee on their Profile page and submitted here for HR approval.
+              </div>
+            ) : null}
           </div>
         )}
 
