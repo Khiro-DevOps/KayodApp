@@ -161,48 +161,31 @@ export default function ApplicantDashboardView({
   }, [identity.userId]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-[1400px] space-y-6">
       {error ? (
         <div className="mx-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      {/* --- MOBILE ONLY VIEW (Inverted Navy Header Banner) --- */}
-      <div className="block md:hidden bg-[#1F195E] text-white px-6 pt-6 pb-12 -mx-6 -mt-8 mb-[-32px] rounded-b-[40px]">
-        {/* Greeting Section */}
+      {/* Unified Deep Royal Purple Top Hero Band (Mobile + Desktop) */}
+      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
         <div className="mb-6 flex flex-col">
-          <span className="text-sm opacity-80">Hello,</span>
-          <h1 className="text-2xl font-bold text-white">{displayName}</h1>
-          <span className="text-sm opacity-80">Find your next opportunity</span>
+          <span className="text-sm text-white/75">Hello,</span>
+          <h1 className="text-2xl font-bold text-white sm:text-3xl">{displayName}</h1>
+          <span className="mt-0.5 text-sm text-white/75">Find your next opportunity</span>
         </div>
 
-        {/* 2-Column Stat Cards for Mobile */}
-        <div className="grid grid-cols-2 gap-4">
-          <StatCardVision title="Applications" value={stats.applications} />
-          <StatCardVision title="Interview pending" value={stats.interviews} />
-        </div>
-      </div>
-
-      {/* --- DESKTOP ONLY VIEW (Clean, Aligned Layout) --- */}
-      <div className="hidden md:block space-y-6">
-        <header className="space-y-1">
-          <h1 className="font-[family-name:var(--font-poppins)] text-2xl font-semibold text-on-background">
-            Hello, {displayName}
-          </h1>
-        </header>
-
-        {/* 4-Column Stat Cards for Desktop */}
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           <StatCardVision title="Applications" value={stats.applications} />
           <StatCardVision title="Interview pending" value={stats.interviews} />
           <StatCardVision title="Next Interview" value={upcomingInterviews.length > 0 ? 1 : 0} />
           <StatCardVision title="Resumes" value={stats.resumes} />
         </div>
-      </div>
+      </section>
 
       {/* --- SHARED MAIN CONTENT AREA --- */}
-      <div className="pt-6 md:pt-0 space-y-6">
+      <div className="space-y-6">
         <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-[28px] border border-[#E0D9FC] bg-white p-5 shadow-[0_12px_28px_rgba(46,37,102,0.08)] space-y-4">
             <div className="flex items-center justify-between">

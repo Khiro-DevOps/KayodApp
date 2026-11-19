@@ -378,11 +378,11 @@ export default async function ApplicantApplicationsPage() {
   // ============================================================
 
   return (
-    <div className="min-h-full space-y-6 bg-[#FDF8F2]/70 pb-8">
+    <div className="mx-auto min-h-full max-w-[1400px] space-y-6 pb-8">
       <ApplicationRealtimeUpdates userId={user.id} />
 
       {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
-      <section className="-mx-6 -mt-8 rounded-b-[36px] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
             My Applications

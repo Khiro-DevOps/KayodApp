@@ -7,13 +7,13 @@ import { createClient } from "@/lib/supabase/client";
 import NotificationBell from "@/components/notifications/notification-bell";
 
 export const pwaShellBackground =
-  "min-h-screen w-full bg-[#f7f6fc] text-[#171542] antialiased";
+  "min-h-screen w-full bg-[#FDF8F2]/80 text-[#171542] antialiased";
 
 export const pwaAppFrame =
-  "flex min-h-screen w-full flex-col bg-[#f7f6fc] md:flex-row";
+  "flex min-h-screen w-full flex-col bg-[#FDF8F2]/80 md:flex-row";
 
 export const pwaNavBase =
-  "fixed inset-x-0 bottom-0 z-50 flex h-16 w-full items-center justify-around border-t border-[#e6e4f0] bg-[#f7f6fc]/95 px-4 backdrop-blur-sm";
+  "fixed inset-x-0 bottom-0 z-50 flex h-16 w-full items-center justify-around border-t border-indigo-100/80 bg-white/90 px-4 backdrop-blur-md";
 
 export const pwaNavItemBase =
   "flex min-h-[44px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[10px] font-medium transition-all duration-200";
@@ -85,7 +85,7 @@ function PwaDesktopNav({ variant, navItems }: { variant: PwaVariant; navItems: P
               key={`${item.label}-${item.href}`}
               href={item.href}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive ? "bg-[#ede9f9] text-[#2d2b68]" : "text-[#5d5a75] hover:bg-[#f7f6fc] hover:text-[#171542]"
+                isActive ? "bg-[#EDE9F9] text-[#1E1B4B] font-semibold" : "text-[#5d5a75] hover:bg-[#FDF8F2] hover:text-[#1E1B4B]"
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
@@ -264,11 +264,9 @@ export default function PwaShell({
   return (
     <PwaShellContext.Provider value>
       <div className={`pwa-portal-shell ${pwaShellBackground}`} data-pwa-shell={variant}>
-        {/* HEADER: #1F195E (Deep Navy) background, unified top bar for mobile & desktop */}
+        {/* HEADER: #1E1B4B (Deep Royal Purple) unified top bar for mobile & desktop */}
         <header
-          className={`fixed inset-x-0 top-0 z-50 flex min-h-[72px] items-center justify-between gap-6 bg-[#1F195E] px-6 py-3 text-white ${
-            isApplicantDashboard ? "md:shadow-[0_8px_20px_rgba(31,25,94,0.18)]" : "shadow-[0_8px_20px_rgba(31,25,94,0.18)]"
-          }`}
+          className="fixed inset-x-0 top-0 z-50 flex min-h-[72px] items-center justify-between gap-6 bg-[#1E1B4B] px-6 py-3 text-white shadow-[0_8px_20px_rgba(30,27,75,0.18)]"
         >
           <div className="flex min-w-0 items-center gap-3">
             <Link href={variant === "employee" ? "/employee/dashboard" : "/applicant/dashboard"} className="shrink-0 text-xl font-bold tracking-tight text-white transition-opacity hover:opacity-90">
@@ -286,18 +284,9 @@ export default function PwaShell({
             </div>
           </div>
 
-          <div className="min-w-0 flex-1 px-3">
-            {variant === "employee" || isApplicantDashboard ? null : (
-              <>
-                <p className="truncate text-sm font-semibold text-white">{pageHeader.title}</p>
-                <p className="hidden truncate text-[11px] text-white/65 sm:block">{pageHeader.description}</p>
-              </>
-            )}
-          </div>
-
           <div className="flex items-center gap-3">
             <NotificationBell />
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-[#1F195E]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-[#1E1B4B]">
               JG
             </div>
             <div className="hidden md:flex items-center gap-2">
@@ -317,7 +306,7 @@ export default function PwaShell({
           <PwaDesktopNav variant={variant} navItems={resolvedConfig.navItems} />
 
           <div className="flex min-w-0 flex-1 flex-col px-6 py-6 md:px-8 md:py-8">
-            <main className="flex-1 w-full min-w-0 bg-[#f7f6fc] pb-24 pt-2 md:pb-6 md:pt-2">{children}</main>
+            <main className="flex-1 w-full min-w-0 bg-transparent pb-24 pt-2 md:pb-6 md:pt-2">{children}</main>
             <PwaMobileNav navItems={resolvedConfig.navItems} />
           </div>
         </div>

@@ -20,6 +20,8 @@ function getAuthPhone(user: { user_metadata?: unknown; raw_user_meta_data?: unkn
   return typeof possiblePhone === "string" ? possiblePhone : "";
 }
 
+import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+
 export default async function ResumePage() {
   const supabase = await createClient();
 
@@ -70,32 +72,46 @@ export default async function ResumePage() {
 
   return (
     <PageContainer>
-      <div className="space-y-5">
-        <section className="flex flex-col gap-5 rounded-xl bg-card-bg border border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-light text-primary">
-              <span className="material-symbols-outlined text-2xl">auto_awesome</span>
-            </div>
+      <div className="mx-auto max-w-[1400px] space-y-6">
+        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h1 className="text-xl font-bold text-text-primary">AI Resume Builder</h1>
-              <p className="mt-1 text-sm text-text-secondary">Generate a tailored resume for any role.</p>
+              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Resumes &amp; AI Builder
+              </h1>
+              <p className="mt-1 text-sm text-white/75">
+                Build tailored resumes with AI or upload your PDF for instant job matching
+              </p>
+            </div>
+            <ResumeBuilderModal resumes={resumes || []} profile={normalizedProfile} />
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:max-w-md sm:gap-4">
+            <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+              <p className="text-xs font-medium text-slate-500">Saved Resumes</p>
+              <p className="mt-1 text-xl font-bold text-[#1E1B4B] sm:text-2xl">{resumes?.length ?? 0}</p>
+            </div>
+            <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+              <p className="text-xs font-medium text-slate-500">AI Matching</p>
+              <p className="mt-1 text-sm font-bold text-emerald-700 sm:text-base">Ready</p>
             </div>
           </div>
-          <ResumeBuilderModal resumes={resumes || []} profile={normalizedProfile} />
         </section>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
-          <section className="rounded-xl bg-card-bg border border-border p-5">
+          <SolidSurfaceCard className="p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-text-primary">Your Resumes ({resumes?.length ?? 0})</h2>
+                <h2 className="text-base font-bold text-[#1E1B4B]">Your Resumes ({resumes?.length ?? 0})</h2>
                 <p className="mt-1 text-sm text-text-secondary">Your saved resumes and uploaded files.</p>
               </div>
             </div>
             <ResumeListClient resumes={resumes || []} />
-          </section>
+          </SolidSurfaceCard>
 
-          <ResumeUploadClient />
+          <SolidSurfaceCard className="p-5 sm:p-6">
+            <ResumeUploadClient />
+          </SolidSurfaceCard>
         </div>
       </div>
     </PageContainer>

@@ -80,8 +80,8 @@ export default function ProfileDetailsForm({ profile }: Props) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-2xl bg-surface border border-border p-4 space-y-4">
-      <h2 className="font-medium text-text-primary">Personal Details</h2>
+    <form onSubmit={onSubmit} className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+      <h2 className="text-base font-bold text-[#1E1B4B]">Personal Details</h2>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1">
@@ -158,7 +158,7 @@ export default function ProfileDetailsForm({ profile }: Props) {
         <button
           type="submit"
           disabled={status === "saving"}
-          className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70"
+          className="rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1E1B4B]/90 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {status === "saving" ? "Saving..." : "Save Details"}
         </button>

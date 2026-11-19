@@ -7,6 +7,7 @@ import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, roleLabel, isCandidateRole } from "@/lib/roles";
 import ProfileDetailsForm from "./profile-details-form";
+import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -105,113 +106,81 @@ export default async function ProfilePage() {
 
   return (
     <PageContainer>
-      <div className="space-y-6">
-        <h1 className="font-(family-name:--font-heading) text-xl font-bold text-text-primary">
-          Profile
-        </h1>
-
-        {/* User Info Card */}
-        <div className="rounded-2xl bg-surface border border-border p-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-lg">
-              {displayName.charAt(0).toUpperCase() || "?"}
+      <div className="mx-auto max-w-[1400px] space-y-6">
+        {/* Deep Royal Purple Profile Hero Band */}
+        <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold text-white border border-white/20">
+                {displayName.charAt(0).toUpperCase() || "?"}
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-bold text-white sm:text-3xl">{displayName}</h1>
+                <p className="truncate text-sm text-white/75">{displayEmail}</p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="font-medium text-text-primary">
-                {displayName}
-              </p>
-              <p className="text-sm text-text-secondary">{displayEmail}</p>
-            </div>
+            <span className="inline-flex w-fit items-center rounded-full border border-white/20 bg-white/15 px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-white">
+              {roleLabel(effective)}
+            </span>
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 gap-2">
-            <div className="rounded-xl bg-background p-3">
-              <p className="text-xs text-text-secondary">Name</p>
-              <p className="text-sm font-medium text-text-primary">{displayName}</p>
-            </div>
-            <div className="rounded-xl bg-background p-3">
-              <p className="text-xs text-text-secondary">Email</p>
-              <p className="text-sm font-medium text-text-primary">{displayEmail}</p>
-            </div>
-            <div className="rounded-xl bg-background p-3">
-              <p className="text-xs text-text-secondary">Phone Number</p>
-              <p className="text-sm font-medium text-text-primary">{displayPhone}</p>
-            </div>
-            <div className="rounded-xl bg-background p-3">
-              <p className="text-xs text-text-secondary">Account Type</p>
-              <p className="text-sm font-medium text-text-primary capitalize">
-                {roleLabel(effective)}
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* Responsive 2-Column Desktop Layout */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left Column: Account Summary + Links + Sign Out */}
+          <div className="space-y-6 lg:col-span-5">
+            <SolidSurfaceCard className="space-y-4 p-5 sm:p-6">
+              <h2 className="text-base font-bold text-[#1E1B4B]">Account Details</h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3.5">
+                  <p className="text-xs text-text-secondary">Name</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#1E1B4B]">{displayName}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3.5">
+                  <p className="text-xs text-text-secondary">Email</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#1E1B4B] break-all">{displayEmail}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3.5">
+                  <p className="text-xs text-text-secondary">Phone Number</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#1E1B4B]">{displayPhone}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3.5">
+                  <p className="text-xs text-text-secondary">Account Type</p>
+                  <p className="mt-0.5 text-sm font-semibold capitalize text-[#1E1B4B]">
+                    {roleLabel(effective)}
+                  </p>
+                </div>
+              </div>
+            </SolidSurfaceCard>
 
-        <ProfileDetailsForm profile={resolvedProfile ?? null} />
-
-        {/* Role-specific links */}
-        {isCandidateRole(effective) && (
-          <Link
-            href="/applicant/resume"
-            className="flex items-center justify-between rounded-2xl bg-surface border border-border p-4 text-sm font-medium text-text-primary hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z" />
+            {isCandidateRole(effective) && (
+              <Link
+                href="/applicant/resume"
+                className="flex items-center justify-between rounded-3xl border border-slate-200/80 bg-white p-4 text-sm font-semibold text-[#1E1B4B] shadow-xs transition-colors hover:border-[#1E1B4B]/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-[#1E1B4B]">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z" />
+                    </svg>
+                  </div>
+                  My Resumes
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-text-secondary">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
                 </svg>
-              </div>
-              My Resumes
-            </div>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-text-secondary">
-              <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
-            </svg>
-          </Link>
-        )}
+              </Link>
+            )}
 
-        {(effective === "hr_manager" || effective === "admin") && (
-          <div className="rounded-2xl bg-surface border border-border overflow-hidden divide-y divide-border">
-            <Link
-              href="/applications"
-              className="flex items-center justify-between px-4 py-3.5 text-sm text-text-primary hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span style={{ fontSize: 16 }}>👥</span>
-                <span>Manage Applicants</span>
-              </div>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-text-secondary">
-                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-              </svg>
-            </Link>
-            <Link
-              href="/payroll"
-              className="flex items-center justify-between px-4 py-3.5 text-sm text-text-primary hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span style={{ fontSize: 16 }}>💰</span>
-                <span>Payroll</span>
-              </div>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-text-secondary">
-                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-              </svg>
-            </Link>
-            <Link
-              href="/schedules"
-              className="flex items-center justify-between px-4 py-3.5 text-sm text-text-primary hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span style={{ fontSize: 16 }}>🗓️</span>
-                <span>Schedules</span>
-              </div>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-text-secondary">
-                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-              </svg>
-            </Link>
+            <SolidSurfaceCard className="p-4">
+              <PwaSignOutButton />
+            </SolidSurfaceCard>
           </div>
-        )}
 
-        {/* Logout */}
-        <div className="rounded-2xl border border-border bg-surface p-4">
-          <PwaSignOutButton />
+          {/* Right Column: Editable Personal & Location Details */}
+          <div className="lg:col-span-7">
+            <ProfileDetailsForm profile={resolvedProfile ?? null} />
+          </div>
         </div>
       </div>
     </PageContainer>

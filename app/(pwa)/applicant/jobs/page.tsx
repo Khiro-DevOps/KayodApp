@@ -372,7 +372,35 @@ export default async function JobsPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 space-y-6">
+    <div className="mx-auto max-w-[1400px] space-y-6">
+      <section className="-mx-6 -mt-8 rounded-b-[2rem] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Browse Jobs
+          </h1>
+          <p className="mt-1 text-sm text-white/75">
+            Explore open roles matched to your resume and skills
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Top Matches</p>
+            <p className="mt-1 text-xl font-bold text-[#1E1B4B] sm:text-2xl">{recommendedJobs.length}</p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">All Open Roles</p>
+            <p className="mt-1 text-xl font-bold text-[#1E1B4B] sm:text-2xl">{allJobs.length}</p>
+          </div>
+          <div className="col-span-2 rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm sm:col-span-1">
+            <p className="text-xs font-medium text-slate-500">Active Resume</p>
+            <p className="mt-1 truncate text-sm font-bold text-[#1E1B4B] sm:text-base">
+              {selectedResume?.title || "Default Resume"}
+            </p>
+          </div>
+        </div>
+      </section>
+
       <JobsFilterBar
         resumes={(resumes ?? []).map((r) => ({ id: r.id, title: r.title, created_at: r.created_at }))}
         selectedResumeId={selectedResume?.id ?? ""}
