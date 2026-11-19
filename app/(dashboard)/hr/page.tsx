@@ -33,10 +33,16 @@ export default async function HRDashboardPage() {
     ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "HR Manager"
     : "HR Manager";
 
+  const admin = getAdminClient();
+
   // 1. Count Total Employees
-  const { count: totalEmployees } = await supabase
+  let employeesQuery = admin
     .from("employees")
     .select("*", { count: "exact", head: true });
+  if (profile?.tenant_id) {
+    employeesQuery = employeesQuery.eq("tenant_id", profile.tenant_id);
+  }
+  const { count: totalEmployees } = await employeesQuery;
 
   // 2. Count Active Jobs
   const { count: activeJobs } = await supabase
@@ -45,7 +51,6 @@ export default async function HRDashboardPage() {
     .eq("is_published", true);
 
   // 3. Count Pending Leaves
-  const admin = getAdminClient();
   const { count: pendingLeaves } = await admin
     .from("leave_requests")
     .select("*", { count: "exact", head: true })
