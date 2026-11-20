@@ -105,6 +105,25 @@ async function fetchDefaultBranchForTenant(
         return firstTenantRow;
       }
     }
+
+    const { data: anyDefaultRow } = await supabase
+      .from(table)
+      .select("name, address, latitude, longitude, radius_meters")
+      .eq("is_default", true)
+      .limit(1)
+      .maybeSingle<BranchRow>();
+    if (hasValidCoords(anyDefaultRow)) {
+      return anyDefaultRow;
+    }
+
+    const { data: anyBranchRow } = await supabase
+      .from(table)
+      .select("name, address, latitude, longitude, radius_meters")
+      .limit(1)
+      .maybeSingle<BranchRow>();
+    if (hasValidCoords(anyBranchRow)) {
+      return anyBranchRow;
+    }
   }
 
   return null;
@@ -174,13 +193,14 @@ export async function resolveEmployeeGeofence(
       address?: string | null;
       latitude?: number | string | null;
       longitude?: number | string | null;
+      radius_meters?: number | null;
       geofence_radius_meters?: number | null;
     };
 
     let remoteRes: RemoteRow | null = null;
     const { data: activeRemote, error: activeRemoteError } = await supabase
       .from("employee_remote_residences")
-      .select("address, latitude, longitude, geofence_radius_meters")
+      .select("*")
       .eq("employee_id", employee.id)
       .eq("is_active", true)
       .maybeSingle<RemoteRow>();
@@ -188,13 +208,16 @@ export async function resolveEmployeeGeofence(
     if (activeRemoteError) {
       const { data: fallbackRemote } = await supabase
         .from("employee_remote_residences")
-        .select("address, latitude, longitude, geofence_radius_meters")
+        .select("*")
         .eq("employee_id", employee.id)
         .maybeSingle<RemoteRow>();
       remoteRes = fallbackRemote ?? null;
     } else {
       remoteRes = activeRemote ?? null;
     }
+
+    const resolvedRadius =
+      Number(remoteRes?.radius_meters ?? remoteRes?.geofence_radius_meters) || 200;
 
     if (
       remoteRes &&
@@ -210,7 +233,7 @@ export async function resolveEmployeeGeofence(
         address: remoteRes.address ?? null,
         latitude: Number(remoteRes.latitude),
         longitude: Number(remoteRes.longitude),
-        radiusMeters: Number(remoteRes.geofence_radius_meters) || 200,
+        radiusMeters: resolvedRadius,
       };
     }
 
@@ -221,7 +244,7 @@ export async function resolveEmployeeGeofence(
         "Remote residence geofence not configured. Ask HR to set your home coordinates.",
       name: "Remote Residence",
       address: remoteRes?.address ?? null,
-      radiusMeters: Number(remoteRes?.geofence_radius_meters) || 200,
+      radiusMeters: resolvedRadius,
     };
   }
 

@@ -120,7 +120,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     id: employee.id,
     tenant_id: tenantId,
     work_mode: resolvedSetup,
-    work_location_id: linkedJob?.workLocationId ?? employee.work_location_id,
+    work_location_id: employee.work_location_id ?? linkedJob?.workLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
   });
@@ -616,7 +616,7 @@ export async function updateLiveAttendanceLocationAction(
     id: employee.id,
     tenant_id: employee.tenant_id,
     work_mode: resolvedSetup,
-    work_location_id: linkedJob?.workLocationId ?? employee.work_location_id,
+    work_location_id: employee.work_location_id ?? linkedJob?.workLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
   });

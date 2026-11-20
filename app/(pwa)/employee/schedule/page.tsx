@@ -107,20 +107,20 @@ export default async function EmployeeSchedulePage() {
     },
     offer: linkedJob
       ? {
-          job_title: linkedJob.offerTitle,
-          work_setup: linkedJob.offerWorkSetup,
-        }
+        job_title: linkedJob.offerTitle,
+        work_setup: linkedJob.offerWorkSetup,
+      }
       : null,
     jobPosting: linkedJob
       ? {
-          title: linkedJob.title,
-          department: linkedJob.departmentName,
-          work_setup: linkedJob.jobWorkSetup,
-        }
+        title: linkedJob.title,
+        department: linkedJob.departmentName,
+        work_setup: linkedJob.jobWorkSetup,
+      }
       : null,
   });
   const effectiveWorkMode = sourceOfTruth.workSetup;
-  const effectiveWorkLocationId = linkedJob?.workLocationId ?? employee.work_location_id;
+  const effectiveWorkLocationId = employee.work_location_id ?? linkedJob?.workLocationId;
 
   const geofence = await resolveEmployeeGeofence(admin, {
     id: employee.id,
@@ -173,8 +173,8 @@ export default async function EmployeeSchedulePage() {
   const fallbackOnsiteDays: string[] = Array.isArray(employee?.hybrid_onsite_days)
     ? normalizeDaysToFull(employee.hybrid_onsite_days)
     : Array.isArray(employee?.work_days)
-    ? normalizeDaysToFull(employee.work_days)
-    : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+      ? normalizeDaysToFull(employee.work_days)
+      : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const hybridOnsiteDays = parsedHybrid ? parsedHybrid.onsiteDays : fallbackOnsiteDays;
   const hybridWfhDays = parsedHybrid
     ? parsedHybrid.wfhDays
@@ -293,10 +293,10 @@ export default async function EmployeeSchedulePage() {
               targetOfficeCoords={
                 geofence.configured
                   ? {
-                      lat: geofence.latitude,
-                      lng: geofence.longitude,
-                      name: geofence.name,
-                    }
+                    lat: geofence.latitude,
+                    lng: geofence.longitude,
+                    name: geofence.name,
+                  }
                   : null
               }
               geofenceError={geofence.configured ? null : geofence.error}
@@ -357,32 +357,30 @@ export default async function EmployeeSchedulePage() {
                   return (
                     <div
                       key={i}
-                      className={`flex flex-col items-center rounded-xl py-2.5 text-center text-xs transition-colors ${
-                        isToday
-                          ? "bg-[#1e1b4b] text-white shadow-sm ring-2 ring-[#1e1b4b]/20"
-                          : leaveEntry
+                      className={`flex flex-col items-center rounded-xl py-2.5 text-center text-xs transition-colors ${isToday
+                        ? "bg-[#1e1b4b] text-white shadow-sm ring-2 ring-[#1e1b4b]/20"
+                        : leaveEntry
                           ? "bg-amber-50 border border-amber-200 text-amber-800"
                           : isOff
-                          ? "bg-[#f7f6fc] border border-[#e6e4f0] text-text-secondary opacity-75"
-                          : isOnsite
-                          ? "bg-indigo-50 border border-indigo-200 text-indigo-800"
-                          : "bg-emerald-50 border border-emerald-200 text-emerald-800"
-                      }`}
+                            ? "bg-[#f7f6fc] border border-[#e6e4f0] text-text-secondary opacity-75"
+                            : isOnsite
+                              ? "bg-indigo-50 border border-indigo-200 text-indigo-800"
+                              : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                        }`}
                     >
                       <span className="font-semibold">{DAYS_SHORT[i]}</span>
                       <span className={`mt-0.5 text-[11px] ${isToday ? "text-white/80" : "opacity-75"}`}>
                         {date.getDate()}
                       </span>
                       <span
-                        className={`mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                          isToday
-                            ? isOff
-                              ? "bg-white/15 text-white"
-                              : isOnsite
+                        className={`mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isToday
+                          ? isOff
+                            ? "bg-white/15 text-white"
+                            : isOnsite
                               ? "bg-indigo-500/40 text-white"
                               : "bg-emerald-500/40 text-white"
-                            : ""
-                        }`}
+                          : ""
+                          }`}
                       >
                         {leaveEntry ? "On Leave" : isOff ? "Off" : isOnsite ? "Onsite" : "WFH"}
                       </span>
@@ -406,37 +404,36 @@ export default async function EmployeeSchedulePage() {
                   const shiftTitle = leaveEntry
                     ? `On Leave (${leaveEntry.leave_type})`
                     : isOff
-                    ? "No Shift"
-                    : isOnsite
-                    ? "Standard Shift"
-                    : "Remote Work";
+                      ? "No Shift"
+                      : isOnsite
+                        ? "Standard Shift"
+                        : "Remote Work";
                   const statusLabel = leaveEntry
                     ? "On Leave"
                     : isOff
-                    ? "OFF"
-                    : isToday
-                    ? "ACTIVE"
-                    : isPast
-                    ? "COMPLETED"
-                    : "UPCOMING";
+                      ? "OFF"
+                      : isToday
+                        ? "ACTIVE"
+                        : isPast
+                          ? "COMPLETED"
+                          : "UPCOMING";
                   const statusStyle = leaveEntry
                     ? "bg-amber-100 text-amber-800 border-amber-200"
                     : isOff
-                    ? "bg-gray-100 text-gray-600 border-gray-200"
-                    : isToday
-                    ? "bg-[#1e1b4b] text-white border-[#1e1b4b]"
-                    : isPast
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                    : "bg-gray-100 text-gray-700 border-gray-200";
+                      ? "bg-gray-100 text-gray-600 border-gray-200"
+                      : isToday
+                        ? "bg-[#1e1b4b] text-white border-[#1e1b4b]"
+                        : isPast
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                          : "bg-gray-100 text-gray-700 border-gray-200";
 
                   return (
                     <div
                       key={i}
-                      className={`flex items-center justify-between rounded-2xl border p-4 transition-all ${
-                        isToday
-                          ? "border-slate-300 bg-slate-50 shadow-sm"
-                          : "border-[#e6e4f0] bg-white hover:border-slate-300"
-                      }`}
+                      className={`flex items-center justify-between rounded-2xl border p-4 transition-all ${isToday
+                        ? "border-slate-300 bg-slate-50 shadow-sm"
+                        : "border-[#e6e4f0] bg-white hover:border-slate-300"
+                        }`}
                     >
                       {/* Left Column: Day/Date Box */}
                       <div className="flex items-center gap-3">
@@ -455,11 +452,10 @@ export default async function EmployeeSchedulePage() {
                             <p className="text-sm font-bold text-text-primary">{shiftTitle}</p>
                             {!isOff && !leaveEntry && (
                               <span
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                                  isOnsite
-                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                }`}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${isOnsite
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  }`}
                               >
                                 {isOnsite ? "Onsite" : "WFH"}
                               </span>

@@ -1,56 +1,114 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { effectiveRole, isHRRole } from "@/lib/roles";
 import type { WorkSetup } from "@/lib/types";
 
 export async function updateEmployeeLocationAction(formData: FormData) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
-  const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
-  const tenantId = profile?.tenant_id;
-  if (!tenantId) throw new Error("Tenant not found");
+  const admin = getAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string | null }>();
+
+  const rawMeta = (
+    (user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}
+  ) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMeta.role) as string | undefined;
+  const role = effectiveRole(profile?.role, authRole);
+  if (!isHRRole(role)) throw new Error("Forbidden: HR role required");
 
   const employeeId = formData.get("employee_id") as string;
   const workMode = formData.get("work_mode") as WorkSetup;
-  const workLocationId = formData.get("work_location_id") as string;
+  const workLocationId = (formData.get("work_location_id") as string) || null;
 
-  // Remote Residence fields
-  const remoteAddress = formData.get("remote_address") as string;
-  const remoteLat = parseFloat(formData.get("remote_lat") as string);
-  const remoteLng = parseFloat(formData.get("remote_lng") as string);
-  const remoteRadius = parseFloat(formData.get("remote_radius") as string) || 200;
+  const normalizedWorkMode =
+    workMode === "wfh"
+      ? "wfh"
+      : workMode === "remote"
+        ? "remote"
+        : workMode === "hybrid"
+          ? "hybrid"
+          : "onsite";
 
-  // 1. Update employee's work_mode and work_location_id
-  const normalizedWorkMode = workMode === "wfh" ? "remote" : (workMode === "hybrid" || workMode === "remote" ? workMode : "onsite");
-  const { error: empError } = await supabase
+  const resolvedBranchId =
+    (normalizedWorkMode === "onsite" || normalizedWorkMode === "hybrid") && workLocationId
+      ? workLocationId
+      : null;
+
+  const { data: updatedEmp, error: empError } = await admin
     .from("employees")
     .update({
       work_mode: normalizedWorkMode,
-      work_location_id: (normalizedWorkMode === "onsite" || normalizedWorkMode === "hybrid") && workLocationId ? workLocationId : null,
+      work_location_id: resolvedBranchId,
+      updated_at: new Date().toISOString(),
     })
-    .eq("id", employeeId);
+    .eq("id", employeeId)
+    .select("profile_id")
+    .maybeSingle<{ profile_id: string | null }>();
 
   if (empError) throw new Error(empError.message);
 
-  // 2. Upsert employee_remote_residences if remote or hybrid
-  if ((workMode === "remote" || workMode === "hybrid" || workMode === "wfh") && remoteAddress) {
-    const { error: resError } = await supabase
-      .from("employee_remote_residences")
-      .upsert({
-        employee_id: employeeId,
-        tenant_id: tenantId,
-        address: remoteAddress,
-        latitude: remoteLat,
-        longitude: remoteLng,
-        geofence_radius_meters: remoteRadius,
-        updated_by: user.id
-      }, { onConflict: "employee_id" });
-      
-    if (resError) throw new Error(resError.message);
+  // Notify employee about the assigned office branch / work setup update
+  if (updatedEmp?.profile_id) {
+    let branchName: string | null = null;
+    if (resolvedBranchId) {
+      const { data: ob } = await admin
+        .from("office_branches")
+        .select("name")
+        .eq("id", resolvedBranchId)
+        .maybeSingle<{ name: string }>();
+      if (ob?.name) {
+        branchName = ob.name;
+      } else {
+        const { data: wl } = await admin
+          .from("work_locations")
+          .select("name")
+          .eq("id", resolvedBranchId)
+          .maybeSingle<{ name: string }>();
+        branchName = wl?.name ?? null;
+      }
+    }
+
+    const setupLabel =
+      normalizedWorkMode === "wfh"
+        ? "WFH"
+        : normalizedWorkMode === "remote"
+          ? "Remote"
+          : normalizedWorkMode === "hybrid"
+            ? "Hybrid"
+            : "Onsite";
+
+    const body = branchName
+      ? `HR updated your Work Setup to ${setupLabel} and assigned your office branch to ${branchName}.`
+      : `HR updated your Work Setup to ${setupLabel}.`;
+
+    const { error: notifErr } = await admin.from("notifications").insert({
+      recipient_id: updatedEmp.profile_id,
+      sender_id: user.id,
+      type: "schedule_published",
+      title: "Work Setup & Office Branch Updated",
+      body,
+      action_url: "/employee/schedule",
+    });
+
+    if (notifErr) {
+      console.error("updateEmployeeLocationAction notification error:", notifErr.message);
+    }
   }
 
   revalidatePath(`/hr/employees/${employeeId}`);
+  revalidatePath("/hr/employees");
+  revalidatePath("/employee/schedule");
+  revalidatePath("/employee/profile");
+  revalidatePath("/employee/dashboard");
 }
