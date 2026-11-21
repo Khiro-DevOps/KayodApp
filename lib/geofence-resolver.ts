@@ -58,18 +58,10 @@ function hasValidCoords(row: BranchRow | null | undefined): row is BranchRow & {
   );
 }
 
-async function fetchBranchById(
+async function fetchOfficeBranchById(
   supabase: SupabaseClient,
   locationId: string
 ): Promise<BranchRow | null> {
-  const { data: workLoc } = await supabase
-    .from("work_locations")
-    .select("name, address, latitude, longitude, radius_meters")
-    .eq("id", locationId)
-    .maybeSingle<BranchRow>();
-
-  if (workLoc) return workLoc;
-
   const { data: officeBranch } = await supabase
     .from("office_branches")
     .select("name, address, latitude, longitude, radius_meters")
@@ -79,53 +71,63 @@ async function fetchBranchById(
   return officeBranch ?? null;
 }
 
+async function fetchWorkLocationById(
+  supabase: SupabaseClient,
+  locationId: string
+): Promise<BranchRow | null> {
+  const { data: workLoc } = await supabase
+    .from("work_locations")
+    .select("name, address, latitude, longitude, radius_meters")
+    .eq("id", locationId)
+    .maybeSingle<BranchRow>();
+
+  return workLoc ?? null;
+}
+
 async function fetchDefaultBranchForTenant(
   supabase: SupabaseClient,
   tenantId: string | null | undefined
 ): Promise<BranchRow | null> {
-  for (const table of ["office_branches", "work_locations"] as const) {
-    let defaultQuery = supabase
-      .from(table)
+  if (tenantId) {
+    const { data: tenantBranch } = await supabase
+      .from("office_branches")
       .select("name, address, latitude, longitude, radius_meters")
-      .eq("is_default", true);
-    if (tenantId && table === "office_branches") {
-      defaultQuery = defaultQuery.eq("tenant_id", tenantId);
-    }
-    const { data: defaultRow } = await defaultQuery.limit(1).maybeSingle<BranchRow>();
-    if (hasValidCoords(defaultRow)) {
-      return defaultRow;
-    }
-
-    if (tenantId && table === "office_branches") {
-      const { data: firstTenantRow } = await supabase
-        .from(table)
-        .select("name, address, latitude, longitude, radius_meters")
-        .eq("tenant_id", tenantId)
-        .limit(1)
-        .maybeSingle<BranchRow>();
-      if (hasValidCoords(firstTenantRow)) {
-        return firstTenantRow;
-      }
-    }
-
-    const { data: anyDefaultRow } = await supabase
-      .from(table)
-      .select("name, address, latitude, longitude, radius_meters")
-      .eq("is_default", true)
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<BranchRow>();
-    if (hasValidCoords(anyDefaultRow)) {
-      return anyDefaultRow;
+    if (hasValidCoords(tenantBranch)) {
+      return tenantBranch;
     }
+  }
 
-    const { data: anyBranchRow } = await supabase
-      .from(table)
-      .select("name, address, latitude, longitude, radius_meters")
-      .limit(1)
-      .maybeSingle<BranchRow>();
-    if (hasValidCoords(anyBranchRow)) {
-      return anyBranchRow;
-    }
+  const { data: anyOfficeBranch } = await supabase
+    .from("office_branches")
+    .select("name, address, latitude, longitude, radius_meters")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<BranchRow>();
+  if (hasValidCoords(anyOfficeBranch)) {
+    return anyOfficeBranch;
+  }
+
+  const { data: defaultWorkLoc } = await supabase
+    .from("work_locations")
+    .select("name, address, latitude, longitude, radius_meters")
+    .eq("is_default", true)
+    .limit(1)
+    .maybeSingle<BranchRow>();
+  if (hasValidCoords(defaultWorkLoc)) {
+    return defaultWorkLoc;
+  }
+
+  const { data: anyWorkLoc } = await supabase
+    .from("work_locations")
+    .select("name, address, latitude, longitude, radius_meters")
+    .limit(1)
+    .maybeSingle<BranchRow>();
+  if (hasValidCoords(anyWorkLoc)) {
+    return anyWorkLoc;
   }
 
   return null;
@@ -249,13 +251,50 @@ export async function resolveEmployeeGeofence(
     };
   }
 
+  if (isDayOff && (workMode === "hybrid" || workMode === "remote")) {
+    const { data: remoteRow } = await supabase
+      .from("employee_remote_residences")
+      .select("address, latitude, longitude, radius_meters, geofence_radius_meters, approval_status, is_active")
+      .eq("employee_id", employee.id)
+      .maybeSingle<{
+        address?: string | null;
+        latitude?: number | string | null;
+        longitude?: number | string | null;
+        radius_meters?: number | null;
+        geofence_radius_meters?: number | null;
+        approval_status?: string | null;
+        is_active?: boolean | null;
+      }>();
+
+    const isApprovedRemote =
+      Boolean(remoteRow) &&
+      remoteRow?.approval_status !== "rejected" &&
+      remoteRow?.approval_status !== "pending" &&
+      (remoteRow?.approval_status === "approved" || remoteRow?.is_active === true);
+
+    const remoteRadius =
+      Number(remoteRow?.radius_meters ?? remoteRow?.geofence_radius_meters) || 200;
+
+    if (isApprovedRemote && hasValidCoords(remoteRow)) {
+      return {
+        configured: true,
+        mode: "remote_residence",
+        name: "Registered Remote Residence • Day Off",
+        address: remoteRow.address ?? null,
+        latitude: Number(remoteRow.latitude),
+        longitude: Number(remoteRow.longitude),
+        radiusMeters: remoteRadius,
+      };
+    }
+  }
+
   let branch: BranchRow | null = null;
   if (employee.work_location_id) {
-    branch = await fetchBranchById(supabase, employee.work_location_id);
+    branch = await fetchOfficeBranchById(supabase, employee.work_location_id);
   }
 
   if (!hasValidCoords(branch) && employee.fallback_work_location_id) {
-    branch = await fetchBranchById(supabase, employee.fallback_work_location_id);
+    branch = await fetchOfficeBranchById(supabase, employee.fallback_work_location_id);
   }
 
   if (!hasValidCoords(branch)) {
@@ -268,12 +307,16 @@ export async function resolveEmployeeGeofence(
     }
   }
 
+  if (!hasValidCoords(branch) && employee.work_location_id) {
+    branch = await fetchWorkLocationById(supabase, employee.work_location_id);
+  }
+
   if (hasValidCoords(branch)) {
     return {
       configured: true,
       mode: "office_branch",
       name: isDayOff
-        ? `${branch.name || "Office Branch"} · Day Off`
+        ? `${branch.name || "Office Branch"} • Day Off`
         : branch.name || "Assigned Office Branch",
       address: branch.address ?? null,
       latitude: Number(branch.latitude),
