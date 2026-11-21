@@ -740,11 +740,12 @@ export async function getNextAvailableInterviewSlot(options: {
     throw new Error("Forbidden: HR permissions required.");
   }
 
+  const admin = getAdminClient();
   let applicantId = options.applicantId;
 
   // If applicationId provided, verify it belongs to HR user's tenant
   if (options.applicationId) {
-    const { data: jobApp } = await supabase
+    const { data: jobApp } = await admin
       .from("job_applications")
       .select("id, applicant_id, job_postings!job_applications_job_id_fkey(tenant_id)")
       .eq("id", options.applicationId)
@@ -764,7 +765,6 @@ export async function getNextAvailableInterviewSlot(options: {
     }
   }
 
-  const admin = getAdminClient();
   const { getNextAvailableSlot } = await import("@/lib/interview-slots");
   return getNextAvailableSlot({
     ...options,
