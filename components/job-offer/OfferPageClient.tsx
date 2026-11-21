@@ -1056,10 +1056,11 @@ export default function OfferPageClient({
                       </div>
                     ) : canSign && resolvedEmbedSrc ? (
                       <div className="space-y-4">
-                        <div className="overflow-hidden rounded-xl border border-border bg-white">
+                        <div className="min-h-[680px] max-h-[80vh] w-full overflow-y-auto rounded-xl border border-border bg-slate-50/40 p-2 sm:p-4">
                           <DocusealForm
                             src={resolvedEmbedSrc}
                             email={candidateEmail || undefined}
+                            withTitle={false}
                             className="w-full"
                             onComplete={handleSigningComplete}
                           />
