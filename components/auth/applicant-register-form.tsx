@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { register } from "@/app/(auth)/actions";
 import { safeNext } from "@/lib/safe-redirect";
+import { PH_CITIES, PH_PROVINCES } from "@/lib/ph-locations";
 
 export interface ProvinceOption {
   id: string;
@@ -75,14 +76,17 @@ export default function ApplicantRegisterForm({
     }
   }, [next, router, state.success]);
 
+  const effectiveProvinces = provinces.length > 0 ? provinces : PH_PROVINCES;
+  const effectiveCities = cities.length > 0 ? cities : PH_CITIES;
+
   const filteredCities = useMemo(() => {
-    if (!selectedProvinceId) return cities;
-    return cities.filter((city) => city.province_id === selectedProvinceId);
-  }, [cities, selectedProvinceId]);
+    if (!selectedProvinceId) return effectiveCities;
+    return effectiveCities.filter((city) => city.province_id === selectedProvinceId);
+  }, [effectiveCities, selectedProvinceId]);
 
   const selectedCityName = useMemo(() => {
-    return cities.find((city) => city.id === selectedCityId)?.name ?? "";
-  }, [cities, selectedCityId]);
+    return effectiveCities.find((city) => city.id === selectedCityId)?.name ?? "";
+  }, [effectiveCities, selectedCityId]);
 
   const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
@@ -241,7 +245,7 @@ export default function ApplicantRegisterForm({
                   className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
                 >
                   <option value="">Select province</option>
-                  {provinces.map((province) => (
+                  {effectiveProvinces.map((province) => (
                     <option key={province.id} value={province.id}>
                       {province.name}
                     </option>

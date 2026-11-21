@@ -304,7 +304,8 @@ export async function toggleDevUserRole(
       const { error: employeeInactivateError } = await admin
         .from("employees")
         .update({
-          employment_status: "inactive",
+          employment_status: "terminated",
+          end_date: new Date().toISOString().split("T")[0],
           updated_at: new Date().toISOString(),
         })
         .eq("profile_id", userId);
