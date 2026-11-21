@@ -280,9 +280,28 @@ export async function completeInterview(input: {
       .eq("job_posting_id", application.job_id)
       .eq("candidate_id", application.applicant_id)
       .maybeSingle();
-    if (!legacy.data) {
-      requirementsWarning = "Interview completed, but no legacy application record was found for document requests.";
-    } else {
+
+    let legacyApplicationId = legacy.data?.id ?? null;
+    if (!legacyApplicationId) {
+      const { data: createdLegacy, error: createLegacyError } = await admin
+        .from("applications")
+        .insert({
+          job_posting_id: application.job_id,
+          candidate_id: application.applicant_id,
+          status: "pre_employment",
+          doc_deadline: input.deadline || null,
+          doc_submission_note: input.note?.trim() || null,
+        })
+        .select("id")
+        .single();
+      if (createLegacyError || !createdLegacy) {
+        requirementsWarning = `Interview completed, but document requests failed: ${createLegacyError?.message ?? "Could not create application record."}`;
+      } else {
+        legacyApplicationId = createdLegacy.id;
+      }
+    }
+
+    if (legacyApplicationId) {
       const requirementIds = Array.from(new Set(input.requirementIds ?? []));
       const { data: requirements } = await admin
         .from("job_required_documents")
@@ -292,15 +311,16 @@ export async function completeInterview(input: {
       if (!requirements || requirements.length !== requirementIds.length) {
         requirementsWarning = "Interview completed, but one or more document requirements were invalid.";
       } else {
-        const legacyApplicationId = legacy.data.id;
-        const { error: legacyError } = await admin
-          .from("applications")
-          .update({
-            status: "pre_employment",
-            doc_deadline: input.deadline || null,
-            doc_submission_note: input.note?.trim() || null,
-          })
-          .eq("id", legacyApplicationId);
+        const { error: legacyError } = legacy.data
+          ? await admin
+              .from("applications")
+              .update({
+                status: "pre_employment",
+                doc_deadline: input.deadline || null,
+                doc_submission_note: input.note?.trim() || null,
+              })
+              .eq("id", legacyApplicationId)
+          : { error: null };
         if (!legacyError) {
           const { error: requestError } = await admin
             .from("applicant_documents")
@@ -319,7 +339,7 @@ export async function completeInterview(input: {
             type: "document_request",
             title: "Pre-hire documents requested",
             body: "Please submit your requested pre-hire documents.",
-            actionUrl: `/apply/applications/${legacy.data.id}/documents`,
+            actionUrl: `/apply/applications/${legacyApplicationId}/documents`,
             senderId: user.id,
           });
         } else {
