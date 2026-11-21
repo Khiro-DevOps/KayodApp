@@ -35,7 +35,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("id, title, location, currency, docuseal_template_id, created_by, shift_start, shift_end, work_days")
+      .select("id, title, location, currency, docuseal_template_id, created_by, offer_letter_settings")
       .eq("id", jobId)
       .single();
 
@@ -104,6 +104,7 @@ export async function sendOfferWithDocuSeal(
           .maybeSingle()
       : { data: null };
 
+    const offerSettings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
     const templateId = await ensureOfferTemplate(jobId);
     const prefillFields = buildOfferPrefillFields(
       offerRow,
@@ -112,9 +113,9 @@ export async function sendOfferWithDocuSeal(
         currency: job.currency,
         location: job.location,
         company_name: tenantRow?.name ?? null,
-        shift_start: job.shift_start ?? null,
-        shift_end: job.shift_end ?? null,
-        work_days: job.work_days ?? null,
+        shift_start: typeof offerSettings?.shift_start === "string" ? offerSettings.shift_start : null,
+        shift_end: typeof offerSettings?.shift_end === "string" ? offerSettings.shift_end : null,
+        work_days: Array.isArray(offerSettings?.work_days) ? (offerSettings.work_days as string[]) : null,
       },
       candidate,
       branchRow
