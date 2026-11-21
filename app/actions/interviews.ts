@@ -200,7 +200,7 @@ export async function createInterviewInvite(
     // Verify HR permissions
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, tenant_id")
       .eq("id", user.id)
       .single();
 
@@ -223,17 +223,25 @@ export async function createInterviewInvite(
     let branchDetails: string | null = null;
     if (meetingType === "in_person" || meetingType === "hybrid") {
       if (!office_branch_id) return { success: false, error: "Office branch required for in-person interviews." };
-      const jobTenantId = (jobApp.job_postings as { tenant_id?: string } | null)?.tenant_id;
-      if (!jobTenantId) {
-        return { success: false, error: "Job tenant not found for application." };
-      }
+      const postingObj = Array.isArray(jobApp.job_postings)
+        ? jobApp.job_postings[0]
+        : jobApp.job_postings;
+      const jobTenantId =
+        (postingObj as { tenant_id?: string | null } | null)?.tenant_id ??
+        profile.tenant_id ??
+        null;
+
       const { data: branch } = await admin
         .from("office_branches")
-        .select("id, name, address")
+        .select("id, name, address, tenant_id")
         .eq("id", office_branch_id)
-        .eq("tenant_id", jobTenantId)
         .maybeSingle();
-      if (!branch) return { success: false, error: "Office branch is not in the interview tenant." };
+      if (!branch) {
+        return { success: false, error: "Office branch not found." };
+      }
+      if (jobTenantId && branch.tenant_id && branch.tenant_id !== jobTenantId) {
+        return { success: false, error: "Office branch is not in the interview tenant." };
+      }
       branchDetails = `${branch.name}${branch.address ? `, ${branch.address}` : ""}`;
     }
 
