@@ -33,21 +33,30 @@ export async function sendOfferWithDocuSeal(
       throw new Error("Must be logged in to send an offer");
     }
 
-    const { data: job, error: jobError } = await supabase
+    const { data: callerProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!callerProfile || !["hr", "hr_manager", "admin"].includes(String(callerProfile.role))) {
+      throw new Error("Unauthorized");
+    }
+
+    const { data: job, error: jobError } = await admin
       .from("job_postings")
       .select("id, title, location, currency, docuseal_template_id, created_by, offer_letter_settings")
       .eq("id", jobId)
-      .single();
+      .maybeSingle();
 
     if (jobError || !job) {
       throw new Error(jobError?.message ?? "Job posting not found");
     }
 
-    const { data: application, error: applicationError } = await supabase
+    const { data: application, error: applicationError } = await admin
       .from("job_applications")
       .select("id, applicant_id, job_id, profiles!job_applications_applicant_id_fkey (first_name, last_name, email)")
       .eq("id", applicationId)
-      .single();
+      .maybeSingle();
 
     if (applicationError || !application) {
       throw new Error(applicationError?.message ?? "Application not found");
