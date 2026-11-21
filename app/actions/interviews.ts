@@ -208,8 +208,10 @@ export async function createInterviewInvite(
       return { success: false, error: "Forbidden: HR permissions required." };
     }
 
+    const admin = getAdminClient();
+
     // Resolve the canonical application and derive all scheduling ownership from it.
-    const { data: jobApp } = await supabase
+    const { data: jobApp } = await admin
       .from("job_applications")
       .select("id, job_id, applicant_id, job_postings!job_applications_job_id_fkey(tenant_id)")
       .eq("id", application_id)
@@ -225,7 +227,7 @@ export async function createInterviewInvite(
       if (!jobTenantId) {
         return { success: false, error: "Job tenant not found for application." };
       }
-      const { data: branch } = await supabase
+      const { data: branch } = await admin
         .from("office_branches")
         .select("id, name, address")
         .eq("id", office_branch_id)
@@ -236,7 +238,7 @@ export async function createInterviewInvite(
     }
 
     // Check if an interview schedule already exists for this application
-    const { data: existingInterview } = await supabase
+    const { data: existingInterview } = await admin
       .from("interview_schedules")
       .select("id, status, reschedule_reason")
       .eq("application_id", application_id)
@@ -375,7 +377,6 @@ export async function createInterviewInvite(
     }
 
     // Insert notification ONLY AFTER DB write succeeds
-    const admin = getAdminClient();
     const { error: notificationError } = await admin.from("notifications").insert({
       recipient_id: jobApp.applicant_id,
       type: isReschedule ? "interview_rescheduled" : "interview_scheduled",

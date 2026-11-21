@@ -421,39 +421,22 @@ export function ResumePreviewSection({
       setIsLoading(true);
       setLoadError(null);
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("resumes")
-          .select("id, title, pdf_url, content_text, generated_content, input_data, created_at, updated_at")
-          .eq("id", application.resume_id)
-          .maybeSingle();
+        const res = await fetch(`/api/hr/resume/${encodeURIComponent(application.resume_id)}`);
+        const payload = (await res.json().catch(() => ({}))) as {
+          resume?: ResumeRecord;
+          signedPdfUrl?: string | null;
+          error?: string;
+        };
 
         if (cancelled) return;
-        if (error) {
-          setLoadError(error.message || "Failed to load resume.");
-          return;
-        }
-        if (!data) {
-          setLoadError("Resume record not found.");
+        if (!res.ok || !payload.resume) {
+          setLoadError(payload.error || "Resume record not found.");
           return;
         }
 
-        const record = data as ResumeRecord;
-        setResume(record);
-
-        if (record.pdf_url) {
-          const match = record.pdf_url.match(/\/resumes\/(.+)$/);
-          const rawPath = match ? match[1] : null;
-          if (rawPath) {
-            const cleanPath = decodeURIComponent(rawPath.split("?")[0]);
-            const storagePath = cleanPath.startsWith("/") ? cleanPath.substring(1) : cleanPath;
-            const { data: signed } = await supabase.storage
-              .from("resumes")
-              .createSignedUrl(storagePath, 3600);
-            if (!cancelled && signed?.signedUrl) {
-              setSignedPdfUrl(signed.signedUrl);
-            }
-          }
+        setResume(payload.resume);
+        if (payload.signedPdfUrl) {
+          setSignedPdfUrl(payload.signedPdfUrl);
         }
       } catch (err) {
         if (!cancelled) {
