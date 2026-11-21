@@ -127,6 +127,8 @@ export async function register(
   const phone = getStringField(formData, "phone");
   const dob = getStringField(formData, "date_of_birth");
   const age = getStringField(formData, "age");
+  const gender = getStringField(formData, "gender") || null;
+  const civilStatus = getStringField(formData, "civil_status") || null;
   const address = getStringField(formData, "address");
   const city = getStringField(formData, "city");
   const country = getStringField(formData, "country") || "Philippines";
@@ -152,6 +154,21 @@ export async function register(
 
   if (password.length < 8) {
     return { error: "Password must be at least 8 characters.", success: false };
+  }
+
+  if (role === "candidate" && dob) {
+    const dobDate = new Date(dob);
+    if (!Number.isNaN(dobDate.getTime())) {
+      const today = new Date();
+      let calcAge = today.getFullYear() - dobDate.getFullYear();
+      const m = today.getMonth() - dobDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
+        calcAge--;
+      }
+      if (calcAge < 18) {
+        return { error: "Applicants must be at least 18 years old.", success: false };
+      }
+    }
   }
 
   if (role === "candidate" && privacyConsent !== "on" && privacyConsent !== "true") {
@@ -198,6 +215,8 @@ export async function register(
         role,
         date_of_birth: dob || null,
         age: age || null,
+        gender,
+        civil_status: civilStatus,
         address: address || null,
         city: city || null,
         country,

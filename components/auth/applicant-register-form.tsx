@@ -62,8 +62,24 @@ export default function ApplicantRegisterForm({
   const next = searchParams.get("next") ?? "";
   const [selectedProvinceId, setSelectedProvinceId] = useState("");
   const [selectedCityId, setSelectedCityId] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resumeFileName, setResumeFileName] = useState<string | null>(null);
+
+  const computedAge = useMemo(() => {
+    if (!dateOfBirth) return "";
+    const dob = new Date(dateOfBirth);
+    if (Number.isNaN(dob.getTime())) return "";
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    return age >= 0 ? String(age) : "";
+  }, [dateOfBirth]);
+
+  const isUnderage = computedAge !== "" && Number(computedAge) < 18;
 
   const [state, formAction, pending] = useActionState(register, {
     error: null,
@@ -227,6 +243,102 @@ export default function ApplicantRegisterForm({
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="date_of_birth" className="block text-sm font-semibold text-text-main">
+                  Date of Birth
+                </label>
+                <input
+                  id="date_of_birth"
+                  name="date_of_birth"
+                  type="date"
+                  required
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  max={new Date().toISOString().split("T")[0]}
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="age" className="block text-sm font-semibold text-text-main">
+                  Age
+                </label>
+                <input
+                  id="age"
+                  name="age"
+                  type="text"
+                  readOnly
+                  value={computedAge}
+                  placeholder="Auto-calculated"
+                  className={`min-h-[44px] w-full rounded-2xl border px-4 py-2.5 text-sm outline-none ${
+                    isUnderage
+                      ? "border-rose-300 bg-rose-50 text-rose-700"
+                      : "border-indigo-100 bg-slate-50 text-text-main"
+                  }`}
+                />
+                {isUnderage ? (
+                  <p className="text-xs font-medium text-rose-600">
+                    Must be at least 18 years old to register.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="gender" className="block text-sm font-semibold text-text-main">
+                  Gender / Sex
+                </label>
+                <select
+                  id="gender"
+                  name="gender"
+                  required
+                  defaultValue=""
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                >
+                  <option value="" disabled>Select gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="prefer_not_to_say">Prefer not to say</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="civil_status" className="block text-sm font-semibold text-text-main">
+                  Civil Status
+                </label>
+                <select
+                  id="civil_status"
+                  name="civil_status"
+                  required
+                  defaultValue=""
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-3.5 py-2.5 text-sm text-text-main outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                >
+                  <option value="" disabled>Select civil status</option>
+                  <option value="single">Single</option>
+                  <option value="married">Married</option>
+                  <option value="widowed">Widowed</option>
+                  <option value="separated">Separated</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="address" className="block text-sm font-semibold text-text-main">
+                Street / Barangay Address
+              </label>
+              <input
+                id="address"
+                name="address"
+                type="text"
+                required
+                autoComplete="street-address"
+                placeholder="e.g. 123 Mabini St., Brgy. Poblacion"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -320,6 +320,24 @@ export async function toggleDevUserRole(
           error: employeeInactivateError.message,
         };
       }
+
+      // Clean up stale employee-scoped notifications when reverting to applicant
+      await admin
+        .from("notifications")
+        .delete()
+        .eq("recipient_id", userId)
+        .in("type", [
+          "leave_status_changed",
+          "payroll_processed",
+          "schedule_published",
+          "hire_confirmed",
+          "welcome",
+        ]);
+      await admin
+        .from("notifications")
+        .delete()
+        .eq("recipient_id", userId)
+        .like("action_url", "/employee/%");
     }
 
     const targetRoute =

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateEmployeeLocationAction } from "./employee-location-actions";
@@ -25,7 +25,16 @@ export default function GeofenceControlCard({
   const router = useRouter();
   const [isReviewPending, startReviewTransition] = useTransition();
   const [workMode, setWorkMode] = useState<string>(initialWorkMode || "onsite");
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(initialBranchId || "");
   const [isPending, setIsPending] = useState(false);
+
+  useEffect(() => {
+    setWorkMode(initialWorkMode || "onsite");
+  }, [initialWorkMode]);
+
+  useEffect(() => {
+    setSelectedBranchId(initialBranchId || "");
+  }, [initialBranchId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -149,7 +158,8 @@ export default function GeofenceControlCard({
             <label className="text-sm font-medium text-text-main">Assigned Office Branch</label>
             <select
               name="work_location_id"
-              defaultValue={initialBranchId || ""}
+              value={selectedBranchId}
+              onChange={(e) => setSelectedBranchId(e.target.value)}
               required={needsBranch}
               className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
             >

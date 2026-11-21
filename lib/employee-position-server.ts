@@ -275,11 +275,10 @@ export async function ensureValidWorkLocationId(
     const { error: upsertErr } = await admin.from("work_locations").upsert(
       {
         id: officeBranch.id,
-        tenant_id: officeBranch.tenant_id,
         name: officeBranch.name,
         address: officeBranch.address,
-        latitude: officeBranch.latitude,
-        longitude: officeBranch.longitude,
+        latitude: Number(officeBranch.latitude ?? 14.5995),
+        longitude: Number(officeBranch.longitude ?? 120.9842),
         radius_meters: officeBranch.radius_meters ?? 200,
         is_default: officeBranch.is_default ?? false,
       },

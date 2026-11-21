@@ -209,7 +209,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
         <GeofenceControlCard
           employeeId={employee.id}
           initialWorkMode={sourceOfTruth.workSetup as WorkSetup}
-          initialBranchId={linkedJob?.workLocationId || employee.work_location_id || null}
+          initialBranchId={employee.work_location_id || linkedJob?.workLocationId || null}
           officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
         />

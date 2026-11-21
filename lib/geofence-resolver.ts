@@ -33,6 +33,7 @@ export interface GeofenceEmployeeInput {
   work_days?: string[] | null;
   onsite_days?: string[] | null;
   wfh_days?: string[] | null;
+  todayDailyModel?: "onsite" | "wfh" | "off";
 }
 
 type BranchRow = {
@@ -86,7 +87,7 @@ async function fetchDefaultBranchForTenant(
       .from(table)
       .select("name, address, latitude, longitude, radius_meters")
       .eq("is_default", true);
-    if (tenantId) {
+    if (tenantId && table === "office_branches") {
       defaultQuery = defaultQuery.eq("tenant_id", tenantId);
     }
     const { data: defaultRow } = await defaultQuery.limit(1).maybeSingle<BranchRow>();
@@ -94,7 +95,7 @@ async function fetchDefaultBranchForTenant(
       return defaultRow;
     }
 
-    if (tenantId) {
+    if (tenantId && table === "office_branches") {
       const { data: firstTenantRow } = await supabase
         .from(table)
         .select("name, address, latitude, longitude, radius_meters")
@@ -186,7 +187,10 @@ export async function resolveEmployeeGeofence(
     }
   }
 
-  const isRemoteDay = workMode === "remote" || isHybridRemoteDay;
+  const isRemoteDay =
+    employee.todayDailyModel === "wfh" ||
+    (!employee.todayDailyModel && (workMode === "remote" || isHybridRemoteDay));
+  const isDayOff = employee.todayDailyModel === "off";
 
   if (isRemoteDay) {
     type RemoteRow = {
@@ -195,31 +199,27 @@ export async function resolveEmployeeGeofence(
       longitude?: number | string | null;
       radius_meters?: number | null;
       geofence_radius_meters?: number | null;
+      approval_status?: string | null;
+      is_active?: boolean | null;
     };
 
-    let remoteRes: RemoteRow | null = null;
-    const { data: activeRemote, error: activeRemoteError } = await supabase
+    const { data: remoteRes } = await supabase
       .from("employee_remote_residences")
       .select("*")
       .eq("employee_id", employee.id)
-      .eq("is_active", true)
       .maybeSingle<RemoteRow>();
 
-    if (activeRemoteError) {
-      const { data: fallbackRemote } = await supabase
-        .from("employee_remote_residences")
-        .select("*")
-        .eq("employee_id", employee.id)
-        .maybeSingle<RemoteRow>();
-      remoteRes = fallbackRemote ?? null;
-    } else {
-      remoteRes = activeRemote ?? null;
-    }
+    const isApprovedRemote =
+      Boolean(remoteRes) &&
+      remoteRes?.approval_status !== "rejected" &&
+      remoteRes?.approval_status !== "pending" &&
+      (remoteRes?.approval_status === "approved" || remoteRes?.is_active === true);
 
     const resolvedRadius =
       Number(remoteRes?.radius_meters ?? remoteRes?.geofence_radius_meters) || 200;
 
     if (
+      isApprovedRemote &&
       remoteRes &&
       remoteRes.latitude != null &&
       remoteRes.longitude != null &&
@@ -267,11 +267,40 @@ export async function resolveEmployeeGeofence(
     return {
       configured: true,
       mode: "office_branch",
-      name: branch.name || "Assigned Office Branch",
+      name: isDayOff
+        ? `${branch.name || "Office Branch"} · Day Off`
+        : branch.name || "Assigned Office Branch",
       address: branch.address ?? null,
       latitude: Number(branch.latitude),
       longitude: Number(branch.longitude),
       radiusMeters: Number(branch.radius_meters) || 200,
+    };
+  }
+
+  if (isDayOff) {
+    const { data: remoteRow } = await supabase
+      .from("employee_remote_residences")
+      .select("address, latitude, longitude, radius_meters, approval_status, is_active")
+      .eq("employee_id", employee.id)
+      .maybeSingle<{
+        address?: string | null;
+        latitude?: number | string | null;
+        longitude?: number | string | null;
+        radius_meters?: number | null;
+        approval_status?: string | null;
+        is_active?: boolean | null;
+      }>();
+    const hasWfh =
+      Boolean(remoteRow) &&
+      (remoteRow?.approval_status === "approved" || remoteRow?.is_active === true);
+    return {
+      configured: true,
+      mode: "office_branch",
+      name: hasWfh ? "Scheduled Day Off · WFH Verified" : "Scheduled Day Off",
+      address: remoteRow?.address ?? "No shift scheduled today",
+      latitude: Number(remoteRow?.latitude ?? 14.5995),
+      longitude: Number(remoteRow?.longitude ?? 120.9842),
+      radiusMeters: Number(remoteRow?.radius_meters) || 200,
     };
   }
 

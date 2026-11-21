@@ -10,12 +10,26 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: notifications } = await supabase
+  const { data: rawNotifications } = await supabase
     .from("notifications")
     .select("*")
     .eq("recipient_id", user.id)
     .order("created_at", { ascending: false })
     .returns<Notification[]>();
+
+  const employeeOnlyTypes = new Set([
+    "welcome",
+    "hire_confirmed",
+    "leave_status_changed",
+    "payroll_processed",
+    "schedule_published",
+  ]);
+  const notifications = (rawNotifications ?? []).filter(
+    (n) =>
+      !employeeOnlyTypes.has(n.type) &&
+      !n.action_url?.startsWith("/employee") &&
+      !n.action_url?.startsWith("/hr"),
+  );
 
   const unreadCount = notifications?.filter((n) => !n.is_read).length ?? 0;
 

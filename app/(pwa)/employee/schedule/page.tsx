@@ -122,17 +122,6 @@ export default async function EmployeeSchedulePage() {
   const effectiveWorkMode = sourceOfTruth.workSetup;
   const effectiveWorkLocationId = employee.work_location_id ?? linkedJob?.workLocationId;
 
-  const geofence = await resolveEmployeeGeofence(admin, {
-    id: employee.id,
-    tenant_id: employee.tenant_id,
-    work_mode: effectiveWorkMode,
-    work_location_id: effectiveWorkLocationId,
-    hybrid_onsite_days: employee.hybrid_onsite_days,
-    work_days: employee.work_days,
-  });
-
-  const hasOfficeCoordinates = geofence.configured;
-
   // Fetch active attendance log if any
   let activeAttendanceLog = null;
   if (employee?.id) {
@@ -219,6 +208,20 @@ export default async function EmployeeSchedulePage() {
     date: todayDate,
   });
   const isTodayOnsite = todayDailyModel === "onsite";
+
+  const geofence = await resolveEmployeeGeofence(admin, {
+    id: employee.id,
+    tenant_id: employee.tenant_id,
+    work_mode: effectiveWorkMode,
+    work_location_id: effectiveWorkLocationId,
+    hybrid_onsite_days: employee.hybrid_onsite_days,
+    work_days: employee.work_days,
+    onsite_days: hybridOnsiteDays,
+    wfh_days: hybridWfhDays,
+    todayDailyModel,
+  });
+
+  const hasOfficeCoordinates = geofence.configured;
 
   const weekDates = getWeekDates(thisWeekMonday);
   const weekStartStr = thisWeekMondayStr;

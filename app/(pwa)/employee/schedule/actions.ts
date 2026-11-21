@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { calculateHaversineDistance } from "@/lib/haversine";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
-import { resolveContractWorkSetup } from "@/lib/work-arrangement";
+import { resolveContractWorkSetup, resolveDailyWorkModel } from "@/lib/work-arrangement";
 
 export type ClockInPayload = {
   latitude: number;
@@ -116,6 +116,13 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     employeeWorkSetup: employee.work_mode,
   });
 
+  const todayDailyModel = resolveDailyWorkModel({
+    contractWorkSetup: resolvedSetup,
+    schedule: {
+      work_days: Array.isArray(employee.work_days) ? employee.work_days : null,
+    },
+  });
+
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
     id: employee.id,
     tenant_id: tenantId,
@@ -123,6 +130,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     work_location_id: employee.work_location_id ?? linkedJob?.workLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
+    todayDailyModel,
   });
 
   if (!geofence.configured) {

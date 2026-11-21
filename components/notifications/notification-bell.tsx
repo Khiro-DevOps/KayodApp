@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Notification } from "@/lib/types";
 import JoinInterviewButton from "@/components/interviews/JoinInterviewButton";
@@ -59,6 +59,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
   const [currentUserId, setCurrentUserId] = useState<string | null>(userId ?? null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -74,27 +75,52 @@ export default function NotificationBell({ userId }: { userId?: string | null })
           .eq("id", targetUserId)
           .maybeSingle();
 
-        const isEmployee = profile?.role === "employee";
+        const isEmployeePortal =
+          pathname?.startsWith("/employee") || profile?.role === "employee";
+        const isApplicantPortal =
+          pathname?.startsWith("/applicant") ||
+          profile?.role === "candidate" ||
+          profile?.role === "applicant";
 
         const { data, error } = await supabase
           .from("notifications")
           .select("*")
           .eq("recipient_id", targetUserId)
           .order("created_at", { ascending: false })
-          .limit(20);
+          .limit(30);
 
         if (!error && data && isMounted) {
           let items = data as Notification[];
-          if (isEmployee) {
-            const employeeTypes = [
-              "welcome",
-              "hire_confirmed",
-              "leave_status_changed",
-              "payroll_processed",
-              "schedule_published",
-              "general",
-            ];
-            items = items.filter((n) => employeeTypes.includes(n.type));
+          const employeeTypes = new Set([
+            "welcome",
+            "hire_confirmed",
+            "leave_status_changed",
+            "payroll_processed",
+            "schedule_published",
+            "general",
+          ]);
+          const employeeOnlyTypes = new Set([
+            "welcome",
+            "hire_confirmed",
+            "leave_status_changed",
+            "payroll_processed",
+            "schedule_published",
+          ]);
+
+          if (isEmployeePortal) {
+            items = items.filter(
+              (n) =>
+                employeeTypes.has(n.type) &&
+                !n.action_url?.startsWith("/applicant") &&
+                !n.action_url?.startsWith("/hr"),
+            );
+          } else if (isApplicantPortal) {
+            items = items.filter(
+              (n) =>
+                !employeeOnlyTypes.has(n.type) &&
+                !n.action_url?.startsWith("/employee") &&
+                !n.action_url?.startsWith("/hr"),
+            );
           }
           const seen = new Set<string>();
           items = items.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
@@ -200,7 +226,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
       isMounted = false;
       if (cleanupFn) cleanupFn();
     };
-  }, [userId]);
+  }, [userId, pathname]);
 
   // Handle outside click to close popover
   useEffect(() => {
