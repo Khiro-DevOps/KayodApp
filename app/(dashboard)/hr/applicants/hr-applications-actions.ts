@@ -51,18 +51,20 @@ export async function updateApplicationStatus(formData: FormData) {
     throw new Error(`Unsupported application status: ${status}`);
   }
 
-  const { error } = await supabase
-    .from("job_applications") // <--- MUST be job_applications
-    .update({ status: dbStatus })
-    .eq("id", applicationId)
-    .select();
+  const admin = getAdminClient();
 
-  if (error) {
-    console.error("KANBAN UPDATE FAILED:", error);
-    throw new Error(error.message);
+  const { data: updatedRows, error } = await admin
+    .from("job_applications") // <--- MUST be job_applications
+    .update({ status: dbStatus, updated_at: new Date().toISOString() })
+    .eq("id", applicationId)
+    .select("id");
+
+  if (error || !updatedRows || updatedRows.length === 0) {
+    console.error("KANBAN UPDATE FAILED:", error?.message ?? "No matching application row");
+    throw new Error(error?.message ?? "Application not found");
   }
 
-  const { data: appData } = await supabase
+  const { data: appData } = await admin
     .from("job_applications")
     .select("applicant_id, job:job_postings(title)")
     .eq("id", applicationId)
@@ -71,7 +73,7 @@ export async function updateApplicationStatus(formData: FormData) {
   if (appData) {
     const jobTitle = (appData.job as unknown as { title: string } | null)?.title ?? "the position";
 
-    const { error: notifError } = await getAdminClient().from("notifications").insert({
+    const { error: notifError } = await admin.from("notifications").insert({
       recipient_id: appData.applicant_id,
       title: "Application Stage Updated",
       body: `Your application for ${jobTitle} moved to ${dbStatus}.`,
@@ -86,7 +88,7 @@ export async function updateApplicationStatus(formData: FormData) {
 
   // When shortlisted: notify candidate to choose interview format
   if (normalizedStatus === "shortlisted") {
-    const { data: app } = await supabase
+    const { data: app } = await admin
       .from("job_applications")
       .select("applicant_id, job:job_postings(title)")
       .eq("id", applicationId)
@@ -96,13 +98,13 @@ export async function updateApplicationStatus(formData: FormData) {
       const jobTitle = (app.job as unknown as { title: string })?.title ?? "a position";
 
       // Mark when HR qualified this applicant
-      await supabase
+      await admin
         .from("job_applications")
         .update({ interview_qualified_at: new Date().toISOString() })
         .eq("id", applicationId);
 
       // Send notification to candidate
-      const { error: shortlistNotifError } = await getAdminClient().from("notifications").insert({
+      const { error: shortlistNotifError } = await admin.from("notifications").insert({
         recipient_id: app.applicant_id,
         type: "application_status_changed",
         title: "You've been shortlisted! 🎉",
