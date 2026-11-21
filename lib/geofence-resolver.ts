@@ -29,6 +29,7 @@ export interface GeofenceEmployeeInput {
   tenant_id?: string | null;
   work_mode?: string | null;
   work_location_id?: string | null;
+  fallback_work_location_id?: string | null;
   hybrid_onsite_days?: string[] | null;
   work_days?: string[] | null;
   onsite_days?: string[] | null;
@@ -82,7 +83,7 @@ async function fetchDefaultBranchForTenant(
   supabase: SupabaseClient,
   tenantId: string | null | undefined
 ): Promise<BranchRow | null> {
-  for (const table of ["work_locations", "office_branches"] as const) {
+  for (const table of ["office_branches", "work_locations"] as const) {
     let defaultQuery = supabase
       .from(table)
       .select("name, address, latitude, longitude, radius_meters")
@@ -251,6 +252,10 @@ export async function resolveEmployeeGeofence(
   let branch: BranchRow | null = null;
   if (employee.work_location_id) {
     branch = await fetchBranchById(supabase, employee.work_location_id);
+  }
+
+  if (!hasValidCoords(branch) && employee.fallback_work_location_id) {
+    branch = await fetchBranchById(supabase, employee.fallback_work_location_id);
   }
 
   if (!hasValidCoords(branch)) {

@@ -214,6 +214,7 @@ export default async function EmployeeSchedulePage() {
     tenant_id: employee.tenant_id,
     work_mode: effectiveWorkMode,
     work_location_id: effectiveWorkLocationId,
+    fallback_work_location_id: linkedJob?.workLocationId ?? null,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
     onsite_days: hybridOnsiteDays,
