@@ -209,7 +209,7 @@ export async function completeInterview(input: {
 
   const { data: interview, error: interviewError } = await admin
     .from("interview_schedules")
-    .select("id, application_id, status, meeting_type, office_branch_id, interview_notes, updated_at, job_applications!interview_schedules_application_id_fkey(id, job_id, applicant_id, status, rejection_reason, job_postings!job_applications_job_id_fkey(tenant_id, title))")
+    .select("id, application_id, interviewer_id, status, meeting_type, office_branch_id, interview_notes, updated_at, job_applications!interview_schedules_application_id_fkey(id, job_id, applicant_id, status, rejection_reason, job_postings!job_applications_job_id_fkey(tenant_id, created_by, title))")
     .eq("id", input.interviewId)
     .single();
 
@@ -220,21 +220,26 @@ export async function completeInterview(input: {
   const application = Array.isArray(interview.job_applications)
     ? interview.job_applications[0]
     : interview.job_applications;
-  const tenantId = (application?.job_postings as { tenant_id?: string | null } | null)?.tenant_id;
+  const jobPosting = application?.job_postings as { tenant_id?: string | null; created_by?: string | null; title?: string } | null;
+  const tenantId = jobPosting?.tenant_id ?? null;
+  const isSameTenant = Boolean(profile?.tenant_id && tenantId && profile.tenant_id === tenantId);
+  const isCreatorOrInterviewer = jobPosting?.created_by === user.id || interview.interviewer_id === user.id;
 
-  if (!interview.application_id || !application || !profile?.tenant_id || !tenantId || profile.tenant_id !== tenantId) {
+  if (!interview.application_id || !application || (!isSameTenant && !isCreatorOrInterviewer)) {
     return { success: false, error: "Unauthorized" };
   }
 
+  const branchTenantId = tenantId ?? profile?.tenant_id ?? null;
   const meetingType = normalizeMeetingType(input.meetingType ?? interview.meeting_type);
   const officeBranchId = input.officeBranchId ?? interview.office_branch_id ?? null;
   if (["in_person", "hybrid"].includes(meetingType)) {
     if (!officeBranchId) return { success: false, error: "Office branch required for in-person interview" };
+    if (!branchTenantId) return { success: false, error: "Tenant not found for office branch" };
     const { data: branch } = await admin
       .from("office_branches")
       .select("id")
       .eq("id", officeBranchId)
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", branchTenantId)
       .maybeSingle();
     if (!branch) return { success: false, error: "Office branch is not in the interview tenant" };
   }
@@ -400,7 +405,7 @@ export async function endInterviewFromRoom(input: {
 
   const { data: interview, error: interviewError } = await admin
     .from("interview_schedules")
-    .select("id, application_id, applicant_id, status, interview_notes, scorecard, job_applications!interview_schedules_application_id_fkey(id, applicant_id, status, job_postings!job_applications_job_id_fkey(tenant_id, title))")
+    .select("id, application_id, applicant_id, interviewer_id, status, interview_notes, scorecard, job_applications!interview_schedules_application_id_fkey(id, applicant_id, status, job_postings!job_applications_job_id_fkey(tenant_id, created_by, title))")
     .eq("id", input.interviewId)
     .maybeSingle();
 
@@ -411,9 +416,12 @@ export async function endInterviewFromRoom(input: {
   const application = Array.isArray(interview.job_applications)
     ? interview.job_applications[0]
     : interview.job_applications;
-  const tenantId = (application?.job_postings as { tenant_id?: string | null } | null)?.tenant_id;
+  const jobPosting = application?.job_postings as { tenant_id?: string | null; created_by?: string | null; title?: string } | null;
+  const tenantId = jobPosting?.tenant_id ?? null;
+  const isSameTenant = Boolean(profile?.tenant_id && tenantId && profile.tenant_id === tenantId);
+  const isCreatorOrInterviewer = jobPosting?.created_by === user.id || interview.interviewer_id === user.id;
 
-  if (profile?.tenant_id && tenantId && profile.tenant_id !== tenantId) {
+  if (!isSameTenant && !isCreatorOrInterviewer) {
     return { success: false, error: "Unauthorized" };
   }
 
