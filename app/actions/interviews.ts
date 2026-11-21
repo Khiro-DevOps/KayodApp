@@ -326,7 +326,7 @@ export async function createInterviewInvite(
       isReschedule = true;
       const rescheduleReason = data.notes?.trim() || existingInterview.reschedule_reason || null;
 
-      const { data: updatedInvite, error: updateError } = await supabase
+      const { data: updatedInvite, error: updateError } = await admin
         .from("interview_schedules")
         .update({
           interviewer_id,
@@ -356,7 +356,7 @@ export async function createInterviewInvite(
       invite = updatedInvite;
     } else {
       // Insert into interview_schedules
-      const { data: insertedInvite, error: insertError } = await supabase
+      const { data: insertedInvite, error: insertError } = await admin
         .from("interview_schedules")
         .insert({
           application_id,
@@ -398,10 +398,12 @@ export async function createInterviewInvite(
     }
 
     // Update only the canonical application table.
-    await supabase
+    await admin
       .from("job_applications")
       .update({ status: "interview", status_updated_at: new Date().toISOString() })
       .eq("id", application_id);
+
+    revalidatePath("/hr/applicants");
 
     revalidatePath("/hr/interviews");
     revalidatePath("/hr", "layout");
