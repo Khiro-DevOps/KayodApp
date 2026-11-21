@@ -58,12 +58,13 @@ export default async function HRApplicantsHubPage() {
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
 
-  const jobScope = await getHrJobScope(supabase, user.id);
+  const admin = getAdminClient();
+  const jobScope = await getHrJobScope(admin, user.id);
   const tenantId = jobScope.tenantId;
 
   // ── Fetch job postings scoped to the HR user's tenant ────────────────────────
   // Allow both published and unpublished (HR should see their own drafts too).
-  const jobQuery = supabase
+  const jobQuery = admin
     .from("job_postings")
     .select("id, title")
     .or(jobScope.filter)
@@ -81,12 +82,12 @@ export default async function HRApplicantsHubPage() {
   }
 
   // ── Fetch job_applications for the tenant's jobs ─────────────────────────────
-  // Uses an inner join via the nested select: only rows whose job_id references
-  // a job_posting owned by this tenant will be returned.
+  // Uses admin client scoped to tenantJobIds so RLS on job_applications / profiles
+  // never hides newly submitted candidate applications.
   let applications: ApplicationHubCard[] = [];
 
   if (tenantJobIds.length > 0) {
-    const { data: rawApps, error: applicationsError } = await supabase
+    const { data: rawApps, error: applicationsError } = await admin
       .from("job_applications")
       .select(`
         id,

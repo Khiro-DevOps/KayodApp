@@ -18,7 +18,7 @@ export default function ResumeBuilderModal({ resumes, profile }: ResumeBuilderMo
       <GenerateResumeTrigger onClick={() => setIsOpen(true)} />
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
           <div className="w-full max-w-3xl rounded-xl bg-surface-bg p-4 shadow-xl sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>

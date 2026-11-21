@@ -206,7 +206,7 @@ export default function JobDetailContent({
           : null;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 max-h-[90vh] relative bg-white">
+    <div className="flex flex-col flex-1 min-h-0 max-h-[90dvh] relative bg-white">
       {isLoadingResumes && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-xs">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#1F195E] border-t-transparent"></div>
@@ -353,7 +353,7 @@ export default function JobDetailContent({
 
       {/* Sticky Footer */}
       {isCandidate && (
-        <div className="px-6 py-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+        <div className="px-6 py-4 pb-6 sm:pb-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
           {hasApplied ? (
             <>
               <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700">

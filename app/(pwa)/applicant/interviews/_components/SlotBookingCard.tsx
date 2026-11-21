@@ -342,7 +342,7 @@ export function SlotBookingCard({ interview }: SlotBookingCardProps) {
 
       {/* Reschedule Modal */}
       {isRescheduleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
             <h4 className="text-base font-bold text-slate-900">Request Reschedule</h4>
             <p className="text-xs text-slate-600">

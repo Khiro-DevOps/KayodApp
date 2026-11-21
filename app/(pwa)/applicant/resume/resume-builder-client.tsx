@@ -418,7 +418,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
       {/* Preview Modal */}
       {showPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-lg font-semibold text-text-primary">Resume Preview</h3>
