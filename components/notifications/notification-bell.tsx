@@ -93,7 +93,6 @@ export default function NotificationBell({ userId }: { userId?: string | null })
           let items = data as Notification[];
           const employeeTypes = new Set([
             "welcome",
-            "hire_confirmed",
             "leave_status_changed",
             "payroll_processed",
             "schedule_published",
@@ -111,6 +110,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
               (n) =>
                 employeeTypes.has(n.type) &&
                 !n.action_url?.startsWith("/applicant") &&
+                !n.action_url?.startsWith("/api/applicant") &&
                 !n.action_url?.startsWith("/hr"),
             );
           } else if (isApplicantPortal) {
