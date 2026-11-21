@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         id,
         candidate_id,
         job_posting_id,
-        job:job_postings(title, salary_min, employment_type, tenant_id, work_setup, work_location_id)
+        job:job_postings(title, salary_min, employment_type, tenant_id, work_setup, offer_letter_settings)
       `)
       .eq("id", applicationId)
       .single()
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
           : "onsite"
 
     let workLocationId: string | null =
-      jobOffer?.work_location_id ?? jobInfo?.work_location_id ?? null
+      jobOffer?.work_location_id ?? (typeof (jobInfo as { offer_letter_settings?: Record<string, unknown> | null } | null)?.offer_letter_settings?.work_location_id === "string" ? ((jobInfo as { offer_letter_settings?: Record<string, unknown> | null }).offer_letter_settings!.work_location_id as string) : null) ?? null
 
     if (!workLocationId && resolvedTenantId) {
       const { data: defaultWorkLoc } = await admin

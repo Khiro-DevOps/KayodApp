@@ -110,7 +110,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     // Fetch job posting title & details
     const { data: jobPosting } = await admin
       .from("job_postings")
-      .select("id, title, employment_type, department_id, salary_min, salary_max, work_setup, work_location_id")
+      .select("id, title, employment_type, department_id, salary_min, salary_max, work_setup, offer_letter_settings")
       .eq("id", application.job_id)
       .maybeSingle();
 
@@ -169,7 +169,9 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     // Pull Location & Schedule Parameters
     let workLocationId: string | null =
       (jobOffer?.work_location_id as string | null | undefined) ??
-      (jobPosting?.work_location_id as string | null | undefined) ??
+      (typeof (jobPosting as { offer_letter_settings?: Record<string, unknown> | null } | null)?.offer_letter_settings?.work_location_id === "string"
+        ? ((jobPosting as { offer_letter_settings?: Record<string, unknown> | null }).offer_letter_settings!.work_location_id as string)
+        : undefined) ??
       null;
     const workMode = resolveContractWorkSetup({
       offerWorkSetup:

@@ -194,7 +194,7 @@ export async function POST(_request: NextRequest, ctx: unknown) {
               salary_min,
               salary_max,
               work_setup,
-              work_location_id
+              offer_letter_settings
             )
           )
         `)
@@ -384,8 +384,10 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       actorProfile?.tenant_id ??
       "00000000-0000-0000-0000-000000000001";
 
+    const jobOfferSettings = (jobPosting as { offer_letter_settings?: Record<string, unknown> | null } | null)?.offer_letter_settings ?? null;
+    const jobWorkLocationId = typeof jobOfferSettings?.work_location_id === "string" ? jobOfferSettings.work_location_id : null;
     let resolvedWorkLocationId: string | null =
-      offer.work_location_id ?? jobPosting?.work_location_id ?? null;
+      offer.work_location_id ?? jobWorkLocationId ?? null;
 
     if (!resolvedWorkLocationId && tenantId) {
       const { data: defaultWorkLoc } = await admin
