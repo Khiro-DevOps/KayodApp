@@ -104,6 +104,7 @@ export default function ApplicationDetailView({
     application,
     interviews,
     activeContractOffer,
+    offerRouteId,
 }: ApplicationDetailViewProps) {
 
     const jobPosting = (application as unknown as {
@@ -163,7 +164,7 @@ export default function ApplicationDetailView({
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 bg-[#FDF8F2]/70 pb-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
+        <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 bg-[#FDF8F2]/70 pb-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
 
             {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
             <div className="-mx-6 -mt-8 rounded-b-[36px] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
@@ -404,12 +405,21 @@ export default function ApplicationDetailView({
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
-                        <button
-                            disabled={isRejected}
-                            className="w-full bg-white text-indigo-900 font-bold py-2.5 rounded-xl text-body-sm hover:bg-indigo-50 active:scale-[0.98] transition-all disabled:opacity-40 disabled:scale-100"
-                        >
-                            {isRejected ? "Pipeline Closed" : "Complete Setup"}
-                        </button>
+                        {!isRejected && (activeContractOffer || offerRouteId) ? (
+                            <Link
+                                href={`/applicant/offer/${encodeURIComponent(offerRouteId ?? application.id)}/sign`}
+                                className="block w-full text-center bg-white text-indigo-900 font-bold py-2.5 rounded-xl text-body-sm hover:bg-indigo-50 active:scale-[0.98] transition-all"
+                            >
+                                Complete Setup
+                            </Link>
+                        ) : (
+                            <button
+                                disabled={isRejected}
+                                className="w-full bg-white text-indigo-900 font-bold py-2.5 rounded-xl text-body-sm hover:bg-indigo-50 active:scale-[0.98] transition-all disabled:opacity-40 disabled:scale-100"
+                            >
+                                {isRejected ? "Pipeline Closed" : "Complete Setup"}
+                            </button>
+                        )}
                     </div>
 
                 </div>

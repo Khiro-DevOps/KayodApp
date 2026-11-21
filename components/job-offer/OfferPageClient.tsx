@@ -873,7 +873,7 @@ export default function OfferPageClient({
   return (
     <div className="w-full">
       {toastBanner}
-      <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-6 pb-16 sm:px-6 lg:px-8">
         <div className="space-y-6">
           {mode === "overview" && (
             <div>
@@ -969,158 +969,182 @@ export default function OfferPageClient({
             </section>
           ) : (
             <>
-              {(isHR || !isOfferFinalized) && (
-                <NegotiationPanel
-                  token={token}
-                  applicationId={applicationId}
-                  status={status}
-                  negotiations={negotiations}
-                  isHR={isHR}
-                  signSectionRef={signSectionRef}
-                  onAccept={handlePrepareSigningSession}
-                  isPreparingSigningSession={isPreparingSigningSession}
-                  acceptError={signingSessionError}
-                />
-              )}
-
-          {isHR ? (
-            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-              <h3 className="mb-1 text-base font-semibold text-text-primary">Contract Status</h3>
-              <p className="text-sm text-text-secondary">
-                {showSignedBanner
-                  ? `${candidateFirstName} has signed the offer contract.`
-                  : normalizedStatus === "negotiating"
-                    ? `${candidateFirstName} has requested changes to this offer.`
-                    : `Offer sent to ${candidateFirstName} (${candidateEmail || "candidate"}) — currently reviewing and awaiting signature.`}
-              </p>
-              {signedPdfUrl ? (
-                <div className="mt-4">
-                  <a
-                    href={signedPdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Download signed contract
-                  </a>
-                </div>
-              ) : null}
-            </section>
-          ) : (
-          <section ref={signSectionRef} className="rounded-2xl border border-border bg-surface shadow-sm">
-            <div className="p-5">
-              <h3 className="mb-1 text-base font-medium text-text-primary">Sign your contract</h3>
-              <p className="mb-4 text-sm text-text-secondary">Ready to accept? Sign your offer letter digitally - takes under 2 minutes.</p>
-
-              {showSignedBanner ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div
-                    style={{
-                      width: "100%",
-                      padding: "16px",
-                      background: "#f0fdf4",
-                      border: "1px solid #bbf7d0",
-                      borderRadius: "12px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: "50%",
-                        background: "#16a34a",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CheckCircle size={20} color="#fff" />
-                    </div>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: "#15803d" }}>Contract signed</p>
-                      <p style={{ fontSize: 12, color: "#16a34a", marginTop: 2 }}>
-                        Signed on {new Intl.DateTimeFormat("en-PH", {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        }).format(new Date())}
-                      </p>
-                    </div>
-                  </div>
+              {isHR ? (
+                <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+                  <h3 className="mb-1 text-base font-semibold text-text-primary">Contract Status</h3>
+                  <p className="text-sm text-text-secondary">
+                    {showSignedBanner
+                      ? `${candidateFirstName} has signed the offer contract.`
+                      : normalizedStatus === "negotiating"
+                        ? `${candidateFirstName} has requested changes to this offer.`
+                        : `Offer sent to ${candidateFirstName} (${candidateEmail || "candidate"}) — currently reviewing and awaiting signature.`}
+                  </p>
                   {signedPdfUrl ? (
-                    <a
-                      href={signedPdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Download signed contract
-                    </a>
-                  ) : null}
-                </div>
-              ) : isNegotiatingLocked ? (
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                  Negotiation in progress — signing will unlock once HR sends the updated offer.
-                </div>
-              ) : canSign && resolvedEmbedSrc ? (
-                <div className="space-y-4">
-                  <div className="overflow-hidden rounded-xl border border-border bg-white">
-                    <DocusealForm
-                      src={resolvedEmbedSrc}
-                      email={candidateEmail || undefined}
-                      className="w-full"
-                      onComplete={handleSigningComplete}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (hasSigned) return;
-                        if (resolvedEmbedSrc) setSigningOpen(true);
-                      }}
-                      disabled={!resolvedEmbedSrc || hasSigned}
-                      title={!resolvedEmbedSrc ? "Signing link is being prepared" : undefined}
-                      className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
-                    >
-                      <PenLine className="mr-2 h-4 w-4" />
-                      Sign in full screen
-                    </button>
-                    <span className="text-xs text-text-secondary sm:ml-auto text-center sm:text-right">
-                      Secured by DocuSeal
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3 rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
-                  <p>The signing session has not been generated yet.</p>
-                  {isResolvingEmbedSrc || isPreparingSigningSession ? (
-                    <p className="text-sm text-text-primary">Preparing signing session...</p>
-                  ) : null}
-                  {(embedLoadError || signingSessionError) && (
-                    <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      <p>{signingSessionError || embedLoadError}</p>
-                      <button
-                        type="button"
-                        onClick={handleRetryDocusealEmbed}
-                        disabled={isResolvingEmbedSrc || isPreparingSigningSession}
-                        className="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                    <div className="mt-4">
+                      <a
+                        href={signedPdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
                       >
-                        Retry signing session
-                      </button>
+                        <ExternalLink className="h-4 w-4" />
+                        Download signed contract
+                      </a>
                     </div>
-                  )}
-                </div>
+                  ) : null}
+                </section>
+              ) : (
+                <section ref={signSectionRef} className="rounded-2xl border border-border bg-surface shadow-sm">
+                  <div className="p-5 sm:p-6">
+                    <h3 className="mb-1 text-base font-semibold text-text-primary">Sign your contract</h3>
+                    <p className="mb-4 text-sm text-text-secondary">Ready to accept? Sign your offer letter digitally - takes under 2 minutes.</p>
+
+                    {showSignedBanner ? (
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <div
+                          style={{
+                            width: "100%",
+                            padding: "16px",
+                            background: "#f0fdf4",
+                            border: "1px solid #bbf7d0",
+                            borderRadius: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: "50%",
+                              background: "#16a34a",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <CheckCircle size={20} color="#fff" />
+                          </div>
+                          <div>
+                            <p style={{ fontSize: 14, fontWeight: 600, color: "#15803d" }}>Contract signed</p>
+                            <p style={{ fontSize: 12, color: "#16a34a", marginTop: 2 }}>
+                              Signed on {new Intl.DateTimeFormat("en-PH", {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              }).format(new Date())}
+                            </p>
+                          </div>
+                        </div>
+                        {signedPdfUrl ? (
+                          <a
+                            href={signedPdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Download signed contract
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : isNegotiatingLocked ? (
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                        Negotiation in progress — signing will unlock once HR sends the updated offer.
+                      </div>
+                    ) : canSign && resolvedEmbedSrc ? (
+                      <div className="space-y-4">
+                        <div className="overflow-hidden rounded-xl border border-border bg-white">
+                          <DocusealForm
+                            src={resolvedEmbedSrc}
+                            email={candidateEmail || undefined}
+                            className="w-full"
+                            onComplete={handleSigningComplete}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (hasSigned) return;
+                              if (resolvedEmbedSrc) setSigningOpen(true);
+                            }}
+                            disabled={!resolvedEmbedSrc || hasSigned}
+                            title={!resolvedEmbedSrc ? "Signing link is being prepared" : undefined}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                          >
+                            <PenLine className="mr-2 h-4 w-4" />
+                            Sign in full screen
+                          </button>
+                          <span className="text-center text-xs text-text-secondary sm:ml-auto sm:text-right">
+                            Secured by DocuSeal
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 rounded-xl border border-border bg-background p-4 text-sm text-text-secondary">
+                        <p>The signing session has not been generated yet.</p>
+                        {isResolvingEmbedSrc || isPreparingSigningSession ? (
+                          <p className="text-sm text-text-primary">Preparing signing session...</p>
+                        ) : null}
+                        {(embedLoadError || signingSessionError) && (
+                          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                            <p>{signingSessionError || embedLoadError}</p>
+                            <button
+                              type="button"
+                              onClick={handleRetryDocusealEmbed}
+                              disabled={isResolvingEmbedSrc || isPreparingSigningSession}
+                              className="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              Retry signing session
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </section>
               )}
-            </div>
-          </section>
-          )}
+
+              {(isHR || !isOfferFinalized) && (
+                isHR || normalizedStatus === "negotiating" ? (
+                  <NegotiationPanel
+                    token={token}
+                    applicationId={applicationId}
+                    status={status}
+                    negotiations={negotiations}
+                    isHR={isHR}
+                    signSectionRef={signSectionRef}
+                    onAccept={handlePrepareSigningSession}
+                    isPreparingSigningSession={isPreparingSigningSession}
+                    acceptError={signingSessionError}
+                  />
+                ) : (
+                  <details className="group rounded-2xl border border-border bg-surface shadow-sm">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 text-sm font-semibold text-[#1E1B4B] transition-colors hover:bg-slate-50/70">
+                      <span>Need to negotiate offer terms? Request changes</span>
+                      <span className="rounded-lg border border-indigo-200 bg-[#EDE9F9] px-3 py-1 text-xs font-semibold text-[#1E1B4B]">
+                        Request changes
+                      </span>
+                    </summary>
+                    <div className="border-t border-border p-4 sm:p-5">
+                      <NegotiationPanel
+                        token={token}
+                        applicationId={applicationId}
+                        status={status}
+                        negotiations={negotiations}
+                        isHR={isHR}
+                        signSectionRef={signSectionRef}
+                        onAccept={handlePrepareSigningSession}
+                        isPreparingSigningSession={isPreparingSigningSession}
+                        acceptError={signingSessionError}
+                      />
+                    </div>
+                  </details>
+                )
+              )}
             </>
           )}
 
