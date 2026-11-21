@@ -112,7 +112,7 @@ export async function scheduleInterviewProposal(formData: FormData) {
 async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: profile } = await supabase
     .from("profiles").select("role").eq("id", userId).single();
-  return profile && ["hr_manager", "admin"].includes(profile.role);
+  return profile && ["hr", "hr_manager", "admin"].includes(profile.role);
 }
 
 export async function scheduleInterview(formData: FormData) {
@@ -374,9 +374,110 @@ export async function completeInterview(input: {
   revalidatePath("/hr/interviews");
   revalidatePath("/hr/applicants");
   revalidatePath("/hr", "layout");
+  revalidatePath("/applicant/interviews");
   revalidatePath("/applicant/applications");
 
   return { success: true, warning: requirementsWarning };
+}
+
+export async function endInterviewFromRoom(input: {
+  interviewId: string;
+  notes?: string;
+  rating?: "poor" | "avg" | "excel" | null;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+  if (!await verifyHR(supabase, user.id)) return { success: false, error: "Unauthorized" };
+  if (!input.interviewId) return { success: false, error: "Interview ID is required" };
+
+  const admin = getAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", user.id)
+    .single();
+
+  const { data: interview, error: interviewError } = await admin
+    .from("interview_schedules")
+    .select("id, application_id, applicant_id, status, interview_notes, scorecard, job_applications!interview_schedules_application_id_fkey(id, applicant_id, status, job_postings!job_applications_job_id_fkey(tenant_id, title))")
+    .eq("id", input.interviewId)
+    .maybeSingle();
+
+  if (interviewError || !interview) {
+    return { success: false, error: "Interview not found" };
+  }
+
+  const application = Array.isArray(interview.job_applications)
+    ? interview.job_applications[0]
+    : interview.job_applications;
+  const tenantId = (application?.job_postings as { tenant_id?: string | null } | null)?.tenant_id;
+
+  if (profile?.tenant_id && tenantId && profile.tenant_id !== tenantId) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const existingScorecard =
+    interview.scorecard && typeof interview.scorecard === "object" && !Array.isArray(interview.scorecard)
+      ? (interview.scorecard as Record<string, unknown>)
+      : {};
+  const nextScorecard = input.rating
+    ? { ...existingScorecard, rating: input.rating }
+    : existingScorecard;
+
+  const { error: updateError } = await admin
+    .from("interview_schedules")
+    .update({
+      status: "completed",
+      interview_notes: input.notes ?? interview.interview_notes ?? "",
+      scorecard: nextScorecard,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.interviewId);
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  const preInterviewedStatuses = [
+    "applied",
+    "draft",
+    "submitted",
+    "screening",
+    "under_review",
+    "shortlisted",
+    "interview",
+    "interviewing",
+    "interview_scheduled",
+  ];
+  if (application?.id && preInterviewedStatuses.includes(String(application.status ?? "").toLowerCase())) {
+    await admin
+      .from("job_applications")
+      .update({ status: "interviewed" })
+      .eq("id", application.id);
+  }
+
+  const recipientId = application?.applicant_id ?? interview.applicant_id;
+  if (recipientId && interview.status !== "completed") {
+    const jobTitle = (application?.job_postings as { title?: string } | null)?.title ?? "the position";
+    await sendNotification({
+      supabase: admin,
+      recipientId,
+      type: "application_status_changed",
+      title: "Interview Completed",
+      body: `Your interview for ${jobTitle} has concluded. HR will review your application and follow up with next steps.`,
+      actionUrl: "/applicant/interviews",
+      senderId: user.id,
+    });
+  }
+
+  revalidatePath("/hr/interviews");
+  revalidatePath("/hr/applicants");
+  revalidatePath("/hr", "layout");
+  revalidatePath("/applicant/interviews");
+  revalidatePath("/applicant/applications");
+
+  return { success: true };
 }
 
 /** @deprecated Use completeInterview with an explicit outcome. */

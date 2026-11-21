@@ -56,6 +56,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "";
+  const isInterviewRoom = /^\/hr\/interviews\/[^/]+\/room(?:\/|$)/.test(pathname);
   const [companyName, setCompanyName] = useState("Company");
   const [displayName, setDisplayName] = useState("Admin User");
   const displayRole = "HR Manager"; // Standardized to "HR Manager" everywhere
@@ -80,6 +81,10 @@ export default function DashboardLayout({
   };
 
   useEffect(() => {
+    if (isInterviewRoom) {
+      return;
+    }
+
     let isMounted = true;
 
     const loadIdentity = async () => {
@@ -191,7 +196,7 @@ export default function DashboardLayout({
     return () => {
       isMounted = false;
     };
-  }, [pathname]);
+  }, [isInterviewRoom, pathname]);
 
   const handleLogout = () => {
     localStorage.clear();
@@ -205,6 +210,10 @@ export default function DashboardLayout({
     }
     window.location.href = "/login";
   };
+
+  if (isInterviewRoom) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F5FC] text-text-main">

@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, MonitorOff, MonitorUp, PhoneOff, Video, VideoOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { acquireMediaStream, parseMediaDeviceError } from "@/lib/media-devices";
 import { DEFAULT_STUN_URL } from "@/lib/webrtc-ice";
+import { endInterviewFromRoom } from "../../actions";
 
 interface InterviewRoomProps {
   roomId: string;
   interviewId: string;
   applicationId?: string;
   initialHrNotes: string | null;
+  initialRating?: "poor" | "avg" | "excel" | null;
+  candidateName?: string | null;
   isHR: boolean;
   closesAt?: string | null;
 }
@@ -25,11 +28,11 @@ const statusMap: Record<ConnectionState, { label: string; color: string }> = {
   failed: { label: "Poor connection", color: "bg-red-600" },
 };
 
-export default function InterviewRoom({ roomId, interviewId, applicationId, initialHrNotes, isHR, closesAt }: InterviewRoomProps) {
+export default function InterviewRoom({ roomId, interviewId, applicationId, initialHrNotes, initialRating = null, candidateName, isHR, closesAt }: InterviewRoomProps) {
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
   const notesRef = useRef(initialHrNotes ?? "");
@@ -42,9 +45,10 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isRemoteSharing, setIsRemoteSharing] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [notes, setNotes] = useState(initialHrNotes ?? "");
-  const [evaluation, setEvaluation] = useState<"poor" | "avg" | "excel" | null>(null);
+  const [evaluation, setEvaluation] = useState<"poor" | "avg" | "excel" | null>(initialRating);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [hasVideo, setHasVideo] = useState(true);
   const [hasAudio, setHasAudio] = useState(true);
@@ -139,14 +143,14 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   const revertFromScreenShare = async () => {
     const cameraStream = localStreamRef.current;
     const sender = pcRef.current?.getSenders().find((trackSender) => trackSender.track?.kind === "video");
-    const cameraTrack = cameraStream?.getVideoTracks()[0];
+    const cameraTrack = cameraStream?.getVideoTracks()[0] ?? null;
 
     if (screenShareStreamRef.current) {
       stopStream(screenShareStreamRef.current);
       screenShareStreamRef.current = null;
     }
 
-    if (sender && cameraTrack) {
+    if (sender) {
       await sender.replaceTrack(cameraTrack);
     }
 
@@ -155,6 +159,11 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     }
 
     setIsSharing(false);
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "screen-share",
+      payload: { sharing: false, role: isHR ? "hr" : "applicant" },
+    });
   };
 
   useEffect(() => {
@@ -338,7 +347,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           }
         };
 
-        channel.on("broadcast", { event: "join" }, async (evt: any) => {
+        channel.on("broadcast", { event: "join" }, async (evt: { payload?: { role?: string } }) => {
           if (!active) return;
           const payload = evt?.payload;
           if (!isHR || offerSentRef.current || payload?.role !== "applicant") return;
@@ -347,10 +356,10 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           });
         });
 
-        channel.on("broadcast", { event: "offer" }, async (evt: any) => {
+        channel.on("broadcast", { event: "offer" }, async (evt: { payload?: { sdp?: RTCSessionDescriptionInit } }) => {
           if (!active) return;
           const payload = evt?.payload;
-          if (isHR || !pcRef.current) return;
+          if (isHR || !pcRef.current || !payload?.sdp) return;
 
           try {
             await applyRemoteDescription(payload.sdp);
@@ -369,10 +378,10 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           }
         });
 
-        channel.on("broadcast", { event: "answer" }, async (evt: any) => {
+        channel.on("broadcast", { event: "answer" }, async (evt: { payload?: { sdp?: RTCSessionDescriptionInit } }) => {
           if (!active) return;
           const payload = evt?.payload;
-          if (!isHR || !pcRef.current) return;
+          if (!isHR || !pcRef.current || !payload?.sdp) return;
 
           try {
             await applyRemoteDescription(payload.sdp);
@@ -381,7 +390,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           }
         });
 
-        channel.on("broadcast", { event: "ice-candidate" }, async (evt: any) => {
+        channel.on("broadcast", { event: "ice-candidate" }, async (evt: { payload?: { candidate?: RTCIceCandidateInit } }) => {
           if (!active) return;
           const payload = evt?.payload;
           try {
@@ -393,6 +402,15 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
             }
           } catch {
             if (active) setConnectionState("failed");
+          }
+        });
+
+        channel.on("broadcast", { event: "screen-share" }, (evt: { payload?: { sharing?: boolean; role?: string } }) => {
+          if (!active) return;
+          const payload = evt?.payload;
+          const expectedRemoteRole = isHR ? "applicant" : "hr";
+          if (payload?.role === expectedRemoteRole) {
+            setIsRemoteSharing(Boolean(payload?.sharing));
           }
         });
 
@@ -513,8 +531,6 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
   };
 
   const toggleScreenShare = async () => {
-    if (!isHR) return;
-
     try {
       if (isSharing) {
         await revertFromScreenShare();
@@ -523,6 +539,11 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
 
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        stopStream(screenStream);
+        return;
+      }
+
       const sender = pcRef.current?.getSenders().find((trackSender) => trackSender.track?.kind === "video");
 
       screenShareStreamRef.current = screenStream;
@@ -538,6 +559,11 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
       };
 
       setIsSharing(true);
+      void channelRef.current?.send({
+        type: "broadcast",
+        event: "screen-share",
+        payload: { sharing: true, role: isHR ? "hr" : "applicant" },
+      });
     } catch (error) {
       if (error instanceof Error && error.name === "NotAllowedError") {
         console.warn("Screen share cancelled by user");
@@ -591,12 +617,20 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
     setIsEnding(true);
     try {
       if (isHR) {
-        await persistHrNotes();
+        const result = await endInterviewFromRoom({
+          interviewId,
+          notes: notesRef.current,
+          rating: evaluation,
+        });
+        if (!result.success) {
+          await persistHrNotes();
+        }
       }
 
       await closeSessionResources();
 
       router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
+      router.refresh();
     } catch (error) {
       console.error("Failed to cleanly terminate session:", error);
       router.replace(isHR ? "/hr/interviews" : "/applicant/interviews");
@@ -671,7 +705,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className="h-full w-full object-cover"
+          className={isRemoteSharing ? "h-full w-full bg-black object-contain" : "h-full w-full object-cover"}
         />
 
         {!hasRemoteStream && (
@@ -686,14 +720,19 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
             autoPlay
             playsInline
             muted
-            className="h-full w-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
+            className={isSharing ? "h-full w-full object-contain bg-black" : "h-full w-full object-cover"}
+            style={isSharing ? undefined : { transform: "scaleX(-1)" }}
           />
         </div>
 
         <div className="absolute left-6 top-6 z-20 flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xl">
           <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
           <span>{connection.label}</span>
+          {isRemoteSharing && (
+            <span className="ml-1 rounded-full bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white">
+              Screen sharing
+            </span>
+          )}
         </div>
 
         {isHR && (
@@ -741,6 +780,19 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
           </button>
           <button
             type="button"
+            onClick={() => void toggleScreenShare()}
+            title={isSharing ? "Stop sharing screen" : "Share screen"}
+            aria-label={isSharing ? "Stop sharing screen" : "Share screen"}
+            className={`rounded-full border p-3 transition-all ${
+              isSharing
+                ? "border-purple-500 bg-purple-600 text-white hover:bg-purple-700"
+                : "border-slate-200/60 bg-slate-100/90 text-slate-800 hover:bg-slate-200"
+            }`}
+          >
+            {isSharing ? <MonitorOff size={20} /> : <MonitorUp size={20} />}
+          </button>
+          <button
+            type="button"
             onClick={() => void handleEndCall()}
             disabled={isEnding}
             title="End call"
@@ -752,7 +804,7 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
         </div>
 
         <div className="absolute bottom-6 left-6 z-20 rounded-full border border-white/60 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xl">
-          {isHR ? "Jay Gomez (Candidate)" : "Interviewer (HR)"}
+          {isHR ? `${candidateName || "Candidate"} (Candidate)` : "Interviewer (HR)"}
         </div>
       </div>
     </div>

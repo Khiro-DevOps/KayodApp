@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import InterviewRoom from "./interview-room";
 import { formatPht, getRoomAccess } from "@/lib/interview-room-access";
 
@@ -44,11 +45,36 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       if (now < startTime - 10 * 60_000 || now >= endTime) notFound();
     }
 
+    let candidateName: string | null = null;
+    let initialRating: "poor" | "avg" | "excel" | null = null;
+    if (isHR) {
+      const admin = getAdminClient();
+      const { data: detail } = await admin
+        .from("interview_schedules")
+        .select("scorecard, applicant:profiles!interview_schedules_applicant_id_fkey(first_name, last_name, email), application:job_applications!interview_schedules_application_id_fkey(applicant:profiles!job_applications_applicant_id_fkey(first_name, last_name, email))")
+        .eq("id", schedule.id)
+        .maybeSingle();
+
+      const app = Array.isArray(detail?.application) ? detail?.application[0] : detail?.application;
+      const appApplicant = Array.isArray(app?.applicant) ? app?.applicant[0] : app?.applicant;
+      const directApplicant = Array.isArray(detail?.applicant) ? detail?.applicant[0] : detail?.applicant;
+      const person = appApplicant ?? directApplicant;
+      if (person) {
+        candidateName = `${person.first_name ?? ""} ${person.last_name ?? ""}`.trim() || person.email || null;
+      }
+      const rawRating = (detail?.scorecard as Record<string, unknown> | null)?.rating;
+      if (rawRating === "poor" || rawRating === "avg" || rawRating === "excel") {
+        initialRating = rawRating;
+      }
+    }
+
     return (
       <InterviewRoom
         roomId={schedule.room_name ?? schedule.id}
         interviewId={schedule.id}
         initialHrNotes={schedule.interview_notes}
+        initialRating={initialRating}
+        candidateName={candidateName}
         isHR={isHR}
         closesAt={access.closesAt?.toISOString() ?? null}
       />
