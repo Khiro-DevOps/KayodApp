@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { ensureValidWorkLocationId } from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 export async function updateApplicationStatus(formData: FormData) {
@@ -119,7 +120,7 @@ export async function updateApplicationStatus(formData: FormData) {
     const admin = getAdminClient();
     const { data: app } = await admin
       .from("job_applications")
-      .select("applicant_id, job:job_postings(title, department_id, work_setup, work_location_id)")
+      .select("applicant_id, job:job_postings(title, department_id, work_setup)")
       .eq("id", applicationId)
       .single();
 
@@ -158,13 +159,16 @@ export async function updateApplicationStatus(formData: FormData) {
           offerWorkSetup: latestOffer?.work_setup ?? latestOffer?.work_mode,
           jobWorkSetup: job?.work_setup,
         });
+        const validWorkLocationId = await ensureValidWorkLocationId(
+          latestOffer?.work_location_id ?? null,
+        );
         await admin.from("employees").insert({
           profile_id:        app.applicant_id,
           application_id:    applicationId,
           department_id:     job?.department_id ?? null,
           job_title:         resolved.position,
           work_mode:         workMode,
-          work_location_id:  latestOffer?.work_location_id ?? job?.work_location_id ?? null,
+          work_location_id:  validWorkLocationId,
           start_date:        new Date().toISOString().split("T")[0],
           base_salary:       0,
           employment_status: "active",

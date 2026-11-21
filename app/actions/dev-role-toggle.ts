@@ -2,7 +2,10 @@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
+import {
+  ensureValidWorkLocationId,
+  getJobPostingPositionForProfile,
+} from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 type DevRole = "applicant" | "employee" | "hr_manager";
@@ -207,8 +210,9 @@ export async function toggleDevUserRole(
         jobWorkSetup: linkedJob?.jobWorkSetup,
         employeeWorkSetup: existingEmployee?.work_mode,
       });
-      const resolvedWorkLocationId =
-        linkedJob?.workLocationId ?? existingEmployee?.work_location_id ?? defaultBranchId;
+      const resolvedWorkLocationId = await ensureValidWorkLocationId(
+        linkedJob?.workLocationId ?? existingEmployee?.work_location_id ?? defaultBranchId,
+      );
 
       if (existingEmployee) {
         const nextSalary =

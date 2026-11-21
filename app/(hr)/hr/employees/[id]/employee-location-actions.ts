@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { ensureValidWorkLocationId } from "@/lib/employee-position-server";
 import type { WorkSetup } from "@/lib/types";
 
 export async function updateEmployeeLocationAction(formData: FormData) {
@@ -42,7 +43,7 @@ export async function updateEmployeeLocationAction(formData: FormData) {
 
   const resolvedBranchId =
     (normalizedWorkMode === "onsite" || normalizedWorkMode === "hybrid") && workLocationId
-      ? workLocationId
+      ? await ensureValidWorkLocationId(workLocationId)
       : null;
 
   const { data: updatedEmp, error: empError } = await admin

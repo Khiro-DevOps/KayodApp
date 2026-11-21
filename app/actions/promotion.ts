@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { ensureValidWorkLocationId } from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 
 export interface PromoteApplicantResult {
@@ -138,7 +139,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     const offerStatus = String(jobOffer?.status || jobOfferApp?.status || "").toLowerCase();
 
     const isAcceptedOrSigned = ["accepted", "signed", "hired", "hire_confirmed"].includes(offerStatus) ||
-                               ["offer", "offer_sent", "pre_employment", "hired", "hire_confirmed"].includes(normalizedAppStatus);
+      ["offer", "offer_sent", "pre_employment", "hired", "hire_confirmed"].includes(normalizedAppStatus);
 
     if (!isAcceptedOrSigned) {
       return { success: false, error: "Application must be in offer, pre-employment, or hired stage with an accepted contract to promote." };
@@ -196,18 +197,18 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     const resolvedTruth = resolveEmployeeSourceOfTruth({
       offer: jobOffer
         ? {
-            job_title:
-              typeof (jobOffer.job_metadata as Record<string, unknown> | null | undefined)?.job_title === "string"
-                ? ((jobOffer.job_metadata as Record<string, unknown>).job_title as string)
-                : null,
-            work_setup: workMode,
-          }
+          job_title:
+            typeof (jobOffer.job_metadata as Record<string, unknown> | null | undefined)?.job_title === "string"
+              ? ((jobOffer.job_metadata as Record<string, unknown>).job_title as string)
+              : null,
+          work_setup: workMode,
+        }
         : null,
       jobPosting: jobPosting
         ? {
-            title: jobPosting.title ?? jobTitle,
-            work_setup: jobPosting.work_setup ?? null,
-          }
+          title: jobPosting.title ?? jobTitle,
+          work_setup: jobPosting.work_setup ?? null,
+        }
         : { title: jobTitle },
     });
     const resolvedJobTitle = resolvedTruth.position;
@@ -223,6 +224,8 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
         workLocationId = defaultBranch.id;
       }
     }
+
+    workLocationId = await ensureValidWorkLocationId(workLocationId);
 
     // Probation calculation: start_date = CURRENT_DATE, probation_end_date = start_date + 6 months
     const startDate = new Date();

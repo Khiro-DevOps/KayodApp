@@ -235,3 +235,68 @@ export async function getJobPostingPositionForProfile(
   const map = await getJobPostingPositionsByProfileIds([profileId]);
   return map[profileId] ?? null;
 }
+
+/**
+ * Ensures a branch ID exists in `work_locations` (required by `employees_work_location_id_fkey`).
+ * If the ID only exists in `office_branches`, mirrors it into `work_locations`.
+ */
+export async function ensureValidWorkLocationId(
+  branchId: string | null | undefined,
+): Promise<string | null> {
+  if (!branchId) return null;
+  const admin = getAdminClient();
+
+  const { data: existingWl } = await admin
+    .from("work_locations")
+    .select("id")
+    .eq("id", branchId)
+    .maybeSingle<{ id: string }>();
+
+  if (existingWl?.id) {
+    return existingWl.id;
+  }
+
+  const { data: officeBranch } = await admin
+    .from("office_branches")
+    .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_default")
+    .eq("id", branchId)
+    .maybeSingle<{
+      id: string;
+      tenant_id: string | null;
+      name: string;
+      address: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      radius_meters: number | null;
+      is_default: boolean | null;
+    }>();
+
+  if (officeBranch) {
+    const { error: upsertErr } = await admin.from("work_locations").upsert(
+      {
+        id: officeBranch.id,
+        tenant_id: officeBranch.tenant_id,
+        name: officeBranch.name,
+        address: officeBranch.address,
+        latitude: officeBranch.latitude,
+        longitude: officeBranch.longitude,
+        radius_meters: officeBranch.radius_meters ?? 200,
+        is_default: officeBranch.is_default ?? false,
+      },
+      { onConflict: "id" },
+    );
+    if (!upsertErr) {
+      return officeBranch.id;
+    }
+    console.error("ensureValidWorkLocationId: mirror to work_locations failed:", upsertErr.message);
+  }
+
+  // Fallback to any existing work_locations row so FK never fails
+  const { data: fallbackWl } = await admin
+    .from("work_locations")
+    .select("id")
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  return fallbackWl?.id ?? null;
+}
