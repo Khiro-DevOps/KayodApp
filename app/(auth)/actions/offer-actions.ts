@@ -23,7 +23,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   // 1. Fetch Job Listing configuration (Template Data)
   const { data: job, error: jobError } = await supabase
     .from("job_postings")
-    .select("title, work_setup, work_location_id, shift_start, shift_end, work_days, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+    .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
     .eq("id", jobId)
     .single();
 
@@ -112,10 +112,10 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
       salary: baseSalary,
       start_date: job.offer_letter_settings?.phStartDate || null,
       work_mode: job.work_setup || 'onsite',
-      work_location_id: job.work_location_id || null,
-      shift_start: job.shift_start || null,
-      shift_end: job.shift_end || null,
-      work_days: job.work_days || null,
+      work_location_id: typeof offerSettings?.work_location_id === "string" ? offerSettings.work_location_id : null,
+      shift_start: typeof offerSettings?.shift_start === "string" ? offerSettings.shift_start : null,
+      shift_end: typeof offerSettings?.shift_end === "string" ? offerSettings.shift_end : null,
+      work_days: Array.isArray(offerSettings?.work_days) ? offerSettings.work_days : null,
       department: job.offer_letter_settings?.phDepartment || null,
       probation_days: job.offer_letter_settings?.phProbationPeriodDays || 180,
       financial_package: {
@@ -307,7 +307,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_setup, work_location_id, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
