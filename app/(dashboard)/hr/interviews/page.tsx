@@ -27,7 +27,7 @@ type ScheduleRecord = {
     technical_alignment: number | null;
     role_fit: number | null;
     resume: { id?: string; title?: string | null; pdf_url: string | null } | null;
-    job: { id?: string; title: string | null; department?: string | null; work_setup: string | null; tenant_id?: string | null } | null;
+    job: { id?: string; title: string | null; work_setup: string | null; tenant_id?: string | null } | null;
     applicant: Candidate | null;
   } | null;
   interviewer: { first_name?: string | null; last_name?: string | null } | null;
@@ -61,7 +61,7 @@ export default async function HRInterviewsPage() {
         application:job_applications!interview_schedules_application_id_fkey (
           id, applicant_id, match_score, technical_alignment, role_fit,
           resume:resumes!job_applications_resume_id_fkey ( id, title, pdf_url ),
-          job:job_postings!job_applications_job_id_fkey ( id, title, department, work_setup, tenant_id ),
+          job:job_postings!job_applications_job_id_fkey ( id, title, work_setup, tenant_id ),
           applicant:profiles!job_applications_applicant_id_fkey ( first_name, last_name, email, avatar_url )
         ),
         interviewer:profiles!interview_schedules_interviewer_id_fkey ( first_name, last_name )
@@ -112,7 +112,6 @@ export default async function HRInterviewsPage() {
       candidateAvatarUrl: candidate?.avatar_url || null,
       candidateSlug: candidateName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || item.application_id,
       jobTitle: application?.job?.title || "Job Position",
-      department: application?.job?.department ?? null,
       interviewerName: interviewer ? `${interviewer.first_name || ""} ${interviewer.last_name || ""}`.trim() : null,
       matchScore: application?.match_score ?? null,
       technicalAlignment: application?.technical_alignment ?? null,

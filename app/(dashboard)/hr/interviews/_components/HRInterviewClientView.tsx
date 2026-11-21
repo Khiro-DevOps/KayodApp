@@ -33,7 +33,6 @@ interface HRInterviewItem {
   candidateAvatarUrl?: string | null;
   candidateSlug: string;
   jobTitle: string;
-  department?: string | null;
   interviewerName?: string | null;
   matchScore?: number | null;
   technicalAlignment?: number | null;
