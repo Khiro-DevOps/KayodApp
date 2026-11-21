@@ -57,12 +57,13 @@ interface ApplicationDetailViewProps {
     negotiations?: OfferNegotiationRow[];
 }
 
-// 1. Unified 5-Stage Lifecycle matching the Kanban Columns
+// 1. Unified Lifecycle matching the Kanban Columns
 const APPLICANT_STAGES = [
     { key: "new", label: "Application Submitted", subtext: "We have safely received your profile data." },
     { key: "screening", label: "Screening", subtext: "Our hiring team is evaluating your resume and qualifications." },
     { key: "interview", label: "Interview Stage", subtext: "Scheduling or conducting live panel evaluations." },
     { key: "offer", label: "Offer & Onboarding", subtext: "Review contract terms and sign onboarding documents." },
+    { key: "hired", label: "Hired", subtext: "Your hire is confirmed! Welcome aboard." },
     { key: "rejected", label: "Closed", subtext: "Application process concluded." },
 ];
 
@@ -89,8 +90,11 @@ const getApplicantStageKey = (status: string | null | undefined): string => {
         case "pre-employment":
         case "pre_employment":
         case "negotiation_pending":
-        case "hired":
             return "offer";
+
+        case "hired":
+        case "hire_confirmed":
+            return "hired";
 
         case "rejected":
             return "rejected";
@@ -133,15 +137,25 @@ export default function ApplicationDetailView({
         normalizedOfferStatus === "SENT" ||
         normalizedOfferStatus === "NEGOTIATING" ||
         isAlreadySignedOffer;
-    const currentStageKey = isSentJobOffer ? "offer" : getApplicantStageKey(application.status);
+    const applicationStageKey = getApplicantStageKey(application.status);
+    const currentStageKey =
+        applicationStageKey === "hired" || applicationStageKey === "rejected" || normalizedOfferStatus === "HIRED"
+            ? (applicationStageKey === "rejected" ? "rejected" : "hired")
+            : isSentJobOffer
+                ? "offer"
+                : applicationStageKey;
+    const isHired = currentStageKey === "hired";
     const isRejected = currentStageKey === "rejected";
+    const visibleStages = APPLICANT_STAGES.filter((stage) => (stage.key === "rejected" ? isRejected : true));
 
     // Compute active sequence positions
-    const currentStageIndex = APPLICANT_STAGES.findIndex((stage) => stage.key === currentStageKey);
+    const currentStageIndex = visibleStages.findIndex((stage) => stage.key === currentStageKey);
     const activeIndex = currentStageIndex === -1 ? 0 : currentStageIndex;
 
-    // Progress Bar percentage calculation matching 5 structural divisions accurately
-    const progressPercent = Math.min(Math.round(((activeIndex + 1) / APPLICANT_STAGES.length) * 100), 100);
+    // Progress Bar percentage calculation
+    const progressPercent = isHired
+        ? 100
+        : Math.min(Math.round(((activeIndex + 1) / visibleStages.length) * 100), 100);
 
     const upcomingInterview = interviews.find((i) => i.status?.toLowerCase() === "scheduled");
     const pastInterviews = interviews.filter((i) => i.status?.toLowerCase() !== "scheduled");
@@ -164,7 +178,7 @@ export default function ApplicationDetailView({
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 bg-[#FDF8F2]/70 pb-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
+        <div className="w-full max-w-7xl mx-auto space-y-6 bg-[#FDF8F2]/70 pb-8 text-on-surface font-body-md selection:bg-indigo-200 selection:text-indigo-900">
 
             {/* Deep Royal Purple Top Hero Band matching /applicant/dashboard */}
             <div className="-mx-6 -mt-8 rounded-b-[36px] bg-[#1E1B4B] px-6 pt-6 pb-8 text-white shadow-[0_12px_30px_rgba(30,27,75,0.16)] md:mx-0 md:mt-0 md:rounded-3xl md:p-7">
@@ -214,7 +228,7 @@ export default function ApplicationDetailView({
                         {/* Background Inter-node Intersect Spine Connecting Rod */}
                         <div className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-outline-variant" />
 
-                        {APPLICANT_STAGES.map((stage, idx) => {
+                        {visibleStages.map((stage, idx) => {
                             // Node Evaluation Rules
                             const isRejectedNode = stage.key === "rejected";
                             const isCompleted = isRejected
@@ -394,18 +408,27 @@ export default function ApplicationDetailView({
                         <p className="text-body-sm text-indigo-200 mb-6 leading-relaxed">
                             {isRejected
                                 ? "This application process has concluded."
-                                : currentStageKey === "offer"
-                                    ? "You have reached the final stage! Complete outstanding document submissions to finalize."
-                                    : `You are ${progressPercent}% of the way through the process pipeline.`}
+                                : isHired
+                                    ? "Congratulations! Your hire has been confirmed. Open your Employee Portal to get started."
+                                    : currentStageKey === "offer"
+                                        ? "You have reached the final stage! Complete outstanding document submissions to finalize."
+                                        : `You are ${progressPercent}% of the way through the process pipeline.`}
                         </p>
                         <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden mb-6">
                             <div
-                                className={`h-full rounded-full shadow-md transition-all duration-500 ease-out ${isRejected ? "bg-error" : "bg-indigo-400"
+                                className={`h-full rounded-full shadow-md transition-all duration-500 ease-out ${isRejected ? "bg-error" : isHired ? "bg-emerald-400" : "bg-indigo-400"
                                     }`}
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
-                        {!isRejected && (activeContractOffer || offerRouteId) ? (
+                        {isHired ? (
+                            <a
+                                href={`/api/applicant/activate-employee?applicationId=${encodeURIComponent(application.id)}`}
+                                className="block w-full text-center bg-white text-indigo-900 font-bold py-2.5 rounded-xl text-body-sm hover:bg-indigo-50 active:scale-[0.98] transition-all"
+                            >
+                                Go to Employee Portal
+                            </a>
+                        ) : !isRejected && (activeContractOffer || offerRouteId) ? (
                             <Link
                                 href={`/applicant/offer/${encodeURIComponent(offerRouteId ?? application.id)}/sign`}
                                 className="block w-full text-center bg-white text-indigo-900 font-bold py-2.5 rounded-xl text-body-sm hover:bg-indigo-50 active:scale-[0.98] transition-all"

@@ -101,7 +101,6 @@ export default function NotificationBell({ userId }: { userId?: string | null })
           ]);
           const employeeOnlyTypes = new Set([
             "welcome",
-            "hire_confirmed",
             "leave_status_changed",
             "payroll_processed",
             "schedule_published",
