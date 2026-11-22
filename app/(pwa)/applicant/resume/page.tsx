@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Resume, Profile } from "@/lib/types";
@@ -31,9 +32,18 @@ export default async function ResumePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const rawUser = user as { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> };
-  const authRole = (rawUser.user_metadata?.role ?? rawUser.raw_user_meta_data?.role) as string | undefined;
-  const { data: profile } = await supabase
+  const rawUser = user as {
+    email?: string | null;
+    user_metadata?: Record<string, unknown>;
+    raw_user_meta_data?: Record<string, unknown>;
+  };
+  const meta = {
+    ...(rawUser.raw_user_meta_data ?? {}),
+    ...(rawUser.user_metadata ?? {}),
+  };
+  const authRole = meta.role as string | undefined;
+  const admin = getAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
     .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, age, address, city, country, created_at, updated_at")
     .eq("id", user.id)
@@ -42,7 +52,7 @@ export default async function ResumePage() {
   const authPhone = getAuthPhone(rawUser);
 
   if (profile && (!profile.phone || profile.phone.trim().length === 0) && authPhone.trim().length > 0) {
-    await supabase
+    await admin
       .from("profiles")
       .update({ phone: authPhone.trim() })
       .eq("id", user.id);
@@ -50,13 +60,26 @@ export default async function ResumePage() {
     profile.phone = authPhone.trim();
   }
 
-  const normalizedProfile: Profile | null = profile
-    ? {
-        ...profile,
-        age: profile.age ?? null,
-        phone: profile.phone && profile.phone.trim().length > 0 ? profile.phone : authPhone || null,
-      }
-    : null;
+  const metaStr = (key: string) =>
+    typeof meta[key] === "string" ? (meta[key] as string).trim() : "";
+
+  const normalizedProfile: Profile = {
+    id: profile?.id ?? user.id,
+    role: (profile?.role ?? (authRole || "candidate")) as Profile["role"],
+    first_name: profile?.first_name?.trim() || metaStr("first_name"),
+    last_name: profile?.last_name?.trim() || metaStr("last_name"),
+    email: profile?.email?.trim() || rawUser.email || "",
+    phone:
+      (profile?.phone && profile.phone.trim().length > 0 ? profile.phone.trim() : authPhone) || "",
+    avatar_url: profile?.avatar_url ?? null,
+    date_of_birth: profile?.date_of_birth ?? (metaStr("date_of_birth") || null),
+    age: profile?.age ?? null,
+    address: profile?.address?.trim() || metaStr("address") || null,
+    city: profile?.city?.trim() || metaStr("city") || null,
+    country: profile?.country?.trim() || metaStr("country") || "Philippines",
+    created_at: profile?.created_at ?? new Date().toISOString(),
+    updated_at: profile?.updated_at ?? new Date().toISOString(),
+  };
 
   const role = effectiveRole(normalizedProfile?.role, authRole);
   if (!isCandidateRole(role)) {

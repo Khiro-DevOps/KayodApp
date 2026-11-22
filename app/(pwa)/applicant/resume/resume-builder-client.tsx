@@ -75,10 +75,12 @@ function derivePhone(profileLike: Partial<Profile> | null, userLike?: { user_met
 }
 
 function buildLocation(profileLike: Partial<Profile> | null): string {
+  const address = normalizeName(profileLike?.address);
   const city = normalizeName(profileLike?.city);
   const country = normalizeName(profileLike?.country);
   if (city && country) return `${city}, ${country}`;
-  return normalizeName(profileLike?.address);
+  if (address && city) return `${address}, ${city}`;
+  return address || city || country;
 }
 
 export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderClientProps) {
@@ -207,18 +209,13 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
           setShowPreview(true);
         }
 
-        setFormData({
-          resumeName: "",
-          fullName: "",
-          email: "",
-          phone: "",
-          location: "",
-          summary: "",
-          experience: "",
-          education: "",
-          skills: "",
-          certifications: "",
-        });
+        setFormData((prev) => ({
+          ...getInitialFormData(),
+          fullName: prev.fullName || getInitialFormData().fullName,
+          email: prev.email || getInitialFormData().email,
+          phone: prev.phone || getInitialFormData().phone,
+          location: prev.location || getInitialFormData().location,
+        }));
 
         setTimeout(() => {
           router.refresh();
