@@ -34,7 +34,7 @@ export default async function HRProfilePage() {
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.email || user.email || "HR Manager";
   const displayEmail = profile?.email || user.email || "";
   const displayPhone = profile?.phone || "No phone provided";
-  const companyName = profile?.tenants?.name ?? "Kayod HR Workspace";
+  const companyName = profile?.tenants?.name?.trim() || "Company";
 
   return (
     <PageContainer>

@@ -225,7 +225,7 @@ export async function loadApplicantOffer(
   const companyName =
     normalizeText(creatorTenant?.name) ||
     (metaCompanyName && metaCompanyName !== "Hiring Company" ? metaCompanyName : "") ||
-    "Hiring Company";
+    "Company";
 
   let resolvedLocation: string | null = jobPosting?.location ?? null;
   if (activeOffer?.work_location_id) {

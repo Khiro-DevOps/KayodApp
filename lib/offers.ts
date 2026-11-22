@@ -7,13 +7,13 @@ import { OfferContext } from "@/lib/offer-templating";
 export type OfferStatus = 'DRAFT' | 'SENT' | 'NEGOTIATION_PENDING' | 'REVISED' | 'ACCEPTED' | 'DECLINED' | 'HIRED';
 
 export interface OfferData {
-  job_metadata?: Record<string, any>;
-  org_hierarchy?: Record<string, any>;
-  financial_package?: Record<string, any>;
-  logistics?: Record<string, any>;
-  benefits_config?: Record<string, any>;
-  legal_clauses?: Record<string, any>;
-  workflow_meta?: Record<string, any>;
+  job_metadata?: Record<string, unknown>;
+  org_hierarchy?: Record<string, unknown>;
+  financial_package?: Record<string, unknown>;
+  logistics?: Record<string, unknown>;
+  benefits_config?: Record<string, unknown>;
+  legal_clauses?: Record<string, unknown>;
+  workflow_meta?: Record<string, unknown>;
 }
 
 /**
@@ -37,8 +37,10 @@ export async function getOfferContext(offerId: string): Promise<OfferContext> {
       ),
       job_postings (
         title,
-        company_name,
-        location
+        location,
+        tenants (
+          name
+        )
       )
     `)
     .eq('id', offerId)
@@ -46,23 +48,35 @@ export async function getOfferContext(offerId: string): Promise<OfferContext> {
 
   if (error || !offer) throw new Error("Offer not found");
 
+  const offerApplications = offer.applications as {
+    profiles?: { first_name?: string | null; last_name?: string | null; email?: string | null } | null;
+  } | null;
+  const offerJobPostings = offer.job_postings as {
+    title?: string | null;
+    location?: string | null;
+    tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
+  } | null;
+  const resolvedTenantName = Array.isArray(offerJobPostings?.tenants)
+    ? offerJobPostings?.tenants[0]?.name
+    : offerJobPostings?.tenants?.name;
+
   return {
-    job_metadata: offer.job_metadata as Record<string, any> || {},
-    org_hierarchy: offer.org_hierarchy as Record<string, any> || {},
-    financial_package: offer.financial_package as Record<string, any> || {},
-    logistics: offer.logistics as Record<string, any> || {},
-    benefits_config: offer.benefits_config as Record<string, any> || {},
-    legal_clauses: offer.legal_clauses as Record<string, any> || {},
-    workflow_meta: offer.workflow_meta as Record<string, any> || {},
+    job_metadata: (offer.job_metadata as Record<string, unknown>) || {},
+    org_hierarchy: (offer.org_hierarchy as Record<string, unknown>) || {},
+    financial_package: (offer.financial_package as Record<string, unknown>) || {},
+    logistics: (offer.logistics as Record<string, unknown>) || {},
+    benefits_config: (offer.benefits_config as Record<string, unknown>) || {},
+    legal_clauses: (offer.legal_clauses as Record<string, unknown>) || {},
+    workflow_meta: (offer.workflow_meta as Record<string, unknown>) || {},
     candidate: {
-      first_name: (offer.applications as any)?.profiles?.first_name,
-      last_name: (offer.applications as any)?.profiles?.last_name,
-      email: (offer.applications as any)?.profiles?.email,
+      first_name: offerApplications?.profiles?.first_name ?? undefined,
+      last_name: offerApplications?.profiles?.last_name ?? undefined,
+      email: offerApplications?.profiles?.email ?? undefined,
     },
     company: {
-      name: (offer.job_postings as any)?.company_name,
-      location: (offer.job_postings as any)?.location,
-      title: (offer.job_postings as any)?.title,
+      name: resolvedTenantName || "Company",
+      location: offerJobPostings?.location ?? undefined,
+      title: offerJobPostings?.title ?? undefined,
     }
   };
 }

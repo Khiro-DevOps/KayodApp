@@ -213,7 +213,7 @@ export default async function JobsPage({ searchParams }: Props) {
       tenantRel?.name?.trim() ||
       (job.tenant_id ? tenantMap.get(job.tenant_id) : undefined) ||
       (creatorTenantId ? tenantMap.get(creatorTenantId) : undefined) ||
-      "Verified Employer";
+      "Company";
     return {
       ...job,
       companyName,

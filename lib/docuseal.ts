@@ -320,6 +320,7 @@ export type OfferPrefillFields = {
   candidate_name: string;
   job_title: string;
   company_name: string;
+  employer_name: string;
   department: string;
   salary: string;
   base_salary?: string;
@@ -401,9 +402,9 @@ export function buildOfferPrefillFields(
   ).trim();
 
   const companyName = String(
-    (typeof offerMeta.company_name === "string" && offerMeta.company_name.trim()) ||
-      job?.company_name ||
+    job?.company_name ||
       job?.tenant_name ||
+      (typeof offerMeta.company_name === "string" && offerMeta.company_name.trim()) ||
       ""
   ).trim();
 
@@ -526,6 +527,7 @@ export function buildOfferPrefillFields(
     candidate_name: candidateName,
     job_title: jobTitle,
     company_name: companyName,
+    employer_name: companyName,
     department,
     salary,
     ...(salary ? { base_salary: salary } : {}),

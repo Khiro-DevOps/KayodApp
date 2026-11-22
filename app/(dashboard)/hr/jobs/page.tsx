@@ -74,7 +74,6 @@ export default async function ManageJobsPage() {
   const tenantId = jobScope.tenantId ?? "";
   let companyName =
     profile?.tenants?.name?.trim() ||
-    profile?.tenant_name?.trim() ||
     "";
   if (!companyName && tenantId) {
     const { data: tenantRow } = await admin
@@ -85,7 +84,7 @@ export default async function ManageJobsPage() {
     companyName = tenantRow?.name?.trim() || "";
   }
   if (!companyName) {
-    companyName = "Your Company";
+    companyName = "Company";
   }
 
   const currentJobsQuery = supabase
@@ -106,7 +105,7 @@ export default async function ManageJobsPage() {
   ]);
 
   const currentJobs = results[0].data as JobPostingWithApplicantCount[] | null | undefined;
-  let currentJobsError = results[0].error;
+  const currentJobsError = results[0].error;
   let legacyJobs = results[1].data as JobListing[] | null | undefined;
   let legacyJobsError = results[1].error;
 
@@ -115,7 +114,13 @@ export default async function ManageJobsPage() {
   }
 
   if (legacyJobsError) {
-    const e = legacyJobsError as any;
+    const e = legacyJobsError as {
+      code?: string | null;
+      message?: string | null;
+      details?: string | null;
+      hint?: string | null;
+      status?: number | null;
+    };
     // If the legacy table doesn't exist in Supabase, treat as empty legacy set and continue.
     if (e?.code === "PGRST205" || (e?.message && String(e.message).includes("Could not find the table"))) {
       console.info("Legacy jobs table not found (PGRST205). Continuing without legacy jobs.");

@@ -374,7 +374,7 @@ export default async function PublicJobsPage({ searchParams }: JobsPageProps) {
               );
               const posted = formatPostedDate(job.published_at);
               const benefits = normalizeBenefits(job.public_benefits).slice(0, 2);
-              const companyName = job.company_name?.trim() || "Verified Employer";
+              const companyName = job.company_name?.trim() || "Company";
               const companyInitial = companyName.charAt(0).toUpperCase();
 
               return (

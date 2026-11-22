@@ -44,7 +44,7 @@ export async function sendOfferWithDocuSeal(
 
     const { data: job, error: jobError } = await admin
       .from("job_postings")
-      .select("id, title, location, currency, docuseal_template_id, created_by, offer_letter_settings")
+      .select("id, tenant_id, title, location, currency, docuseal_template_id, created_by, offer_letter_settings")
       .eq("id", jobId)
       .maybeSingle();
 
@@ -105,13 +105,23 @@ export async function sendOfferWithDocuSeal(
           .maybeSingle()
       : { data: null };
 
-    const { data: tenantRow } = creatorProfile?.tenant_id
+    const resolvedTenantId =
+      (job as { tenant_id?: string | null }).tenant_id ||
+      creatorProfile?.tenant_id ||
+      null;
+
+    const { data: tenantRow } = resolvedTenantId
       ? await admin
           .from("tenants")
           .select("name")
-          .eq("id", creatorProfile.tenant_id)
+          .eq("id", resolvedTenantId)
           .maybeSingle()
       : { data: null };
+
+    const resolvedCompanyName = tenantRow?.name?.trim() || "";
+    if (!resolvedCompanyName) {
+      throw new Error("Cannot send offer via DocuSeal: company name (tenants.name) is missing.");
+    }
 
     const offerSettings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
     const templateId = await ensureOfferTemplate(jobId);
@@ -121,7 +131,7 @@ export async function sendOfferWithDocuSeal(
         title: job.title,
         currency: job.currency,
         location: job.location,
-        company_name: tenantRow?.name ?? null,
+        company_name: resolvedCompanyName,
         shift_start: typeof offerSettings?.shift_start === "string" ? offerSettings.shift_start : null,
         shift_end: typeof offerSettings?.shift_end === "string" ? offerSettings.shift_end : null,
         work_days: Array.isArray(offerSettings?.work_days) ? (offerSettings.work_days as string[]) : null,

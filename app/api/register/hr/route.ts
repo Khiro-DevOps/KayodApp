@@ -129,10 +129,15 @@ export async function POST(request: Request) {
       logoUrl = publicLogo.publicUrl || logoPath;
     }
 
+    const resolvedTenantAddress = [address, city, country].filter(Boolean).join(", ") || address || null;
+
     const { data: tenantRow, error: tenantError } = await adminClient
       .from("tenants")
       .insert({
         name: companyName,
+        industry: industry || null,
+        company_size: teamSize || null,
+        address: resolvedTenantAddress,
         logo_url: logoUrl,
         plan,
         plan_expires_at: planExpiresAt,
@@ -229,17 +234,27 @@ export async function POST(request: Request) {
     }
 
     const branchAddress = [address, city, country].filter(Boolean).join(", ") || "Cebu City, Philippines";
-    const { error: branchError } = await adminClient.from("office_branches").insert({
-      tenant_id: tenantRow.id,
-      name: "Main Office",
-      address: branchAddress,
-      latitude: 10.3157,
-      longitude: 123.8854,
-      radius_meters: 200,
-    });
+    const { data: existingBranch } = await adminClient
+      .from("office_branches")
+      .select("id")
+      .eq("tenant_id", tenantRow.id)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
 
-    if (branchError) {
-      console.warn("[register/hr] default office_branches insert failed:", branchError.message);
+    if (!existingBranch) {
+      const { error: branchError } = await adminClient.from("office_branches").insert({
+        tenant_id: tenantRow.id,
+        name: "Main Office",
+        address: branchAddress,
+        latitude: 10.3157,
+        longitude: 123.8854,
+        radius_meters: 200,
+        is_primary: true,
+      });
+
+      if (branchError) {
+        console.warn("[register/hr] default office_branches insert failed:", branchError.message);
+      }
     }
 
     return NextResponse.json(

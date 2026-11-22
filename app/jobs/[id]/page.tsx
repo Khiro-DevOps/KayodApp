@@ -256,12 +256,10 @@ export default async function PublicJobDetailPage({ params }: PublicJobDetailPag
                 <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] sm:text-3xl">
                   {job.title}
                 </h1>
-                {job.company_name ? (
-                  <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-text-muted">
-                    <Building2 className="h-4 w-4 text-[#1E1B4B]" />
-                    <span>{job.company_name}</span>
-                  </div>
-                ) : null}
+                <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-text-muted">
+                  <Building2 className="h-4 w-4 text-[#1E1B4B]" />
+                  <span>{job.company_name?.trim() || "Company"}</span>
+                </div>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">

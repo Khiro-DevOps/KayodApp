@@ -4,11 +4,13 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { buildOfferPrefillFields, createDocusealSubmission } from "@/lib/docuseal";
 import { ensureOfferTemplate, getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 
-export async function GET(_req: NextRequest, ctx: any) {
+export async function GET(
+  _req: NextRequest,
+  ctx: { params: Promise<{ jobOfferId?: string }> }
+) {
   try {
-    const rawParams = ctx?.params;
-    const params = rawParams && typeof rawParams.then === "function" ? await rawParams : rawParams ?? {};
-    const jobOfferId = params?.jobOfferId as string | undefined;
+    const params = await ctx.params;
+    const jobOfferId = params?.jobOfferId;
 
     if (!jobOfferId) {
       return NextResponse.json({ error: "Job offer ID is required" }, { status: 400 });
@@ -77,7 +79,7 @@ export async function GET(_req: NextRequest, ctx: any) {
     if (jobPostingId) {
       const { data: fetchedJobPosting, error: jobPostingError } = await admin
         .from("job_postings")
-        .select("title, currency, location, docuseal_template_id, created_by")
+        .select("title, tenant_id, currency, location, docuseal_template_id, created_by")
         .eq("id", jobPostingId)
         .maybeSingle();
 
@@ -85,22 +87,31 @@ export async function GET(_req: NextRequest, ctx: any) {
         return NextResponse.json({ error: jobPostingError.message }, { status: 500 });
       }
 
-      let tenantName: string | null = null;
-      if (fetchedJobPosting?.created_by) {
+      let resolvedTenantId = (fetchedJobPosting as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+      if (!resolvedTenantId && fetchedJobPosting?.created_by) {
         const { data: creatorProfile } = await admin
           .from("profiles")
           .select("tenant_id")
           .eq("id", fetchedJobPosting.created_by)
           .maybeSingle();
+        resolvedTenantId = creatorProfile?.tenant_id ?? null;
+      }
 
-        if (creatorProfile?.tenant_id) {
-          const { data: tenantRow } = await admin
-            .from("tenants")
-            .select("name")
-            .eq("id", creatorProfile.tenant_id)
-            .maybeSingle();
-          tenantName = tenantRow?.name ?? null;
-        }
+      let tenantName: string | null = null;
+      if (resolvedTenantId) {
+        const { data: tenantRow } = await admin
+          .from("tenants")
+          .select("name")
+          .eq("id", resolvedTenantId)
+          .maybeSingle();
+        tenantName = tenantRow?.name?.trim() || null;
+      }
+
+      if (!tenantName) {
+        return NextResponse.json(
+          { error: "Cannot send offer via DocuSeal: company name (tenants.name) is missing." },
+          { status: 400 }
+        );
       }
 
       jobPosting = fetchedJobPosting ? { ...fetchedJobPosting, company_name: tenantName } : null;

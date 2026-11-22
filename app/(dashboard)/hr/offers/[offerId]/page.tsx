@@ -837,11 +837,11 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
     ? metadata.docuseal_embed_src.trim()
     : null;
   const companyNameOrNull =
+    application.job_postings?.profiles?.tenants?.name?.trim() ||
     (typeof metadata.company_name === "string" && metadata.company_name.trim()) ||
     (typeof metadata.companyName === "string" && metadata.companyName.trim()) ||
     (typeof metadata.employer_name === "string" && metadata.employer_name.trim()) ||
     (typeof metadata.organization === "string" && metadata.organization.trim()) ||
-    application.job_postings?.profiles?.tenants?.name?.trim() ||
     null;
   const hrEmail =
     (typeof metadata.hr_email === "string" && metadata.hr_email.trim()) ||
@@ -1029,7 +1029,7 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       offer={{ status: isCompletedSigning ? "signed" : offer.status }}
       isAlreadySigned={isAlreadySigned || isCompletedSigning}
       applicationStatus={application.status}
-      companyName={companyNameOrNull ?? "Hiring Company"}
+      companyName={companyNameOrNull ?? "Company"}
       candidateFirstName={candidateFirstName}
       candidateFullName={candidateFullName}
       candidateEmail={candidateEmail}

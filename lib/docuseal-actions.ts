@@ -311,7 +311,7 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
   const { data: job, error: jobError } = await admin
     .from("job_postings")
     .select(
-      "id, title, description, location, employment_type, work_setup, salary_min, salary_max, currency, job_category, offer_letter_settings, docuseal_template_id, created_by"
+      "id, tenant_id, title, description, location, employment_type, work_setup, salary_min, salary_max, currency, job_category, offer_letter_settings, docuseal_template_id, created_by"
     )
     .eq("id", jobId)
     .single();
@@ -369,18 +369,23 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
         .maybeSingle()
     : { data: null };
 
-  const { data: tenantRow } = creatorProfile?.tenant_id
+  const resolvedTenantId =
+    (job as { tenant_id?: string | null }).tenant_id ||
+    creatorProfile?.tenant_id ||
+    null;
+
+  const { data: tenantRow } = resolvedTenantId
     ? await admin
         .from("tenants")
         .select("name")
-        .eq("id", creatorProfile.tenant_id)
+        .eq("id", resolvedTenantId)
         .maybeSingle()
     : { data: null };
 
-  const tenantName =
-    tenantRow?.name?.trim() ||
-    [creatorProfile?.first_name, creatorProfile?.last_name].filter(Boolean).join(" ").trim() ||
-    "Company";
+  const tenantName = tenantRow?.name?.trim() || "";
+  if (!tenantName) {
+    throw new Error("Cannot generate DocuSeal offer template: company name (tenants.name) is missing.");
+  }
 
   const settings = (job.offer_letter_settings ?? undefined) as OfferLetterSettings | undefined;
   const newTemplateId = await createJobOfferTemplate(

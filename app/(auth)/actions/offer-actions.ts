@@ -23,7 +23,7 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
   // 1. Fetch Job Listing configuration (Template Data)
   const { data: job, error: jobError } = await supabase
     .from("job_postings")
-    .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+    .select("title, tenant_id, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
     .eq("id", jobId)
     .single();
 
@@ -32,21 +32,21 @@ export async function sendHydratedOffer(jobId: string, applicationId: string) {
     throw new Error("Failed to fetch job blueprint");
   }
 
-  const { data: creatorProfile, error: creatorProfileError } = await supabase
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", job.created_by)
-    .single();
-
-  if (creatorProfileError) {
-    console.warn("[sendHydratedOffer] Failed to resolve tenant id:", creatorProfileError);
+  let resolvedTenantId = (job as { tenant_id?: string | null }).tenant_id ?? null;
+  if (!resolvedTenantId && job.created_by) {
+    const { data: creatorProfile } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", job.created_by)
+      .maybeSingle();
+    resolvedTenantId = creatorProfile?.tenant_id ?? null;
   }
 
-  const { data: creatorTenant } = creatorProfile?.tenant_id
-    ? await supabase.from("tenants").select("name").eq("id", creatorProfile.tenant_id).single()
+  const { data: creatorTenant } = resolvedTenantId
+    ? await admin.from("tenants").select("name").eq("id", resolvedTenantId).maybeSingle()
     : { data: null };
 
-  const tenantName = creatorTenant?.name ?? null;
+  const tenantName = creatorTenant?.name?.trim() || null;
 
   // Retire any existing active offers so a replacement can be created safely.
   const { error: archiveError } = await admin
@@ -307,7 +307,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
 
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
-      .select("title, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
+      .select("title, tenant_id, work_setup, salary_min, offer_letter_settings, docuseal_template_id, created_by")
       .eq("id", jobId)
       .single();
 
@@ -323,21 +323,21 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       return { success: false, error: "Must be logged in to create an offer draft" };
     }
 
-    const { data: creatorProfile, error: creatorProfileError } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", job.created_by)
-      .single();
-
-    if (creatorProfileError) {
-      console.warn("[createHydratedOfferDraft] Failed to resolve tenant id:", creatorProfileError);
+    let resolvedTenantId = (job as { tenant_id?: string | null }).tenant_id ?? null;
+    if (!resolvedTenantId && job.created_by) {
+      const { data: creatorProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", job.created_by)
+        .maybeSingle();
+      resolvedTenantId = creatorProfile?.tenant_id ?? null;
     }
 
-    const { data: creatorTenant } = creatorProfile?.tenant_id
-      ? await supabase.from("tenants").select("name").eq("id", creatorProfile.tenant_id).single()
+    const { data: creatorTenant } = resolvedTenantId
+      ? await admin.from("tenants").select("name").eq("id", resolvedTenantId).maybeSingle()
       : { data: null };
 
-    const tenantName = creatorTenant?.name ?? null;
+    const tenantName = creatorTenant?.name?.trim() || null;
 
     const { data: existingOffers, error: existingOfferError } = await admin
       .from("job_offers")

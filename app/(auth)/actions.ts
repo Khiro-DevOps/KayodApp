@@ -139,7 +139,9 @@ export async function register(
   const privacyConsentVersion = getStringField(formData, "privacy_consent_version") || "v1.0";
   const privacyConsentedAt =
     getStringField(formData, "privacy_consented_at") || new Date().toISOString();
-  const tenantName = getStringField(formData, "tenant_name");
+  const tenantName = getStringField(formData, "tenant_name") || getStringField(formData, "companyName");
+  const industry = getStringField(formData, "industry") || null;
+  const companySize = getStringField(formData, "company_size") || getStringField(formData, "companySize") || null;
   const rawPlan = formData.get("plan") as string | null;
   const next = getStringField(formData, "next") || null;
   const resumeFile = formData.get("resume_file");
@@ -181,10 +183,15 @@ export async function register(
   let tenantId: string | null = null;
 
   if (role === "hr_manager" && tenantName) {
-    const { data: tenant, error: tenantError } = await supabase
+    const adminClient = getAdminClient();
+    const resolvedAddress = [address, city, country].filter(Boolean).join(", ") || address || null;
+    const { data: tenant, error: tenantError } = await adminClient
       .from("tenants")
       .insert({
         name: tenantName,
+        industry,
+        company_size: companySize,
+        address: resolvedAddress,
         plan,
         plan_expires_at: planExpiresAt,
       })
@@ -195,6 +202,25 @@ export async function register(
       return { error: "Failed to create tenant record.", success: false };
     }
     tenantId = tenant.id;
+
+    const { data: existingBranch } = await adminClient
+      .from("office_branches")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (!existingBranch) {
+      await adminClient.from("office_branches").insert({
+        tenant_id: tenantId,
+        name: "Main Office",
+        address: resolvedAddress || "Cebu City, Philippines",
+        latitude: 10.3157,
+        longitude: 123.8854,
+        radius_meters: 200,
+        is_primary: true,
+      });
+    }
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
@@ -232,6 +258,22 @@ export async function register(
 
   if (signUpError) {
     return { error: signUpError.message, success: false };
+  }
+
+  if (role === "hr_manager" && signUpData.user && tenantId) {
+    const adminClient = getAdminClient();
+    await adminClient.from("profiles").upsert(
+      {
+        id: signUpData.user.id,
+        email,
+        tenant_id: tenantId,
+        role: "hr_manager",
+        first_name: firstName,
+        last_name: lastName,
+        phone: phone || null,
+      },
+      { onConflict: "id" }
+    );
   }
 
   if (signUpData.user && resumeFile instanceof File && resumeFile.size > 0) {

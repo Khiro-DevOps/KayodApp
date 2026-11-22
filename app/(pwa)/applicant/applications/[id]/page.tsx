@@ -189,7 +189,7 @@ export default async function ApplicantApplicationDetailPage({
     profiles ( first_name, last_name, email )
   `)
     .eq("application_id", id)
-    .order("scheduled_at", { ascending: false }) as any;
+    .order("scheduled_at", { ascending: false });
 
   const { data: contractTemplates } = await supabase
     .from("contract_templates")
@@ -370,7 +370,7 @@ export default async function ApplicantApplicationDetailPage({
       work_setup: targetJobOffer?.work_setup ?? targetJobOffer?.work_mode ?? null,
       department: targetJobOffer?.department ?? null,
       location: resolvedOfferLocation,
-      company_name: resolvedCompanyName || "Hiring Company",
+      company_name: resolvedCompanyName || "Company",
       contract_templates: Array.isArray(resolvedActiveContractOffer.contract_templates)
         ? resolvedActiveContractOffer.contract_templates
         : resolvedActiveContractOffer.contract_templates
@@ -398,7 +398,7 @@ export default async function ApplicantApplicationDetailPage({
     <PageContainer>
       <ApplicationDetailView
         application={application}
-        interviews={interviews ?? []}
+        interviews={(interviews ?? []) as unknown as Parameters<typeof ApplicationDetailView>[0]["interviews"]}
         userRole={role}
         isCurrentUser={true}
         contractTemplates={contractTemplates ?? []}

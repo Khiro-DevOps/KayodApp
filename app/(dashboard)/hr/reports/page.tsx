@@ -27,13 +27,13 @@ export default async function AnalyticsPage() {
   if (!currentCompanyId) redirect("/hr");
   const currentUserId = user.id;
 
-  const { data: company } = await supabase
-    .from("companies")
+  const { data: tenant } = await supabase
+    .from("tenants")
     .select("name")
     .eq("id", currentCompanyId)
     .maybeSingle<{ name?: string | null }>();
 
-  const companyName = company?.name?.trim() || "Your Company";
+  const companyName = tenant?.name?.trim() || "Company";
 
   // --- Aggregate stats ---
 

@@ -383,7 +383,14 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     const tenantId =
       jobPosting?.tenant_id ??
       actorProfile?.tenant_id ??
-      "00000000-0000-0000-0000-000000000001";
+      null;
+
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: "Cannot confirm hire: tenant_id is missing on job posting and HR profile." },
+        { status: 400 }
+      );
+    }
 
     const jobOfferSettings = (jobPosting as { offer_letter_settings?: Record<string, unknown> | null } | null)?.offer_letter_settings ?? null;
     const jobWorkLocationId = typeof jobOfferSettings?.work_location_id === "string" ? jobOfferSettings.work_location_id : null;

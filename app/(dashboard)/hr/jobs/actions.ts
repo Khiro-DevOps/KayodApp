@@ -160,10 +160,21 @@ export async function createJob(formData: FormData) {
   };
 
   const adminClient = getAdminClient();
+  const { data: creatorProfile } = await adminClient
+    .from("profiles")
+    .select("email, tenant_id, tenants(name)")
+    .eq("id", user.id)
+    .maybeSingle<{
+      email?: string | null;
+      tenant_id?: string | null;
+      tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
+    }>();
+
   const { data: jobData, error } = await adminClient
     .from("job_postings")
     .insert({
       created_by: user.id,
+      tenant_id: creatorProfile?.tenant_id ?? null,
       title,
       industry: industry || null,
       job_category: job_category || null,
@@ -200,17 +211,21 @@ export async function createJob(formData: FormData) {
     console.warn("[Job Creation] DOCUSEAL_API_KEY not set - template will be created on first offer send");
   } else {
     try {
-      const { data: userProfile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (!userProfile) {
-        throw new Error("User profile not found");
+      const tenantRel = Array.isArray(creatorProfile?.tenants)
+        ? creatorProfile?.tenants[0]
+        : creatorProfile?.tenants;
+      let tenantName = tenantRel?.name?.trim() || "";
+      if (!tenantName && creatorProfile?.tenant_id) {
+        const { data: tenantRow } = await adminClient
+          .from("tenants")
+          .select("name")
+          .eq("id", creatorProfile.tenant_id)
+          .maybeSingle<{ name?: string | null }>();
+        tenantName = tenantRow?.name?.trim() || "";
       }
-
-      const tenantName = userProfile.first_name ? `${userProfile.first_name} ${userProfile.last_name}`.trim() : "Company";
+      if (!tenantName) {
+        throw new Error("Company name is missing on tenant record.");
+      }
 
       console.log(`[Job Creation] Creating DocuSeal template for job: ${title}`);
       const templateId = await createJobOfferTemplate(
@@ -226,7 +241,7 @@ export async function createJob(formData: FormData) {
         },
         {
           name: tenantName,
-          email: userProfile.email,
+          email: creatorProfile?.email ?? user.email ?? undefined,
         },
         Object.keys(offerLetterSettings).length > 0 ? offerLetterSettings : undefined
       );

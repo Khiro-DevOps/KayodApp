@@ -98,16 +98,16 @@ export default function DashboardLayout({
 
         const { data: profile } = await (supabase
           .from("profiles")
-          .select("first_name, last_name, avatar_url, tenant_name, tenant_id, role")
+          .select("first_name, last_name, avatar_url, tenant_id, role, tenants(name)")
           .eq("id", user.id)
           .maybeSingle() as Promise<{
             data: {
               first_name?: string | null;
               last_name?: string | null;
               avatar_url?: string | null;
-              tenant_name?: string | null;
               tenant_id?: string | null;
               role?: string | null;
+              tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
             } | null;
           }>);
 
@@ -116,17 +116,18 @@ export default function DashboardLayout({
         const nextName =
           [profile.first_name ?? "", profile.last_name ?? ""].filter(Boolean).join(" ") ||
           "Admin User";
-        let nextCompanyName = profile.tenant_name?.trim() || "Company";
+        const tenantRel = Array.isArray(profile.tenants) ? profile.tenants[0] : profile.tenants;
+        let nextCompanyName = tenantRel?.name?.trim() || "";
 
-        if ((!nextCompanyName || nextCompanyName === "Company") && profile.tenant_id) {
-          const { data: company } = await (supabase
-            .from("companies")
+        if (!nextCompanyName && profile.tenant_id) {
+          const { data: tenantRow } = await (supabase
+            .from("tenants")
             .select("name")
             .eq("id", profile.tenant_id)
             .maybeSingle() as Promise<{ data: { name?: string | null } | null }>);
 
-          if (company?.name) {
-            nextCompanyName = company.name.trim();
+          if (tenantRow?.name?.trim()) {
+            nextCompanyName = tenantRow.name.trim();
           }
         }
 
