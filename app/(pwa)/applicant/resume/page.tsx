@@ -24,6 +24,8 @@ function getAuthPhone(user: { user_metadata?: unknown; raw_user_meta_data?: unkn
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 
+export const dynamic = "force-dynamic";
+
 export default async function ResumePage() {
   const supabase = await createClient();
 

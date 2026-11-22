@@ -38,14 +38,18 @@ export default async function ApplicantLayout({
     redirect("/hr");
   }
 
-  const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ");
-  const userName = fullName || "Jay Gomez";
-
-  void userName;
+  const first = (profile?.first_name || (typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "")).trim();
+  const last = (profile?.last_name || (typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "")).trim();
+  const userInitials = first && last
+    ? `${first[0]}${last[0]}`.toUpperCase()
+    : first
+      ? first.slice(0, 2).toUpperCase()
+      : (user.email ?? "U").slice(0, 2).toUpperCase();
 
   return (
     <PwaShell
       variant="applicant"
+      userInitials={userInitials}
       config={{
         label: "Applicant Portal",
         navItems: [

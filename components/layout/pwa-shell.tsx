@@ -192,54 +192,93 @@ function getPageHeader(pathname: string, variant: PwaVariant) {
   };
 }
 
+function computeInitials(firstName?: string | null, lastName?: string | null, email?: string | null): string {
+  const first = (firstName ?? "").trim();
+  const last = (lastName ?? "").trim();
+  if (first && last) {
+    return `${first[0]}${last[0]}`.toUpperCase();
+  }
+  if (first) {
+    return first.slice(0, 2).toUpperCase();
+  }
+  const emailHandle = (email ?? "").split("@")[0]?.trim() ?? "";
+  return emailHandle ? emailHandle.slice(0, 2).toUpperCase() : "U";
+}
+
 export default function PwaShell({
   variant,
   config,
+  userInitials,
   children,
 }: {
   variant: PwaVariant;
   config?: PwaShellConfig;
+  userInitials?: string;
   children: ReactNode;
 }) {
   const resolvedConfig = config ?? defaultPwaShellConfigByVariant[variant];
   const pathname = usePathname() ?? "";
   const pageHeader = getPageHeader(pathname, variant);
   const [companyName, setCompanyName] = useState<string | null>(null);
+  const [initials, setInitials] = useState<string>(userInitials || "U");
 
   useEffect(() => {
-    if (variant !== "employee") return;
     let isMounted = true;
     const supabase = createClient();
-    async function loadTenant() {
+    async function loadUserContext() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user || !isMounted) return;
 
-        const metaCompany =
-          user.user_metadata?.company_name ||
-          user.user_metadata?.tenant_name ||
-          user.app_metadata?.company_name ||
-          user.app_metadata?.tenant_name;
+        const metaFirst = typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "";
+        const metaLast = typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "";
 
-        if (metaCompany && isMounted) {
-          setCompanyName(metaCompany);
-          return;
+        if (!userInitials) {
+          setInitials(computeInitials(metaFirst, metaLast, user.email));
+        }
+
+        if (variant === "employee") {
+          const metaCompany =
+            user.user_metadata?.company_name ||
+            user.user_metadata?.tenant_name ||
+            user.app_metadata?.company_name ||
+            user.app_metadata?.tenant_name;
+
+          if (metaCompany && isMounted) {
+            setCompanyName(metaCompany);
+          }
         }
 
         const { data: profile } = await supabase
           .from("profiles")
-          .select("tenant_id, tenants(name)")
+          .select("first_name, last_name, tenant_id, tenants(name)")
           .eq("id", user.id)
           .maybeSingle();
 
-        const typedProfile = profile as { tenant_id: string | null; tenants: { name: string } | null } | null;
+        const typedProfile = profile as {
+          first_name?: string | null;
+          last_name?: string | null;
+          tenant_id: string | null;
+          tenants: { name: string } | null;
+        } | null;
 
-        if (typedProfile?.tenants?.name && isMounted) {
-          setCompanyName(typedProfile.tenants.name);
-          return;
+        if (isMounted && typedProfile) {
+          if (!userInitials) {
+            setInitials(
+              computeInitials(
+                typedProfile.first_name || metaFirst,
+                typedProfile.last_name || metaLast,
+                user.email
+              )
+            );
+          }
+          if (variant === "employee" && typedProfile.tenants?.name) {
+            setCompanyName(typedProfile.tenants.name);
+            return;
+          }
         }
 
-        if (profile?.tenant_id && isMounted) {
+        if (variant === "employee" && profile?.tenant_id && isMounted) {
           const { data: tenant } = await supabase
             .from("tenants")
             .select("name")
@@ -253,11 +292,11 @@ export default function PwaShell({
         // Fallback gracefully
       }
     }
-    void loadTenant();
+    void loadUserContext();
     return () => {
       isMounted = false;
     };
-  }, [variant]);
+  }, [variant, userInitials]);
 
   const isApplicantDashboard = variant === "applicant" && pathname === "/applicant/dashboard";
 
@@ -287,7 +326,7 @@ export default function PwaShell({
           <div className="flex items-center gap-3">
             <NotificationBell />
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-[#1E1B4B]">
-              JG
+              {initials}
             </div>
             <div className="hidden md:flex items-center gap-2">
               <Link

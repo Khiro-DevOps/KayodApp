@@ -25,9 +25,9 @@ export default async function EmployeeLayout({
   const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, first_name, last_name")
     .eq("id", user.id)
-    .maybeSingle<Pick<Profile, "role">>();
+    .maybeSingle<Pick<Profile, "role" | "first_name" | "last_name">>();
 
   let role = effectiveRole(profile?.role, authRole);
 
@@ -62,9 +62,18 @@ export default async function EmployeeLayout({
     redirect("/applicant/dashboard");
   }
 
+  const first = (profile?.first_name || (typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "")).trim();
+  const last = (profile?.last_name || (typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "")).trim();
+  const userInitials = first && last
+    ? `${first[0]}${last[0]}`.toUpperCase()
+    : first
+      ? first.slice(0, 2).toUpperCase()
+      : (user.email ?? "U").slice(0, 2).toUpperCase();
+
   return (
     <PwaShell
       variant="employee"
+      userInitials={userInitials}
       config={{
         label: "Employee Portal",
         navItems: [
