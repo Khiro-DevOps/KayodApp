@@ -40,12 +40,16 @@ interface HRInterviewItem {
   workSetup?: string | null;
   resumeTitle?: string | null;
   resumeUrl?: string | null;
+  jobCreatedBy?: string | null;
+  ownerName?: string | null;
 }
 
 interface HRInterviewClientViewProps {
   schedules: HRInterviewItem[];
   applications: ApplicationOption[];
   interviewers: InterviewerOption[];
+  currentUserId?: string;
+  initialScope?: "mine" | "all";
 }
 
 function formatTime(dateValue?: string | null) {
@@ -66,8 +70,15 @@ function isLive(item: HRInterviewItem) {
   return now >= start - 15 * 60_000 && now < end;
 }
 
-export function HRInterviewClientView({ schedules, applications, interviewers }: HRInterviewClientViewProps) {
+export function HRInterviewClientView({
+  schedules,
+  applications,
+  interviewers,
+  currentUserId,
+  initialScope = "mine",
+}: HRInterviewClientViewProps) {
   const router = useRouter();
+  const [scope, setScope] = useState<"mine" | "all">(initialScope);
   const [selectedId, setSelectedId] = useState(schedules[0]?.id ?? "");
   const [notes, setNotes] = useState(schedules[0]?.interview_notes ?? "");
   const [notesState, setNotesState] = useState<"saved" | "saving" | "error">("saved");
@@ -93,7 +104,16 @@ export function HRInterviewClientView({ schedules, applications, interviewers }:
     const access = getRoomAccess(item);
     return ["completed", "cancelled", "no_show"].includes(item.status) || access.state === "ended";
   };
+  function handleScopeChange(nextScope: "mine" | "all") {
+    setScope(nextScope);
+    router.replace(`/hr/interviews?scope=${nextScope}`, { scroll: false });
+  }
+
   const visibleSchedules = schedules
+    .filter((item) => {
+      if (scope === "all" || !currentUserId) return true;
+      return item.jobCreatedBy === currentUserId || item.interviewer_id === currentUserId;
+    })
     .filter((item) => (filter === "history" ? isHistory(item) : !isHistory(item)))
     .filter((item) => `${item.candidateName} ${item.jobTitle}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => filter === "history"
@@ -193,6 +213,22 @@ export function HRInterviewClientView({ schedules, applications, interviewers }:
               <div className="inline-flex rounded-xl border border-slate-200/80 bg-white p-0.5 text-xs font-semibold">
                 <button
                   type="button"
+                  onClick={() => handleScopeChange("mine")}
+                  className={`rounded-lg px-3 py-1.5 transition-colors ${scope === "mine" ? "bg-[#1E1B4B] text-white" : "text-text-muted hover:text-[#1E1B4B]"}`}
+                >
+                  My Jobs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleScopeChange("all")}
+                  className={`rounded-lg px-3 py-1.5 transition-colors ${scope === "all" ? "bg-[#1E1B4B] text-white" : "text-text-muted hover:text-[#1E1B4B]"}`}
+                >
+                  All Company
+                </button>
+              </div>
+              <div className="inline-flex rounded-xl border border-slate-200/80 bg-white p-0.5 text-xs font-semibold">
+                <button
+                  type="button"
                   onClick={() => setFilter("upcoming")}
                   className={`rounded-lg px-3 py-1.5 transition-colors ${filter === "upcoming" ? "bg-[#1E1B4B] text-white" : "text-text-muted hover:text-[#1E1B4B]"}`}
                 >
@@ -227,14 +263,14 @@ export function HRInterviewClientView({ schedules, applications, interviewers }:
           <aside className="min-w-0 overflow-hidden rounded-3xl border border-indigo-100/80 bg-white/75 p-3 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
             <div className="flex items-center justify-between px-2 pb-3"><h2 className="text-xs font-bold uppercase tracking-[0.14em] text-text-muted">{filter === "history" ? "History" : "Upcoming"}</h2><span className="rounded-full bg-[#EDE9F9] px-2 py-0.5 text-[10px] font-bold text-[#1E1B4B]">{visibleSchedules.length}</span></div>
             <div className="space-y-4">
-              {Object.entries(agenda).map(([date, items]) => <section key={date}><h3 className="px-2 pb-2 text-[11px] font-semibold text-slate-400">{date}</h3><div className="space-y-2">{items.map((item) => <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={`w-full rounded-2xl border p-3 text-left transition-colors ${selected?.id === item.id ? "border-[#1E1B4B]/40 bg-[#EDE9F9]/70" : "border-slate-200/60 bg-white hover:border-[#1E1B4B]/30"}`}><div className="flex items-start justify-between gap-2"><span className="truncate text-xs font-bold text-[#1E1B4B]">{item.candidateName}</span>{isLive(item) && <span className="flex shrink-0 items-center gap-1 text-[9px] font-bold uppercase text-rose-600"><span className="h-1.5 w-1.5 rounded-full bg-rose-500" />Live</span>}</div><p className="mt-1 truncate text-[11px] text-slate-500">{item.jobTitle}</p><p className="mt-2 text-[10px] font-semibold text-slate-400">{formatTime(item.scheduled_at)} - {item.scheduled_at ? formatTime(new Date(new Date(item.scheduled_at).getTime() + item.duration_minutes * 60_000).toISOString()) : ""}</p></button>)}</div></section>)}
+              {Object.entries(agenda).map(([date, items]) => <section key={date}><h3 className="px-2 pb-2 text-[11px] font-semibold text-slate-400">{date}</h3><div className="space-y-2">{items.map((item) => <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={`w-full rounded-2xl border p-3 text-left transition-colors ${selected?.id === item.id ? "border-[#1E1B4B]/40 bg-[#EDE9F9]/70" : "border-slate-200/60 bg-white hover:border-[#1E1B4B]/30"}`}><div className="flex items-start justify-between gap-2"><span className="truncate text-xs font-bold text-[#1E1B4B]">{item.candidateName}</span>{isLive(item) && <span className="flex shrink-0 items-center gap-1 text-[9px] font-bold uppercase text-rose-600"><span className="h-1.5 w-1.5 rounded-full bg-rose-500" />Live</span>}</div><p className="mt-1 truncate text-[11px] text-slate-500">{item.jobTitle}</p><div className="mt-1.5 flex flex-wrap items-center justify-between gap-1"><span className="text-[10px] font-semibold text-slate-400">{formatTime(item.scheduled_at)} - {item.scheduled_at ? formatTime(new Date(new Date(item.scheduled_at).getTime() + item.duration_minutes * 60_000).toISOString()) : ""}</span><span className="rounded-md border border-indigo-100 bg-indigo-50/70 px-1.5 py-0.5 text-[10px] font-semibold text-[#1E1B4B]">Owner: {item.ownerName || "HR Team"}</span></div></button>)}</div></section>)}
               {visibleSchedules.length === 0 && <p className="px-2 py-8 text-center text-xs text-text-muted">No interviews in this view.</p>}
             </div>
           </aside>
 
           <SolidSurfaceCard className="min-w-0 p-5 sm:p-7">
             {selected ? <div className="flex h-full flex-col">
-              <div className="flex flex-col justify-between gap-3 border-b border-border pb-5 sm:flex-row sm:items-start"><div><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${isLive(selected) ? "bg-rose-500" : "bg-amber-400"}`} /><span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{isLive(selected) ? "Live session" : selected.status}</span><span className="rounded-full bg-[#EDE9F9] px-2 py-0.5 text-[10px] font-semibold text-[#1E1B4B]">{selected.meeting_type === "in_person" ? `In-Person · ${selected.branchName ?? "Office"}` : selected.meeting_type === "hybrid" ? "Both (applicant chooses)" : "Online"}</span></div><h2 className="mt-2 text-xl font-bold text-[#1E1B4B]">{selected.jobTitle}</h2><p className="mt-1 text-sm text-slate-500">{selected.candidateName} · {formatDate(selected.scheduled_at)} · {formatTime(selected.scheduled_at)}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">{selected.duration_minutes} min</span></div>
+              <div className="flex flex-col justify-between gap-3 border-b border-border pb-5 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><span className={`h-2 w-2 rounded-full ${isLive(selected) ? "bg-rose-500" : "bg-amber-400"}`} /><span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{isLive(selected) ? "Live session" : selected.status}</span><span className="rounded-full bg-[#EDE9F9] px-2 py-0.5 text-[10px] font-semibold text-[#1E1B4B]">{selected.meeting_type === "in_person" ? `In-Person · ${selected.branchName ?? "Office"}` : selected.meeting_type === "hybrid" ? "Both (applicant chooses)" : "Online"}</span><span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-[#1E1B4B]">Owner: {selected.ownerName || "HR Team"}</span></div><h2 className="mt-2 text-xl font-bold text-[#1E1B4B]">{selected.jobTitle}</h2><p className="mt-1 text-sm text-slate-500">{selected.candidateName} · {formatDate(selected.scheduled_at)} · {formatTime(selected.scheduled_at)}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">{selected.duration_minutes} min</span></div>
               <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">{(() => { const access = getRoomAccess(selected); if (access.state === "open" && selected.meeting_type !== "in_person") return <><div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[#EDE9F9] text-2xl text-[#1E1B4B]">▣</div><h3 className="text-lg font-bold">Ready to begin?</h3><p className="mt-2 text-sm text-text-muted">Launch the WebRTC room when the candidate is ready to join.</p><a href={roomPath} className="mt-6 rounded-xl bg-[#1E1B4B] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-900">Join interview room</a></>; if (access.state === "too_early") return <><h3 className="text-lg font-bold">Room not open yet</h3><p className="mt-2 text-sm text-text-muted">Opens at {formatPht(access.opensAt)} PHT.</p><button type="button" disabled className="mt-6 rounded-xl bg-surface-container-low px-5 py-3 text-sm font-bold text-text-muted">Launch unavailable</button></>; return <><h3 className="text-lg font-bold">{selected.status === "completed" ? "Interview completed" : "Interview time has ended"}</h3><p className="mt-2 text-sm text-text-muted">{selected.status === "completed" ? "This interview is closed." : "Awaiting HR review."}</p></>; })()}<button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}${displayRoomPath}`)} className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-text-muted hover:bg-slate-50">{displayRoomPath} · Copy</button></div>
               <div className="border-t border-border pt-4"><div className="mb-2 flex items-center justify-between"><label htmlFor="interview-notes" className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Interview notes</label><span className="text-[10px] text-slate-400">{notesState === "saving" ? "Auto-saving..." : notesState === "error" ? "Save failed" : "Auto-saved"}</span></div><textarea id="interview-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="Type structured interview notes..." className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/15" /></div>
               <div className="mt-4 flex justify-end gap-2"><button type="button" disabled={isPending} onClick={() => updateStatus("rejected")} className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50">Reject</button>{selected.status !== "completed" && <button type="button" onClick={() => setIsCompleteOpen(true)} className="rounded-xl border border-indigo-200 bg-[#EDE9F9] px-5 py-2 text-sm font-bold text-[#1E1B4B] hover:bg-indigo-100">Complete Interview</button>}</div>

@@ -6,7 +6,7 @@ import { effectiveRole, isHRRole } from "@/lib/roles";
 import type { Profile } from "@/lib/types";
 import { ApplicationsHubClient } from "./applications-client";
 import type { ApplicationHubCard } from "./applications-kanban-board";
-import { getHrJobScope } from "@/lib/hr-job-scope";
+import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 import { computeAndStoreApplicationMatch } from "@/lib/match-scoring";
 
 function normalizeName(value: unknown): string {
@@ -43,7 +43,17 @@ function deriveNamesFromUser(user: {
   };
 }
 
-export default async function HRApplicantsHubPage() {
+export default async function HRApplicantsHubPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ scope?: string; job?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const initialScope: "mine" | "all" =
+    resolvedParams?.scope === "all" ? "all" : "mine";
+  const initialJobParam =
+    typeof resolvedParams?.job === "string" ? resolvedParams.job.trim() : "";
+
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -62,16 +72,29 @@ export default async function HRApplicantsHubPage() {
   const admin = getAdminClient();
   const jobScope = await getHrJobScope(admin, user.id);
   const tenantId = jobScope.tenantId;
+  const teamNamesMap = await getTenantTeamNamesMap(supabase, tenantId);
 
   // ── Fetch job postings scoped to the HR user's tenant ────────────────────────
   // Allow both published and unpublished (HR should see their own drafts too).
   const jobQuery = admin
     .from("job_postings")
-    .select("id, title")
+    .select("id, title, created_by, created_at")
     .or(jobScope.filter)
     .order("created_at", { ascending: false });
   const { data: jobs, error: jobsError } = await jobQuery;
-  const activeJobs = (jobs ?? []) as { id: string; title: string }[];
+  const rawJobs = (jobs ?? []) as Array<{
+    id: string;
+    title: string;
+    created_by?: string | null;
+    created_at?: string | null;
+  }>;
+  const activeJobs = rawJobs.map((j) => ({
+    id: j.id,
+    title: j.title,
+    created_by: j.created_by ?? null,
+    ownerFirstName: resolveOwnerName(teamNamesMap, j.created_by, "first"),
+    ownerFullName: resolveOwnerName(teamNamesMap, j.created_by, "full"),
+  }));
   const tenantJobIds = activeJobs.map((j) => j.id);
 
   if (jobsError) {
@@ -209,6 +232,9 @@ export default async function HRApplicantsHubPage() {
         applications={applications}
         activeJobs={activeJobs}
         currentCompanyId={tenantId ?? ""}
+        currentUserId={user.id}
+        initialScope={initialScope}
+        initialJobId={initialJobParam}
       />
     </PageContainer>
   );

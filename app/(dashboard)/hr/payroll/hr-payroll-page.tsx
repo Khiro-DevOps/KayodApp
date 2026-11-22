@@ -40,13 +40,22 @@ export default async function HRPayrollPage({
   if (!user) redirect("/login");
 
   const admin = getAdminClient();
+  const { data: hrProfile } = await admin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", user.id)
+    .maybeSingle<{ tenant_id?: string | null }>();
+  const tenantId = hrProfile?.tenant_id ?? null;
 
   // Active employees with profiles
-  const { data: employees } = await admin
+  let employeesQuery = admin
     .from("employees")
     .select("*, profiles(first_name, last_name, email)")
-    .eq("employment_status", "active")
-    .returns<EmployeeWithProfile[]>();
+    .eq("employment_status", "active");
+  if (tenantId) {
+    employeesQuery = employeesQuery.eq("tenant_id", tenantId);
+  }
+  const { data: employees } = await employeesQuery.returns<EmployeeWithProfile[]>();
 
   // All payroll periods
   const { data: periods } = await admin

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { getHrJobScope } from "@/lib/hr-job-scope";
+import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 import { HRInterviewClientView } from "./_components/HRInterviewClientView";
 
 type Candidate = { first_name?: string | null; last_name?: string | null; email?: string | null; avatar_url?: string | null };
@@ -27,19 +27,27 @@ type ScheduleRecord = {
     technical_alignment: number | null;
     role_fit: number | null;
     resume: { id?: string; title?: string | null; pdf_url: string | null } | null;
-    job: { id?: string; title: string | null; work_setup: string | null; tenant_id?: string | null } | null;
+    job: { id?: string; title: string | null; work_setup: string | null; tenant_id?: string | null; created_by?: string | null } | null;
     applicant: Candidate | null;
   } | null;
   interviewer: { first_name?: string | null; last_name?: string | null } | null;
 };
 type ApplicationRecord = {
   id: string;
-  job: { title: string | null; tenant_id?: string | null } | null;
+  job: { title: string | null; tenant_id?: string | null; created_by?: string | null } | null;
   applicant: Candidate | null;
 };
 type InterviewerRecord = { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; tenant_id?: string | null };
 
-export default async function HRInterviewsPage() {
+export default async function HRInterviewsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ scope?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const initialScope: "mine" | "all" =
+    resolvedParams?.scope === "all" ? "all" : "mine";
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -49,6 +57,7 @@ export default async function HRInterviewsPage() {
 
   const admin = getAdminClient();
   const jobScope = await getHrJobScope(admin, user.id);
+  const teamNamesMap = await getTenantTeamNamesMap(supabase, jobScope.tenantId);
 
   const [{ data: schedulesData }, { data: applicationsData }, { data: interviewersData }] = await Promise.all([
     admin
@@ -61,7 +70,7 @@ export default async function HRInterviewsPage() {
         application:job_applications!interview_schedules_application_id_fkey (
           id, applicant_id, match_score, technical_alignment, role_fit,
           resume:resumes!job_applications_resume_id_fkey ( id, title, pdf_url ),
-          job:job_postings!job_applications_job_id_fkey ( id, title, work_setup, tenant_id ),
+          job:job_postings!job_applications_job_id_fkey ( id, title, work_setup, tenant_id, created_by ),
           applicant:profiles!job_applications_applicant_id_fkey ( first_name, last_name, email, avatar_url )
         ),
         interviewer:profiles!interview_schedules_interviewer_id_fkey ( first_name, last_name )
@@ -69,7 +78,7 @@ export default async function HRInterviewsPage() {
       .order("scheduled_at", { ascending: true, nullsFirst: false }),
     admin
       .from("job_applications")
-      .select("id, job:job_postings!job_applications_job_id_fkey ( title, tenant_id ), applicant:profiles!job_applications_applicant_id_fkey ( first_name, last_name, email )")
+      .select("id, job:job_postings!job_applications_job_id_fkey ( title, tenant_id, created_by ), applicant:profiles!job_applications_applicant_id_fkey ( first_name, last_name, email )")
       .order("created_at", { ascending: false }),
     admin
       .from("profiles")
@@ -119,6 +128,8 @@ export default async function HRInterviewsPage() {
       workSetup: application?.job?.work_setup ?? null,
       resumeTitle: application?.resume?.title ?? null,
       resumeUrl: application?.resume?.pdf_url ?? null,
+      jobCreatedBy: application?.job?.created_by ?? null,
+      ownerName: resolveOwnerName(teamNamesMap, application?.job?.created_by, "full"),
     };
   });
 
@@ -140,5 +151,13 @@ export default async function HRInterviewsPage() {
       name: `${item.first_name || ""} ${item.last_name || ""}`.trim() || item.email || "HR Member",
     }));
 
-  return <HRInterviewClientView schedules={schedules} applications={applications} interviewers={interviewers} />;
+  return (
+    <HRInterviewClientView
+      schedules={schedules}
+      applications={applications}
+      interviewers={interviewers}
+      currentUserId={user.id}
+      initialScope={initialScope}
+    />
+  );
 }

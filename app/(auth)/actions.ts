@@ -8,6 +8,7 @@ import { getResumeBucketName } from "@/lib/supabase/storage";
 import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
 import { effectiveRole } from "@/lib/roles";
 import { safeNext } from "@/lib/safe-redirect";
+import { acceptHrInviteAtomic, registerHrWorkspaceAtomic } from "@/app/(auth)/register/hr/actions";
 
 function mapLoginErrorMessage(message: string): string {
   const normalized = message.trim().toLowerCase();
@@ -178,53 +179,55 @@ export async function register(
   }
 
   const plan: SubscriptionPlan = isSubscriptionPlan(rawPlan) ? rawPlan : "starter";
-  const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inviteToken = getStringField(formData, "invite_token") || getStringField(formData, "invite");
+  const safeRedirectTarget = safeNext(next, role);
 
-  let tenantId: string | null = null;
-
-  if (role === "hr_manager" && tenantName) {
-    const adminClient = getAdminClient();
-    const resolvedAddress = [address, city, country].filter(Boolean).join(", ") || address || null;
-    const { data: tenant, error: tenantError } = await adminClient
-      .from("tenants")
-      .insert({
-        name: tenantName,
-        industry,
-        company_size: companySize,
-        address: resolvedAddress,
-        plan,
-        plan_expires_at: planExpiresAt,
-      })
-      .select("id")
-      .single();
-
-    if (tenantError) {
-      return { error: "Failed to create tenant record.", success: false };
-    }
-    tenantId = tenant.id;
-
-    const { data: existingBranch } = await adminClient
-      .from("office_branches")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-
-    if (!existingBranch) {
-      await adminClient.from("office_branches").insert({
-        tenant_id: tenantId,
-        name: "Main Office",
-        address: resolvedAddress || "Cebu City, Philippines",
-        latitude: 10.3157,
-        longitude: 123.8854,
-        radius_meters: 200,
-        is_primary: true,
+  if (role === "hr_manager") {
+    if (inviteToken) {
+      const inviteRes = await acceptHrInviteAtomic({
+        inviteToken,
+        firstName,
+        lastName,
+        phone,
+        password,
       });
+      if (!inviteRes.success) {
+        return { error: inviteRes.error || "Unable to accept HR invite.", success: false };
+      }
+      await supabase.auth.signInWithPassword({
+        email: inviteRes.email || email,
+        password,
+      });
+      redirect(safeRedirectTarget);
     }
+
+    if (!tenantName) {
+      return { error: "Company name is required.", success: false };
+    }
+
+    const resolvedAddress = [address, city, country].filter(Boolean).join(", ") || address || null;
+    const hrRes = await registerHrWorkspaceAtomic({
+      companyName: tenantName,
+      industry,
+      companySize,
+      address: resolvedAddress,
+      firstName,
+      lastName,
+      phone,
+      email,
+      password,
+      plan,
+    });
+
+    if (!hrRes.success) {
+      return { error: hrRes.error || "Failed to create HR workspace.", success: false };
+    }
+
+    await supabase.auth.signInWithPassword({ email, password });
+    redirect(safeRedirectTarget);
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
-  const safeRedirectTarget = safeNext(next, role);
   const emailRedirectTo = appUrl
     ? `${appUrl}/auth/callback?next=${encodeURIComponent(safeRedirectTarget)}`
     : undefined;
@@ -249,7 +252,7 @@ export async function register(
         work_setup: workSetup,
         province_id: provinceId,
         city_id: cityId,
-        tenant_id: tenantId,
+        tenant_id: null,
         privacy_consent_version: privacyConsentVersion,
         privacy_consented_at: privacyConsentedAt,
       },
@@ -258,22 +261,6 @@ export async function register(
 
   if (signUpError) {
     return { error: signUpError.message, success: false };
-  }
-
-  if (role === "hr_manager" && signUpData.user && tenantId) {
-    const adminClient = getAdminClient();
-    await adminClient.from("profiles").upsert(
-      {
-        id: signUpData.user.id,
-        email,
-        tenant_id: tenantId,
-        role: "hr_manager",
-        first_name: firstName,
-        last_name: lastName,
-        phone: phone || null,
-      },
-      { onConflict: "id" }
-    );
   }
 
   if (signUpData.user && resumeFile instanceof File && resumeFile.size > 0) {

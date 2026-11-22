@@ -85,12 +85,13 @@ export default async function HRAttendancePage() {
 
   const role = effectiveRole(profile?.role, authRole);
   if (!isHRRole(role)) redirect("/dashboard");
+  const tenantId = profile?.tenant_id ?? null;
 
   // ── Fetch attendance_logs (last 30 days) joined with employees + profiles ──
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const { data: rawLogs } = await admin
+  let logsQuery = admin
     .from("attendance_logs")
     .select(
       `
@@ -128,6 +129,10 @@ export default async function HRAttendancePage() {
     .gte("created_at", thirtyDaysAgo.toISOString())
     .order("created_at", { ascending: false })
     .limit(500);
+  if (tenantId) {
+    logsQuery = logsQuery.eq("tenant_id", tenantId);
+  }
+  const { data: rawLogs } = await logsQuery;
 
   const logs = (rawLogs ?? []) as unknown as RawAttendanceLog[];
 
@@ -187,7 +192,7 @@ export default async function HRAttendancePage() {
   // ── Compute today's unexcused absences for active employees ────────────────
   const todayPht = getTodayPhtIso();
 
-  const { data: activeEmployees } = await admin
+  let activeEmployeesQuery = admin
     .from("employees")
     .select(
       `
@@ -205,6 +210,10 @@ export default async function HRAttendancePage() {
     `
     )
     .eq("employment_status", "active");
+  if (tenantId) {
+    activeEmployeesQuery = activeEmployeesQuery.eq("tenant_id", tenantId);
+  }
+  const { data: activeEmployees } = await activeEmployeesQuery;
   const activeEmpIds = (activeEmployees ?? []).map((e) => e.id);
   const allAttendanceProfileIds = Array.from(
     new Set([
@@ -443,7 +452,7 @@ export default async function HRAttendancePage() {
   ];
 
   // ── Fetch attendance correction requests ───────────────────────────────────
-  const { data: rawCorrectionReqs } = await admin
+  let correctionReqsQuery = admin
     .from("attendance_correction_requests")
     .select(
       `
@@ -475,6 +484,10 @@ export default async function HRAttendancePage() {
     )
     .order("created_at", { ascending: false })
     .limit(100);
+  if (tenantId) {
+    correctionReqsQuery = correctionReqsQuery.eq("tenant_id", tenantId);
+  }
+  const { data: rawCorrectionReqs } = await correctionReqsQuery;
 
   const correctionProfileIds = Array.from(
     new Set(
@@ -565,7 +578,7 @@ export default async function HRAttendancePage() {
   });
 
   // ── Fetch overtime requests ────────────────────────────────────────────────
-  const { data: rawOvertimeReqs } = await admin
+  let overtimeReqsQuery = admin
     .from("overtime_requests")
     .select(
       `
@@ -594,6 +607,10 @@ export default async function HRAttendancePage() {
     )
     .order("created_at", { ascending: false })
     .limit(100);
+  if (tenantId) {
+    overtimeReqsQuery = overtimeReqsQuery.eq("tenant_id", tenantId);
+  }
+  const { data: rawOvertimeReqs } = await overtimeReqsQuery;
 
   const overtimeRequests: HROvertimeRequestRow[] = (rawOvertimeReqs ?? []).map((r) => {
     const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as {

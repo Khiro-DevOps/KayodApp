@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
+import { acceptHrInviteAtomic, registerHrWorkspaceAtomic } from "@/app/(auth)/register/hr/actions";
 
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = new Set(["image/png", "image/jpeg"]);
@@ -24,7 +25,7 @@ function deriveFirstName(firstName: string, adminFullName: string) {
 }
 
 function deriveLastName(lastName: string, adminFullName: string) {
-  return lastName || adminFullName.split(/\s+/).slice(1).join(" ");
+  return lastName || adminFullName.split(/\s+/).slice(1).join(" ") || "HR";
 }
 
 async function deleteUpload(adminClient: ReturnType<typeof getAdminClient>, path: string | null) {
@@ -35,68 +36,82 @@ async function deleteUpload(adminClient: ReturnType<typeof getAdminClient>, path
   await adminClient.storage.from("company-logos").remove([path]);
 }
 
-async function removeTenantRow(
-  adminClient: ReturnType<typeof getAdminClient>,
-  tenantId: string | null,
-  companyName: string | null
-) {
-  if (!tenantId) {
-    return;
-  }
-
-  await adminClient.from("tenants").delete().eq("id", tenantId);
-
-  if (companyName) {
-    await adminClient.from("companies").delete().eq("name", companyName);
-  }
-}
-
 export async function POST(request: Request) {
   try {
-    console.info("[register/hr] POST handler invoked");
     const formData = await request.formData();
-    const firstName = toStringValue(formData.get("firstName"));
-    const lastName = toStringValue(formData.get("lastName"));
-    const adminFullName = toStringValue(formData.get("adminFullName")) || [firstName, lastName].filter(Boolean).join(" ").trim();
+    const inviteToken = toStringValue(formData.get("inviteToken")) || toStringValue(formData.get("invite"));
+    const firstName = toStringValue(formData.get("firstName")) || toStringValue(formData.get("first_name"));
+    const lastName = toStringValue(formData.get("lastName")) || toStringValue(formData.get("last_name"));
+    const adminFullName =
+      toStringValue(formData.get("adminFullName")) ||
+      [firstName, lastName].filter(Boolean).join(" ").trim();
+    const resolvedFirstName = deriveFirstName(firstName, adminFullName);
+    const resolvedLastName = deriveLastName(lastName, adminFullName);
     const companyName = toStringValue(formData.get("companyName")) || toStringValue(formData.get("tenant_name"));
     const email = toStringValue(formData.get("workEmail")) || toStringValue(formData.get("email"));
     const password = toStringValue(formData.get("password"));
     const confirmPassword = toStringValue(formData.get("confirmPassword"));
     const workspaceSlug = toStringValue(formData.get("workspaceSlug")) || slugifyWorkspace(companyName);
-    const jobTitle = toStringValue(formData.get("jobTitle"));
     const industry = toStringValue(formData.get("industry"));
-    const teamSize = toStringValue(formData.get("companySize")) || toStringValue(formData.get("teamSize"));
-    const workSetup = toStringValue(formData.get("work_setup"));
+    const teamSize =
+      toStringValue(formData.get("companySize")) ||
+      toStringValue(formData.get("company_size")) ||
+      toStringValue(formData.get("teamSize"));
     const phone = toStringValue(formData.get("phone"));
-    const dateOfBirth = toStringValue(formData.get("date_of_birth"));
-    const ageValue = toStringValue(formData.get("age"));
-    const address = toStringValue(formData.get("address"));
+    const address = toStringValue(formData.get("address")) || toStringValue(formData.get("headquartersLocation"));
     const city = toStringValue(formData.get("city"));
     const country = toStringValue(formData.get("country"));
-    const monthlyHiringVolume = toStringValue(formData.get("monthlyHiringVolume"));
-    const problemToSolve = toStringValue(formData.get("problemToSolve"));
     const rawPlan = toStringValue(formData.get("plan"));
     const plan: SubscriptionPlan = isSubscriptionPlan(rawPlan) ? rawPlan : "starter";
     const logoFile = formData.get("logoFile");
 
-    if (!companyName) {
-      return NextResponse.json({ error: "Company name is required." }, { status: 400 });
-    }
-
-    if (!adminFullName) {
-      return NextResponse.json({ error: "HR admin full name is required." }, { status: 400 });
-    }
-
-    if (!email) {
-      return NextResponse.json({ error: "Work email is required." }, { status: 400 });
+    if (!adminFullName && (!resolvedFirstName || !resolvedLastName)) {
+      return NextResponse.json({ error: "HR full name is required." }, { status: 400 });
     }
 
     if (!password || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
 
-    if (password !== confirmPassword) {
+    if (confirmPassword && password !== confirmPassword) {
       return NextResponse.json({ error: "Passwords do not match." }, { status: 400 });
+    }
+
+    if (inviteToken) {
+      const inviteResult = await acceptHrInviteAtomic({
+        inviteToken,
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
+        phone,
+        password,
+      });
+
+      if (!inviteResult.success) {
+        return NextResponse.json(
+          { error: inviteResult.error || "This invite link has expired. Ask your HR Manager for a new link." },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          firstName: inviteResult.firstName,
+          lastName: inviteResult.lastName,
+          email: inviteResult.email,
+          companyName: inviteResult.tenantName,
+          tenantId: inviteResult.tenantId,
+        },
+        { status: 201 }
+      );
+    }
+
+    if (!companyName) {
+      return NextResponse.json({ error: "Company name is required." }, { status: 400 });
+    }
+
+    if (!email) {
+      return NextResponse.json({ error: "Work email is required." }, { status: 400 });
     }
 
     const adminClient = getAdminClient();
@@ -131,146 +146,41 @@ export async function POST(request: Request) {
 
     const resolvedTenantAddress = [address, city, country].filter(Boolean).join(", ") || address || null;
 
-    const { data: tenantRow, error: tenantError } = await adminClient
-      .from("tenants")
-      .insert({
-        name: companyName,
-        industry: industry || null,
-        company_size: teamSize || null,
-        address: resolvedTenantAddress,
-        logo_url: logoUrl,
-        plan,
-        plan_expires_at: planExpiresAt,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (tenantError || !tenantRow) {
-      await deleteUpload(adminClient, logoPath);
-      return NextResponse.json({ error: tenantError?.message || "Failed to create tenant record." }, { status: 500 });
-    }
-
-    const { error: companiesError } = await adminClient.from("companies").upsert({
-      name: companyName,
-      logo_url: logoUrl,
-      plan,
-      plan_expires_at: planExpiresAt,
-    }, {
-      onConflict: "name",
-    });
-
-    if (companiesError) {
-      console.warn("[register/hr] companies mirror insert failed:", companiesError.message);
-    }
-
-    const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+    const result = await registerHrWorkspaceAtomic({
+      companyName,
+      industry,
+      companySize: teamSize,
+      address: resolvedTenantAddress,
+      firstName: resolvedFirstName,
+      lastName: resolvedLastName,
+      phone,
       email,
       password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: adminFullName,
-        first_name: deriveFirstName(firstName, adminFullName),
-        last_name: deriveLastName(lastName, adminFullName),
-        role: "hr_manager",
-        tenant_id: tenantRow.id,
-        company_name: companyName,
-        tenant_name: companyName,
-        plan,
-        workspace_slug: workspaceSlug,
-        job_title: jobTitle,
-        industry,
-        company_size: teamSize,
-        monthly_hiring_volume: monthlyHiringVolume,
-        problem_to_solve: problemToSolve,
-        work_setup: workSetup,
-        phone,
-        date_of_birth: dateOfBirth,
-        age: ageValue,
-        address,
-        city,
-        country,
-      },
+      plan,
+      logoUrl,
     });
 
-    if (authError || !authUser.user) {
-      // Log full error object and context to help debugging in dev
-      console.error("[register/hr] auth.createUser failed", {
-        authError,
-        authUser,
-        email,
-        tenantId: tenantRow.id,
-        workspaceSlug,
-      });
-
-      await removeTenantRow(adminClient, tenantRow.id, companyName);
+    if (!result.success) {
       await deleteUpload(adminClient, logoPath);
-      return NextResponse.json({ error: authError?.message || "Database error creating new user" }, { status: 500 });
-    }
-
-    const { error: profileError } = await adminClient.from("profiles").upsert(
-      {
-        id: authUser.user.id,
-        email,
-        first_name: deriveFirstName(firstName, adminFullName),
-        last_name: deriveLastName(lastName, adminFullName),
-        phone,
-        date_of_birth: dateOfBirth,
-        age: ageValue ? Number(ageValue) : null,
-        address,
-        city,
-        country,
-        work_setup: workSetup || null,
-        role: "hr_manager",
-        tenant_id: tenantRow.id,
-        tenant_name: companyName,
-      },
-      {
-        onConflict: "id",
-      }
-    );
-
-    if (profileError) {
-      console.warn("[register/hr] profile upsert failed:", profileError.message);
-    }
-
-    const branchAddress = [address, city, country].filter(Boolean).join(", ") || "Cebu City, Philippines";
-    const { data: existingBranch } = await adminClient
-      .from("office_branches")
-      .select("id")
-      .eq("tenant_id", tenantRow.id)
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-
-    if (!existingBranch) {
-      const { error: branchError } = await adminClient.from("office_branches").insert({
-        tenant_id: tenantRow.id,
-        name: "Main Office",
-        address: branchAddress,
-        latitude: 10.3157,
-        longitude: 123.8854,
-        radius_meters: 200,
-        is_primary: true,
-      });
-
-      if (branchError) {
-        console.warn("[register/hr] default office_branches insert failed:", branchError.message);
-      }
+      return NextResponse.json(
+        { error: result.error || "Failed to create the HR workspace." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json(
       {
         success: true,
-        firstName: deriveFirstName(firstName, adminFullName),
-        lastName: deriveLastName(lastName, adminFullName),
-        email,
-        companyName,
+        firstName: result.firstName,
+        lastName: result.lastName,
+        email: result.email,
+        companyName: result.tenantName,
         teamSize,
         workspaceSlug,
         plan,
         planExpiresAt,
         logoUrl,
-        tenantId: tenantRow.id,
-        userId: authUser.user.id,
+        tenantId: result.tenantId,
       },
       { status: 201 }
     );

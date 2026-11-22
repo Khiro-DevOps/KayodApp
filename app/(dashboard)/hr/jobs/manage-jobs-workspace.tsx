@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
-const PAGE_BATCH_SIZE = 5;
+const PAGE_BATCH_SIZE = 20;
 
 type ManageJobPosting = {
   id: string;
@@ -26,11 +26,15 @@ type ManageJobPosting = {
   departments?: { name?: string | null } | null;
   applicantCount: number;
   required_skills?: string[] | null;
+  created_by?: string | null;
+  ownerName?: string | null;
 };
 
 type ManageJobsWorkspaceProps = {
   jobs: ManageJobPosting[];
   companyName: string;
+  nextCursor?: string | null;
+  currentCursor?: string | null;
 };
 
 function formatEmploymentType(value: string) {
@@ -108,7 +112,12 @@ function matchesSearch(job: ManageJobPosting, query: string) {
   return haystack.includes(query);
 }
 
-export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWorkspaceProps) {
+export default function ManageJobsWorkspace({
+  jobs,
+  companyName,
+  nextCursor,
+  currentCursor,
+}: ManageJobsWorkspaceProps) {
   const [search, setSearch] = useState("");
   const [activeJobId, setActiveJobId] = useState(jobs[0]?.id ?? "");
   const [visibleCount, setVisibleCount] = useState(PAGE_BATCH_SIZE);
@@ -285,12 +294,15 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                           {formatCurrencyRange(job)}
                         </span>
                         <span className="rounded-lg border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-800">
-                          {job.applicantCount} applicant{job.applicantCount === 1 ? "" : "s"}
+                          {job.applicantCount} active applicant{job.applicantCount === 1 ? "" : "s"}
+                        </span>
+                        <span className="rounded-lg border border-indigo-200/80 bg-indigo-50/70 px-2 py-0.5 font-semibold text-[#1E1B4B]">
+                          Owner: {job.ownerName?.trim() || "HR Team"}
                         </span>
                       </div>
 
                       <p className="mt-2.5 text-[11px] font-medium text-text-muted">
-                        Posted {formatDate(job.created_at)}
+                        {formatDate(job.created_at)}
                         {job.closes_at ? ` · Closes ${formatDate(job.closes_at)}` : ""}
                       </p>
                     </button>
@@ -302,17 +314,34 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                     <span>
                       Showing {paginatedJobs.length} of {visibleJobs.length} role{visibleJobs.length === 1 ? "" : "s"}
                     </span>
-                    {hasMore ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVisibleCount((prev) => Math.min(prev + PAGE_BATCH_SIZE, visibleJobs.length))
-                        }
-                        className="font-semibold text-[#1E1B4B] hover:underline"
-                      >
-                        Load more
-                      </button>
-                    ) : null}
+                    <div className="flex items-center gap-3">
+                      {currentCursor ? (
+                        <Link
+                          href="/hr/jobs"
+                          className="font-semibold text-slate-700 hover:underline"
+                        >
+                          Newest Page
+                        </Link>
+                      ) : null}
+                      {hasMore ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setVisibleCount((prev) => Math.min(prev + PAGE_BATCH_SIZE, visibleJobs.length))
+                          }
+                          className="font-semibold text-[#1E1B4B] hover:underline"
+                        >
+                          Load more
+                        </button>
+                      ) : nextCursor ? (
+                        <Link
+                          href={`/hr/jobs?cursor=${encodeURIComponent(nextCursor)}`}
+                          className="font-semibold text-[#1E1B4B] hover:underline"
+                        >
+                          Next 20 →
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </>
@@ -345,13 +374,16 @@ export default function ManageJobsWorkspace({ jobs, companyName }: ManageJobsWor
                       >
                         {selectedJob.is_published ? "Published" : "Draft"}
                       </span>
+                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-[#1E1B4B]">
+                        Owner: {selectedJob.ownerName?.trim() || "HR Team"}
+                      </span>
                     </div>
 
                     <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
                       {selectedJob.title}
                     </h2>
                     <p className="text-xs font-medium text-text-muted">
-                      Posted {formatDate(selectedJob.created_at)}
+                      {formatDate(selectedJob.created_at)}
                       {selectedJob.closes_at ? ` · Closes ${formatDate(selectedJob.closes_at)}` : ""}
                     </p>
                   </div>

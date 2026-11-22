@@ -35,6 +35,9 @@ type ApplicationsInterviewItem = {
 type ActiveJobPosting = {
   id: string;
   title: string;
+  created_by?: string | null;
+  ownerFirstName?: string | null;
+  ownerFullName?: string | null;
 };
 
 type ApplicationStatusPayload = {
@@ -224,17 +227,25 @@ export default function ApplicationsClient({
   );
 }
 
+const MAX_JOB_PILLS = 8;
+
 export function ApplicationsHubClient({
   applications,
   currentCompanyId,
   activeJobs,
+  currentUserId,
+  initialScope = "mine",
+  initialJobId = "",
 }: {
   applications: ApplicationHubCard[];
   currentCompanyId: string;
   activeJobs: ActiveJobPosting[];
+  currentUserId?: string;
+  initialScope?: "mine" | "all";
+  initialJobId?: string;
 }) {
   const router = useRouter();
-  const [selectedJobId, setSelectedJobId] = useState("all");
+  const [scope, setScope] = useState<"mine" | "all">(initialScope);
   const [localJobs, setLocalJobs] = useState<ActiveJobPosting[]>(() => activeJobs);
   const [recalculating, setRecalculating] = useState(false);
 
@@ -242,19 +253,95 @@ export function ApplicationsHubClient({
     setLocalJobs(activeJobs);
   }, [activeJobs]);
 
+  // Count active (non-rejected, non-withdrawn) applicants per job in one pass
+  const activeCountByJobId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const app of applications) {
+      const status = String(app.status ?? "").toLowerCase();
+      if (status === "rejected" || status === "withdrawn") continue;
+      map[app.job_id] = (map[app.job_id] ?? 0) + 1;
+    }
+    return map;
+  }, [applications]);
+
+  const scopedJobs = useMemo(() => {
+    if (scope === "all" || !currentUserId) {
+      return localJobs;
+    }
+    return localJobs.filter((job) => job.created_by === currentUserId);
+  }, [localJobs, scope, currentUserId]);
+
+  const [selectedJobId, setSelectedJobId] = useState<string>(() => {
+    const initialList =
+      initialScope === "all" || !currentUserId
+        ? activeJobs
+        : activeJobs.filter((job) => job.created_by === currentUserId);
+    if (initialJobId && initialList.some((j) => j.id === initialJobId)) {
+      return initialJobId;
+    }
+    return initialList[0]?.id ?? "";
+  });
+
+  // Ensure selectedJobId stays valid within current scope
+  const effectiveSelectedJobId = useMemo(() => {
+    if (selectedJobId && scopedJobs.some((j) => j.id === selectedJobId)) {
+      return selectedJobId;
+    }
+    return scopedJobs[0]?.id ?? "";
+  }, [scopedJobs, selectedJobId]);
+
+  function updateUrlParams(nextScope: "mine" | "all", nextJobId: string) {
+    const params = new URLSearchParams();
+    params.set("scope", nextScope);
+    if (nextJobId) {
+      params.set("job", nextJobId);
+    }
+    router.replace(`/hr/applicants?${params.toString()}`, { scroll: false });
+  }
+
+  function handleScopeChange(nextScope: "mine" | "all") {
+    setScope(nextScope);
+    const nextList =
+      nextScope === "all" || !currentUserId
+        ? localJobs
+        : localJobs.filter((job) => job.created_by === currentUserId);
+    const nextJobId = nextList.some((j) => j.id === effectiveSelectedJobId)
+      ? effectiveSelectedJobId
+      : nextList[0]?.id ?? "";
+    setSelectedJobId(nextJobId);
+    updateUrlParams(nextScope, nextJobId);
+  }
+
+  function handleSelectJob(nextJobId: string) {
+    setSelectedJobId(nextJobId);
+    updateUrlParams(scope, nextJobId);
+  }
+
+  const visibleJobPills = useMemo(
+    () => scopedJobs.slice(0, MAX_JOB_PILLS),
+    [scopedJobs],
+  );
+  const overflowJobs = useMemo(
+    () => scopedJobs.slice(MAX_JOB_PILLS),
+    [scopedJobs],
+  );
+
   const selectedApplications = useMemo(
-    () => selectedJobId === "all"
-      ? applications
-      : applications.filter((application) => application.job_id === selectedJobId),
-    [applications, selectedJobId],
+    () =>
+      effectiveSelectedJobId
+        ? applications.filter((application) => application.job_id === effectiveSelectedJobId)
+        : [],
+    [applications, effectiveSelectedJobId],
   );
 
   const activeApplicantsCount = useMemo(
-    () =>
-      selectedApplications.filter(
-        (application) => !["rejected", "withdrawn"].includes(String(application.status).toLowerCase())
-      ).length,
-    [selectedApplications],
+    () => (effectiveSelectedJobId ? activeCountByJobId[effectiveSelectedJobId] ?? 0 : 0),
+    [activeCountByJobId, effectiveSelectedJobId],
+  );
+
+  const selectedJob = useMemo(
+    () => scopedJobs.find((j) => j.id === effectiveSelectedJobId) ?? null,
+    [scopedJobs, effectiveSelectedJobId],
   );
 
   return (
@@ -266,6 +353,30 @@ export function ApplicationsHubClient({
         subtitle="Manage candidate pipelines across roles"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-xl border border-indigo-100 bg-white/90 p-1 shadow-xs">
+              <button
+                type="button"
+                onClick={() => handleScopeChange("mine")}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                  scope === "mine"
+                    ? "bg-[#1E1B4B] text-white shadow-xs"
+                    : "text-slate-600 hover:text-[#1E1B4B]"
+                }`}
+              >
+                My Jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScopeChange("all")}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                  scope === "all"
+                    ? "bg-[#1E1B4B] text-white shadow-xs"
+                    : "text-slate-600 hover:text-[#1E1B4B]"
+                }`}
+              >
+                All Company
+              </button>
+            </div>
             <button
               type="button"
               disabled={recalculating}
@@ -285,42 +396,81 @@ export function ApplicationsHubClient({
             </button>
             <div className="inline-flex items-center rounded-full bg-[#EDE9F9] px-3.5 py-1.5 text-xs font-bold text-[#1E1B4B]">
               <span className="mr-1.5">{activeApplicantsCount}</span>
-              <span>applicant{activeApplicantsCount === 1 ? "" : "s"}</span>
+              <span>active applicant{activeApplicantsCount === 1 ? "" : "s"}</span>
             </div>
-            <button className="h-9 rounded-xl bg-[#1E1B4B] px-4 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-indigo-900">
-              + Add Candidate
-            </button>
+            {selectedJob ? (
+              <div className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-[#1E1B4B]">
+                Owner: {selectedJob.ownerFullName || selectedJob.ownerFirstName || "HR Team"}
+              </div>
+            ) : null}
           </div>
         }
       />
 
-      {/* Frosted Glass Job Tabs Bar */}
-      <div className="flex max-w-full items-center gap-2 overflow-x-auto rounded-2xl border border-indigo-100/80 bg-white/75 p-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
-        <button
-          type="button"
-          onClick={() => setSelectedJobId("all")}
-          className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-            selectedJobId === "all"
-              ? "bg-[#1E1B4B] text-white shadow-xs"
-              : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
-          }`}
-        >
-          All roles
-        </button>
-        {localJobs.map((job) => (
-          <button
-            key={job.id}
-            onClick={() => setSelectedJobId(job.id)}
-            data-job-id={job.id}
-            className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-              job.id === selectedJobId
-                ? "bg-[#1E1B4B] text-white shadow-xs"
-                : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
-            }`}
-          >
-            {job.title}
-          </button>
-        ))}
+      {/* Single-Job Selector Bar (up to 8 pills + "More" select) */}
+      <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-indigo-100/80 bg-white/75 p-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+        {scopedJobs.length === 0 ? (
+          <div className="px-3 py-1.5 text-xs text-text-muted">
+            {scope === "mine"
+              ? "You do not own any job postings yet. Switch to All Company to view team jobs."
+              : "No job postings found in this workspace."}
+          </div>
+        ) : (
+          <>
+            {visibleJobPills.map((job) => {
+              const activeCount = activeCountByJobId[job.id] ?? 0;
+              const isSelected = job.id === effectiveSelectedJobId;
+              const ownerBadge =
+                scope === "all"
+                  ? ` · Owner: ${job.ownerFirstName || "HR Team"}`
+                  : "";
+              return (
+                <button
+                  key={job.id}
+                  type="button"
+                  onClick={() => handleSelectJob(job.id)}
+                  data-job-id={job.id}
+                  className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                    isSelected
+                      ? "bg-[#1E1B4B] text-white shadow-xs"
+                      : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
+                  }`}
+                >
+                  {job.title} ({activeCount}){ownerBadge}
+                </button>
+              );
+            })}
+
+            {overflowJobs.length > 0 ? (
+              <select
+                aria-label="More job postings"
+                value={overflowJobs.some((j) => j.id === effectiveSelectedJobId) ? effectiveSelectedJobId : ""}
+                onChange={(e) => {
+                  if (e.target.value) handleSelectJob(e.target.value);
+                }}
+                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold outline-none transition-all ${
+                  overflowJobs.some((j) => j.id === effectiveSelectedJobId)
+                    ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
+                    : "border-slate-200/80 bg-white text-text-muted hover:text-[#1E1B4B]"
+                }`}
+              >
+                <option value="" disabled>
+                  More ({overflowJobs.length})
+                </option>
+                {overflowJobs.map((job) => {
+                  const activeCount = activeCountByJobId[job.id] ?? 0;
+                  const ownerSuffix =
+                    scope === "all" ? ` · Owner: ${job.ownerFirstName || "HR Team"}` : "";
+                  return (
+                    <option key={job.id} value={job.id} className="bg-white text-slate-900">
+                      {job.title} ({activeCount}){ownerSuffix}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : null}
+          </>
+        )}
       </div>
 
       {/* Kanban Board Container */}

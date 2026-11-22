@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import PageContainer from "@/components/ui/page-container";
-import { getHrJobScope } from "@/lib/hr-job-scope";
+import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 import {
   markOfferSigned,
   verifyDocusealSubmissionCompleted,
@@ -106,7 +106,15 @@ function resolveOfferCategory(
   return "Sent";
 }
 
-export default async function HROffersDirectoryPage() {
+export default async function HROffersDirectoryPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ scope?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const initialScope: "mine" | "all" =
+    resolvedParams?.scope === "all" ? "all" : "mine";
+
   const supabase = await createClient();
 
   const {
@@ -130,6 +138,7 @@ export default async function HROffersDirectoryPage() {
 
   const jobScope = await getHrJobScope(supabase, user.id);
   const tenantId = jobScope.tenantId;
+  const teamNamesMap = await getTenantTeamNamesMap(supabase, tenantId);
 
   const admin = getAdminClient();
 
@@ -301,6 +310,8 @@ export default async function HROffersDirectoryPage() {
       applicationId: offer.application_id,
       jobId,
       jobTitle,
+      jobCreatedBy: job?.created_by ?? offer.created_by ?? offer.hr_id ?? null,
+      ownerName: resolveOwnerName(teamNamesMap, job?.created_by ?? offer.created_by ?? offer.hr_id, "full"),
       candidateName,
       candidateEmail,
       rawOfferStatus,
@@ -320,7 +331,12 @@ export default async function HROffersDirectoryPage() {
 
   return (
     <PageContainer>
-      <HROffersListClient offers={mappedOffers} jobOptions={jobOptions} />
+      <HROffersListClient
+        offers={mappedOffers}
+        jobOptions={jobOptions}
+        currentUserId={user.id}
+        initialScope={initialScope}
+      />
     </PageContainer>
   );
 }

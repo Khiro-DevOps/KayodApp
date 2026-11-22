@@ -5,6 +5,8 @@ import type { Profile } from "@/lib/types";
 import { effectiveRole, roleLabel, isHRRole } from "@/lib/roles";
 import ProfileDetailsForm from "@/app/(pwa)/applicant/profile/profile-details-form";
 import NotificationPreferencesCard from "@/components/profile/NotificationPreferencesCard";
+import TeamHrInvitesCard from "@/components/hr/TeamHrInvitesCard";
+import { listPendingHrInvitesAction } from "./invite-actions";
 import { logout } from "@/app/(auth)/actions";
 import Link from "next/link";
 
@@ -24,12 +26,16 @@ export default async function HRProfilePage() {
     .from("profiles")
     .select("*, tenants(name)")
     .eq("id", user.id)
-    .maybeSingle<Profile & { tenants?: { name?: string | null } | null }>();
+    .maybeSingle<Profile & { is_tenant_owner?: boolean | null; tenants?: { name?: string | null } | null }>();
 
   const effective = effectiveRole(profile?.role, authRole);
   if (!isHRRole(effective)) {
     redirect("/dashboard");
   }
+
+  const isTenantOwner = Boolean(profile?.is_tenant_owner);
+  const pendingInvitesResult = isTenantOwner ? await listPendingHrInvitesAction() : null;
+  const pendingInvites = pendingInvitesResult?.invites ?? [];
 
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.email || user.email || "HR Manager";
   const displayEmail = profile?.email || user.email || "";
@@ -79,6 +85,11 @@ export default async function HRProfilePage() {
 
         {/* Editable Personal Details */}
         <ProfileDetailsForm profile={profile ?? null} />
+
+        {/* Team & HR Invites (Tenant Owner Only) */}
+        {isTenantOwner ? (
+          <TeamHrInvitesCard initialInvites={pendingInvites} />
+        ) : null}
 
         {/* Notification Preferences */}
         <NotificationPreferencesCard

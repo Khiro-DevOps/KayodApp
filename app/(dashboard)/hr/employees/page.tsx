@@ -28,29 +28,38 @@ export default async function EmployeesPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, tenant_id")
     .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .single<Pick<Profile, "role" | "tenant_id">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (!isHR) redirect("/dashboard");
 
   const admin = getAdminClient();
+  const tenantId = profile?.tenant_id ?? null;
+
+  let employeesQuery = admin
+    .from("employees")
+    .select(`
+      *,
+      profiles ( first_name, last_name, email, phone, avatar_url ),
+      departments ( name )
+    `)
+    .order("created_at", { ascending: false });
+  if (tenantId) {
+    employeesQuery = employeesQuery.eq("tenant_id", tenantId);
+  }
+
+  let officeBranchesQuery = admin
+    .from("office_branches")
+    .select("id, name");
+  if (tenantId) {
+    officeBranchesQuery = officeBranchesQuery.eq("tenant_id", tenantId);
+  }
 
   const [{ data: employees }, { data: officeBranches }, { data: remoteResidences }] = await Promise.all([
-    admin
-      .from("employees")
-      .select(`
-        *,
-        profiles ( first_name, last_name, email, phone, avatar_url ),
-        departments ( name )
-      `)
-      .order("created_at", { ascending: false })
-      .returns<Employee[]>(),
-    admin
-      .from("office_branches")
-      .select("id, name")
-      .returns<Array<{ id: string; name: string }>>(),
+    employeesQuery.returns<Employee[]>(),
+    officeBranchesQuery.returns<Array<{ id: string; name: string }>>(),
     admin
       .from("employee_remote_residences")
       .select("*"),

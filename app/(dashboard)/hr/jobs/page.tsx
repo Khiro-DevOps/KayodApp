@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import type { JobListing, JobPosting, Profile } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import ManageJobsWorkspace from "./manage-jobs-workspace";
-import { getHrJobScope } from "@/lib/hr-job-scope";
+import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 
 type WorkspaceProfile = Pick<Profile, "role" | "tenant_id"> & {
   tenant_name?: string | null;
@@ -41,9 +41,19 @@ type WorkspaceJob = {
   departments?: { name?: string | null } | null;
   required_skills?: string[] | null;
   applicantCount: number;
+  created_by: string | null;
+  ownerName: string;
 };
 
-export default async function ManageJobsPage() {
+const JOBS_CURSOR_PAGE_SIZE = 20;
+
+export default async function ManageJobsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ cursor?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const cursorParam = typeof resolvedParams?.cursor === "string" ? resolvedParams.cursor.trim() : null;
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -87,10 +97,21 @@ export default async function ManageJobsPage() {
     companyName = "Company";
   }
 
-  const currentJobsQuery = supabase
+  const teamNamesMap = await getTenantTeamNamesMap(supabase, tenantId || null);
+
+  let currentJobsQuery = supabase
     .from("job_postings")
-    .select("*, departments(name)")
-    .or(jobScope.filter);
+    .select("*, departments(name)");
+
+  if (tenantId) {
+    currentJobsQuery = currentJobsQuery.eq("tenant_id", tenantId);
+  } else {
+    currentJobsQuery = currentJobsQuery.eq("created_by", user.id);
+  }
+
+  if (cursorParam) {
+    currentJobsQuery = currentJobsQuery.lt("created_at", cursorParam);
+  }
 
   let legacyJobsQuery = supabase.from("job_listings").select("*, employers(company_name)");
   if (tenantId) {
@@ -100,11 +121,18 @@ export default async function ManageJobsPage() {
   }
 
   const results = await Promise.all([
-    currentJobsQuery.order("created_at", { ascending: false }),
-    legacyJobsQuery.order("created_at", { ascending: false }),
+    currentJobsQuery.order("created_at", { ascending: false }).limit(JOBS_CURSOR_PAGE_SIZE + 1),
+    legacyJobsQuery.order("created_at", { ascending: false }).limit(JOBS_CURSOR_PAGE_SIZE),
   ]);
 
-  const currentJobs = results[0].data as JobPostingWithApplicantCount[] | null | undefined;
+  const rawCurrentJobs = (results[0].data as JobPostingWithApplicantCount[] | null | undefined) ?? [];
+  const hasNextCursorPage = rawCurrentJobs.length > JOBS_CURSOR_PAGE_SIZE;
+  const currentJobs = hasNextCursorPage
+    ? rawCurrentJobs.slice(0, JOBS_CURSOR_PAGE_SIZE)
+    : rawCurrentJobs;
+  const nextCursor = hasNextCursorPage
+    ? currentJobs[currentJobs.length - 1]?.created_at ?? null
+    : null;
   const currentJobsError = results[0].error;
   let legacyJobs = results[1].data as JobListing[] | null | undefined;
   let legacyJobsError = results[1].error;
@@ -168,12 +196,14 @@ export default async function ManageJobsPage() {
     const [{ data: counts, error: countErr }, { data: jaCounts, error: jaCountErr }] = await Promise.all([
       supabase
         .from("applications")
-        .select("job_posting_id")
-        .in("job_posting_id", jobIds as string[]),
+        .select("job_posting_id, status")
+        .in("job_posting_id", jobIds as string[])
+        .not("status", "in", '("rejected","withdrawn")'),
       supabase
         .from("job_applications")
-        .select("job_id")
-        .in("job_id", jobIds as string[]),
+        .select("job_id, status")
+        .in("job_id", jobIds as string[])
+        .not("status", "in", '("rejected","withdrawn")'),
     ]);
 
     if (countErr) {
@@ -235,6 +265,8 @@ export default async function ManageJobsPage() {
       departments: job.departments,
       required_skills: job.required_skills ?? null,
       applicantCount: countMap[job.id] ?? 0,
+      created_by: job.created_by ?? null,
+      ownerName: resolveOwnerName(teamNamesMap, job.created_by, "full"),
     })),
     ...((legacyJobs ?? []) as LegacyJobListingWithApplicantCount[]).map((job) => {
       const legacyCreatedAt = (job as unknown as { created_at?: string }).created_at ?? new Date(0).toISOString();
@@ -259,9 +291,18 @@ export default async function ManageJobsPage() {
         departments: job.employers ? { name: job.employers.company_name } : null,
         required_skills: job.skills ?? null,
         applicantCount: legacyCountMap[job.id] ?? 0,
+        created_by: null,
+        ownerName: "HR Team",
       };
     }),
   ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
 
-  return <ManageJobsWorkspace jobs={jobsWithCounts} companyName={companyName} />;
+  return (
+    <ManageJobsWorkspace
+      jobs={jobsWithCounts}
+      companyName={companyName}
+      nextCursor={nextCursor}
+      currentCursor={cursorParam}
+    />
+  );
 }

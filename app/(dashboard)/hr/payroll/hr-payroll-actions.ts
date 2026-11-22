@@ -71,6 +71,12 @@ export async function generatePayslips(formData: FormData) {
   const customRemarks = String(formData.get("remarks") ?? "").trim();
 
   const admin = getAdminClient();
+  const { data: hrProfile } = await admin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", user.id)
+    .maybeSingle<{ tenant_id?: string | null }>();
+  const tenantId = hrProfile?.tenant_id ?? null;
 
   // 1. Get the period dates
   const { data: period, error: periodError } = await admin
@@ -85,10 +91,14 @@ export async function generatePayslips(formData: FormData) {
   }
 
   // 2. Get all active employees (select * so optional compensation columns are included if present)
-  const { data: employees, error: employeesError } = await admin
+  let employeesQuery = admin
     .from("employees")
     .select("*")
     .eq("employment_status", "active");
+  if (tenantId) {
+    employeesQuery = employeesQuery.eq("tenant_id", tenantId);
+  }
+  const { data: employees, error: employeesError } = await employeesQuery;
 
   if (employeesError) {
     redirect(`/hr/payslips?periodId=${periodId}&error=${encodeURIComponent(employeesError.message)}`);

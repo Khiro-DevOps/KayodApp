@@ -88,7 +88,9 @@ export async function updateSession(request: NextRequest) {
 
     // If user is authenticated and trying to access auth pages, redirect to dashboard
     // Note: keep `/` public so the landing page remains visible even for authenticated users.
-    if (user && (pathname === "/login" || pathname === "/register")) {
+    // Allow `/register` and `/register/hr` when `?invite=` is present so invited HR users can view/accept an invite link.
+    const hasInviteToken = request.nextUrl.searchParams.has("invite");
+    if (user && (pathname === "/login" || ((pathname === "/register" || pathname === "/register/hr") && !hasInviteToken))) {
       const url = new URL("/dashboard", request.url);
       url.search = "";
       return NextResponse.redirect(url);

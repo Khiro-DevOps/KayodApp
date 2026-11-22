@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Briefcase, Calendar, Clock, DollarSign, FileText, MapPin, User } from "lucide-react";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
@@ -20,6 +21,8 @@ export interface HROfferListItem {
   applicationId: string;
   jobId: string;
   jobTitle: string;
+  jobCreatedBy?: string | null;
+  ownerName?: string | null;
   candidateName: string;
   candidateEmail: string;
   rawOfferStatus: string;
@@ -42,6 +45,8 @@ export interface HROfferJobOption {
 interface HROffersListClientProps {
   offers: HROfferListItem[];
   jobOptions: HROfferJobOption[];
+  currentUserId?: string;
+  initialScope?: "mine" | "all";
 }
 
 const STATUS_TABS: OfferStatusFilter[] = [
@@ -103,16 +108,32 @@ function formatShortDate(value: string | null): string {
 export default function HROffersListClient({
   offers,
   jobOptions,
+  currentUserId,
+  initialScope = "mine",
 }: HROffersListClientProps) {
+  const router = useRouter();
+  const [scope, setScope] = useState<"mine" | "all">(initialScope);
   const [selectedJobId, setSelectedJobId] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<OfferStatusFilter>("All");
 
-  const jobFilteredOffers = useMemo(() => {
-    if (selectedJobId === "all") {
+  function handleScopeChange(nextScope: "mine" | "all") {
+    setScope(nextScope);
+    router.replace(`/hr/offers?scope=${nextScope}`, { scroll: false });
+  }
+
+  const scopeFilteredOffers = useMemo(() => {
+    if (scope === "all" || !currentUserId) {
       return offers;
     }
-    return offers.filter((offer) => offer.jobId === selectedJobId);
-  }, [offers, selectedJobId]);
+    return offers.filter((offer) => offer.jobCreatedBy === currentUserId);
+  }, [offers, scope, currentUserId]);
+
+  const jobFilteredOffers = useMemo(() => {
+    if (selectedJobId === "all") {
+      return scopeFilteredOffers;
+    }
+    return scopeFilteredOffers.filter((offer) => offer.jobId === selectedJobId);
+  }, [scopeFilteredOffers, selectedJobId]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<OfferStatusFilter, number> = {
@@ -144,7 +165,31 @@ export default function HROffersListClient({
         title="Job Offers"
         subtitle="Track candidate offers, negotiation requests, and signed contracts across job postings."
         actions={
-          <div className="flex items-center gap-3 rounded-2xl border border-indigo-100/80 bg-white/75 px-3.5 py-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100/80 bg-white/75 px-3.5 py-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+            <div className="inline-flex rounded-xl border border-slate-200/80 bg-white p-0.5 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => handleScopeChange("mine")}
+                className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  scope === "mine"
+                    ? "bg-[#1E1B4B] text-white"
+                    : "text-slate-600 hover:text-[#1E1B4B]"
+                }`}
+              >
+                My Jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScopeChange("all")}
+                className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  scope === "all"
+                    ? "bg-[#1E1B4B] text-white"
+                    : "text-slate-600 hover:text-[#1E1B4B]"
+                }`}
+              >
+                All Company
+              </button>
+            </div>
             <label htmlFor="hr-offers-job-filter" className="text-xs font-semibold text-[#1E1B4B]">
               Job Posting
             </label>
@@ -259,9 +304,14 @@ export default function HROffersListClient({
                 </div>
 
                 <div className="rounded-xl border border-border bg-background p-3 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-text-primary font-medium">
-                    <Briefcase className="h-4 w-4 shrink-0 text-text-secondary" />
-                    <span className="truncate">{offer.jobTitle}</span>
+                  <div className="flex items-center justify-between gap-2 text-text-primary font-medium">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Briefcase className="h-4 w-4 shrink-0 text-text-secondary" />
+                      <span className="truncate">{offer.jobTitle}</span>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-[#1E1B4B]">
+                      Owner: {offer.ownerName || "HR Team"}
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1 text-xs text-text-secondary">
                     <div className="flex items-center gap-1.5">
