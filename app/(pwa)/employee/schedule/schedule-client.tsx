@@ -77,6 +77,8 @@ interface AttendanceLog {
   total_break_minutes?: number | null;
   short_breaks_used?: number | null;
   overbreak_minutes?: number | null;
+  overtime_request_id?: string | null;
+  outside_approved_window?: boolean | null;
   break_log?: Array<{ type: string; started_at?: string; ended_at?: string | null }> | null;
 }
 
@@ -403,6 +405,13 @@ export default function ScheduleClient({
   // Punctuality status badge
   const getPunctualityBadge = () => {
     if (!activeLog) return null;
+    if (activeLog.overtime_request_id || todayWorkModel === "off") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-[#1E1B4B] border border-indigo-200">
+          Overtime Shift
+        </span>
+      );
+    }
     const clockInTime = new Date(activeLog.clock_in);
     const [targetH, targetM] = shiftStart.split(":").map((n) => parseInt(n, 10));
 

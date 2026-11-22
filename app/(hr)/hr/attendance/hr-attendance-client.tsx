@@ -396,11 +396,26 @@ export default function HRAttendanceClient({
         title="Attendance Operations"
         subtitle="Monitor clock-ins, geofence flags, and zone status — last 30 days"
         actions={
-          <div className="flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3.5 py-2 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
-            <span className="material-symbols-outlined text-[16px] text-[#1E1B4B]">
-              update
-            </span>
-            Live attendance data
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3.5 py-2 text-xs font-semibold text-[#1E1B4B] shadow-xs backdrop-blur-md">
+              <span className="material-symbols-outlined text-[16px] text-[#1E1B4B]">
+                update
+              </span>
+              Live attendance data
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!urgentEmpId && activeEmployees[0]?.id) {
+                  setUrgentEmpId(activeEmployees[0].id);
+                }
+                setShowUrgentOtModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#1E1B4B] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#2d2b68] transition-colors whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              Assign Urgent Overtime
+            </button>
           </div>
         }
       />
@@ -449,10 +464,10 @@ export default function HRAttendanceClient({
       </div>
 
       {/* ── Filter / Search Bar (Frosted Glass) ──────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-indigo-100/80 bg-white/75 p-4 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border border-indigo-100/80 bg-white/75 p-3.5 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
         {/* Search */}
-        <div className="relative w-full sm:w-80">
-          <span className="material-symbols-outlined absolute left-3 top-2.5 text-text-muted text-[20px]">
+        <div className="relative w-full lg:w-72 shrink-0">
+          <span className="material-symbols-outlined absolute left-3 top-2.5 text-text-muted text-[18px]">
             search
           </span>
           <input
@@ -461,17 +476,17 @@ export default function HRAttendanceClient({
             placeholder="Search employee name or role..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-indigo-100 bg-white pl-10 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-[#1E1B4B] transition-colors"
+            className="w-full rounded-xl border border-indigo-100 bg-white pl-9 pr-4 py-2 text-xs font-medium text-text-main outline-none focus:border-[#1E1B4B] transition-colors"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Today / All (30d) Quick Toggle */}
-          <div className="inline-flex rounded-xl border border-border bg-surface-bg p-0.5">
+          <div className="inline-flex rounded-xl border border-border bg-surface-bg p-0.5 shrink-0">
             <button
               type="button"
               onClick={() => setTodayOnly(true)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                 todayOnly
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-text-muted hover:text-text-main"
@@ -482,7 +497,7 @@ export default function HRAttendanceClient({
             <button
               type="button"
               onClick={() => setTodayOnly(false)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                 !todayOnly
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-text-muted hover:text-text-main"
@@ -497,13 +512,13 @@ export default function HRAttendanceClient({
             id="attendance-overtime-toggle"
             type="button"
             onClick={() => setShowOvertimeQueue((p) => !p)}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap ${
               showOvertimeQueue
                 ? "border-[#1E1B4B] bg-[#1E1B4B] text-white shadow-sm"
                 : "border-indigo-200 bg-indigo-50/70 text-[#1E1B4B] hover:bg-indigo-100"
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">more_time</span>
+            <span className="material-symbols-outlined text-[15px]">more_time</span>
             Overtime Requests
             {pendingOtCount > 0 && (
               <span
@@ -518,33 +533,18 @@ export default function HRAttendanceClient({
             )}
           </button>
 
-          {/* Assign Urgent Overtime CTA */}
-          <button
-            type="button"
-            onClick={() => {
-              if (!urgentEmpId && activeEmployees[0]?.id) {
-                setUrgentEmpId(activeEmployees[0].id);
-              }
-              setShowUrgentOtModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#2d2b68] transition-colors"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            Assign Urgent Overtime
-          </button>
-
           {/* Correction Requests Toggle */}
           <button
             id="attendance-corrections-toggle"
             type="button"
             onClick={() => setShowCorrections((p) => !p)}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap ${
               showCorrections
                 ? "border-[#1E1B4B] bg-[#1E1B4B] text-white shadow-sm"
                 : "border-indigo-200 bg-indigo-50/70 text-[#1E1B4B] hover:bg-indigo-100"
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+            <span className="material-symbols-outlined text-[15px]">edit_calendar</span>
             Correction Requests
             {pendingCorrectionCount > 0 && (
               <span
@@ -564,18 +564,18 @@ export default function HRAttendanceClient({
             id="attendance-flagged-toggle"
             type="button"
             onClick={() => setFlaggedOnly((p) => !p)}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap ${
               flaggedOnly
                 ? "border-rose-300 bg-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-300"
                 : "border-border bg-surface-bg text-text-muted hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700"
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">
+            <span className="material-symbols-outlined text-[15px]">
               {flaggedOnly ? "filter_alt_off" : "filter_alt"}
             </span>
-            {flaggedOnly ? "Showing Flagged Only" : "Show Flagged Only"}
+            {flaggedOnly ? "Flagged Only" : "Flagged"}
             {flaggedCount > 0 && (
-              <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+              <span className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
                 {flaggedCount > 99 ? "99+" : flaggedCount}
               </span>
             )}
