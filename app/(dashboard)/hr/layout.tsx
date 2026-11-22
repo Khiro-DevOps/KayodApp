@@ -45,6 +45,7 @@ const navGroups: NavGroup[] = [
     label: "Organization & Payroll",
     items: [
       { label: "Employees", href: "/hr/employees", icon: "group" },
+      { label: "Office Branches", href: "/hr/settings/branches", icon: "storefront" },
       { label: "Payslips", href: "/hr/payslips", icon: "payments" },
     ],
   },
@@ -414,14 +415,6 @@ export default function DashboardLayout({
             >
               <span className="material-symbols-outlined text-[20px]">contact_support</span>
               <span>Support</span>
-            </Link>
-            <Link
-              href="/hr/settings/branches"
-              onClick={() => setIsMobileDrawerOpen(false)}
-              className="text-text-muted hover:bg-white/80 hover:text-[#1E1B4B] font-medium rounded-xl flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors"
-            >
-              <span className="material-symbols-outlined text-[20px]">storefront</span>
-              <span>Office Branches</span>
             </Link>
             <Link
               href="/hr/profile"

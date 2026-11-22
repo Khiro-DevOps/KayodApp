@@ -416,11 +416,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to create resume" }, { status: 500 });
     }
 
+    const { data: signedData } = await supabase.storage
+      .from(resumeBucketName)
+      .createSignedUrl(storagePath, 3600);
+
     return NextResponse.json({
       success: true,
       resume: data?.[0],
       previewUrl,
-      pdfUrl: publicUrl,
+      pdfUrl: signedData?.signedUrl ?? null,
     });
   } catch (error) {
     console.error("Error in create-resume API:", error);

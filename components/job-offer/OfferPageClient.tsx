@@ -713,13 +713,12 @@ export default function OfferPageClient({
                   </div>
                 </div>
                 <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                    showSignedBanner
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : normalizedStatus === "negotiating"
-                        ? "border-blue-200 bg-blue-50 text-blue-700"
-                        : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${showSignedBanner
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : normalizedStatus === "negotiating"
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                    }`}
                 >
                   {showSignedBanner
                     ? "Completed"
@@ -1056,11 +1055,10 @@ export default function OfferPageClient({
                       </div>
                     ) : canSign && resolvedEmbedSrc ? (
                       <div className="space-y-4">
-                        <div className="min-h-[680px] max-h-[80vh] w-full overflow-y-auto rounded-xl border border-border bg-slate-50/40 p-2 sm:p-4">
+                        <div className="overflow-hidden rounded-xl border border-border bg-white">
                           <DocusealForm
                             src={resolvedEmbedSrc}
                             email={candidateEmail || undefined}
-                            withTitle={false}
                             className="w-full"
                             onComplete={handleSigningComplete}
                           />

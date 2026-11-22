@@ -783,11 +783,10 @@ export default function InterviewRoom({ roomId, interviewId, applicationId, init
             onClick={() => void toggleScreenShare()}
             title={isSharing ? "Stop sharing screen" : "Share screen"}
             aria-label={isSharing ? "Stop sharing screen" : "Share screen"}
-            className={`rounded-full border p-3 transition-all ${
-              isSharing
-                ? "border-purple-500 bg-purple-600 text-white hover:bg-purple-700"
-                : "border-slate-200/60 bg-slate-100/90 text-slate-800 hover:bg-slate-200"
-            }`}
+            className={`rounded-full border p-3 transition-all ${isSharing
+              ? "border-purple-500 bg-purple-600 text-white hover:bg-purple-700"
+              : "border-slate-200/60 bg-slate-100/90 text-slate-800 hover:bg-slate-200"
+              }`}
           >
             {isSharing ? <MonitorOff size={20} /> : <MonitorUp size={20} />}
           </button>

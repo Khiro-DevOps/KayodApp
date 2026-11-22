@@ -19,6 +19,7 @@ import {
   extractBusyIntervalsFromRows,
   getNextAvailableSlot as getNextAvailableSlotHelper,
   type NextAvailableSlotResult,
+  type ScheduleRow,
 } from "@/lib/interview-slots";
 
 export interface TimeSlot {
@@ -56,7 +57,7 @@ export async function getOfficeBranches(): Promise<{ success: boolean; data?: Ar
   return error ? { success: false, error: error.message } : { success: true, data: data ?? [] };
 }
 
-export interface ActionResponse<T = any> {
+export interface ActionResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -86,7 +87,7 @@ export async function getNextAvailableSlot(params: {
  * Overlap check: start < otherEnd && end > otherStart (touching ends are not overlaps).
  */
 async function checkInterviewConflicts(
-  supabase: any,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   interviewerId: string,
   applicantId: string,
   excludeApplicationId: string,
@@ -113,7 +114,7 @@ async function checkInterviewConflicts(
     (sched) => sched.interviewer_id === interviewerId || sched.applicant_id === applicantId
   );
 
-  const busyIntervals = extractBusyIntervalsFromRows(relevantRows);
+  const busyIntervals = extractBusyIntervalsFromRows(relevantRows as unknown as ScheduleRow[]);
 
   for (const slot of slots) {
     const newStart = new Date(slot.start_time).getTime();
@@ -177,7 +178,7 @@ async function checkInterviewConflicts(
  */
 export async function createInterviewInvite(
   data: CreateInvitePayload
-): Promise<ActionResponse> {
+): Promise<ActionResponse<{ id: string }>> {
   try {
     const { application_id, interviewer_id, slots, meeting_link, office_branch_id } = data;
     const meetingType = normalizeMeetingType(data.meeting_type);
@@ -260,14 +261,14 @@ export async function createInterviewInvite(
       typeof data.duration_minutes === "number" && data.duration_minutes > 0
         ? data.duration_minutes
         : slots[0]?.start_time && slots[0]?.end_time
-        ? Math.max(
+          ? Math.max(
             15,
             Math.round(
               (new Date(slots[0].end_time).getTime() - new Date(slots[0].start_time).getTime()) /
-                60_000
+              60_000
             )
           )
-        : DEFAULT_DURATION_MINUTES;
+          : DEFAULT_DURATION_MINUTES;
 
     // Convert local datetime / PHT inputs to UTC ISO
     const normalizedSlots = slots.map((s) => {
@@ -482,12 +483,12 @@ export async function selectInterviewSlot(
     const slotDuration =
       targetSlot.start_time && targetSlot.end_time
         ? Math.max(
-            15,
-            Math.round(
-              (new Date(targetSlot.end_time).getTime() - new Date(targetSlot.start_time).getTime()) /
-                60_000
-            )
+          15,
+          Math.round(
+            (new Date(targetSlot.end_time).getTime() - new Date(targetSlot.start_time).getTime()) /
+            60_000
           )
+        )
         : (schedule.duration_minutes || DEFAULT_DURATION_MINUTES);
 
     const finalMeetingType = chosenMode ?? schedule.meeting_type;

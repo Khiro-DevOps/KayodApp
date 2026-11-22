@@ -92,16 +92,16 @@ export default async function EmployeeProfilePage() {
     employee,
     offer: linkedJob
       ? {
-          job_title: linkedJob.offerTitle,
-          work_setup: linkedJob.offerWorkSetup,
-        }
+        job_title: linkedJob.offerTitle,
+        work_setup: linkedJob.offerWorkSetup,
+      }
       : null,
     jobPosting: linkedJob
       ? {
-          title: linkedJob.title,
-          department: linkedJob.departmentName,
-          work_setup: linkedJob.jobWorkSetup,
-        }
+        title: linkedJob.title,
+        department: linkedJob.departmentName,
+        work_setup: linkedJob.jobWorkSetup,
+      }
       : null,
     officeBranch,
     remoteResidence,
