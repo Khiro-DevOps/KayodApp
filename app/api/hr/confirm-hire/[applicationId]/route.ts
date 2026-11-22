@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDocusealBaseUrl } from "@/lib/docuseal";
+import { cascadeCloseSecondaryApplicationsOnHire } from "@/lib/hire-cascade";
 import { sendNotification } from "@/lib/notifications";
 import { resolveOfferCompensation } from "@/lib/offer-salary";
 import {
@@ -488,7 +489,15 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
     }
 
-    // 5) Send hire_confirmed notification via admin helper
+    // 5) Cascade-close secondary open applications, pending interviews, and open offers
+    await cascadeCloseSecondaryApplicationsOnHire({
+      admin,
+      applicantId: application.applicant_id,
+      winningApplicationId: applicationId,
+      jobTitle,
+    });
+
+    // 6) Send hire_confirmed notification via admin helper
     await sendNotification({
       recipientId: application.applicant_id,
       type: "hire_confirmed",

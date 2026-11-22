@@ -67,6 +67,25 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Missing required fields" };
   }
 
+  const [{ data: applicantProfile }, { data: activeEmployee }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle<{ role?: string | null }>(),
+    supabase
+      .from("employees")
+      .select("id")
+      .eq("profile_id", user.id)
+      .eq("employment_status", "active")
+      .limit(1)
+      .maybeSingle<{ id: string }>(),
+  ]);
+
+  if (applicantProfile?.role === "employee" || Boolean(activeEmployee)) {
+    return { success: false, error: "You are already onboarded as an active employee." };
+  }
+
   const { data: job } = await supabase
     .from("job_postings")
     .select("id, tenant_id, is_published, closes_at, title, description, requirements, required_skills, industry, job_category, work_setup, location, city_id, province_id, min_experience, employment_type")

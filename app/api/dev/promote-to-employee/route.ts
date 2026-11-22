@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { devRouteGuard } from "@/lib/dev-guard"
+import { cascadeCloseSecondaryApplicationsOnHire } from "@/lib/hire-cascade"
 import { resolveOfferCompensation } from "@/lib/offer-salary"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
@@ -234,7 +235,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Create notification
+    // 6. Cascade-close secondary open applications, pending interviews, and open offers
+    await cascadeCloseSecondaryApplicationsOnHire({
+      admin,
+      applicantId: application.candidate_id,
+      winningApplicationId: applicationId,
+      jobTitle,
+    })
+
+    // 7. Create notification
     await admin.from("notifications").insert({
       recipient_id: application.candidate_id,
       type: "general",
