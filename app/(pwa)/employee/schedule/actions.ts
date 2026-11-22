@@ -163,6 +163,31 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     };
   }
 
+  // Auto-expire stale unreviewed overtime requests
+  await supabaseAdmin
+    .from("overtime_requests")
+    .update({ status: "expired" })
+    .eq("status", "pending")
+    .lt("work_date", todayDateStr);
+
+  // Approved Leave Hard Lock (Highest Priority — overrides any OT approval)
+  const { data: approvedLeaveToday } = await supabaseAdmin
+    .from("leave_requests")
+    .select("id, leave_type")
+    .eq("employee_id", employee.id)
+    .eq("status", "approved")
+    .lte("start_date", todayDateStr)
+    .gte("end_date", todayDateStr)
+    .limit(1)
+    .maybeSingle();
+
+  if (approvedLeaveToday) {
+    return {
+      success: false,
+      error: "Cannot clock in while on approved leave. HR must cancel or shorten your leave first.",
+    };
+  }
+
   const { latitude, longitude, accuracy_meters, flag_reason } = payload;
 
   const linkedJob = await getJobPostingPositionForProfile(user.id);
@@ -172,12 +197,58 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     employeeWorkSetup: employee.work_mode,
   });
 
+  const { data: latestSchedule } = await supabaseAdmin
+    .from("schedules")
+    .select("notes")
+    .eq("employee_id", employee.id)
+    .eq("is_published", true)
+    .lte("week_start", todayDateStr)
+    .order("week_start", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ notes: string | null }>();
+
   const todayDailyModel = resolveDailyWorkModel({
     contractWorkSetup: resolvedSetup,
     schedule: {
+      notes: latestSchedule?.notes ?? null,
       work_days: Array.isArray(employee.work_days) ? employee.work_days : null,
     },
   });
+
+  // Rest Day (todayDailyModel === "off") Overtime Gate
+  let overtimeRequestId: string | null = null;
+  let outsideApprovedWindow = false;
+  if (todayDailyModel === "off") {
+    const { data: approvedOt } = await supabaseAdmin
+      .from("overtime_requests")
+      .select("id, start_time, end_time")
+      .eq("employee_id", employee.id)
+      .eq("work_date", todayDateStr)
+      .eq("status", "approved")
+      .is("used_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; start_time: string; end_time: string }>();
+
+    if (!approvedOt) {
+      return {
+        success: false,
+        error: "Scheduled Rest Day: Overtime requires prior HR approval before clocking in.",
+      };
+    }
+
+    overtimeRequestId = approvedOt.id;
+    const nowManilaTime = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Manila",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date());
+    outsideApprovedWindow =
+      nowManilaTime < approvedOt.start_time || nowManilaTime > approvedOt.end_time;
+  }
 
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
     id: employee.id,
@@ -239,6 +310,9 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
       flag_reason: flag_reason || null,
       status: zoneStatus,
       verification_type: locationUsed,
+      overtime_request_id: overtimeRequestId,
+      outside_approved_window: outsideApprovedWindow,
+      ...(overtimeRequestId ? { is_late: false, late_minutes: 0 } : {}),
     })
     .select("id")
     .single();
@@ -1030,4 +1104,180 @@ export async function submitAttendanceCorrectionAction(
     message: "Attendance correction request submitted for HR review.",
     requestId: inserted.id,
   };
+}
+
+export type SubmitOvertimeRequestPayload = {
+  workDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+};
+
+export type OvertimeActionResult =
+  | { success: true; message: string; requestId?: string }
+  | { success: false; error: string };
+
+export async function submitOvertimeRequestAction(
+  payload: SubmitOvertimeRequestPayload
+): Promise<OvertimeActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR." };
+  }
+
+  const todayManila = getTodayLocalDateStr();
+  const workDate = payload.workDate?.trim();
+  const startTime = payload.startTime?.trim();
+  const endTime = payload.endTime?.trim();
+  const reason = payload.reason?.trim();
+
+  if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
+    return { success: false, error: "Please select a valid work date." };
+  }
+  if (workDate < todayManila) {
+    return { success: false, error: "Overtime requests cannot be submitted for past dates." };
+  }
+  if (!startTime || !endTime || endTime <= startTime) {
+    return { success: false, error: "End time must be after start time." };
+  }
+  if (!reason || reason.length < 5) {
+    return { success: false, error: "Please provide a reason (at least 5 characters)." };
+  }
+
+  const supabaseAdmin = getAdminClient();
+
+  const { data: existing } = await supabaseAdmin
+    .from("overtime_requests")
+    .select("id, status")
+    .eq("employee_id", employee.id)
+    .eq("work_date", workDate)
+    .in("status", ["pending", "approved"])
+    .is("used_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      success: false,
+      error: `You already have a ${existing.status} overtime request for ${workDate}.`,
+    };
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("overtime_requests")
+    .insert({
+      tenant_id: employee.tenant_id,
+      employee_id: employee.id,
+      work_date: workDate,
+      start_time: startTime,
+      end_time: endTime,
+      reason,
+      status: "pending",
+      requested_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr || !inserted) {
+    return { success: false, error: insertErr?.message || "Failed to submit overtime request." };
+  }
+
+  const { data: empProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("first_name, last_name")
+    .eq("id", user.id)
+    .maybeSingle<{ first_name: string | null; last_name: string | null }>();
+
+  const employeeName =
+    [empProfile?.first_name, empProfile?.last_name].filter(Boolean).join(" ").trim() || "An employee";
+
+  let hrQuery = supabaseAdmin
+    .from("profiles")
+    .select("id, tenant_id")
+    .in("role", ["hr_manager", "hr", "admin"]);
+
+  if (employee.tenant_id) {
+    hrQuery = hrQuery.or(`tenant_id.eq.${employee.tenant_id},tenant_id.is.null`);
+  }
+
+  const { data: hrProfiles } = await hrQuery;
+  if (hrProfiles && hrProfiles.length > 0) {
+    await supabaseAdmin.from("notifications").insert(
+      hrProfiles.map((hr) => ({
+        recipient_id: hr.id,
+        sender_id: user.id,
+        type: "general" as const,
+        title: "Overtime Request",
+        body: `${employeeName} requested rest-day overtime on ${workDate} (${startTime}–${endTime}).`,
+        action_url: "/hr/attendance",
+      }))
+    );
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    message: "Overtime request submitted for HR approval.",
+    requestId: inserted.id,
+  };
+}
+
+export async function cancelOvertimeRequestAction(
+  requestId: string
+): Promise<OvertimeActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found." };
+  }
+
+  const supabaseAdmin = getAdminClient();
+  const { data: reqRow } = await supabaseAdmin
+    .from("overtime_requests")
+    .select("id, status, used_at")
+    .eq("id", requestId)
+    .eq("employee_id", employee.id)
+    .maybeSingle<{ id: string; status: string; used_at: string | null }>();
+
+  if (!reqRow) {
+    return { success: false, error: "Overtime request not found." };
+  }
+
+  const canCancel =
+    reqRow.status === "pending" || (reqRow.status === "approved" && reqRow.used_at === null);
+  if (!canCancel) {
+    return { success: false, error: "This overtime request can no longer be cancelled." };
+  }
+
+  const { error: updateErr } = await supabaseAdmin
+    .from("overtime_requests")
+    .update({ status: "cancelled" })
+    .eq("id", requestId)
+    .eq("employee_id", employee.id);
+
+  if (updateErr) {
+    return { success: false, error: updateErr.message };
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/attendance");
+  return { success: true, message: "Overtime request cancelled." };
 }

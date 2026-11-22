@@ -243,3 +243,212 @@ export async function reviewAttendanceCorrectionAction(
     message: "Correction request rejected.",
   };
 }
+
+export type ReviewOvertimeRequestPayload = {
+  requestId: string;
+  decision: "approved" | "rejected";
+  reviewNote?: string;
+};
+
+export type CreatePreApprovedOvertimePayload = {
+  employeeId: string;
+  workDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+};
+
+export async function reviewOvertimeRequestAction(
+  payload: ReviewOvertimeRequestPayload
+): Promise<ReviewAttendanceCorrectionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const admin = getAdminClient();
+  const rawMeta = (
+    (user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}
+  ) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMeta.role) as string | undefined;
+
+  const { data: actorProfile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string | null }>();
+
+  const role = effectiveRole(actorProfile?.role, authRole);
+  if (!isHRRole(role)) {
+    return { success: false, error: "HR authorization required." };
+  }
+
+  const { data: otRow } = await admin
+    .from("overtime_requests")
+    .select("id, employee_id, work_date, start_time, end_time, status")
+    .eq("id", payload.requestId)
+    .maybeSingle<{
+      id: string;
+      employee_id: string;
+      work_date: string;
+      start_time: string;
+      end_time: string;
+      status: string;
+    }>();
+
+  if (!otRow) {
+    return { success: false, error: "Overtime request not found." };
+  }
+  if (otRow.status !== "pending") {
+    return { success: false, error: `Overtime request is already ${otRow.status}.` };
+  }
+
+  const cleanNote = payload.reviewNote?.trim() || null;
+  const nowIso = new Date().toISOString();
+
+  const { error: updateErr } = await admin
+    .from("overtime_requests")
+    .update({
+      status: payload.decision,
+      reviewed_by: user.id,
+      reviewed_at: nowIso,
+      review_note: cleanNote,
+    })
+    .eq("id", otRow.id);
+
+  if (updateErr) {
+    return { success: false, error: updateErr.message };
+  }
+
+  const { data: emp } = await admin
+    .from("employees")
+    .select("profile_id")
+    .eq("id", otRow.employee_id)
+    .maybeSingle<{ profile_id: string | null }>();
+
+  if (emp?.profile_id) {
+    await admin.from("notifications").insert({
+      recipient_id: emp.profile_id,
+      sender_id: user.id,
+      type: "general",
+      title:
+        payload.decision === "approved"
+          ? "Overtime Request Approved"
+          : "Overtime Request Rejected",
+      body:
+        payload.decision === "approved"
+          ? `Your rest-day overtime request for ${otRow.work_date} (${otRow.start_time.slice(0, 5)}–${otRow.end_time.slice(0, 5)}) was approved.`
+          : `Your rest-day overtime request for ${otRow.work_date} was declined.${cleanNote ? ` Note: ${cleanNote}` : ""}`,
+      action_url: "/employee/schedule",
+    });
+  }
+
+  revalidatePath("/hr/attendance");
+  revalidatePath("/employee/schedule");
+  return {
+    success: true,
+    message:
+      payload.decision === "approved"
+        ? "Overtime request approved."
+        : "Overtime request rejected.",
+  };
+}
+
+export async function createPreApprovedOvertimeAction(
+  payload: CreatePreApprovedOvertimePayload
+): Promise<ReviewAttendanceCorrectionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const admin = getAdminClient();
+  const rawMeta = (
+    (user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}
+  ) as Record<string, unknown>;
+  const authRole = (user.user_metadata?.role ?? rawMeta.role) as string | undefined;
+
+  const { data: actorProfile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string | null }>();
+
+  const role = effectiveRole(actorProfile?.role, authRole);
+  if (!isHRRole(role)) {
+    return { success: false, error: "HR authorization required." };
+  }
+
+  const workDate = payload.workDate?.trim();
+  const startTime = payload.startTime?.trim();
+  const endTime = payload.endTime?.trim();
+  const reason = payload.reason?.trim();
+
+  if (!payload.employeeId) {
+    return { success: false, error: "Please select an employee." };
+  }
+  if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
+    return { success: false, error: "Please select a valid work date." };
+  }
+  if (!startTime || !endTime || endTime <= startTime) {
+    return { success: false, error: "End time must be after start time." };
+  }
+  if (!reason || reason.length < 5) {
+    return { success: false, error: "Please provide a reason (at least 5 characters)." };
+  }
+
+  const { data: emp } = await admin
+    .from("employees")
+    .select("id, tenant_id, profile_id")
+    .eq("id", payload.employeeId)
+    .maybeSingle<{ id: string; tenant_id: string | null; profile_id: string | null }>();
+
+  if (!emp) {
+    return { success: false, error: "Employee not found." };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: insertErr } = await admin.from("overtime_requests").insert({
+    tenant_id: emp.tenant_id,
+    employee_id: emp.id,
+    work_date: workDate,
+    start_time: startTime,
+    end_time: endTime,
+    reason,
+    status: "approved",
+    requested_by: user.id,
+    reviewed_by: user.id,
+    reviewed_at: nowIso,
+    review_note: "Pre-approved by HR for urgent coverage",
+  });
+
+  if (insertErr) {
+    return { success: false, error: insertErr.message };
+  }
+
+  if (emp.profile_id) {
+    await admin.from("notifications").insert({
+      recipient_id: emp.profile_id,
+      sender_id: user.id,
+      type: "general",
+      title: "Urgent Overtime Approved",
+      body: `HR pre-approved overtime for ${workDate} (${startTime}–${endTime}). You can clock in from your schedule.`,
+      action_url: "/employee/schedule",
+    });
+  }
+
+  revalidatePath("/hr/attendance");
+  revalidatePath("/employee/schedule");
+  return {
+    success: true,
+    message: "Pre-approved overtime pass issued.",
+  };
+}

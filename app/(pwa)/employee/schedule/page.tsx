@@ -194,6 +194,32 @@ export default async function EmployeeSchedulePage() {
     correctionRequests = reqData ?? [];
   }
 
+  // Fetch today and upcoming overtime requests
+  let overtimeRequests: Array<{
+    id: string;
+    work_date: string;
+    start_time: string;
+    end_time: string;
+    reason: string;
+    status: string;
+    review_note: string | null;
+    used_at: string | null;
+    created_at: string;
+  }> = [];
+
+  if (employee?.id) {
+    const { data: otData } = await admin
+      .from("overtime_requests")
+      .select("id, work_date, start_time, end_time, reason, status, review_note, used_at, created_at")
+      .eq("employee_id", employee.id)
+      .gte("work_date", todayPhtStr)
+      .order("work_date", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    overtimeRequests = otData ?? [];
+  }
+
   // Safe default values if employee record is not found (e.g. testing / newly promoted)
   const todayDate = new Date();
   const thisWeekMonday = getMonday(todayDate);
@@ -299,6 +325,7 @@ export default async function EmployeeSchedulePage() {
     (approvedLeaves ?? []).find(
       (lr) => lr.start_date <= dateIso && lr.end_date >= dateIso
     ) ?? null;
+  const todayApprovedLeave = getLeaveForDate(todayPhtStr);
 
   const formattedShiftRange = `${formatTime12h(shiftStart)} - ${formatTime12h(shiftEnd)}`;
 
@@ -344,6 +371,11 @@ export default async function EmployeeSchedulePage() {
             <ScheduleClient
               employeeId={employee?.id || ""}
               workModel={workModel}
+              todayWorkModel={todayDailyModel}
+              todayApprovedLeave={
+                todayApprovedLeave ? { leave_type: todayApprovedLeave.leave_type } : null
+              }
+              overtimeRequests={overtimeRequests}
               isTodayOnsite={isTodayOnsite}
               hasOfficeCoordinates={hasOfficeCoordinates}
               shiftStart={shiftStart}

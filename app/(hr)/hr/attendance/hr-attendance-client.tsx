@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
-import { reviewAttendanceCorrectionAction } from "./actions";
+import {
+  createPreApprovedOvertimeAction,
+  reviewAttendanceCorrectionAction,
+  reviewOvertimeRequestAction,
+} from "./actions";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type AttendanceRow = {
@@ -38,6 +42,8 @@ export type AttendanceRow = {
     | "outside_zone"
     | "location_unverified";
   flagReason: string | null;
+  isOvertime?: boolean;
+  outsideApprovedWindow?: boolean;
 };
 
 type Metrics = {
@@ -68,9 +74,36 @@ export type HRCorrectionRequestRow = {
   createdAt: string;
 };
 
+export type HROvertimeRequestRow = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  avatarUrl: string | null;
+  position: string | null;
+  workSetup: "onsite" | "wfh" | "hybrid" | "remote" | null;
+  workModel: "onsite" | "wfh" | "off" | null;
+  workDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | "cancelled" | "expired";
+  reviewNote: string | null;
+  usedAt: string | null;
+  createdAt: string;
+};
+
+export type HROvertimeEmployeeOption = {
+  id: string;
+  name: string;
+  position: string | null;
+};
+
 type Props = {
   rows: AttendanceRow[];
   correctionRequests?: HRCorrectionRequestRow[];
+  overtimeRequests?: HROvertimeRequestRow[];
+  activeEmployees?: HROvertimeEmployeeOption[];
+  todayDateStr?: string;
   metrics: Metrics;
   tenantId?: string | null;
 };
@@ -200,6 +233,9 @@ function formatPhtTime(iso: string | null): string {
 export default function HRAttendanceClient({
   rows,
   correctionRequests = [],
+  overtimeRequests = [],
+  activeEmployees = [],
+  todayDateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   metrics,
   tenantId,
 }: Props) {
@@ -209,8 +245,20 @@ export default function HRAttendanceClient({
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [todayOnly, setTodayOnly] = useState(hasTodayLogs);
   const [showCorrections, setShowCorrections] = useState(false);
+  const [showOvertimeQueue, setShowOvertimeQueue] = useState(false);
   const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
   const [actingRequestId, setActingRequestId] = useState<string | null>(null);
+  const [otNotesById, setOtNotesById] = useState<Record<string, string>>({});
+  const [actingOtId, setActingOtId] = useState<string | null>(null);
+
+  // Urgent Pre-Approved Overtime Modal
+  const [showUrgentOtModal, setShowUrgentOtModal] = useState(false);
+  const [urgentEmpId, setUrgentEmpId] = useState(activeEmployees[0]?.id ?? "");
+  const [urgentWorkDate, setUrgentWorkDate] = useState(todayDateStr);
+  const [urgentStartTime, setUrgentStartTime] = useState("08:00");
+  const [urgentEndTime, setUrgentEndTime] = useState("17:00");
+  const [urgentReason, setUrgentReason] = useState("");
+  const [submittingUrgentOt, setSubmittingUrgentOt] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -257,6 +305,58 @@ export default function HRAttendanceClient({
 
   const flaggedCount = rows.filter((r) => r.zoneStatus === "outside_zone").length;
   const pendingCorrectionCount = correctionRequests.filter((r) => r.status === "pending").length;
+  const pendingOtCount = overtimeRequests.filter((r) => r.status === "pending").length;
+
+  const filteredOvertime = useMemo(() => {
+    if (!search.trim()) return overtimeRequests;
+    const q = search.toLowerCase();
+    return overtimeRequests.filter(
+      (r) =>
+        r.employeeName.toLowerCase().includes(q) ||
+        (r.position ?? "").toLowerCase().includes(q) ||
+        r.reason.toLowerCase().includes(q)
+    );
+  }, [overtimeRequests, search]);
+
+  const handleReviewOvertime = async (
+    requestId: string,
+    decision: "approved" | "rejected"
+  ) => {
+    setActingOtId(requestId);
+    const res = await reviewOvertimeRequestAction({
+      requestId,
+      decision,
+      reviewNote: otNotesById[requestId] ?? "",
+    });
+    if (!res.success) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      router.refresh();
+    }
+    setActingOtId(null);
+  };
+
+  const handleCreateUrgentOt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingUrgentOt(true);
+    const res = await createPreApprovedOvertimeAction({
+      employeeId: urgentEmpId,
+      workDate: urgentWorkDate,
+      startTime: urgentStartTime,
+      endTime: urgentEndTime,
+      reason: urgentReason,
+    });
+    if (!res.success) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      setShowUrgentOtModal(false);
+      setUrgentReason("");
+      router.refresh();
+    }
+    setSubmittingUrgentOt(false);
+  };
 
   const filteredCorrections = useMemo(() => {
     if (!search.trim()) return correctionRequests;
@@ -392,6 +492,47 @@ export default function HRAttendanceClient({
             </button>
           </div>
 
+          {/* Overtime Requests Toggle */}
+          <button
+            id="attendance-overtime-toggle"
+            type="button"
+            onClick={() => setShowOvertimeQueue((p) => !p)}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+              showOvertimeQueue
+                ? "border-[#1E1B4B] bg-[#1E1B4B] text-white shadow-sm"
+                : "border-indigo-200 bg-indigo-50/70 text-[#1E1B4B] hover:bg-indigo-100"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">more_time</span>
+            Overtime Requests
+            {pendingOtCount > 0 && (
+              <span
+                className={`ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                  showOvertimeQueue
+                    ? "bg-amber-400 text-slate-900"
+                    : "bg-[#1E1B4B] text-white"
+                }`}
+              >
+                {pendingOtCount > 99 ? "99+" : pendingOtCount}
+              </span>
+            )}
+          </button>
+
+          {/* Assign Urgent Overtime CTA */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!urgentEmpId && activeEmployees[0]?.id) {
+                setUrgentEmpId(activeEmployees[0].id);
+              }
+              setShowUrgentOtModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#2d2b68] transition-colors"
+          >
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            Assign Urgent Overtime
+          </button>
+
           {/* Correction Requests Toggle */}
           <button
             id="attendance-corrections-toggle"
@@ -441,6 +582,141 @@ export default function HRAttendanceClient({
           </button>
         </div>
       </div>
+
+      {/* ── Overtime Requests Review Queue ─────────────────────────────────── */}
+      {(showOvertimeQueue || pendingOtCount > 0) && (
+        <SolidSurfaceCard className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-[#1E1B4B]">Overtime Requests</h2>
+                {pendingOtCount > 0 && (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    {pendingOtCount} Pending
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                Approve or decline rest-day overtime passes before employees can clock in.
+              </p>
+            </div>
+            {!showOvertimeQueue && overtimeRequests.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowOvertimeQueue(true)}
+                className="text-xs font-semibold text-[#1E1B4B] hover:underline self-start sm:self-center"
+              >
+                View all ({overtimeRequests.length})
+              </button>
+            )}
+          </div>
+
+          {filteredOvertime.length === 0 ? (
+            <p className="py-6 text-center text-xs text-text-muted">
+              No overtime requests match your current filter.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {(showOvertimeQueue
+                ? filteredOvertime
+                : filteredOvertime.filter((r) => r.status === "pending")
+              ).map((ot) => {
+                const isBusy = actingOtId === ot.id;
+                return (
+                  <div
+                    key={ot.id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={ot.employeeName} src={ot.avatarUrl} />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-bold text-slate-900">{ot.employeeName}</p>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                ot.status === "pending"
+                                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                                  : ot.status === "approved"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : ot.status === "rejected"
+                                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                                      : "border-slate-200 bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {ot.status}
+                            </span>
+                            {ot.usedAt && (
+                              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-[#1E1B4B]">
+                                Used
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                            {ot.position && <span className="font-medium">{ot.position}</span>}
+                            <span>·</span>
+                            <span className="font-semibold text-slate-800">Date: {ot.workDate}</span>
+                            <span>·</span>
+                            <span className="font-semibold text-[#1E1B4B]">
+                              {ot.startTime.slice(0, 5)} – {ot.endTime.slice(0, 5)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <WorkModelBadge workModel={ot.workModel} workSetup={ot.workSetup} />
+                    </div>
+
+                    <p className="text-xs text-slate-700">
+                      <span className="font-semibold text-slate-900">Reason:</span> {ot.reason}
+                    </p>
+
+                    {ot.status === "pending" ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 pt-1">
+                        <input
+                          type="text"
+                          value={otNotesById[ot.id] ?? ""}
+                          onChange={(e) =>
+                            setOtNotesById((prev) => ({
+                              ...prev,
+                              [ot.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Optional review note..."
+                          className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleReviewOvertime(ot.id, "rejected")}
+                            className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 transition-colors"
+                          >
+                            {isBusy ? "Saving..." : "Reject"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleReviewOvertime(ot.id, "approved")}
+                            className="rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
+                          >
+                            {isBusy ? "Approving..." : "Approve"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      ot.reviewNote && (
+                        <p className="text-[11px] text-slate-600 italic">
+                          HR note: {ot.reviewNote}
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SolidSurfaceCard>
+      )}
 
       {/* ── Attendance Correction Requests Review Queue ─────────────────────── */}
       {(showCorrections || pendingCorrectionCount > 0) && (
@@ -689,17 +965,26 @@ export default function HRAttendanceClient({
                         Absent
                       </span>
                     ) : row.clockIn ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-medium text-text-main">
                           {row.clockIn}
                         </span>
-                        {row.isLate ? (
+                        {row.isOvertime ? (
+                          <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-[#1E1B4B]">
+                            Overtime
+                          </span>
+                        ) : row.isLate ? (
                           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                             Late (+{row.lateMinutes}m)
                           </span>
                         ) : (
                           <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                             On Time
+                          </span>
+                        )}
+                        {row.outsideApprovedWindow && (
+                          <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                            Outside Window
                           </span>
                         )}
                       </div>
@@ -822,6 +1107,126 @@ export default function HRAttendanceClient({
           </div>
         )}
       </SolidSurfaceCard>
+
+      {/* Assign Urgent Pre-Approved Overtime Modal */}
+      {showUrgentOtModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-[#1E1B4B]">Assign Urgent Overtime</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Issue a pre-approved rest-day overtime pass for an employee.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUrgentOtModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUrgentOt} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Employee
+                </label>
+                <select
+                  required
+                  value={urgentEmpId}
+                  onChange={(e) => setUrgentEmpId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                >
+                  <option value="" disabled>
+                    Select employee...
+                  </option>
+                  {activeEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name}
+                      {emp.position ? ` — ${emp.position}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Work Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={urgentWorkDate}
+                  onChange={(e) => setUrgentWorkDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={urgentStartTime}
+                    onChange={(e) => setUrgentStartTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={urgentEndTime}
+                    onChange={(e) => setUrgentEndTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  minLength={5}
+                  rows={3}
+                  value={urgentReason}
+                  onChange={(e) => setUrgentReason(e.target.value)}
+                  placeholder="Urgent coverage reason..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUrgentOtModal(false)}
+                  disabled={submittingUrgentOt}
+                  className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingUrgentOt || !urgentEmpId || urgentReason.trim().length < 5}
+                  className="w-full sm:w-auto rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
+                >
+                  {submittingUrgentOt ? "Issuing..." : "Issue Approved OT Pass"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

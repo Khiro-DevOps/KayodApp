@@ -478,37 +478,37 @@ export type NewPayslip = Omit<Payslip,
 >;
 
 export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
-  draft:                "bg-gray-100 text-gray-700",
-  submitted:            "bg-blue-100 text-blue-700",
-  under_review:         "bg-yellow-100 text-yellow-700",
-  shortlisted:          "bg-purple-100 text-purple-700",
-  interview_scheduled:  "bg-indigo-100 text-indigo-700",
-  interviewed:          "bg-cyan-100 text-cyan-700",
-  negotiating:          "bg-purple-100 text-purple-700",
-  offer_sent:           "bg-orange-100 text-orange-700",
-  offer_accepted:       "bg-emerald-100 text-emerald-700",
-  offer_declined:       "bg-red-100 text-red-700",
-  offer_expired:        "bg-amber-100 text-amber-700",
-  pre_employment:       "bg-sky-100 text-sky-700",
-  hired:                "bg-green-100 text-green-700",
-  hire_confirmed:       "bg-emerald-100 text-emerald-700",
-  rejected:             "bg-red-100 text-red-700",
-  withdrawn:            "bg-gray-100 text-gray-500",
+  draft: "bg-gray-100 text-gray-700",
+  submitted: "bg-blue-100 text-blue-700",
+  under_review: "bg-yellow-100 text-yellow-700",
+  shortlisted: "bg-purple-100 text-purple-700",
+  interview_scheduled: "bg-indigo-100 text-indigo-700",
+  interviewed: "bg-cyan-100 text-cyan-700",
+  negotiating: "bg-purple-100 text-purple-700",
+  offer_sent: "bg-orange-100 text-orange-700",
+  offer_accepted: "bg-emerald-100 text-emerald-700",
+  offer_declined: "bg-red-100 text-red-700",
+  offer_expired: "bg-amber-100 text-amber-700",
+  pre_employment: "bg-sky-100 text-sky-700",
+  hired: "bg-green-100 text-green-700",
+  hire_confirmed: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-red-100 text-red-700",
+  withdrawn: "bg-gray-100 text-gray-500",
 };
 
 export const LEAVE_STATUS_COLORS: Record<LeaveStatus, string> = {
-  pending:   "bg-yellow-100 text-yellow-700",
-  approved:  "bg-green-100 text-green-700",
-  rejected:  "bg-red-100 text-red-700",
+  pending: "bg-yellow-100 text-yellow-700",
+  approved: "bg-green-100 text-green-700",
+  rejected: "bg-red-100 text-red-700",
   cancelled: "bg-gray-100 text-gray-500",
 };
 
 export const PAYROLL_STATUS_COLORS: Record<PayrollStatus, string> = {
-  draft:            "bg-gray-100 text-gray-700",
+  draft: "bg-gray-100 text-gray-700",
   pending_approval: "bg-yellow-100 text-yellow-700",
-  approved:         "bg-blue-100 text-blue-700",
-  paid:             "bg-green-100 text-green-700",
-  cancelled:        "bg-red-100 text-red-700",
+  approved: "bg-blue-100 text-blue-700",
+  paid: "bg-green-100 text-green-700",
+  cancelled: "bg-red-100 text-red-700",
 };
 
 // ============================================================
@@ -590,9 +590,35 @@ export interface AttendanceLog {
   zone_status?: "onsite_verified" | "remote_verified" | "outside_zone" | "location_unverified" | null;
   location_used?: "office_branch" | "remote_residence" | "unconfigured" | null;
   flag_reason?: string | null;
+  overtime_request_id?: string | null;
+  outside_approved_window?: boolean;
   server_timestamp?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export type OvertimeRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "expired";
+
+export interface OvertimeRequest {
+  id: string;
+  tenant_id: string | null;
+  employee_id: string;
+  work_date: string;
+  start_time: string;
+  end_time: string;
+  reason: string;
+  status: OvertimeRequestStatus;
+  requested_by: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  used_at: string | null;
+  created_at: string;
 }
 
 export type AttendanceCorrectionType =
@@ -679,11 +705,11 @@ export interface NegotiationRequest {
 }
 
 export const JOB_OFFER_STATUS_COLORS: Record<JobOfferStatus, string> = {
-  pending:     "bg-amber-100 text-amber-700",
-  accepted:    "bg-green-100 text-green-700",
+  pending: "bg-amber-100 text-amber-700",
+  accepted: "bg-green-100 text-green-700",
   negotiating: "bg-blue-100 text-blue-700",
-  declined:    "bg-red-100 text-red-700",
-  expired:     "bg-gray-100 text-gray-500",
+  declined: "bg-red-100 text-red-700",
+  expired: "bg-gray-100 text-gray-500",
 };
 
 // ============================================================
@@ -792,4 +818,4 @@ export interface EmployeePayslipDetails {
     netPay: number;
   };
 }
-
+

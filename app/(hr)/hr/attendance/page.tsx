@@ -11,6 +11,8 @@ import {
 import HRAttendanceClient, {
   type AttendanceRow,
   type HRCorrectionRequestRow,
+  type HROvertimeRequestRow,
+  type HROvertimeEmployeeOption,
 } from "./hr-attendance-client";
 
 export const metadata = {
@@ -40,6 +42,8 @@ type RawAttendanceLog = {
     | "location_unverified"
     | null;
   flag_reason: string | null;
+  overtime_request_id: string | null;
+  outside_approved_window: boolean | null;
   created_at: string | null;
   employees: {
     profile_id?: string | null;
@@ -105,6 +109,8 @@ export default async function HRAttendancePage() {
       distance_meters,
       zone_status,
       flag_reason,
+      overtime_request_id,
+      outside_approved_window,
       created_at,
       employees (
         profile_id,
@@ -153,7 +159,11 @@ export default async function HRAttendancePage() {
 
   const lateToday = new Set(
     todayLogs
-      .filter((l) => computeLateness(l.clock_in, l.employees?.shift_start ?? null).isLate)
+      .filter(
+        (l) =>
+          l.overtime_request_id == null &&
+          computeLateness(l.clock_in, l.employees?.shift_start ?? null).isLate
+      )
       .map((l) => l.employee_id)
   ).size;
 
@@ -334,7 +344,10 @@ export default async function HRAttendancePage() {
     const name =
       [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() ||
       "Employee";
-    const { isLate, lateMinutes } = computeLateness(l.clock_in, emp?.shift_start ?? null);
+    const rawLateness = computeLateness(l.clock_in, emp?.shift_start ?? null);
+    const isOvertimeLog = Boolean(l.overtime_request_id);
+    const isLate = isOvertimeLog ? false : rawLateness.isLate;
+    const lateMinutes = isOvertimeLog ? 0 : rawLateness.lateMinutes;
     const isToday = l.clock_in
       ? new Date(l.clock_in).toLocaleDateString("en-CA") === todayStr
       : false;
@@ -423,6 +436,8 @@ export default async function HRAttendancePage() {
       distanceMeters: l.distance_meters ?? null,
       zoneStatus: l.zone_status ?? "location_unverified",
       flagReason: l.flag_reason ?? null,
+      isOvertime: Boolean(l.overtime_request_id),
+      outsideApprovedWindow: Boolean(l.outside_approved_window),
     };
   }),
   ];
@@ -549,10 +564,129 @@ export default async function HRAttendancePage() {
     };
   });
 
+  // ── Fetch overtime requests ────────────────────────────────────────────────
+  const { data: rawOvertimeReqs } = await admin
+    .from("overtime_requests")
+    .select(
+      `
+      id,
+      employee_id,
+      work_date,
+      start_time,
+      end_time,
+      reason,
+      status,
+      review_note,
+      used_at,
+      created_at,
+      employees (
+        profile_id,
+        job_title,
+        work_mode,
+        work_days,
+        profiles (
+          first_name,
+          last_name,
+          avatar_url
+        )
+      )
+    `
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const overtimeRequests: HROvertimeRequestRow[] = (rawOvertimeReqs ?? []).map((r) => {
+    const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as {
+      profile_id?: string | null;
+      job_title?: string | null;
+      work_mode?: string | null;
+      work_days?: string[] | null;
+      profiles?:
+        | { first_name?: string | null; last_name?: string | null; avatar_url?: string | null }
+        | Array<{ first_name?: string | null; last_name?: string | null; avatar_url?: string | null }>
+        | null;
+    } | null;
+    const prof = Array.isArray(emp?.profiles) ? emp?.profiles[0] : emp?.profiles;
+    const employeeName =
+      [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() || "Employee";
+    const linkedJob = emp?.profile_id
+      ? mergedJobPostingByProfileId[emp.profile_id]
+      : undefined;
+    const sourceOfTruth = resolveEmployeeSourceOfTruth({
+      employee: {
+        job_title: emp?.job_title,
+        work_mode: emp?.work_mode,
+      },
+      offer: linkedJob
+        ? {
+            job_title: linkedJob.offerTitle,
+            work_setup: linkedJob.offerWorkSetup,
+          }
+        : null,
+      jobPosting: linkedJob
+        ? {
+            title: linkedJob.title,
+            department: linkedJob.departmentName,
+            work_setup: linkedJob.jobWorkSetup,
+          }
+        : null,
+    });
+    const workModel = resolveDailyWorkModel({
+      contractWorkSetup: sourceOfTruth.workSetup,
+      schedule: {
+        notes: scheduleNotesByEmpId.get(r.employee_id) ?? null,
+        work_days: Array.isArray(emp?.work_days) ? emp.work_days : null,
+      },
+      date: new Date(`${r.work_date}T00:00:00+08:00`),
+    });
+
+    return {
+      id: r.id,
+      employeeId: r.employee_id,
+      employeeName,
+      avatarUrl: prof?.avatar_url ?? null,
+      position: sourceOfTruth.position,
+      workSetup: sourceOfTruth.workSetup,
+      workModel,
+      workDate: r.work_date,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      reason: r.reason,
+      status: r.status as HROvertimeRequestRow["status"],
+      reviewNote: r.review_note,
+      usedAt: r.used_at,
+      createdAt: r.created_at,
+    };
+  });
+
+  const activeEmployeeOptions: HROvertimeEmployeeOption[] = (activeEmployees ?? []).map((emp) => {
+    const prof = Array.isArray(emp.profiles) ? emp.profiles[0] : emp.profiles;
+    const name =
+      [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() || "Employee";
+    const linkedJob = emp.profile_id ? mergedJobPostingByProfileId[emp.profile_id] : undefined;
+    const sourceOfTruth = resolveEmployeeSourceOfTruth({
+      employee: { job_title: emp.job_title, work_mode: emp.work_mode },
+      offer: linkedJob
+        ? { job_title: linkedJob.offerTitle, work_setup: linkedJob.offerWorkSetup }
+        : null,
+      jobPosting: linkedJob
+        ? { title: linkedJob.title, department: linkedJob.departmentName, work_setup: linkedJob.jobWorkSetup }
+        : null,
+    });
+    return {
+      id: emp.id,
+      name,
+      position: sourceOfTruth.position,
+    };
+  });
+
   return (
     <HRAttendanceClient
       rows={rows}
       correctionRequests={correctionRequests}
+      overtimeRequests={overtimeRequests}
+      activeEmployees={activeEmployeeOptions}
+      todayDateStr={todayPht}
       tenantId={profile?.tenant_id ?? null}
       metrics={{
         presentToday,
