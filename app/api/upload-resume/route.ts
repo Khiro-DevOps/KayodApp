@@ -82,6 +82,25 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { count: existingResumeCount, error: countError } = await supabase
+    .from("resumes")
+    .select("id", { count: "exact", head: true })
+    .eq("candidate_id", user.id);
+
+  if (countError) {
+    return NextResponse.json(
+      { error: "Failed to verify existing resume count" },
+      { status: 500 }
+    );
+  }
+
+  if ((existingResumeCount ?? 0) >= 3) {
+    return NextResponse.json(
+      { error: "Maximum of 3 resumes reached. Delete an existing resume first." },
+      { status: 400 }
+    );
+  }
+
   // 1. Validate File
   const formData = await request.formData();
   const file = formData.get("file") as File | null;

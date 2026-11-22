@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import type { Resume, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { PH_CITIES, PH_PROVINCES } from "@/lib/ph-locations";
@@ -134,14 +135,17 @@ function buildLocation(
   return address || city || province || country;
 }
 
-export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderClientProps) {
+export default function ResumeBuilderClient({ resumes, profile, prefill }: ResumeBuilderClientProps) {
   const router = useRouter();
   const supabase = createClient();
   const [isLoading, setIsLoading] = useState(false);
+  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishNotice, setPolishNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [personalInfoDirty, setPersonalInfoDirty] = useState(false);
+  const isLimitReached = resumes.length >= 3;
 
   const resolvePrefillDefaults = useCallback(
     (
@@ -185,6 +189,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
     const defaults = resolvePrefillDefaults();
     setPersonalInfoDirty(false);
     setError(null);
+    setPolishNotice(null);
     setFormData((prev) => ({
       resumeName: "",
       fullName: defaults.fullName || prev.fullName,
@@ -299,9 +304,67 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handlePolishWithAi = async () => {
+    setError(null);
+    setPolishNotice(null);
+
+    const hasContent =
+      formData.summary.trim() ||
+      formData.experience.trim() ||
+      formData.education.trim() ||
+      formData.skills.trim() ||
+      formData.certifications.trim();
+
+    if (!hasContent) {
+      setError(
+        "Enter at least one resume section (summary, experience, education, skills, or certifications) to polish with Kayod AI."
+      );
+      return;
+    }
+
+    setIsPolishing(true);
+    try {
+      const response = await fetch("/api/enhance-resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Failed to polish resume fields.");
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        summary: data.summary || prev.summary,
+        experience: data.experience || prev.experience,
+        education: data.education || prev.education,
+        skills: data.skills || prev.skills,
+        certifications: data.certifications || prev.certifications,
+      }));
+      setPolishNotice(
+        data.usedAi
+          ? "Polished with Kayod AI — review your updated fields below."
+          : "Structured with Kayod formatter — review your updated fields below."
+      );
+    } catch {
+      setError("Could not polish resume fields right now. You can still create your resume.");
+    } finally {
+      setIsPolishing(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (isLimitReached) {
+      setError("Maximum of 3 resumes reached. Delete an existing resume first.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -350,6 +413,14 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
     <div className="space-y-3">
       {/* Form Section */}
       <form onSubmit={handleSubmit} className="space-y-4 rounded-xl bg-card-bg border border-border p-6">
+            {isLimitReached && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-medium text-amber-900">
+                  Maximum of 3 resumes reached. Delete an existing resume first.
+                </p>
+              </div>
+            )}
+
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-3">
                 <p className="text-sm text-red-700">{error}</p>
@@ -439,6 +510,28 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
               </div>
             </div>
 
+            {/* Kayod AI Enhancement Banner */}
+            <div className="flex flex-col gap-2.5 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-relaxed text-indigo-950">
+                Kayod AI automatically refines and structures your summary, experience, and skills when you create your resume — or preview AI polish now.
+              </p>
+              <button
+                type="button"
+                onClick={handlePolishWithAi}
+                disabled={isPolishing || isLoading || isLimitReached}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100/70 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {isPolishing ? "Polishing..." : "Polish with Kayod AI"}
+              </button>
+            </div>
+
+            {polishNotice && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-medium text-emerald-800">{polishNotice}</p>
+              </div>
+            )}
+
             {/* Professional Summary */}
             <div className="space-y-1">
               <label htmlFor="summary" className="text-xs font-medium text-text-secondary">
@@ -520,8 +613,8 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
 
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+              disabled={isLoading || isPolishing || isLimitReached}
+              className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Creating resume..." : "Create resume"}
             </button>

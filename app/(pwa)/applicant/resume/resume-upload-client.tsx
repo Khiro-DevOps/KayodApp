@@ -3,18 +3,28 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-export default function ResumeUploadClient() {
+interface ResumeUploadClientProps {
+  resumeCount?: number;
+}
+
+export default function ResumeUploadClient({ resumeCount = 0 }: ResumeUploadClientProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const isLimitReached = resumeCount >= 3;
 
   async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSuccess(false);
+
+    if (isLimitReached) {
+      setError("Maximum of 3 resumes reached. Delete an existing resume first.");
+      return;
+    }
 
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
@@ -55,6 +65,7 @@ export default function ResumeUploadClient() {
 
   function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
     e.preventDefault();
+    if (isLimitReached) return;
     const file = e.dataTransfer.files[0];
     if (!file || !fileInputRef.current) return;
 
@@ -66,16 +77,40 @@ export default function ResumeUploadClient() {
 
   return (
     <div className="rounded-xl bg-card-bg border border-border p-5 space-y-4">
-      <div>
-        <h2 className="text-base font-semibold text-text-primary">Upload Resume</h2>
-        <p className="mt-1 text-sm text-text-secondary">Add an existing resume to your account.</p>
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-text-primary">Upload Resume</h2>
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+              isLimitReached
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-slate-100 text-slate-700"
+            }`}
+          >
+            {resumeCount} / 3 Resumes Used
+          </span>
+        </div>
+        <p className="text-sm text-text-secondary">
+          You can store up to 3 resumes at a time. Delete an existing resume to free up a slot.
+        </p>
       </div>
+
+      {isLimitReached && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900">
+          Maximum of 3 resumes reached. Delete an existing resume first.
+        </div>
+      )}
+
       <form onSubmit={handleUpload} className="space-y-3">
         <label
           htmlFor="resume-upload"
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
-          className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface-bg px-4 py-5 text-center transition-colors hover:border-primary hover:bg-primary-light/30"
+          className={`flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface-bg px-4 py-5 text-center transition-colors ${
+            isLimitReached
+              ? "cursor-not-allowed opacity-60"
+              : "cursor-pointer hover:border-primary hover:bg-primary-light/30"
+          }`}
         >
           <span className="material-symbols-outlined text-3xl text-primary">upload_file</span>
           <span className="mt-2 text-sm font-medium text-text-primary">Drag and drop your file here</span>
@@ -86,6 +121,7 @@ export default function ResumeUploadClient() {
             ref={fileInputRef}
             type="file"
             accept=".pdf,.doc,.docx,.txt"
+            disabled={isLimitReached}
             onChange={handleFileChange}
             className="sr-only"
           />
@@ -102,8 +138,8 @@ export default function ResumeUploadClient() {
 
         <button
           type="submit"
-          disabled={uploading}
-          className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+          disabled={uploading || isLimitReached}
+          className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
         >
           {uploading ? "Uploading..." : "Upload"}
         </button>

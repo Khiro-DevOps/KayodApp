@@ -193,6 +193,10 @@ export default async function ResumePage() {
     .order("created_at", { ascending: false })
     .returns<Resume[]>();
 
+  const resumeList = resumes ?? [];
+  const resumeCount = resumeList.length;
+  const isLimitReached = resumeCount >= 3;
+
   return (
     <PageContainer>
       <div className="space-y-6">
@@ -200,17 +204,28 @@ export default async function ResumePage() {
           title="Resumes & AI Builder"
           subtitle="Build tailored resumes with AI or upload your PDF for instant job matching"
           actions={
-            <ResumeBuilderModal
-              resumes={resumes || []}
-              profile={normalizedProfile}
-              prefill={prefill}
-            />
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span
+                className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  isLimitReached
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-white/30 bg-white/15 text-white"
+                }`}
+              >
+                {resumeCount} / 3 Resumes Used
+              </span>
+              <ResumeBuilderModal
+                resumes={resumeList}
+                profile={normalizedProfile}
+                prefill={prefill}
+              />
+            </div>
           }
         >
           <div className="grid grid-cols-2 gap-3 sm:max-w-md sm:gap-4">
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">Saved Resumes</p>
-              <p className="mt-1 text-xl font-bold text-[#1E1B4B] sm:text-2xl">{resumes?.length ?? 0}</p>
+              <p className="mt-1 text-xl font-bold text-[#1E1B4B] sm:text-2xl">{resumeCount} / 3</p>
             </div>
             <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
               <p className="text-xs font-medium text-slate-500">AI Matching</p>
@@ -221,17 +236,28 @@ export default async function ResumePage() {
 
         <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-5 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:px-10">
           <SolidSurfaceCard className="p-5 sm:p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-bold text-[#1E1B4B]">Your Resumes ({resumes?.length ?? 0})</h2>
-                <p className="mt-1 text-sm text-text-secondary">Your saved resumes and uploaded files.</p>
+                <h2 className="text-base font-bold text-[#1E1B4B]">Your Resumes ({resumeCount})</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  You can store up to 3 resumes at a time. Delete an existing resume to free up a slot.
+                </p>
               </div>
+              <span
+                className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  isLimitReached
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+              >
+                {resumeCount} / 3 Resumes Used
+              </span>
             </div>
-            <ResumeListClient resumes={resumes || []} />
+            <ResumeListClient resumes={resumeList} />
           </SolidSurfaceCard>
 
           <SolidSurfaceCard className="p-5 sm:p-6">
-            <ResumeUploadClient />
+            <ResumeUploadClient resumeCount={resumeCount} />
           </SolidSurfaceCard>
         </div>
       </div>

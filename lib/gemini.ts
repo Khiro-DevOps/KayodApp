@@ -755,6 +755,163 @@ ${jdSection}
   return validateResumeOutput(parsed);
 }
 
+function splitListItems(raw: string): string[] {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const part of raw.split(/[,;\n|]+/)) {
+    const cleaned = part.trim().replace(/^[-*•]+\s*/, "");
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      items.push(cleaned);
+    }
+  }
+  return items;
+}
+
+function normalizeSentence(raw: string): string {
+  const cleaned = raw.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const capitalized = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
+}
+
+export function buildDeterministicResumeFallback(
+  data: ResumeGenerationInput
+): ResumeOutput {
+  const summaryText = normalizeSentence(data.summary);
+
+  const experienceBlocks = data.experience
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  const experience: ExperienceEntry[] = experienceBlocks.map((block) => {
+    const lines = block
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const header = lines[0] ?? "";
+    const headerParts = header.split("|").map((p) => p.trim()).filter(Boolean);
+
+    const hasStructuredHeader = headerParts.length >= 2;
+    const title = hasStructuredHeader ? headerParts[0] : header || "Role";
+    const company = hasStructuredHeader ? headerParts[1] : "Experience";
+    const dateRange = hasStructuredHeader ? (headerParts[2] ?? "") : "";
+
+    const rawBullets = hasStructuredHeader ? lines.slice(1) : lines.slice(1);
+    const bullets = (rawBullets.length > 0 ? rawBullets : hasStructuredHeader ? [] : [header])
+      .map((line) => line.replace(/^[-*•]+\s*/, "").trim())
+      .filter(Boolean)
+      .map(normalizeSentence);
+
+    return {
+      title,
+      company,
+      dateRange,
+      bullets: bullets.length > 0 ? bullets : ["Contributed to key team deliverables and daily operations."],
+    };
+  });
+
+  const educationLines = data.education
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const education: EducationEntry[] = educationLines.map((line) => {
+    const parts = line.split("|").map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return {
+        degree: parts[0],
+        institution: parts[1],
+        graduationYear: parts[2] ?? "",
+        honors: parts[3] || undefined,
+      };
+    }
+    return {
+      degree: line,
+      institution: "",
+      graduationYear: "",
+    };
+  });
+
+  return {
+    professionalSummary: summaryText,
+    experience,
+    education,
+    skills: splitListItems(data.skills),
+    certifications: data.certifications ? splitListItems(data.certifications) : [],
+    atsScore: null,
+    matchedKeywords: [],
+  };
+}
+
+export async function generateResumeSectionsWithFallback(
+  data: ResumeGenerationInput
+): Promise<{ sections: ResumeOutput; model: string | null; usedFallback: boolean }> {
+  if (!getOpenRouterApiKey()) {
+    return {
+      sections: buildDeterministicResumeFallback(data),
+      model: null,
+      usedFallback: true,
+    };
+  }
+
+  try {
+    const sections = await generateResumeSections(data);
+    return {
+      sections,
+      model: GEMINI_MODEL,
+      usedFallback: false,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`OpenRouter API unavailable in generateResumeSectionsWithFallback, using fallback: ${msg}`);
+    return {
+      sections: buildDeterministicResumeFallback(data),
+      model: null,
+      usedFallback: true,
+    };
+  }
+}
+
+export function formatResumeSectionsToFields(sections: ResumeOutput) {
+  const experience = sections.experience
+    .map((entry) => {
+      const header = [entry.title, entry.company, entry.dateRange]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(" | ");
+      const bullets = entry.bullets
+        .map((bullet) => bullet.trim())
+        .filter(Boolean)
+        .map((bullet) => `• ${bullet}`)
+        .join("\n");
+      return [header, bullets].filter(Boolean).join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  const education = sections.education
+    .map((entry) =>
+      [entry.degree, entry.institution, entry.graduationYear, entry.honors ?? ""]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(" | ")
+    )
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    summary: sections.professionalSummary,
+    experience,
+    education,
+    skills: sections.skills.join(", "),
+    certifications: sections.certifications.join(", "),
+  };
+}
+
 // ─── FILE UPLOAD ──────────────────────────────────────────────────────────────
 
 export interface ExtractedDocumentData {

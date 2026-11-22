@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getResumeBucketName } from "@/lib/supabase/storage";
 import { NextResponse } from "next/server";
-import { generateResumeSections, ResumeOutput } from "@/lib/gemini";
+import { generateResumeSectionsWithFallback, ResumeOutput } from "@/lib/gemini";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 interface ResumeInput {
@@ -297,21 +297,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let aiGeneratedSections: ResumeOutput | undefined;
-    let usedModel: string | null = null;
+    const { count: existingResumeCount, error: countError } = await supabase
+      .from("resumes")
+      .select("id", { count: "exact", head: true })
+      .eq("candidate_id", user.id);
 
-    try {
-      // FIXED: Checking for the correct environment variable
-      if (process.env.OPENROUTER_API_KEY) {
-        console.log("Triggering AI synthesis via OpenRouter...");
-        aiGeneratedSections = await generateResumeSections(body);
-        usedModel = "google/gemini-2.0-flash";
-      } else {
-        console.warn("No OPENROUTER_API_KEY found, skipping AI enhancement.");
-      }
-    } catch (error) {
-      console.error("AI generation failed, falling back to local formatting:", error);
+    if (countError) {
+      return NextResponse.json(
+        { error: "Failed to verify existing resume count" },
+        { status: 500 }
+      );
     }
+
+    if ((existingResumeCount ?? 0) >= 3) {
+      return NextResponse.json(
+        { error: "Maximum of 3 resumes reached. Delete an existing resume first." },
+        { status: 400 }
+      );
+    }
+
+    const { sections: aiGeneratedSections, model: usedModel } =
+      await generateResumeSectionsWithFallback(body);
 
     const atsResumeText = aiGeneratedSections
       ? generateATSFriendlyResumeFromAi(body, aiGeneratedSections)
