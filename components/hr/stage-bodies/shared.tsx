@@ -6,7 +6,8 @@ import type { ApplicationHubCard } from "@/app/(dashboard)/hr/applicants/applica
 import type { InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
 import { UI_STAGES, type UiStageKey } from "@/lib/application-stages";
 import { formatPhtDate, formatPhtTime } from "@/lib/interview-date";
-import { getDisplayMatchScore } from "@/lib/match-score";
+import { getDisplayMatchScore } from "@/lib/match-scoring";
+import { MatchScorePill, getMatchScorePillClasses } from "@/components/ui/match-score-pill";
 import { createClient } from "@/lib/supabase/client";
 
 export type CandidateProfile = {
@@ -118,21 +119,7 @@ export function formatMatchScore(score: number | null | undefined): string | nul
 }
 
 export function getScoreClasses(score: string | null): string {
-  if (score === null) {
-    return "bg-surface-bg text-text-muted border border-border";
-  }
-
-  const n = Number(score);
-
-  if (n >= 70) {
-    return "bg-success-bg text-success border border-success/20";
-  }
-
-  if (n >= 40) {
-    return "bg-warning-bg text-warning border border-warning/20";
-  }
-
-  return "bg-surface-bg text-text-muted border border-border";
+  return `border ${getMatchScorePillClasses(score)}`;
 }
 
 export function getStageProgress(stageKey: UiStageKey): number {
@@ -169,8 +156,12 @@ export function CandidateHeaderSection({
           </div>
         )}
 
-        <div className={`absolute -bottom-2 right-0 rounded-full border-2 border-card-bg px-3 py-1 text-[12px] font-bold ${getScoreClasses(resolvedScore)}`}>
-          {resolvedScore !== null ? `${resolvedScore}% Match` : "—"}
+        <div className="absolute -bottom-2 right-0">
+          <MatchScorePill
+            score={resolvedScore}
+            emptyLabel="—"
+            className="border-2 px-3 py-1 text-[12px] font-bold shadow-xs"
+          />
         </div>
       </div>
 

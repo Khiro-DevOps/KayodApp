@@ -10,6 +10,7 @@ import { withdrawApplication } from "./actions";
 import { createClient } from "@/lib/supabase/client";
 import ApplicationsKanbanBoard, { type ApplicationHubCard } from "./applications-kanban-board";
 import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 type ApplicationsListItem = {
   id: string;
@@ -96,17 +97,7 @@ function ApplicationsList({
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {app.match_score !== null && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                          app.match_score >= 70
-                            ? "bg-success/10 text-success"
-                            : app.match_score >= 40
-                              ? "bg-warning/10 text-warning"
-                              : "bg-surface text-text-muted"
-                        }`}
-                      >
-                        {app.match_score}%
-                      </span>
+                      <MatchScorePill score={app.match_score} suffix="" size="xs" />
                     )}
                     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${config.classes}`}>
                       {config.label}

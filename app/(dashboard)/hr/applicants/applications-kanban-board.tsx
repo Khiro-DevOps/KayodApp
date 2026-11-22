@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
-import { getDisplayMatchScore } from "@/lib/match-score";
+import { getDisplayMatchScore } from "@/lib/match-scoring";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 import { updateApplicationStatus as updateApplicationStatusAction } from "./hr-applications-actions";
 import {
   getStageForStatus,
@@ -104,7 +105,7 @@ function getApplicantName(profile: CandidateProfile | null): string {
     return "Unknown Candidate";
   }
 
-  const fullNameField = normalizeText((profile as any).full_name);
+  const fullNameField = normalizeText((profile as { full_name?: string }).full_name);
   if (fullNameField) return fullNameField;
 
   const fullName = [normalizeText(profile.first_name), normalizeText(profile.last_name)]
@@ -135,24 +136,6 @@ function getApplicantInitials(profile: CandidateProfile | null): string {
 function formatMatchScore(score: number | null | undefined): string | null {
   const { value } = getDisplayMatchScore({ applied: true, stored: score ?? null });
   return value !== null ? String(value) : null;
-}
-
-function getScoreClasses(score: string | null): string {
-  if (score === null) {
-    return "bg-surface-bg text-text-muted border border-border";
-  }
-
-  const n = Number(score);
-
-  if (n >= 70) {
-    return "bg-success-bg text-success border border-success/20";
-  }
-
-  if (n >= 40) {
-    return "bg-warning-bg text-warning border border-warning/20";
-  }
-
-  return "bg-surface-bg text-text-muted border border-border";
 }
 
 function formatApplicationTime(value: string): string {
@@ -302,9 +285,12 @@ function ApplicationCard({
           </div>
         </div>
 
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
-          {scoreDisplay !== null ? `${scoreDisplay}% match` : "—"}
-        </span>
+        <MatchScorePill
+          score={scoreDisplay}
+          suffix="match"
+          emptyLabel="—"
+          size="xs"
+        />
       </div>
 
       <div className="space-y-0.5">
@@ -458,9 +444,12 @@ function ClosedSection({
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                     {app.status}
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getScoreClasses(scoreDisplay)}`}>
-                    {scoreDisplay !== null ? `${scoreDisplay}%` : "—"}
-                  </span>
+                  <MatchScorePill
+                    score={scoreDisplay}
+                    suffix=""
+                    emptyLabel="—"
+                    size="xs"
+                  />
                 </div>
               </article>
             );
@@ -638,10 +627,10 @@ export default function ApplicationsKanbanBoard({
       .select("id, application_id, status, scheduled_at, duration_minutes, meeting_type, meeting_link, proposed_slots, selected_slot, interview_notes, scorecard, office_branches(name, address)")
       .in("application_id", applicationIds)
       .order("created_at", { ascending: false })
-      .then(({ data, error }: { data: any; error: any }) => {
+      .then(({ data, error }: { data: InterviewScheduleItem[] | null; error: unknown }) => {
         if (error || !data) return;
         const map: Record<string, InterviewScheduleItem> = {};
-        for (const row of data as any[]) {
+        for (const row of data) {
           if (!map[row.application_id]) {
             map[row.application_id] = row;
           }
@@ -704,12 +693,16 @@ export default function ApplicationsKanbanBoard({
           table: "job_applications",
           filter: applicationFilter,
         },
-        async (payload: any) => {
+        async (payload: {
+          eventType?: string;
+          old?: Record<string, unknown>;
+          new?: Record<string, unknown>;
+        }) => {
           if (!isMounted) {
             return;
           }
 
-          const eventType = payload?.eventType as string | undefined;
+          const eventType = payload?.eventType;
 
           if (eventType === "DELETE") {
             const deletedId = normalizeText(payload?.old?.id);
@@ -746,7 +739,7 @@ export default function ApplicationsKanbanBoard({
               .eq("id", changedId)
               .maybeSingle();
 
-            const raw = inserted as any;
+            const raw = inserted as (ApplicationHubCard & { created_at?: string }) | null;
             const insertedRow: ApplicationHubCard | null = raw ? {
               ...raw,
               submitted_at: raw.created_at ?? new Date().toISOString(),

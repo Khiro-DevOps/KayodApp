@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Briefcase, Building2, Laptop, Sparkles, Wallet } from "lucide-react";
 import type { JobPosting } from "@/lib/types";
 import type { JobFitAnalysisOutput } from "@/lib/gemini";
-import { getDisplayMatchScore } from "@/lib/match-score";
+import { getDisplayMatchScore } from "@/lib/match-scoring";
 import JobDetailModal from "@/components/jobs/job-detail-modal";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 interface ApplicantJobsClientProps {
   recommendedJobs: Array<{ job: JobPosting; fit: JobFitAnalysisOutput }>;
   allJobs: JobPosting[];
+  jobScoresMap?: Record<string, number>;
   selectedResumeTitle?: string;
   applicationsMap: Record<string, { hasApplied: boolean; matchScore: number | null }>;
   isCandidate: boolean;
@@ -120,34 +122,47 @@ const ALL_JOBS_PAGE_SIZE = 10;
 export default function ApplicantJobsClient({
   recommendedJobs,
   allJobs,
+  jobScoresMap = {},
   selectedResumeTitle,
   applicationsMap,
   isCandidate,
 }: ApplicantJobsClientProps) {
   const searchParams = useSearchParams();
-  const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
+  const [manualJob, setManualJob] = useState<JobPosting | null>(null);
+  const [closedJobId, setClosedJobId] = useState<string | null>(null);
   const [jobsForYouPage, setJobsForYouPage] = useState(1);
   const [allJobsPage, setAllJobsPage] = useState(1);
 
   const sortedRecommendedJobs = useMemo(() => {
-    return [...recommendedJobs].sort((a, b) => {
-      const aInfo = applicationsMap[a.job.id];
-      const bInfo = applicationsMap[b.job.id];
-      const aScore =
-        getDisplayMatchScore({
-          applied: Boolean(aInfo?.hasApplied),
-          stored: aInfo?.matchScore ?? null,
-          estimate: a.fit.is_fallback ? null : a.fit.fit_score,
-        }).value ?? -1;
-      const bScore =
-        getDisplayMatchScore({
-          applied: Boolean(bInfo?.hasApplied),
-          stored: bInfo?.matchScore ?? null,
-          estimate: b.fit.is_fallback ? null : b.fit.fit_score,
-        }).value ?? -1;
-      return bScore - aScore;
-    });
-  }, [recommendedJobs, applicationsMap]);
+    return [...recommendedJobs]
+      .filter(({ job, fit }) => {
+        const info = applicationsMap[job.id];
+        const score =
+          getDisplayMatchScore({
+            applied: Boolean(info?.hasApplied),
+            stored: info?.matchScore ?? null,
+            estimate: jobScoresMap[job.id] ?? (fit.is_fallback ? null : fit.fit_score),
+          }).value ?? -1;
+        return score >= 50;
+      })
+      .sort((a, b) => {
+        const aInfo = applicationsMap[a.job.id];
+        const bInfo = applicationsMap[b.job.id];
+        const aScore =
+          getDisplayMatchScore({
+            applied: Boolean(aInfo?.hasApplied),
+            stored: aInfo?.matchScore ?? null,
+            estimate: jobScoresMap[a.job.id] ?? (a.fit.is_fallback ? null : a.fit.fit_score),
+          }).value ?? -1;
+        const bScore =
+          getDisplayMatchScore({
+            applied: Boolean(bInfo?.hasApplied),
+            stored: bInfo?.matchScore ?? null,
+            estimate: jobScoresMap[b.job.id] ?? (b.fit.is_fallback ? null : b.fit.fit_score),
+          }).value ?? -1;
+        return bScore - aScore;
+      });
+  }, [recommendedJobs, applicationsMap, jobScoresMap]);
 
   const jobsForYouTotalPages = Math.max(1, Math.ceil(sortedRecommendedJobs.length / JOBS_FOR_YOU_PAGE_SIZE));
   const safeJobsForYouPage = Math.min(jobsForYouPage, jobsForYouTotalPages);
@@ -165,11 +180,16 @@ export default function ApplicantJobsClient({
 
   const estimatedScoresMap = useMemo(() => {
     const map = new Map<string, number | null>();
+    for (const [jobId, score] of Object.entries(jobScoresMap)) {
+      map.set(jobId, score);
+    }
     recommendedJobs.forEach(({ job, fit }) => {
-      map.set(job.id, fit.is_fallback ? null : fit.fit_score);
+      if (!map.has(job.id)) {
+        map.set(job.id, fit.is_fallback ? null : fit.fit_score);
+      }
     });
     return map;
-  }, [recommendedJobs]);
+  }, [recommendedJobs, jobScoresMap]);
 
   const allJobsMap = useMemo(() => {
     const map = new Map<string, JobPosting>();
@@ -178,24 +198,26 @@ export default function ApplicantJobsClient({
     return map;
   }, [allJobs, recommendedJobs]);
 
-  useEffect(() => {
-    const jobIdParam = searchParams.get("jobId");
-    if (jobIdParam && allJobsMap.has(jobIdParam)) {
-      setSelectedJob(allJobsMap.get(jobIdParam) || null);
-    } else {
-      setSelectedJob(null);
+  const jobIdParam = searchParams.get("jobId");
+  const selectedJob = useMemo(() => {
+    if (manualJob) return manualJob;
+    if (jobIdParam && jobIdParam !== closedJobId && allJobsMap.has(jobIdParam)) {
+      return allJobsMap.get(jobIdParam) || null;
     }
-  }, [searchParams, allJobsMap]);
+    return null;
+  }, [manualJob, jobIdParam, closedJobId, allJobsMap]);
 
   const openJobModal = (job: JobPosting) => {
-    setSelectedJob(job);
+    setClosedJobId(null);
+    setManualJob(job);
     const params = new URLSearchParams(window.location.search);
     params.set("jobId", job.id);
     window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
   };
 
   const closeJobModal = () => {
-    setSelectedJob(null);
+    if (jobIdParam) setClosedJobId(jobIdParam);
+    setManualJob(null);
     const params = new URLSearchParams(window.location.search);
     params.delete("jobId");
     const newSearch = params.toString();
@@ -239,12 +261,8 @@ export default function ApplicantJobsClient({
                 const displayScore = getDisplayMatchScore({
                   applied: Boolean(appliedInfo?.hasApplied),
                   stored: appliedInfo?.matchScore ?? null,
-                  estimate: fit.is_fallback ? null : fit.fit_score,
+                  estimate: jobScoresMap[job.id] ?? (fit.is_fallback ? null : fit.fit_score),
                 });
-                const badgeLabel =
-                  displayScore.value === null
-                    ? "Recommended"
-                    : `${displayScore.value}% Match`;
                 return (
                   <article
                     key={job.id}
@@ -264,9 +282,7 @@ export default function ApplicantJobsClient({
                             {job.location ? <span className="truncate text-slate-500">• {job.location}</span> : null}
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-semibold">
-                          {badgeLabel}
-                        </span>
+                        <MatchScorePill score={displayScore.value} emptyLabel="Recommended" />
                       </div>
 
                       {/* Middle Row */}
@@ -336,6 +352,11 @@ export default function ApplicantJobsClient({
             const companyName = resolveCompanyName(job);
             const salaryRange = formatSalaryRange(job);
             const appliedInfo = applicationsMap[job.id];
+            const displayScore = getDisplayMatchScore({
+              applied: Boolean(appliedInfo?.hasApplied),
+              stored: appliedInfo?.matchScore ?? null,
+              estimate: jobScoresMap[job.id] ?? null,
+            });
             return (
               <article
                 key={job.id}
@@ -355,11 +376,16 @@ export default function ApplicantJobsClient({
                         {job.location ? <span className="truncate text-slate-500">• {job.location}</span> : null}
                       </p>
                     </div>
-                    {appliedInfo?.hasApplied ? (
-                      <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-semibold">
-                        Applied
-                      </span>
-                    ) : null}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {displayScore.value !== null ? (
+                        <MatchScorePill score={displayScore.value} />
+                      ) : null}
+                      {appliedInfo?.hasApplied ? (
+                        <span className="shrink-0 rounded-full bg-[#F0ECFF] text-[#1F195E] border border-[#E0D9FC] px-2.5 py-0.5 text-xs font-semibold">
+                          Applied
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* Middle Row */}

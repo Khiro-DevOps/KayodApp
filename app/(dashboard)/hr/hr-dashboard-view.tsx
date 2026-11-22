@@ -6,6 +6,7 @@ import {
   PageHeroHeader,
   SolidSurfaceCard,
 } from "@/components/ui/option-b-surfaces";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 export type TopCandidateMatch = {
   id: string;
@@ -171,9 +172,11 @@ export default function HRDashboardView({
                       </div>
                       <div className="flex-shrink-0 flex flex-col items-end">
                         {candidate.matchScore !== null ? (
-                          <span className="bg-success-bg text-success border border-success/20 text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap">
-                            {candidate.matchScore}% MATCH
-                          </span>
+                          <MatchScorePill
+                            score={candidate.matchScore}
+                            suffix="MATCH"
+                            size="xs"
+                          />
                         ) : (
                           <span className="bg-slate-50 text-text-muted border border-slate-200 text-[10px] px-2 py-0.5 rounded font-medium whitespace-nowrap">
                             NEW

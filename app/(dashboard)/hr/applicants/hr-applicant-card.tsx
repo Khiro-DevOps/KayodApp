@@ -3,9 +3,16 @@
 import { useRouter } from "next/navigation";
 import { APPLICATION_STATUS_COLORS } from "@/lib/types";
 import { updateApplicationStatus, moveToApplied } from "./hr-applications-actions";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 interface HRApplicantCardProps {
-  app: any;
+  app: {
+    id: string;
+    status: string;
+    match_score: number | null;
+    submitted_at: string;
+    cover_letter?: string | null;
+  };
   candidate: {
     id: string;
     first_name: string;
@@ -59,9 +66,7 @@ export default function HRApplicantCard({ app, candidate, resume, fullName }: HR
           </span>
         )}
         {app.match_score !== null && (
-          <span className={`font-medium ${app.match_score >= 70 ? "text-green-600" : app.match_score >= 40 ? "text-amber-600" : "text-red-500"}`}>
-            {Math.round(app.match_score)}% match
-          </span>
+          <MatchScorePill score={app.match_score} suffix="match" size="xs" />
         )}
         <span className="ml-auto">
           Applied {new Date(app.submitted_at).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}

@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { WithdrawModal } from "./WithdrawModal";
-import { getDisplayMatchScore } from "@/lib/match-score";
+import { getDisplayMatchScore } from "@/lib/match-scoring";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 
 export interface ApplicationTrackerCardData {
@@ -82,8 +83,6 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
     stored: application.matchScore,
   });
 
-  const matchScoreClasses = "bg-[#F0ECFF] text-[#1F195E] border border-[#E0D9FC]";
-
   const getWorkModeBadge = (mode?: string | null) => {
     if (!mode) return null;
     const formatted = mode.replace(/[_-]+/g, " ");
@@ -140,9 +139,7 @@ export function ApplicationTrackerCard({ application }: ApplicationTrackerCardPr
 
           <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
             {displayScore.value !== null && (
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${matchScoreClasses}`}>
-                {displayScore.value}% match
-              </span>
+              <MatchScorePill score={displayScore.value} suffix="match" />
             )}
             <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusBadge.className}`}>
               {statusBadge.label}

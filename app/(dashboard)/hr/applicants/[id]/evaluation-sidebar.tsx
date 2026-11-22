@@ -7,6 +7,7 @@ import { configureInterviewAvailability, updateApplicationEvaluation } from "./a
 import { sendJobOffer, withdrawJobOffer } from "../../jobs/[id]/applicants/actions";
 import { createJobOffer } from "@/app/(dashboard)/hr/offers/actions";
 import { toast } from "sonner";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 interface EvaluationSidebarProps {
   application: Application;
@@ -294,7 +295,7 @@ export default function EvaluationSidebar({
         employmentType,
         startDate,
         workArrangement,
-        department: (job as any)?.department || "General",
+        department: (job as { department?: string } | null)?.department || "General",
         manager: "", // Optional - can be set later
         benefits,
         notes: "",
@@ -323,13 +324,8 @@ export default function EvaluationSidebar({
         <p className="text-xs font-medium uppercase text-text-secondary mb-2">Current Status</p>
         <p className={`text-lg font-bold ${config.color} capitalize`}>{config.label}</p>
         {matchScore !== null && (
-          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-text-primary">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                matchScore >= 70 ? "bg-green-500" : matchScore >= 40 ? "bg-yellow-500" : "bg-red-500"
-              }`}
-            />
-            Resume match {matchScore}%
+          <div className="mt-3">
+            <MatchScorePill score={matchScore} />
           </div>
         )}
         <p className="text-xs text-text-secondary mt-3">
@@ -348,11 +344,11 @@ export default function EvaluationSidebar({
                 <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
                   <div
                     className={`h-full transition-all ${
-                      matchScore >= 70
-                        ? "bg-green-500"
-                        : matchScore >= 40
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
+                      matchScore >= 75
+                        ? "bg-emerald-500"
+                        : matchScore >= 50
+                        ? "bg-amber-500"
+                        : "bg-rose-500"
                     }`}
                     style={{ width: `${matchScore}%` }}
                   />

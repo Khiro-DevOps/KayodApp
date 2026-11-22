@@ -7,6 +7,7 @@ import type { Profile } from "@/lib/types";
 import { ApplicationsHubClient } from "./applications-client";
 import type { ApplicationHubCard } from "./applications-kanban-board";
 import { getHrJobScope } from "@/lib/hr-job-scope";
+import { computeAndStoreApplicationMatch } from "@/lib/match-scoring";
 
 function normalizeName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -117,22 +118,39 @@ export default async function HRApplicantsHubPage() {
     }
 
     // Map to ApplicationHubCard — use created_at as submitted_at
-    const mapped = (rawApps ?? []).map((app: any): ApplicationHubCard => ({
-      id: app.id,
-      job_id: app.job_id,
-      applicant_id: app.applicant_id,
-      resume_id: app.resume_id ?? "",
-      status: app.status ?? "applied",
-      cover_letter: app.cover_letter ?? null,
-      match_score: app.match_score ?? null,
-      hr_notes: app.hr_notes ?? null,
-      submitted_at: app.created_at ?? new Date().toISOString(),
-      updated_at: app.updated_at ?? new Date().toISOString(),
-      candidate: app.candidate ?? null,
-      job: app.job ?? null,
+    const mapped = (rawApps ?? []).map((app: Record<string, unknown>): ApplicationHubCard => ({
+      id: String(app.id ?? ""),
+      job_id: String(app.job_id ?? ""),
+      applicant_id: typeof app.applicant_id === "string" ? app.applicant_id : undefined,
+      resume_id: typeof app.resume_id === "string" ? app.resume_id : "",
+      status: typeof app.status === "string" ? app.status : "applied",
+      cover_letter: typeof app.cover_letter === "string" ? app.cover_letter : null,
+      match_score: typeof app.match_score === "number" ? app.match_score : null,
+      hr_notes: typeof app.hr_notes === "string" ? app.hr_notes : null,
+      submitted_at: typeof app.created_at === "string" ? app.created_at : new Date().toISOString(),
+      updated_at: typeof app.updated_at === "string" ? app.updated_at : new Date().toISOString(),
+      candidate: (app.candidate as ApplicationHubCard["candidate"]) ?? null,
+      job: (app.job as ApplicationHubCard["job"]) ?? null,
     }));
 
     applications = mapped;
+
+    // Auto-compute any unscored applications using canonical scoring engine
+    const unscoredApps = applications.filter((a) => a.match_score === null || Number(a.match_score) === 0);
+    if (unscoredApps.length > 0) {
+      await Promise.all(
+        unscoredApps.map(async (app) => {
+          try {
+            const res = await computeAndStoreApplicationMatch(app.id, true);
+            if (res.success && typeof res.score === "number") {
+              app.match_score = res.score;
+            }
+          } catch {
+            // Non-blocking
+          }
+        })
+      );
+    }
 
     if (process.env.DEBUG_APPLICANTS === "1") {
       console.log("[applicants-debug] number after stage mapping", applications.length);

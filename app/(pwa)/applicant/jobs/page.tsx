@@ -6,8 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import type { JobPosting, Profile, Resume } from "@/lib/types";
-import { computeMatchScore, calculateCompatibilityScore, calculateWeightedMatchScore, getDisplayMatchScore } from "@/lib/match-score";
-import { analyzeJobFit, type JobFitAnalysisOutput } from "@/lib/gemini";
+import {
+  computeCanonicalJobMatch,
+  getDisplayMatchScore,
+  persistBatchCanonicalMatchCache,
+  type CanonicalMatchResult,
+} from "@/lib/match-scoring";
+import { type JobFitAnalysisOutput } from "@/lib/gemini";
 import Link from "next/link";
 import { JOB_INDUSTRIES } from "@/lib/constants";
 import ApplicantJobsClient from "./jobs-client";
@@ -115,9 +120,9 @@ export default async function JobsPage({ searchParams }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, city_id, province_id")
+    .select("role, city_id, province_id, work_setup, city")
     .eq("id", user.id)
-    .single<Pick<Profile, "role" | "city_id" | "province_id">>();
+    .single<Pick<Profile, "role" | "city_id" | "province_id" | "work_setup" | "city">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (isHR) redirect("/hr/jobs");
@@ -240,96 +245,74 @@ export default async function JobsPage({ searchParams }: Props) {
     }
   }
 
-  const shortlistedJobs: Array<{ job: JobPosting; score: number }> = selectedResume
+  const scoredJobs: Array<{ job: JobPosting; score: number; matchResult: CanonicalMatchResult }> = selectedResume
     ? filteredJobs.map((job) => {
-      const j = job as JobPosting;
-      const appliedInfo = applicationsMap[j.id];
-      if (appliedInfo?.hasApplied && appliedInfo.matchScore !== null) {
-        return { job: j, score: appliedInfo.matchScore };
-      }
+        const j = job as JobPosting;
+        const matchResult = computeCanonicalJobMatch({
+          resume: selectedResume,
+          job: j,
+          candidate: {
+            city_id: profile?.city_id ?? null,
+            province_id: profile?.province_id ?? null,
+            preferred_work_setup: work_setup || profile?.work_setup || null,
+            location: profile?.city ?? null,
+          },
+        });
 
-      const semanticScore = computeMatchScore(resumeText, {
-        title: j.title,
-        description: j.description,
-        requirements: j.requirements,
-        required_skills: j.required_skills ?? [],
-      });
-      const compatibilityScore = calculateCompatibilityScore(
-        j.work_setup,
-        j.city_id,
-        j.province_id,
-        profile?.city_id,
-        profile?.province_id,
-        work_setup
-      );
-      const score = calculateWeightedMatchScore(semanticScore, compatibilityScore);
+        const appliedInfo = applicationsMap[j.id];
+        const effectiveScore =
+          appliedInfo?.hasApplied && typeof appliedInfo.matchScore === "number" && appliedInfo.matchScore > 0
+            ? Math.round(Number(appliedInfo.matchScore))
+            : matchResult.score;
 
-      return {
-        job: j,
-        score,
-      };
-    })
+        return {
+          job: j,
+          score: effectiveScore,
+          matchResult,
+        };
+      })
     : [];
 
-  const recommendedJobs = selectedResume
-    ? await Promise.all(
-      shortlistedJobs
-        .filter((item) => item.score >= 25)
+  // Persist canonical match scores in background cache for zero discrepancy on application
+  if (selectedResume && scoredJobs.length > 0) {
+    void persistBatchCanonicalMatchCache(
+      user.id,
+      scoredJobs.map((item) => ({ jobId: item.job.id, result: item.matchResult }))
+    );
+  }
+
+  const jobScoresMap: Record<string, number> = {};
+  for (const item of scoredJobs) {
+    jobScoresMap[item.job.id] = item.score;
+  }
+
+  // "Jobs For You · Top Matches" strictly shows roles with score >= 50, sorted descending
+  const recommendedJobs: Array<{ job: JobPosting; fit: JobFitAnalysisOutput }> = selectedResume
+    ? scoredJobs
+        .filter((item) => item.score >= 50)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 10)
-        .map(async ({ job, score }) => {
+        .map(({ job, score, matchResult }) => {
           const appliedInfo = applicationsMap[job.id];
           const isApplied = Boolean(appliedInfo?.hasApplied);
-          try {
-            const fit = await analyzeJobFit({
-              resumeData: resumeText,
-              jobRequirements: {
-                title: job.title,
-                description: job.description,
-                requirements: job.requirements,
-                required_skills: job.required_skills ?? [],
-                industry: job.industry,
-                job_category: job.job_category,
-                employment_type: job.employment_type,
-              },
-              fallbackScore: score,
-            });
-            const displayScore = getDisplayMatchScore({
-              applied: isApplied,
-              stored: appliedInfo?.matchScore ?? null,
-              estimate: fit.fit_score,
-            });
-            return {
-              job,
-              fit: {
-                ...fit,
-                fit_score: displayScore.value,
-              },
-            };
-          } catch (e) {
-            console.error(`AI Analysis failed for job ${job.id}, using UI-level fallback:`, e);
-            const displayScore = getDisplayMatchScore({
-              applied: isApplied,
-              stored: appliedInfo?.matchScore ?? null,
-              estimate: null,
-            });
-            return {
-              job,
-              fit: {
-                fit_score: displayScore.value,
-                match_level: "High" as const,
-                top_reasons: ["Good alignment with your profile"],
-                gap_analysis: "Stitch was able to find a likely match based on your saved resume data.",
-                card_color_hex: "#7C7AAC",
-                is_fallback: true
-              }
-            };
-          }
+          const displayScore = getDisplayMatchScore({
+            applied: isApplied,
+            stored: appliedInfo?.matchScore ?? null,
+            estimate: score,
+          });
+          return {
+            job,
+            fit: {
+              fit_score: displayScore.value ?? score,
+              match_level: matchResult.match_level,
+              top_reasons: matchResult.top_reasons,
+              gap_analysis: matchResult.gap_analysis,
+              card_color_hex: matchResult.card_color_hex,
+            },
+          };
         })
-    )
     : [];
   const allJobs: JobPosting[] = selectedResume
-    ? [...shortlistedJobs].sort((a, b) => b.score - a.score).map((s) => s.job)
+    ? [...scoredJobs].sort((a, b) => b.score - a.score).map((s) => s.job)
     : (filteredJobs as JobPosting[]);
 
   const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
@@ -410,6 +393,7 @@ export default async function JobsPage({ searchParams }: Props) {
         <ApplicantJobsClient
           recommendedJobs={recommendedJobs}
           allJobs={allJobs}
+          jobScoresMap={jobScoresMap}
           selectedResumeTitle={selectedResume?.title ?? undefined}
           applicationsMap={applicationsMap}
           isCandidate={isCandidate}

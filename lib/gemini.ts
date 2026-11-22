@@ -1,4 +1,4 @@
-import { computeMatchScore } from "@/lib/match-score";
+import { computeCanonicalJobMatch } from "@/lib/match-scoring";
 
 // ─── ERROR TYPES ──────────────────────────────────────────────────────────────
 
@@ -500,6 +500,10 @@ function toJobData(jobRequirements: string | Record<string, unknown>) {
       description: jobRequirements,
       requirements: null,
       required_skills: [] as string[],
+      industry: null,
+      job_category: null,
+      work_setup: null,
+      location: null,
     };
   }
 
@@ -513,6 +517,10 @@ function toJobData(jobRequirements: string | Record<string, unknown>) {
           (skill): skill is string => typeof skill === "string" && skill.trim() !== ""
         )
       : [],
+    industry: typeof data.industry === "string" ? data.industry : null,
+    job_category: typeof data.job_category === "string" ? data.job_category : null,
+    work_setup: typeof data.work_setup === "string" ? data.work_setup : null,
+    location: typeof data.location === "string" ? data.location : null,
   };
 }
 
@@ -523,10 +531,10 @@ function normalizeJobFitOutput(raw: unknown, fallbackScore?: number): JobFitAnal
 
   const r = raw as Record<string, unknown>;
   const fitScore =
-    typeof r.fit_score === "number" && Number.isFinite(r.fit_score)
-      ? clampScore(r.fit_score)
-      : fallbackScore !== undefined
-        ? clampScore(fallbackScore)
+    typeof fallbackScore === "number" && Number.isFinite(fallbackScore)
+      ? clampScore(fallbackScore)
+      : typeof r.fit_score === "number" && Number.isFinite(r.fit_score)
+        ? clampScore(r.fit_score)
         : 0;
 
   const matchLevel =
@@ -573,38 +581,22 @@ function fallbackJobFit(
   fallbackScore?: number
 ): JobFitAnalysisOutput {
   const jobData = toJobData(jobRequirements);
+  const canonical = computeCanonicalJobMatch({
+    resume: toPromptText(resumeData),
+    job: jobData,
+  });
   const score =
     typeof fallbackScore === "number"
       ? clampScore(fallbackScore)
-      : computeMatchScore(toPromptText(resumeData), jobData);
+      : canonical.score;
 
   const level = resolveMatchLevel(score);
-  const resumeText = toPromptText(resumeData).toLowerCase();
-  const jobText = toPromptText(jobRequirements).toLowerCase();
-
-  const reasons = [
-    score >= 70
-      ? "Strong overlap across required technologies and role scope"
-      : score >= 45
-        ? "Some relevant skills match the job, but not the full stack"
-        : "Core job requirements are only partially represented in the resume",
-    jobText.includes("next.js") && resumeText.includes("next.js")
-      ? "Next.js is explicitly present in both the resume and the job"
-      : jobText.includes("next.js")
-        ? "The role emphasizes Next.js, but the resume does not show it clearly"
-        : "Technology stack alignment is driven more by general similarity than explicit match",
-  ];
 
   return {
     fit_score: score,
     match_level: level,
-    top_reasons: reasons.slice(0, 2),
-    gap_analysis:
-      level === "High"
-        ? "Only small gaps remain; the candidate is close to the target profile."
-        : level === "Medium"
-          ? "The profile matches part of the stack, but it needs stronger seniority or domain evidence."
-          : "The profile is missing one or more must-have capabilities and should be treated cautiously.",
+    top_reasons: canonical.top_reasons,
+    gap_analysis: canonical.gap_analysis,
     card_color_hex: resolveCardColorHex(level),
   };
 }

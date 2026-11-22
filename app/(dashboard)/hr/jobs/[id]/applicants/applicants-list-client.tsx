@@ -13,6 +13,7 @@ import { getCurrentStage } from "@/lib/pipeline";
 import { moveToScreening, moveToInterview, moveToHired } from "./pipeline-actions";
 import { createHydratedOfferDraft } from "@/app/(auth)/actions/offer-actions";
 import OfferReviewModal from "./offer-review-modal";
+import { getMatchScorePillClasses } from "@/components/ui/match-score-pill";
 
 type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email" | "phone" | "city" | "country">;
 
@@ -240,27 +241,13 @@ function getMatchScoreBadge(score: number | null) {
   if (score === null) {
     return {
       label: "Calculating...",
-      className: "bg-gray-100 text-gray-500",
-    };
-  }
-
-  if (score >= 75) {
-    return {
-      label: `${Math.round(score)}% match`,
-      className: "bg-green-50 text-green-700",
-    };
-  }
-
-  if (score >= 50) {
-    return {
-      label: `${Math.round(score)}% match`,
-      className: "bg-amber-50 text-amber-700",
+      className: "border border-slate-200 bg-slate-100 text-slate-600",
     };
   }
 
   return {
     label: `${Math.round(score)}% match`,
-    className: "bg-red-50 text-red-700",
+    className: `border ${getMatchScorePillClasses(score)}`,
   };
 }
 

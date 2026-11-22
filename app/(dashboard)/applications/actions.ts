@@ -4,7 +4,13 @@ import { notifyJobCreator } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { computeAndStoreMatchScore } from "@/lib/compute-match-score";
+import {
+  computeCanonicalJobMatch,
+  computeAndStoreApplicationMatch,
+  persistCanonicalMatchCache,
+  type CanonicalJobInput,
+  type CanonicalResumeInput,
+} from "@/lib/match-scoring";
 
 export async function submitApplication(formData: FormData) {
   const supabase = await createClient();
@@ -24,9 +30,9 @@ export async function submitApplication(formData: FormData) {
 
   const { data: job } = await supabase
     .from("job_postings")
-    .select("id, tenant_id, is_published, closes_at, created_by, title")
+    .select("id, tenant_id, is_published, closes_at, created_by, title, description, requirements, required_skills, industry, job_category, work_setup, location, city_id, province_id, min_experience, employment_type")
     .eq("id", jobId)
-    .single();
+    .single<CanonicalJobInput & { id: string; tenant_id: string | null; is_published: boolean; closes_at: string | null; created_by: string | null; title: string }>();
 
   if (!job) {
     return { success: false, error: "Job not found" };
@@ -47,6 +53,37 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: "Already applied", alreadyApplied: true };
   }
 
+  const [{ data: resume }, { data: candidateProfile }] = await Promise.all([
+    supabase
+      .from("resumes")
+      .select("*")
+      .eq("id", resumeId)
+      .maybeSingle<CanonicalResumeInput>(),
+    supabase
+      .from("profiles")
+      .select("work_setup, city_id, province_id, city")
+      .eq("id", user.id)
+      .maybeSingle<{
+        work_setup?: string | null;
+        city_id?: string | null;
+        province_id?: string | null;
+        city?: string | null;
+      }>(),
+  ]);
+
+  const canonicalMatch = resume
+    ? computeCanonicalJobMatch({
+        resume,
+        job,
+        candidate: {
+          city_id: candidateProfile?.city_id ?? null,
+          province_id: candidateProfile?.province_id ?? null,
+          preferred_work_setup: candidateProfile?.work_setup ?? null,
+          location: candidateProfile?.city ?? null,
+        },
+      })
+    : null;
+
   const now = new Date().toISOString();
   const { data: createdJA, error: jaError } = await supabase
     .from("job_applications")
@@ -56,6 +93,7 @@ export async function submitApplication(formData: FormData) {
       resume_id: resumeId,
       cover_letter: coverLetter || null,
       status: "applied",
+      match_score: canonicalMatch?.score ?? null,
       created_at: now,
       status_updated_at: now,
     })
@@ -67,9 +105,18 @@ export async function submitApplication(formData: FormData) {
     return { success: false, error: jaError?.message || "Failed to submit application" };
   }
 
-  void computeAndStoreMatchScore(createdJA.id).catch((recomputeError) => {
+  try {
+    if (canonicalMatch) {
+      await persistCanonicalMatchCache({
+        applicantId: user.id,
+        jobId,
+        result: canonicalMatch,
+      });
+    }
+    await computeAndStoreApplicationMatch(createdJA.id, true);
+  } catch (recomputeError) {
     console.warn("Match score computation failed:", recomputeError);
-  });
+  }
 
   // Notify the HR Manager
   if (job.created_by) {

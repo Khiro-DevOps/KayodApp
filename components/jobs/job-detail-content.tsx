@@ -12,6 +12,7 @@ import {
 import ApplyFormClient from "@/app/(dashboard)/jobs/[id]/apply/apply-form-client";
 import { submitApplication } from "@/app/(dashboard)/hr/applicants/actions";
 import { createClient } from "@/lib/supabase/client";
+import { MatchScorePill } from "@/components/ui/match-score-pill";
 
 function formatEmploymentType(employmentType: JobPosting["employment_type"]): string {
   return String(employmentType ?? "")
@@ -222,9 +223,7 @@ export default function JobDetailContent({
               {companyName}
             </span>
             {matchScore !== null && (
-              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                {matchScore}% Match
-              </span>
+              <MatchScorePill score={matchScore} />
             )}
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">

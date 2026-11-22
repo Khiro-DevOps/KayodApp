@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { moveToScreening, confirmInterviewScheduled } from "./pipeline-actions";
 import { getCurrentStage } from "@/lib/pipeline";
 import HRInterviewCardSection, { type InterviewScheduleItem } from "@/components/hr/HRInterviewCardSection";
+import { getMatchScorePillClasses } from "@/components/ui/match-score-pill";
 
 
 type CandidateProfile = Pick<Profile, "id" | "first_name" | "last_name" | "email" | "phone" | "city" | "country">;
@@ -79,27 +80,13 @@ function getMatchScoreBadge(score: number | null) {
   if (score === null) {
     return {
       label: "Calculating...",
-      className: "bg-gray-100 text-gray-500",
-    };
-  }
-
-  if (score >= 75) {
-    return {
-      label: `${Math.round(score)}% match`,
-      className: "bg-green-50 text-green-700",
-    };
-  }
-
-  if (score >= 50) {
-    return {
-      label: `${Math.round(score)}% match`,
-      className: "bg-amber-50 text-amber-700",
+      className: "border border-slate-200 bg-slate-100 text-slate-600",
     };
   }
 
   return {
     label: `${Math.round(score)}% match`,
-    className: "bg-red-50 text-red-700",
+    className: `border ${getMatchScorePillClasses(score)}`,
   };
 }
 
@@ -146,8 +133,8 @@ export default function ApplicantDetailDrawer({
       .eq("application_id", application.id)
       .order("created_at", { ascending: false })
       .maybeSingle()
-      .then(({ data }: { data: any }) => {
-        setInterviewSchedule((data as any) ?? null);
+      .then(({ data }: { data: InterviewScheduleItem | null }) => {
+        setInterviewSchedule(data ?? null);
       });
   }, [application?.id, isOpen]);
 
@@ -345,9 +332,9 @@ export default function ApplicantDetailDrawer({
         } else {
           setSignedResumeUrl(data.signedUrl);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Signed URL fetch error:", err);
-        setResumeError(String(err?.message ?? err));
+        setResumeError(err instanceof Error ? err.message : String(err));
         setSignedResumeUrl(null);
       } finally {
         setLoadingResume(false);
@@ -660,7 +647,7 @@ export default function ApplicantDetailDrawer({
                   .eq("application_id", application.id)
                   .order("created_at", { ascending: false })
                   .maybeSingle()
-                  .then(({ data }: { data: any }) => setInterviewSchedule((data as any) ?? null));
+                  .then(({ data }: { data: InterviewScheduleItem | null }) => setInterviewSchedule(data ?? null));
               }}
             />
           </div>
