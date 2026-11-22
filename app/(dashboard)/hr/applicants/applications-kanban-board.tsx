@@ -54,6 +54,7 @@ export type ApplicationHubCard = {
   cover_letter: string | null;
   match_score: number | null;
   hr_notes: string | null;
+  rejection_reason?: string | null;
   submitted_at: string;
   updated_at: string;
   // Supabase .select('*, candidate:profiles(*), job:job_postings(*)')
@@ -441,9 +442,29 @@ function ClosedSection({
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                    {app.status}
-                  </span>
+                  {(() => {
+                    const reasonText = `${app.rejection_reason ?? ""} ${app.hr_notes ?? ""}`.toLowerCase();
+                    const isAutoClosed =
+                      app.status === "withdrawn" && reasonText.includes("automatically closed");
+                    const badgeLabel = isAutoClosed
+                      ? "Withdrawn — Hired in another role"
+                      : app.status === "withdrawn"
+                        ? "Withdrawn"
+                        : app.status === "rejected"
+                          ? "Rejected"
+                          : app.status;
+                    const badgeClass =
+                      app.status === "rejected"
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : isAutoClosed
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-slate-200 bg-slate-100 text-slate-700";
+                    return (
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>
+                        {badgeLabel}
+                      </span>
+                    );
+                  })()}
                   <MatchScorePill
                     score={scoreDisplay}
                     suffix=""

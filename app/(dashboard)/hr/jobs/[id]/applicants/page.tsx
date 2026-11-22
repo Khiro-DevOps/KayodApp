@@ -105,6 +105,7 @@ export default async function ApplicantsPage({
       match_score,
       submitted_at,
       cover_letter,
+      hr_notes,
       resume_id,
       profiles!applications_candidate_id_fkey (id, first_name, last_name, email, phone, city, country),
       resumes (id, title, pdf_url, created_at)
@@ -113,7 +114,7 @@ export default async function ApplicantsPage({
     .order("match_score", { ascending: false, nullsFirst: false })
     .order("submitted_at", { ascending: false });
 
-  const applications = (rawApplications ?? []) as any[];
+  const applications = (rawApplications ?? []) as unknown as React.ComponentProps<typeof ApplicantsHubClient>["applications"];
 
   const applicationIds = applications.map((a) => a.id);
   const { data: interviews } = applicationIds.length

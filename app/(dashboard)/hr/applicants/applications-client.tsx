@@ -249,6 +249,14 @@ export function ApplicationsHubClient({
     [applications, selectedJobId],
   );
 
+  const activeApplicantsCount = useMemo(
+    () =>
+      selectedApplications.filter(
+        (application) => !["rejected", "withdrawn"].includes(String(application.status).toLowerCase())
+      ).length,
+    [selectedApplications],
+  );
+
   return (
     <div className="flex w-full min-w-0 flex-col space-y-5 text-text-main">
       {/* Header */}
@@ -276,8 +284,8 @@ export function ApplicationsHubClient({
               {recalculating ? "Recalculating..." : "Recalculate scores"}
             </button>
             <div className="inline-flex items-center rounded-full bg-[#EDE9F9] px-3.5 py-1.5 text-xs font-bold text-[#1E1B4B]">
-              <span className="mr-1.5">{selectedApplications.length}</span>
-              <span>applicant{selectedApplications.length === 1 ? "" : "s"}</span>
+              <span className="mr-1.5">{activeApplicantsCount}</span>
+              <span>applicant{activeApplicantsCount === 1 ? "" : "s"}</span>
             </div>
             <button className="h-9 rounded-xl bg-[#1E1B4B] px-4 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-indigo-900">
               + Add Candidate

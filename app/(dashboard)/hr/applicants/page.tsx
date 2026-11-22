@@ -127,6 +127,7 @@ export default async function HRApplicantsHubPage() {
       cover_letter: typeof app.cover_letter === "string" ? app.cover_letter : null,
       match_score: typeof app.match_score === "number" ? app.match_score : null,
       hr_notes: typeof app.hr_notes === "string" ? app.hr_notes : null,
+      rejection_reason: typeof app.rejection_reason === "string" ? app.rejection_reason : null,
       submitted_at: typeof app.created_at === "string" ? app.created_at : new Date().toISOString(),
       updated_at: typeof app.updated_at === "string" ? app.updated_at : new Date().toISOString(),
       candidate: (app.candidate as ApplicationHubCard["candidate"]) ?? null,

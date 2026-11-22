@@ -549,6 +549,7 @@ export default function ApplicantsHubClient({
   }, {} as Record<string, number>);
 
   const closedCount = applicationRows.filter((applicationRow) => CLOSED_STATUSES.includes(applicationRow.status)).length;
+  const activePipelineCount = applicationRows.length - closedCount;
 
   const activeStatuses = showClosed
     ? CLOSED_STATUSES
@@ -746,13 +747,27 @@ export default function ApplicantsHubClient({
         <div className="shrink-0 space-y-3 border-b border-border/70 bg-surface/95 backdrop-blur-sm sticky top-0 z-20 pb-3">
           {/* Top Row: Title and Total Count */}
           <div className="px-4 pt-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className="truncate font-(family-name:--font-heading) text-lg font-bold text-text-primary">{jobTitle}</h1>
                 <p className="text-xs text-text-secondary">
-                  {applicationRows.length} Total Applicants
+                  {activePipelineCount} Active {activePipelineCount === 1 ? "Applicant" : "Applicants"}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowClosed((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  showClosed
+                    ? "border-rose-300 bg-rose-50 text-rose-700"
+                    : "border-border bg-surface text-text-secondary hover:bg-surface-bg"
+                }`}
+              >
+                <span>Closed (Rejected / Withdrawn)</span>
+                <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] font-bold">
+                  {closedCount}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -797,7 +812,63 @@ export default function ApplicantsHubClient({
           </div>
         </div>
 
-        {/* DESKTOP: Multi-Column Pipeline View */}
+        {/* DESKTOP: Multi-Column Pipeline View (or Closed Filter View) */}
+        {showClosed ? (
+          <div className="hidden md:block flex-1 overflow-y-auto p-6 bg-gradient-to-b from-background to-surface">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text-primary">
+                Closed Applications ({filteredApps.length})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowClosed(false)}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Back to Active Pipeline
+              </button>
+            </div>
+            {filteredApps.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border/50 p-8 text-center">
+                <p className="text-xs text-text-secondary">No rejected or withdrawn applications</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredApps.map((app) => {
+                  const isAutoClosed =
+                    app.status === "withdrawn" &&
+                    (app.hr_notes ?? "").toLowerCase().includes("automatically closed");
+                  const closedLabel = isAutoClosed
+                    ? "Withdrawn — Hired in another role"
+                    : app.status === "withdrawn"
+                      ? "Withdrawn"
+                      : "Rejected";
+                  const closedBadgeClass =
+                    app.status === "rejected"
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : isAutoClosed
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-slate-200 bg-slate-100 text-slate-700";
+                  return (
+                    <div key={app.id} className="space-y-1.5">
+                      <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${closedBadgeClass}`}>
+                        {closedLabel}
+                      </span>
+                      <ApplicantCardComponent
+                        app={app}
+                        candidate={app.profiles}
+                        interview={interviewMap.get(app.id)}
+                        jobOffer={jobOffers[app.id]}
+                        onCardClick={() => handleCardClick(app)}
+                        onQuickAction={(action) => handleQuickAction(app, action)}
+                        isMobile={false}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="hidden md:flex h-full min-h-0 flex-1 overflow-x-auto gap-6 p-6 bg-gradient-to-b from-background to-surface">
           {STAGES.map((stage) => {
             const stageApps = getAppsForStage(stage.key);
@@ -836,6 +907,7 @@ export default function ApplicantsHubClient({
             );
           })}
         </div>
+        )}
 
         {/* MOBILE: Single-Column Tab View */}
         <div className="md:hidden h-full min-h-0 flex-1 overflow-y-auto">
