@@ -122,8 +122,31 @@ export default async function EmployeeSchedulePage() {
   const effectiveWorkMode = sourceOfTruth.workSetup;
   const effectiveWorkLocationId = employee.work_location_id ?? linkedJob?.workLocationId;
 
-  // Fetch active attendance log if any
+  // Fetch active attendance log + recent logs + correction requests
+  const todayPhtStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
   let activeAttendanceLog = null;
+  let todayCompletedLog = null;
+  let recentLogs: Array<{
+    id: string;
+    date: string;
+    clock_in: string | null;
+    clock_out: string | null;
+    status: string | null;
+    total_hours: number | null;
+    zone_status: string | null;
+  }> = [];
+  let correctionRequests: Array<{
+    id: string;
+    attendance_log_id: string | null;
+    target_date: string;
+    correction_type: string;
+    status: string;
+    requested_clock_in: string;
+    requested_clock_out: string | null;
+    review_notes: string | null;
+    created_at: string;
+  }> = [];
+
   if (employee?.id) {
     const { data: activeLog } = await admin
       .from("attendance_logs")
@@ -134,6 +157,41 @@ export default async function EmployeeSchedulePage() {
       .is("clock_out", null)
       .maybeSingle();
     activeAttendanceLog = activeLog;
+
+    const { data: logsData } = await admin
+      .from("attendance_logs")
+      .select("id, date, clock_in, clock_out, status, total_hours, zone_status")
+      .eq("employee_id", employee.id)
+      .order("clock_in", { ascending: false })
+      .limit(14);
+
+    recentLogs = (logsData ?? []).map((l) => ({
+      id: l.id,
+      date: l.clock_in
+        ? new Date(l.clock_in).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        : l.date,
+      clock_in: l.clock_in,
+      clock_out: l.clock_out,
+      status: l.status,
+      total_hours: l.total_hours,
+      zone_status: l.zone_status,
+    }));
+
+    if (!activeAttendanceLog) {
+      todayCompletedLog =
+        recentLogs.find((l) => l.clock_out !== null && l.date === todayPhtStr) ?? null;
+    }
+
+    const { data: reqData } = await admin
+      .from("attendance_correction_requests")
+      .select(
+        "id, attendance_log_id, target_date, correction_type, status, requested_clock_in, requested_clock_out, review_notes, created_at"
+      )
+      .eq("employee_id", employee.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    correctionRequests = reqData ?? [];
   }
 
   // Safe default values if employee record is not found (e.g. testing / newly promoted)
@@ -293,6 +351,10 @@ export default async function EmployeeSchedulePage() {
               lunchStart={lunchStart}
               lunchEnd={lunchEnd}
               initialActiveLog={activeAttendanceLog}
+              initialTodayCompletedLog={todayCompletedLog}
+              recentLogs={recentLogs}
+              correctionRequests={correctionRequests}
+              todayDateStr={todayPhtStr}
               allowedRadiusMeters={geofence.radiusMeters}
               targetOfficeCoords={
                 geofence.configured

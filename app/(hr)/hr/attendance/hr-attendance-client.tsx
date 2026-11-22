@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import { reviewAttendanceCorrectionAction } from "./actions";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type AttendanceRow = {
@@ -46,8 +48,29 @@ type Metrics = {
   absentToday: number;
 };
 
+export type HRCorrectionRequestRow = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  avatarUrl: string | null;
+  position: string | null;
+  workSetup: "onsite" | "wfh" | "hybrid" | "remote" | null;
+  workModel: "onsite" | "wfh" | "off" | null;
+  targetDate: string;
+  correctionType: string;
+  originalClockIn: string | null;
+  originalClockOut: string | null;
+  requestedClockIn: string;
+  requestedClockOut: string | null;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  reviewNotes: string | null;
+  createdAt: string;
+};
+
 type Props = {
   rows: AttendanceRow[];
+  correctionRequests?: HRCorrectionRequestRow[];
   metrics: Metrics;
   tenantId?: string | null;
 };
@@ -162,13 +185,32 @@ function Avatar({
   );
 }
 
+function formatPhtTime(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 // ─── Main Client Component ───────────────────────────────────────────────────
-export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
+export default function HRAttendanceClient({
+  rows,
+  correctionRequests = [],
+  metrics,
+  tenantId,
+}: Props) {
   const router = useRouter();
   const hasTodayLogs = rows.some((r) => r.isToday);
   const [search, setSearch] = useState("");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [todayOnly, setTodayOnly] = useState(hasTodayLogs);
+  const [showCorrections, setShowCorrections] = useState(false);
+  const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
+  const [actingRequestId, setActingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -214,6 +256,37 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
   }, [rows, todayOnly, search, flaggedOnly]);
 
   const flaggedCount = rows.filter((r) => r.zoneStatus === "outside_zone").length;
+  const pendingCorrectionCount = correctionRequests.filter((r) => r.status === "pending").length;
+
+  const filteredCorrections = useMemo(() => {
+    if (!search.trim()) return correctionRequests;
+    const q = search.toLowerCase();
+    return correctionRequests.filter(
+      (r) =>
+        r.employeeName.toLowerCase().includes(q) ||
+        (r.position ?? "").toLowerCase().includes(q) ||
+        r.correctionType.toLowerCase().includes(q)
+    );
+  }, [correctionRequests, search]);
+
+  const handleReviewCorrection = async (
+    requestId: string,
+    decision: "approved" | "rejected"
+  ) => {
+    setActingRequestId(requestId);
+    const res = await reviewAttendanceCorrectionAction({
+      requestId,
+      decision,
+      reviewNotes: reviewNotesById[requestId] ?? "",
+    });
+    if (!res.success) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      router.refresh();
+    }
+    setActingRequestId(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -319,6 +392,32 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
             </button>
           </div>
 
+          {/* Correction Requests Toggle */}
+          <button
+            id="attendance-corrections-toggle"
+            type="button"
+            onClick={() => setShowCorrections((p) => !p)}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all ${
+              showCorrections
+                ? "border-[#1E1B4B] bg-[#1E1B4B] text-white shadow-sm"
+                : "border-indigo-200 bg-indigo-50/70 text-[#1E1B4B] hover:bg-indigo-100"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+            Correction Requests
+            {pendingCorrectionCount > 0 && (
+              <span
+                className={`ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                  showCorrections
+                    ? "bg-amber-400 text-slate-900"
+                    : "bg-[#1E1B4B] text-white"
+                }`}
+              >
+                {pendingCorrectionCount > 99 ? "99+" : pendingCorrectionCount}
+              </span>
+            )}
+          </button>
+
           {/* Flagged Toggle */}
           <button
             id="attendance-flagged-toggle"
@@ -342,6 +441,159 @@ export default function HRAttendanceClient({ rows, metrics, tenantId }: Props) {
           </button>
         </div>
       </div>
+
+      {/* ── Attendance Correction Requests Review Queue ─────────────────────── */}
+      {(showCorrections || pendingCorrectionCount > 0) && (
+        <SolidSurfaceCard className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-[#1E1B4B]">
+                  Attendance Correction Requests
+                </h2>
+                {pendingCorrectionCount > 0 && (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    {pendingCorrectionCount} Pending
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                Review employee clock-in/out correction requests and apply approved changes to attendance logs.
+              </p>
+            </div>
+            {!showCorrections && correctionRequests.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCorrections(true)}
+                className="text-xs font-semibold text-[#1E1B4B] hover:underline self-start sm:self-center"
+              >
+                View all ({correctionRequests.length})
+              </button>
+            )}
+          </div>
+
+          {filteredCorrections.length === 0 ? (
+            <p className="py-6 text-center text-xs text-text-muted">
+              No attendance correction requests match your current filter.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {(showCorrections
+                ? filteredCorrections
+                : filteredCorrections.filter((r) => r.status === "pending")
+              ).map((req) => {
+                const isBusy = actingRequestId === req.id;
+                return (
+                  <div
+                    key={req.id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={req.employeeName} src={req.avatarUrl} />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-bold text-slate-900">
+                              {req.employeeName}
+                            </p>
+                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-[#1E1B4B]">
+                              {req.correctionType}
+                            </span>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                req.status === "pending"
+                                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                                  : req.status === "approved"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-rose-200 bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {req.status}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                            {req.position && <span className="font-medium">{req.position}</span>}
+                            <span>·</span>
+                            <span className="font-semibold text-slate-800">Date: {req.targetDate}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <WorkModelBadge workModel={req.workModel} workSetup={req.workSetup} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Original Timestamps
+                        </p>
+                        <p className="mt-1 font-medium text-slate-700">
+                          In: {formatPhtTime(req.originalClockIn)} · Out:{" "}
+                          {formatPhtTime(req.originalClockOut)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#1E1B4B]">
+                          Requested Timestamps
+                        </p>
+                        <p className="mt-1 font-bold text-[#1E1B4B]">
+                          In: {formatPhtTime(req.requestedClockIn)} · Out:{" "}
+                          {formatPhtTime(req.requestedClockOut)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-700">
+                      <span className="font-semibold text-slate-900">Reason:</span> {req.reason}
+                    </p>
+
+                    {req.status === "pending" ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 pt-1">
+                        <input
+                          type="text"
+                          value={reviewNotesById[req.id] ?? ""}
+                          onChange={(e) =>
+                            setReviewNotesById((prev) => ({
+                              ...prev,
+                              [req.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Optional reviewer note..."
+                          className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleReviewCorrection(req.id, "rejected")}
+                            className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 transition-colors"
+                          >
+                            {isBusy ? "Saving..." : "Reject"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleReviewCorrection(req.id, "approved")}
+                            className="rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
+                          >
+                            {isBusy ? "Applying..." : "Approve & Apply"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      req.reviewNotes && (
+                        <p className="text-[11px] text-slate-600 italic">
+                          Reviewer note: {req.reviewNotes}
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SolidSurfaceCard>
+      )}
 
       {/* ── Attendance Log Table ─────────────────────────────────────────────── */}
       <SolidSurfaceCard className="overflow-x-auto p-0">

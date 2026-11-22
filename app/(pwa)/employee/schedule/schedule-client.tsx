@@ -2,15 +2,49 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import {
   clockInAction,
   clockOutAction,
+  reopenShiftAction,
+  submitAttendanceCorrectionAction,
   toggleLunchAction,
   toggleShortBreakAction,
   updateLiveAttendanceLocationAction,
 } from "./actions";
 import WorkspaceMap from "@/components/schedule/workspace-map";
+
+const CORRECTION_TYPES = [
+  "Accidental Clock-Out",
+  "Missed Clock-Out",
+  "Wrong Clock-In/Out Time",
+  "Missing Shift",
+] as const;
+
+const UNDO_WINDOW_MS = 5 * 60 * 1000;
+
+export interface RecentAttendanceLog {
+  id: string;
+  date: string;
+  clock_in: string | null;
+  clock_out: string | null;
+  status: string | null;
+  total_hours: number | null;
+  zone_status: string | null;
+}
+
+export interface CorrectionRequestSummary {
+  id: string;
+  attendance_log_id: string | null;
+  target_date: string;
+  correction_type: string;
+  status: string;
+  requested_clock_in: string;
+  requested_clock_out: string | null;
+  review_notes: string | null;
+  created_at: string;
+}
 
 interface AttendanceLog {
   id: string;
@@ -49,6 +83,10 @@ interface ScheduleClientProps {
   lunchStart?: string;
   lunchEnd?: string;
   initialActiveLog: AttendanceLog | null;
+  initialTodayCompletedLog?: RecentAttendanceLog | null;
+  recentLogs?: RecentAttendanceLog[];
+  correctionRequests?: CorrectionRequestSummary[];
+  todayDateStr?: string;
   allowedRadiusMeters?: number;
   targetOfficeCoords: { lat: number; lng: number; name: string } | null;
   geofenceError?: string | null;
@@ -81,6 +119,21 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
   return Math.round(R * c * 10) / 10; // 1 decimal place
 }
 
+function toPhtTimeInput(iso: string | null | undefined, fallback: string): string {
+  if (!iso) return fallback;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const hh = parts.find((p) => p.type === "hour")?.value ?? "08";
+  const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${hh}:${mm}`;
+}
+
 export default function ScheduleClient({
   employeeId,
   workModel,
@@ -91,19 +144,41 @@ export default function ScheduleClient({
   lunchStart = "12:00",
   lunchEnd = "13:00",
   initialActiveLog,
+  initialTodayCompletedLog = null,
+  recentLogs = [],
+  correctionRequests = [],
+  todayDateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   allowedRadiusMeters = 100,
   targetOfficeCoords,
   geofenceError,
   remoteAddress,
 }: ScheduleClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const attendanceCardRef = useRef<HTMLDivElement>(null);
   const [activeLog, setActiveLog] = useState<AttendanceLog | null>(initialActiveLog);
+  const [todayCompletedLog, setTodayCompletedLog] = useState<RecentAttendanceLog | null>(
+    initialTodayCompletedLog
+  );
+  const [localRequests, setLocalRequests] = useState<CorrectionRequestSummary[]>(correctionRequests);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [elapsedText, setElapsedText] = useState<string>("");
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [optimisticBreakStartIso, setOptimisticBreakStartIso] = useState<string | null>(null);
+
+  // Clock-Out confirmation modal state
+  const [showClockOutModal, setShowClockOutModal] = useState(false);
+
+  // Attendance Correction Request modal state
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionLogId, setCorrectionLogId] = useState<string | null>(null);
+  const [correctionDate, setCorrectionDate] = useState(todayDateStr);
+  const [correctionType, setCorrectionType] = useState<string>("Wrong Clock-In/Out Time");
+  const [correctionClockInTime, setCorrectionClockInTime] = useState(shiftStart.slice(0, 5) || "08:00");
+  const [correctionClockOutTime, setCorrectionClockOutTime] = useState(shiftEnd.slice(0, 5) || "17:00");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(
     initialActiveLog?.distance_meters ?? null
@@ -275,14 +350,25 @@ export default function ScheduleClient({
       ? activeLog.active_break_type
       : null;
 
-  // 1000ms countdown tick while on lunch or 15-min short break
+  const undoDeadlineMs =
+    !activeLog && todayCompletedLog?.clock_out
+      ? Date.parse(todayCompletedLog.clock_out) + UNDO_WINDOW_MS
+      : NaN;
+  const isWithinUndoWindow =
+    Number.isFinite(undoDeadlineMs) && nowMs < undoDeadlineMs;
+  const undoRemainingSeconds = isWithinUndoWindow
+    ? Math.max(0, Math.ceil((undoDeadlineMs - nowMs) / 1000))
+    : 0;
+  const isShiftCompletedToday = Boolean(!activeLog && todayCompletedLog && !isWithinUndoWindow);
+
+  // 1000ms countdown tick while on lunch, 15-min short break, or 5-min undo window
   useEffect(() => {
-    if (!activeBreakType) return;
+    if (!activeBreakType && !isWithinUndoWindow) return;
     const interval = setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
     return () => clearInterval(interval);
-  }, [activeBreakType]);
+  }, [activeBreakType, isWithinUndoWindow]);
 
   // Punctuality status badge
   const getPunctualityBadge = () => {
@@ -328,10 +414,11 @@ export default function ScheduleClient({
 
     if (!res.success) {
       setErrorMessage(res.error);
+      toast.error(res.error);
     } else {
       setActiveLog({
         id: res.logId,
-        clock_in: new Date().toISOString(),
+        clock_in: res.clockIn ?? new Date().toISOString(),
         clock_out: null,
         status: res.status,
         verification_type: res.location_used,
@@ -339,6 +426,7 @@ export default function ScheduleClient({
         zone_status: res.zone_status,
         break_status: "active",
       });
+      setTodayCompletedLog(null);
       setDistanceMeters(res.distanceMeters);
       setIsInZone(res.zone_status !== "outside_zone");
       lastSentDistanceRef.current = res.distanceMeters;
@@ -347,6 +435,8 @@ export default function ScheduleClient({
       setShowOutsideModal(false);
       setFlagReason("");
       setPendingCoords(null);
+      toast.success(res.message);
+      router.refresh();
     }
     setLoading(false);
   };
@@ -395,16 +485,128 @@ export default function ScheduleClient({
     setLoading(true);
     setErrorMessage(null);
 
+    const closedLogSnapshot: RecentAttendanceLog = {
+      id: activeLog.id,
+      date: todayDateStr,
+      clock_in: activeLog.clock_in,
+      clock_out: new Date().toISOString(),
+      status: "completed",
+      total_hours: null,
+      zone_status: activeLog.zone_status ?? null,
+    };
+
     const res = await clockOutAction(activeLog.id);
     if (!res.success) {
       setErrorMessage(res.error);
+      toast.error(res.error);
     } else {
       setActiveLog(null);
+      setTodayCompletedLog(closedLogSnapshot);
+      setNowMs(Date.now());
       setElapsedText("");
       setOptimisticBreakStartIso(null);
+      setShowClockOutModal(false);
+      toast.success("Clocked out. You have 5 minutes to undo if this was accidental.");
+      router.refresh();
     }
     setLoading(false);
   };
+
+  const handleReopenShift = async () => {
+    if (!todayCompletedLog) return;
+    setLoading(true);
+    setErrorMessage(null);
+
+    const res = await reopenShiftAction(todayCompletedLog.id);
+    if (!res.success) {
+      setErrorMessage(res.error);
+      toast.error(res.error);
+    } else {
+      setActiveLog(res.log);
+      setTodayCompletedLog(null);
+      toast.success(res.message);
+      router.refresh();
+    }
+    setLoading(false);
+  };
+
+  const openCorrectionModal = (opts?: {
+    log?: RecentAttendanceLog | null;
+    defaultDate?: string;
+    defaultType?: string;
+  }) => {
+    const targetLog = opts?.log ?? null;
+    const dateVal = targetLog?.date ?? opts?.defaultDate ?? todayDateStr;
+    setCorrectionLogId(targetLog?.id ?? null);
+    setCorrectionDate(dateVal);
+    setCorrectionType(
+      opts?.defaultType ??
+        (targetLog?.clock_out
+          ? "Wrong Clock-In/Out Time"
+          : targetLog
+            ? "Missed Clock-Out"
+            : "Missing Shift")
+    );
+    setCorrectionClockInTime(
+      toPhtTimeInput(targetLog?.clock_in, shiftStart.slice(0, 5) || "08:00")
+    );
+    setCorrectionClockOutTime(
+      toPhtTimeInput(targetLog?.clock_out, shiftEnd.slice(0, 5) || "17:00")
+    );
+    setCorrectionReason("");
+    setShowCorrectionModal(true);
+  };
+
+  const handleSubmitCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingCorrection(true);
+
+    const requestedClockIn = `${correctionDate}T${correctionClockInTime}:00+08:00`;
+    const requestedClockOut = correctionClockOutTime
+      ? `${correctionDate}T${correctionClockOutTime}:00+08:00`
+      : null;
+
+    const res = await submitAttendanceCorrectionAction({
+      attendanceLogId: correctionLogId,
+      targetDate: correctionDate,
+      correctionType,
+      requestedClockIn,
+      requestedClockOut,
+      reason: correctionReason,
+    });
+
+    if (!res.success) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      setLocalRequests((prev) => [
+        {
+          id: res.requestId,
+          attendance_log_id: correctionLogId,
+          target_date: correctionDate,
+          correction_type: correctionType,
+          status: "pending",
+          requested_clock_in: new Date(requestedClockIn).toISOString(),
+          requested_clock_out: requestedClockOut
+            ? new Date(requestedClockOut).toISOString()
+            : null,
+          review_notes: null,
+          created_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+      setShowCorrectionModal(false);
+      router.refresh();
+    }
+    setSubmittingCorrection(false);
+  };
+
+  const getCorrectionForDateOrLog = (dateStr: string, logId?: string | null) =>
+    localRequests.find(
+      (r) => (logId && r.attendance_log_id === logId) || r.target_date === dateStr
+    ) ?? null;
+
+  const todayCorrection = getCorrectionForDateOrLog(todayDateStr, todayCompletedLog?.id);
 
   const isOnLunch = activeBreakType === "lunch";
   const isOnShortBreak = activeBreakType === "short_break";
@@ -663,17 +865,49 @@ export default function ScheduleClient({
             )}
 
             {!activeLog ? (
-              <button
-                onClick={handleClockIn}
-                disabled={loading}
-                className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-[18px]">alarm_on</span>
-                {loading ? "Clocking In..." : "Clock In Now"}
-              </button>
+              isWithinUndoWindow ? (
+                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleReopenShift}
+                    disabled={loading}
+                    className="w-full sm:w-auto min-w-[240px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">undo</span>
+                    {loading
+                      ? "Reopening Shift..."
+                      : `Reopen Shift (Undo Accidental Clock-Out · ${formatMmSs(undoRemainingSeconds)})`}
+                  </button>
+                  <p className="text-[11px] font-medium text-amber-800">
+                    Clocked out by mistake? Undo within 5 minutes to preserve your original clock-in.
+                  </p>
+                </div>
+              ) : isShiftCompletedToday ? (
+                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full sm:w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-slate-200 px-8 py-3 text-base font-medium text-slate-600 cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                    Shift Completed Today
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleClockIn}
+                  disabled={loading}
+                  className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">alarm_on</span>
+                  {loading ? "Clocking In..." : "Clock In Now"}
+                </button>
+              )
             ) : (
               <button
-                onClick={handleClockOut}
+                type="button"
+                onClick={() => setShowClockOutModal(true)}
                 disabled={loading}
                 className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-rose-700 active:scale-[0.98] disabled:opacity-50"
               >
@@ -683,6 +917,38 @@ export default function ScheduleClient({
             )}
           </div>
         </div>
+
+        {isShiftCompletedToday && todayCompletedLog && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs">
+            <div className="space-y-0.5">
+              <p className="font-bold text-[#1E1B4B]">Shift Completed Today</p>
+              <p className="text-slate-600">
+                Clocked in at {toPhtTimeInput(todayCompletedLog.clock_in, "--:--")} · Clocked out at{" "}
+                {toPhtTimeInput(todayCompletedLog.clock_out, "--:--")}. Need to fix a mistake?
+              </p>
+            </div>
+            {todayCorrection?.status === "pending" ? (
+              <span className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[11px] font-bold text-amber-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                Correction Pending
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  openCorrectionModal({
+                    log: todayCompletedLog,
+                    defaultType: "Accidental Clock-Out",
+                  })
+                }
+                className="inline-flex items-center justify-center gap-1.5 self-start sm:self-center rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#2d2b68] transition-colors shrink-0"
+              >
+                <span className="material-symbols-outlined text-[15px]">edit_calendar</span>
+                Request Attendance Correction
+              </button>
+            )}
+          </div>
+        )}
 
         {errorMessage && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
@@ -761,6 +1027,236 @@ export default function ScheduleClient({
           </div>
         </div>
       </div>
+
+      {/* Recent Attendance Logs & Correction Requests */}
+      <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+              Recent Attendance Logs
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Submit an attendance correction if you missed a punch or clocked out early.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openCorrectionModal({ defaultDate: todayDateStr, defaultType: "Missing Shift" })}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors shrink-0"
+          >
+            <span className="material-symbols-outlined text-[15px]">add_circle</span>
+            Missing Shift
+          </button>
+        </div>
+
+        {recentLogs.length === 0 ? (
+          <p className="text-xs text-slate-500 py-3 text-center">No recent attendance logs yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {recentLogs.slice(0, 7).map((log) => {
+              const req = getCorrectionForDateOrLog(log.date, log.id);
+              return (
+                <div
+                  key={log.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 text-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">{log.date}</span>
+                      {req?.status === "pending" && (
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                          Correction Pending
+                        </span>
+                      )}
+                      {req?.status === "approved" && (
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          Corrected
+                        </span>
+                      )}
+                      {req?.status === "rejected" && (
+                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                          Correction Rejected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      In: {log.clock_in ? toPhtTimeInput(log.clock_in, "--:--") : "—"} · Out:{" "}
+                      {log.clock_out ? toPhtTimeInput(log.clock_out, "--:--") : "In progress"}
+                      {log.total_hours != null ? ` · ${log.total_hours}h` : ""}
+                    </p>
+                  </div>
+
+                  {req?.status !== "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => openCorrectionModal({ log })}
+                      className="self-start sm:self-center inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-[#1E1B4B] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">edit_note</span>
+                      Request Correction
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Clock-Out Confirmation Modal */}
+      {showClockOutModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                <span className="material-symbols-outlined text-[22px]">logout</span>
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">Confirm Clock Out?</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Clocking out ends your shift for the day. If you are only stepping away, please use{" "}
+                  <span className="font-semibold text-slate-800">Start Break</span> or{" "}
+                  <span className="font-semibold text-slate-800">Start Lunch</span> instead.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClockOutModal(false)}
+                disabled={loading}
+                className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                Keep Working
+              </button>
+              <button
+                type="button"
+                onClick={handleClockOut}
+                disabled={loading}
+                className="w-full sm:w-auto rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-700 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Clocking Out..." : "Yes, Clock Out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attendance Correction Request Modal */}
+      {showCorrectionModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-[#1E1B4B]">Request Attendance Correction</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  HR will review and apply approved timestamp updates to your attendance log.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCorrectionModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCorrection} className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Target Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={correctionDate}
+                    onChange={(e) => setCorrectionDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Correction Type
+                  </label>
+                  <select
+                    value={correctionType}
+                    onChange={(e) => setCorrectionType(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none bg-white"
+                  >
+                    {CORRECTION_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Requested Clock In
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={correctionClockInTime}
+                    onChange={(e) => setCorrectionClockInTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Requested Clock Out
+                  </label>
+                  <input
+                    type="time"
+                    value={correctionClockOutTime}
+                    onChange={(e) => setCorrectionClockOutTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  minLength={5}
+                  rows={3}
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                  placeholder="Explain what happened (e.g., accidentally tapped Clock Out instead of Start Lunch)..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCorrectionModal(false)}
+                  disabled={submittingCorrection}
+                  className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingCorrection || correctionReason.trim().length < 5}
+                  className="w-full sm:w-auto rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
+                >
+                  {submittingCorrection ? "Submitting..." : "Submit Correction Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Soft-Blocking Outside Zone Modal */}
       {showOutsideModal && (

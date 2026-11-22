@@ -595,6 +595,33 @@ export interface AttendanceLog {
   updated_at?: string;
 }
 
+export type AttendanceCorrectionType =
+  | "Accidental Clock-Out"
+  | "Missed Clock-Out"
+  | "Wrong Clock-In/Out Time"
+  | "Missing Shift";
+
+export type AttendanceCorrectionStatus = "pending" | "approved" | "rejected";
+
+export interface AttendanceCorrectionRequest {
+  id: string;
+  tenant_id: string | null;
+  employee_id: string;
+  attendance_log_id: string | null;
+  target_date: string;
+  correction_type: AttendanceCorrectionType | string;
+  original_clock_in: string | null;
+  original_clock_out: string | null;
+  requested_clock_in: string;
+  requested_clock_out: string | null;
+  reason: string;
+  status: AttendanceCorrectionStatus;
+  review_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
 export interface JobOffer {
   id: string;
   application_id: string;

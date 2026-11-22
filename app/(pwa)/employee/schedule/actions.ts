@@ -24,8 +24,31 @@ export type ClockInResult =
       zone_status: string;
       location_used: string;
       distanceMeters: number | null;
+      clockIn?: string;
+      resumed?: boolean;
     }
-  | { success: false; error: string; distanceMeters?: number; radiusMeters?: number };
+  | {
+      success: false;
+      error: string;
+      distanceMeters?: number;
+      radiusMeters?: number;
+      canReopen?: boolean;
+      shiftCompletedToday?: boolean;
+      closedLogId?: string;
+    };
+
+const UNDO_CLOCK_OUT_WINDOW_MS = 5 * 60 * 1000;
+
+function getTodayLocalDateStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+}
+
+function getLogLocalDateStr(log: { date?: string | null; clock_in?: string | null }): string | null {
+  if (log.clock_in) {
+    return new Date(log.clock_in).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  }
+  return log.date ?? null;
+}
 
 type ResolvedEmployee = {
   id: string;
@@ -95,16 +118,49 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     validTenantId = tenantRow?.id ?? null;
   }
 
-  // Active Session Guard: Prevent multiple open clock-in sessions for the same employee
-  const { data: activeLog } = await supabaseAdmin
+  // Active Session & Same-Day Duplicate Shift Guard
+  const todayDateStr = getTodayLocalDateStr();
+  const { data: recentLogs } = await supabaseAdmin
     .from("attendance_logs")
-    .select("id")
+    .select("id, date, clock_in, clock_out, status, zone_status, location_used, distance_meters")
     .eq("employee_id", employee.id)
-    .is("clock_out", null)
-    .maybeSingle();
+    .order("clock_in", { ascending: false })
+    .limit(10);
 
-  if (activeLog) {
-    return { success: false, error: "You are already clocked in." };
+  const openLog = (recentLogs ?? []).find((l) => l.clock_out === null);
+  if (openLog) {
+    return {
+      success: true,
+      message: "Active shift resumed.",
+      logId: openLog.id,
+      status: openLog.status ?? "present",
+      zone_status: openLog.zone_status ?? "onsite_verified",
+      location_used: openLog.location_used ?? "office_branch",
+      distanceMeters: openLog.distance_meters ?? null,
+      clockIn: openLog.clock_in ?? undefined,
+      resumed: true,
+    };
+  }
+
+  const closedTodayLog = (recentLogs ?? []).find(
+    (l) => l.clock_out !== null && getLogLocalDateStr(l) === todayDateStr
+  );
+  if (closedTodayLog && closedTodayLog.clock_out) {
+    const elapsedSinceClockOut = Date.now() - new Date(closedTodayLog.clock_out).getTime();
+    if (elapsedSinceClockOut < UNDO_CLOCK_OUT_WINDOW_MS) {
+      return {
+        success: false,
+        error: "You clocked out less than 5 minutes ago. Use 'Reopen Shift (Undo Accidental Clock-Out)' to resume your shift.",
+        canReopen: true,
+        closedLogId: closedTodayLog.id,
+      };
+    }
+    return {
+      success: false,
+      error: "Shift already completed for today. Submit an Attendance Correction Request if you clocked out by mistake.",
+      shiftCompletedToday: true,
+      closedLogId: closedTodayLog.id,
+    };
   }
 
   const { latitude, longitude, accuracy_meters, flag_reason } = payload;
@@ -172,6 +228,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     .insert({
       employee_id: employee.id,
       tenant_id: validTenantId,
+      date: todayDateStr,
       clock_in: new Date().toISOString(),
       latitude,
       longitude,
@@ -251,6 +308,7 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
   }
 
   revalidatePath("/employee/schedule");
+  revalidatePath("/hr/attendance");
   return { success: true, message: "Clocked out successfully!" };
 }
 
@@ -676,5 +734,300 @@ export async function updateLiveAttendanceLocationAction(
     isOutside,
     allowedRadius,
     zoneStatus,
+  };
+}
+
+export type ReopenShiftResult =
+  | {
+      success: true;
+      message: string;
+      log: {
+        id: string;
+        clock_in: string;
+        clock_out: string | null;
+        status: string;
+        verification_type: string | null;
+        distance_meters: number | null;
+        zone_status: string | null;
+        break_status: string | null;
+        active_break_type: string | null;
+        lunch_start: string | null;
+        lunch_end: string | null;
+        total_lunch_minutes: number | null;
+        break_start: string | null;
+        total_break_minutes: number | null;
+        short_breaks_used: number | null;
+        overbreak_minutes: number | null;
+        break_log: BreakLogEntry[] | null;
+      };
+    }
+  | { success: false; error: string };
+
+export async function reopenShiftAction(logId: string): Promise<ReopenShiftResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found." };
+  }
+
+  const supabaseAdmin = getAdminClient();
+  const { data: log } = await supabaseAdmin
+    .from("attendance_logs")
+    .select(
+      "id, clock_in, clock_out, status, verification_type, distance_meters, zone_status, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes, break_log"
+    )
+    .eq("id", logId)
+    .eq("employee_id", employee.id)
+    .maybeSingle();
+
+  if (!log) {
+    return { success: false, error: "Attendance log not found." };
+  }
+
+  if (!log.clock_out) {
+    return {
+      success: true,
+      message: "Shift is already active.",
+      log: log as ReopenShiftResult & { success: true } extends { log: infer L } ? L : never,
+    };
+  }
+
+  const elapsedSinceClockOut = Date.now() - new Date(log.clock_out).getTime();
+  if (elapsedSinceClockOut >= UNDO_CLOCK_OUT_WINDOW_MS) {
+    return {
+      success: false,
+      error: "The 5-minute undo window has expired. Please submit an Attendance Correction Request.",
+    };
+  }
+
+  const restoredStatus = log.zone_status || "onsite_verified";
+  const { data: updatedLog, error: updateErr } = await supabaseAdmin
+    .from("attendance_logs")
+    .update({
+      clock_out: null,
+      total_hours: null,
+      status: restoredStatus,
+      break_status: "active",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", logId)
+    .eq("employee_id", employee.id)
+    .select(
+      "id, clock_in, clock_out, status, verification_type, distance_meters, zone_status, break_status, active_break_type, lunch_start, lunch_end, total_lunch_minutes, break_start, total_break_minutes, short_breaks_used, overbreak_minutes, break_log"
+    )
+    .single();
+
+  if (updateErr || !updatedLog) {
+    return { success: false, error: updateErr?.message || "Failed to reopen shift." };
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    message: "Shift reopened. Your original clock-in time was preserved.",
+    log: updatedLog as {
+      id: string;
+      clock_in: string;
+      clock_out: string | null;
+      status: string;
+      verification_type: string | null;
+      distance_meters: number | null;
+      zone_status: string | null;
+      break_status: string | null;
+      active_break_type: string | null;
+      lunch_start: string | null;
+      lunch_end: string | null;
+      total_lunch_minutes: number | null;
+      break_start: string | null;
+      total_break_minutes: number | null;
+      short_breaks_used: number | null;
+      overbreak_minutes: number | null;
+      break_log: BreakLogEntry[] | null;
+    },
+  };
+}
+
+export type SubmitAttendanceCorrectionPayload = {
+  attendanceLogId?: string | null;
+  targetDate: string;
+  correctionType: string;
+  requestedClockIn: string;
+  requestedClockOut?: string | null;
+  reason: string;
+};
+
+export type SubmitAttendanceCorrectionResult =
+  | { success: true; message: string; requestId: string }
+  | { success: false; error: string };
+
+export async function submitAttendanceCorrectionAction(
+  payload: SubmitAttendanceCorrectionPayload
+): Promise<SubmitAttendanceCorrectionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR." };
+  }
+
+  const targetDate = payload.targetDate?.trim();
+  const correctionType = payload.correctionType?.trim();
+  const reason = payload.reason?.trim();
+
+  if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    return { success: false, error: "Please select a valid target date." };
+  }
+  if (!correctionType) {
+    return { success: false, error: "Please select a correction type." };
+  }
+  if (!reason || reason.length < 5) {
+    return { success: false, error: "Please provide a brief reason (at least 5 characters)." };
+  }
+
+  const reqInDate = new Date(payload.requestedClockIn);
+  if (Number.isNaN(reqInDate.getTime())) {
+    return { success: false, error: "Invalid requested clock-in timestamp." };
+  }
+
+  let reqOutIso: string | null = null;
+  if (payload.requestedClockOut) {
+    const reqOutDate = new Date(payload.requestedClockOut);
+    if (Number.isNaN(reqOutDate.getTime())) {
+      return { success: false, error: "Invalid requested clock-out timestamp." };
+    }
+    if (reqOutDate.getTime() <= reqInDate.getTime()) {
+      return { success: false, error: "Requested clock-out must be after requested clock-in." };
+    }
+    reqOutIso = reqOutDate.toISOString();
+  }
+
+  const supabaseAdmin = getAdminClient();
+
+  // Prevent duplicate pending requests for the same date or log
+  const { data: existingPending } = await supabaseAdmin
+    .from("attendance_correction_requests")
+    .select("id")
+    .eq("employee_id", employee.id)
+    .eq("status", "pending")
+    .eq("target_date", targetDate)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPending) {
+    return {
+      success: false,
+      error: "You already have a pending correction request for this date.",
+    };
+  }
+
+  if (payload.attendanceLogId) {
+    const { data: existingByLog } = await supabaseAdmin
+      .from("attendance_correction_requests")
+      .select("id")
+      .eq("employee_id", employee.id)
+      .eq("status", "pending")
+      .eq("attendance_log_id", payload.attendanceLogId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingByLog) {
+      return {
+        success: false,
+        error: "A pending correction request already exists for this attendance log.",
+      };
+    }
+  }
+
+  let originalClockIn: string | null = null;
+  let originalClockOut: string | null = null;
+  if (payload.attendanceLogId) {
+    const { data: origLog } = await supabaseAdmin
+      .from("attendance_logs")
+      .select("clock_in, clock_out")
+      .eq("id", payload.attendanceLogId)
+      .eq("employee_id", employee.id)
+      .maybeSingle<{ clock_in: string | null; clock_out: string | null }>();
+    if (origLog) {
+      originalClockIn = origLog.clock_in;
+      originalClockOut = origLog.clock_out;
+    }
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("attendance_correction_requests")
+    .insert({
+      tenant_id: employee.tenant_id,
+      employee_id: employee.id,
+      attendance_log_id: payload.attendanceLogId || null,
+      target_date: targetDate,
+      correction_type: correctionType,
+      original_clock_in: originalClockIn,
+      original_clock_out: originalClockOut,
+      requested_clock_in: reqInDate.toISOString(),
+      requested_clock_out: reqOutIso,
+      reason,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+
+  if (insertErr || !inserted) {
+    return { success: false, error: insertErr?.message || "Failed to submit correction request." };
+  }
+
+  // Notify HR/admin profiles
+  const { data: empProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("first_name, last_name")
+    .eq("id", user.id)
+    .maybeSingle<{ first_name: string | null; last_name: string | null }>();
+
+  const employeeName =
+    [empProfile?.first_name, empProfile?.last_name].filter(Boolean).join(" ").trim() || "An employee";
+
+  let hrQuery = supabaseAdmin
+    .from("profiles")
+    .select("id, tenant_id")
+    .in("role", ["hr_manager", "hr", "admin"]);
+
+  if (employee.tenant_id) {
+    hrQuery = hrQuery.or(`tenant_id.eq.${employee.tenant_id},tenant_id.is.null`);
+  }
+
+  const { data: hrProfiles } = await hrQuery;
+  if (hrProfiles && hrProfiles.length > 0) {
+    const notificationRows = hrProfiles.map((hr) => ({
+      recipient_id: hr.id,
+      sender_id: user.id,
+      type: "general" as const,
+      title: "Attendance Correction Request",
+      body: `${employeeName} submitted a ${correctionType} correction for ${targetDate}.`,
+      action_url: "/hr/attendance",
+    }));
+    await supabaseAdmin.from("notifications").insert(notificationRows);
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/hr/attendance");
+  return {
+    success: true,
+    message: "Attendance correction request submitted for HR review.",
+    requestId: inserted.id,
   };
 }

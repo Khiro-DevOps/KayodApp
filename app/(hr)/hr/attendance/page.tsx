@@ -8,7 +8,10 @@ import {
   resolveDailyWorkModel,
   resolveEmployeeSourceOfTruth,
 } from "@/lib/work-arrangement";
-import HRAttendanceClient, { type AttendanceRow } from "./hr-attendance-client";
+import HRAttendanceClient, {
+  type AttendanceRow,
+  type HRCorrectionRequestRow,
+} from "./hr-attendance-client";
 
 export const metadata = {
   title: "Attendance Operations | Kayod HR",
@@ -148,9 +151,11 @@ export default async function HRAttendancePage() {
     return { isLate: false, lateMinutes: 0 };
   };
 
-  const lateToday = todayLogs.filter((l) => {
-    return computeLateness(l.clock_in, l.employees?.shift_start ?? null).isLate;
-  }).length;
+  const lateToday = new Set(
+    todayLogs
+      .filter((l) => computeLateness(l.clock_in, l.employees?.shift_start ?? null).isLate)
+      .map((l) => l.employee_id)
+  ).size;
 
   const outsideZoneFlags = logs.filter(
     (l) => l.zone_status === "outside_zone"
@@ -422,9 +427,132 @@ export default async function HRAttendancePage() {
   }),
   ];
 
+  // ── Fetch attendance correction requests ───────────────────────────────────
+  const { data: rawCorrectionReqs } = await admin
+    .from("attendance_correction_requests")
+    .select(
+      `
+      id,
+      employee_id,
+      attendance_log_id,
+      target_date,
+      correction_type,
+      original_clock_in,
+      original_clock_out,
+      requested_clock_in,
+      requested_clock_out,
+      reason,
+      status,
+      review_notes,
+      created_at,
+      employees (
+        profile_id,
+        job_title,
+        work_mode,
+        work_days,
+        profiles (
+          first_name,
+          last_name,
+          avatar_url
+        )
+      )
+    `
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const correctionProfileIds = Array.from(
+    new Set(
+      (rawCorrectionReqs ?? [])
+        .map((r) => {
+          const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees;
+          return (emp as { profile_id?: string | null } | null)?.profile_id;
+        })
+        .filter((pid): pid is string => Boolean(pid))
+    )
+  );
+  const missingJobProfileIds = correctionProfileIds.filter(
+    (pid) => !jobPostingByProfileId[pid]
+  );
+  const extraJobPostings =
+    missingJobProfileIds.length > 0
+      ? await getJobPostingPositionsByProfileIds(missingJobProfileIds)
+      : {};
+  const mergedJobPostingByProfileId = {
+    ...jobPostingByProfileId,
+    ...extraJobPostings,
+  };
+
+  const correctionRequests: HRCorrectionRequestRow[] = (rawCorrectionReqs ?? []).map((r) => {
+    const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as {
+      profile_id?: string | null;
+      job_title?: string | null;
+      work_mode?: string | null;
+      work_days?: string[] | null;
+      profiles?:
+        | { first_name?: string | null; last_name?: string | null; avatar_url?: string | null }
+        | Array<{ first_name?: string | null; last_name?: string | null; avatar_url?: string | null }>
+        | null;
+    } | null;
+    const prof = Array.isArray(emp?.profiles) ? emp?.profiles[0] : emp?.profiles;
+    const employeeName =
+      [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() || "Employee";
+    const linkedJob = emp?.profile_id
+      ? mergedJobPostingByProfileId[emp.profile_id]
+      : undefined;
+    const sourceOfTruth = resolveEmployeeSourceOfTruth({
+      employee: {
+        job_title: emp?.job_title,
+        work_mode: emp?.work_mode,
+      },
+      offer: linkedJob
+        ? {
+            job_title: linkedJob.offerTitle,
+            work_setup: linkedJob.offerWorkSetup,
+          }
+        : null,
+      jobPosting: linkedJob
+        ? {
+            title: linkedJob.title,
+            department: linkedJob.departmentName,
+            work_setup: linkedJob.jobWorkSetup,
+          }
+        : null,
+    });
+    const workModel = resolveDailyWorkModel({
+      contractWorkSetup: sourceOfTruth.workSetup,
+      schedule: {
+        notes: scheduleNotesByEmpId.get(r.employee_id) ?? null,
+        work_days: Array.isArray(emp?.work_days) ? emp.work_days : null,
+      },
+      date: new Date(`${r.target_date}T00:00:00+08:00`),
+    });
+
+    return {
+      id: r.id,
+      employeeId: r.employee_id,
+      employeeName,
+      avatarUrl: prof?.avatar_url ?? null,
+      position: sourceOfTruth.position,
+      workSetup: sourceOfTruth.workSetup,
+      workModel,
+      targetDate: r.target_date,
+      correctionType: r.correction_type,
+      originalClockIn: r.original_clock_in,
+      originalClockOut: r.original_clock_out,
+      requestedClockIn: r.requested_clock_in,
+      requestedClockOut: r.requested_clock_out,
+      reason: r.reason,
+      status: r.status as "pending" | "approved" | "rejected",
+      reviewNotes: r.review_notes,
+      createdAt: r.created_at,
+    };
+  });
+
   return (
     <HRAttendanceClient
       rows={rows}
+      correctionRequests={correctionRequests}
       tenantId={profile?.tenant_id ?? null}
       metrics={{
         presentToday,
