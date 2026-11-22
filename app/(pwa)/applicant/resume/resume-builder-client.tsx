@@ -368,7 +368,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.resumeName}
                 onChange={(e) => handleChange("resumeName", e.target.value)}
                 placeholder="e.g., Senior Developer Resume"
-                className="w-full rounded-xl border border-border px-4 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-xl border border-border bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
@@ -388,7 +388,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                     value={formData.fullName}
                     onChange={(e) => handleChange("fullName", e.target.value)}
                     placeholder="Juan Dela Cruz"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
 
@@ -403,7 +403,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                     value={formData.email}
                     onChange={(e) => handleChange("email", e.target.value)}
                     placeholder="juan@example.com"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
 
@@ -418,7 +418,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                     value={formData.phone}
                     onChange={(e) => handleChange("phone", e.target.value)}
                     placeholder="+63 912 345 6789"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
 
@@ -433,7 +433,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                     value={formData.location}
                     onChange={(e) => handleChange("location", e.target.value)}
                     placeholder="Manila, Philippines"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
               </div>
@@ -451,7 +451,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.summary}
                 onChange={(e) => handleChange("summary", e.target.value)}
                 placeholder="Brief overview of your professional background and career goals..."
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
               />
             </div>
 
@@ -467,7 +467,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.experience}
                 onChange={(e) => handleChange("experience", e.target.value)}
                 placeholder="Job Title | Company | Start Date - End Date&#10;Key responsibilities and achievements..."
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
               />
             </div>
 
@@ -483,7 +483,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.education}
                 onChange={(e) => handleChange("education", e.target.value)}
                 placeholder="Degree | Institution | Year&#10;e.g., Bachelor of Science in Computer Science | University of the Philippines | 2020"
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
               />
             </div>
 
@@ -499,7 +499,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.skills}
                 onChange={(e) => handleChange("skills", e.target.value)}
                 placeholder="JavaScript, React, Node.js, TypeScript, Python..."
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
               />
             </div>
 
@@ -514,7 +514,7 @@ export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderC
                 value={formData.certifications}
                 onChange={(e) => handleChange("certifications", e.target.value)}
                 placeholder="AWS Solutions Architect, Google Cloud Associate..."
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
               />
             </div>
 
