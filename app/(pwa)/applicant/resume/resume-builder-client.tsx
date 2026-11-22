@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Resume, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { PH_CITIES, PH_PROVINCES } from "@/lib/ph-locations";
+import type { ResumePrefill } from "./resume-builder-modal";
 
 interface ResumeBuilderClientProps {
   resumes: Resume[];
   profile: Profile | null;
+  prefill?: ResumePrefill;
 }
 
 interface FormData {
@@ -24,7 +27,10 @@ interface FormData {
 }
 
 type ProfileApiResponse = {
-  profile?: Partial<Profile> | null;
+  profile?: (Partial<Profile> & {
+    province?: string | null;
+    phone_number?: string | null;
+  }) | null;
 };
 
 function normalizeName(value: unknown): string {
@@ -38,7 +44,28 @@ function formatHandleAsName(value: string): string {
     .trim();
 }
 
-function deriveFullName(profileLike: Partial<Profile> | null, userLike?: { email?: string | null; user_metadata?: unknown; raw_user_meta_data?: unknown }): string {
+function lookupCityName(cityId: unknown): string {
+  const id = normalizeName(cityId);
+  if (!id) return "";
+  return PH_CITIES.find((c) => c.id === id)?.name ?? "";
+}
+
+function lookupProvinceName(provinceId: unknown): string {
+  const id = normalizeName(provinceId);
+  if (!id) return "";
+  return PH_PROVINCES.find((p) => p.id === id)?.name ?? "";
+}
+
+function deriveFullName(
+  profileLike: Partial<Profile> | null,
+  userLike?: { email?: string | null; user_metadata?: unknown; raw_user_meta_data?: unknown },
+  prefill?: ResumePrefill
+): string {
+  if (prefill?.fullName?.trim()) return prefill.fullName.trim();
+
+  const explicitFull = normalizeName(profileLike?.full_name);
+  if (explicitFull) return explicitFull;
+
   const firstName = normalizeName(profileLike?.first_name);
   const lastName = normalizeName(profileLike?.last_name);
   const profileFullName = `${firstName} ${lastName}`.trim();
@@ -55,11 +82,17 @@ function deriveFullName(profileLike: Partial<Profile> | null, userLike?: { email
   const fullName = normalizeName(metadata.full_name ?? rawMetadata.full_name ?? metadata.name ?? rawMetadata.name);
   if (fullName) return fullName;
 
-  const emailLocalPart = (userLike?.email ?? "").split("@")[0] ?? "";
+  const emailLocalPart = ((profileLike?.email ?? userLike?.email) ?? "").split("@")[0] ?? "";
   return formatHandleAsName(emailLocalPart);
 }
 
-function derivePhone(profileLike: Partial<Profile> | null, userLike?: { user_metadata?: unknown; raw_user_meta_data?: unknown }): string {
+function derivePhone(
+  profileLike: Partial<Profile> | null,
+  userLike?: { user_metadata?: unknown; raw_user_meta_data?: unknown },
+  prefill?: ResumePrefill
+): string {
+  if (prefill?.phone?.trim()) return prefill.phone.trim();
+
   const profileRecord = (profileLike ?? {}) as Record<string, unknown>;
   const profilePhone = profileRecord.phone;
   const profilePhoneNumber = profileRecord.phone_number;
@@ -74,16 +107,34 @@ function derivePhone(profileLike: Partial<Profile> | null, userLike?: { user_met
   return typeof authPhone === "string" ? authPhone.trim() : "";
 }
 
-function buildLocation(profileLike: Partial<Profile> | null): string {
-  const address = normalizeName(profileLike?.address);
-  const city = normalizeName(profileLike?.city);
-  const country = normalizeName(profileLike?.country);
+function buildLocation(
+  profileLike: (Partial<Profile> & { province?: string | null }) | null,
+  userLike?: { user_metadata?: unknown; raw_user_meta_data?: unknown },
+  prefill?: ResumePrefill
+): string {
+  if (prefill?.location?.trim()) return prefill.location.trim();
+
+  const metadata = (userLike?.user_metadata ?? {}) as Record<string, unknown>;
+  const rawMetadata = (userLike?.raw_user_meta_data ?? {}) as Record<string, unknown>;
+
+  const address = normalizeName(profileLike?.address ?? metadata.address ?? rawMetadata.address);
+  const city =
+    normalizeName(profileLike?.city ?? metadata.city ?? rawMetadata.city) ||
+    lookupCityName(profileLike?.city_id ?? metadata.city_id ?? rawMetadata.city_id);
+  const province =
+    normalizeName(profileLike?.province ?? metadata.province ?? rawMetadata.province) ||
+    lookupProvinceName(profileLike?.province_id ?? metadata.province_id ?? rawMetadata.province_id);
+  const country = normalizeName(profileLike?.country ?? metadata.country ?? rawMetadata.country);
+
+  if (city && province) return `${city}, ${province}`;
   if (city && country) return `${city}, ${country}`;
   if (address && city) return `${address}, ${city}`;
-  return address || city || country;
+  if (address && province) return `${address}, ${province}`;
+  if (province && country) return `${province}, ${country}`;
+  return address || city || province || country;
 }
 
-export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderClientProps) {
+export default function ResumeBuilderClient({ profile, prefill }: ResumeBuilderClientProps) {
   const router = useRouter();
   const supabase = createClient();
   const [isLoading, setIsLoading] = useState(false);
@@ -92,31 +143,84 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
   const [error, setError] = useState<string | null>(null);
   const [personalInfoDirty, setPersonalInfoDirty] = useState(false);
 
-  const resolvedPhone = (() => {
-    const profileRecord = (profile ?? {}) as Record<string, unknown>;
-    const phone = profileRecord.phone;
-    const phoneNumber = profileRecord.phone_number;
+  const resolvePrefillDefaults = useCallback(
+    (
+      overrideProfile?: (Partial<Profile> & { province?: string | null }) | null,
+      overrideUser?: { email?: string | null; user_metadata?: unknown; raw_user_meta_data?: unknown } | null
+    ) => {
+      const activeProfile = overrideProfile ?? profile;
+      return {
+        fullName: deriveFullName(activeProfile, overrideUser ?? undefined, prefill),
+        email:
+          prefill?.email?.trim() ||
+          normalizeName(activeProfile?.email) ||
+          normalizeName(overrideUser?.email) ||
+          "",
+        phone: derivePhone(activeProfile, overrideUser ?? undefined, prefill),
+        location: buildLocation(activeProfile, overrideUser ?? undefined, prefill),
+      };
+    },
+    [profile, prefill]
+  );
 
-    if (typeof phone === "string" && phone.trim().length > 0) return phone.trim();
-    if (typeof phoneNumber === "string" && phoneNumber.trim().length > 0) return phoneNumber.trim();
-    return "";
-  })();
+  const getInitialFormData = useCallback((): FormData => {
+    const defaults = resolvePrefillDefaults();
+    return {
+      resumeName: "",
+      fullName: defaults.fullName,
+      email: defaults.email,
+      phone: defaults.phone,
+      location: defaults.location,
+      summary: "",
+      experience: "",
+      education: "",
+      skills: "",
+      certifications: "",
+    };
+  }, [resolvePrefillDefaults]);
 
-  // Initialize form data with server-provided profile as immediate fallback.
-  const getInitialFormData = (): FormData => ({
-    resumeName: "",
-    fullName: deriveFullName(profile),
-    email: profile?.email || "",
-    phone: derivePhone(profile),
-    location: buildLocation(profile),
-    summary: "",
-    experience: "",
-    education: "",
-    skills: "",
-    certifications: "",
-  });
+  const [formData, setFormData] = useState<FormData>(() => getInitialFormData());
 
-  const [formData, setFormData] = useState<FormData>(getInitialFormData());
+  const resetForm = useCallback(() => {
+    const defaults = resolvePrefillDefaults();
+    setPersonalInfoDirty(false);
+    setError(null);
+    setFormData((prev) => ({
+      resumeName: "",
+      fullName: defaults.fullName || prev.fullName,
+      email: defaults.email || prev.email,
+      phone: defaults.phone || prev.phone,
+      location: defaults.location || prev.location,
+      summary: "",
+      experience: "",
+      education: "",
+      skills: "",
+      certifications: "",
+    }));
+  }, [resolvePrefillDefaults]);
+
+  // Sync personal info immediately if server prefill/profile props update.
+  useEffect(() => {
+    const defaults = resolvePrefillDefaults();
+    setFormData((current) => {
+      if (personalInfoDirty) {
+        return {
+          ...current,
+          fullName: current.fullName || defaults.fullName,
+          email: current.email || defaults.email,
+          phone: current.phone || defaults.phone,
+          location: current.location || defaults.location,
+        };
+      }
+      return {
+        ...current,
+        fullName: defaults.fullName || current.fullName,
+        email: defaults.email || current.email,
+        phone: defaults.phone || current.phone,
+        location: defaults.location || current.location,
+      };
+    });
+  }, [resolvePrefillDefaults, personalInfoDirty]);
 
   useEffect(() => {
     let isMounted = true;
@@ -131,14 +235,12 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
       if (!isMounted || !user) return;
 
-      const sessionEmail = user.email?.trim() ?? "";
-
-      let fetchedProfile: Partial<Profile> | null = null;
+      let fetchedProfile: (Partial<Profile> & { province?: string | null }) | null = null;
       try {
         const response = await fetch("/api/profile", { cache: "no-store" });
         if (response.ok) {
           const payload = (await response.json()) as ProfileApiResponse;
-          fetchedProfile = (payload.profile ?? null) as Partial<Profile> | null;
+          fetchedProfile = payload.profile ?? null;
         }
       } catch {
         // Keep server-provided fallback values if profile fetch fails.
@@ -146,21 +248,39 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
 
       if (!isMounted) return;
 
-      const mergedProfile = (fetchedProfile ?? profile) as Partial<Profile> | null;
-      const nextFullName = deriveFullName(mergedProfile, user);
-      const nextEmail = normalizeName(mergedProfile?.email) || sessionEmail;
-      const nextPhone = derivePhone(mergedProfile, user);
-      const nextLocation = buildLocation(mergedProfile);
+      const mergedProfile: (Partial<Profile> & { province?: string | null }) = {
+        ...(profile ?? {}),
+        ...(fetchedProfile ?? {}),
+        first_name: normalizeName(fetchedProfile?.first_name) || normalizeName(profile?.first_name),
+        last_name: normalizeName(fetchedProfile?.last_name) || normalizeName(profile?.last_name),
+        email: normalizeName(fetchedProfile?.email) || normalizeName(profile?.email) || normalizeName(user.email),
+        phone: normalizeName(fetchedProfile?.phone) || normalizeName(profile?.phone),
+        address: normalizeName(fetchedProfile?.address) || normalizeName(profile?.address) || null,
+        city: normalizeName(fetchedProfile?.city) || normalizeName(profile?.city) || null,
+        country: normalizeName(fetchedProfile?.country) || normalizeName(profile?.country) || "Philippines",
+        city_id: fetchedProfile?.city_id ?? profile?.city_id ?? null,
+        province_id: fetchedProfile?.province_id ?? profile?.province_id ?? null,
+      };
+
+      const defaults = resolvePrefillDefaults(mergedProfile, user);
 
       setFormData((current) => {
-        if (personalInfoDirty) return current;
+        if (personalInfoDirty) {
+          return {
+            ...current,
+            fullName: current.fullName || defaults.fullName,
+            email: current.email || defaults.email,
+            phone: current.phone || defaults.phone,
+            location: current.location || defaults.location,
+          };
+        }
 
         return {
           ...current,
-          fullName: nextFullName || current.fullName,
-          email: nextEmail || current.email,
-          phone: nextPhone || current.phone,
-          location: nextLocation || current.location,
+          fullName: defaults.fullName || current.fullName,
+          email: defaults.email || current.email,
+          phone: defaults.phone || current.phone,
+          location: defaults.location || current.location,
         };
       });
     };
@@ -170,7 +290,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
     return () => {
       isMounted = false;
     };
-  }, [profile?.id, profile?.first_name, profile?.last_name, profile?.email, resolvedPhone, profile?.city, profile?.country, profile?.address]);
+  }, [profile, resolvePrefillDefaults, personalInfoDirty, supabase.auth]);
 
   const handleChange = (field: keyof FormData, value: string) => {
     if (field === "fullName" || field === "email" || field === "phone" || field === "location") {
@@ -209,13 +329,7 @@ export default function ResumeBuilderClient({ resumes, profile }: ResumeBuilderC
           setShowPreview(true);
         }
 
-        setFormData((prev) => ({
-          ...getInitialFormData(),
-          fullName: prev.fullName || getInitialFormData().fullName,
-          email: prev.email || getInitialFormData().email,
-          phone: prev.phone || getInitialFormData().phone,
-          location: prev.location || getInitialFormData().location,
-        }));
+        resetForm();
 
         setTimeout(() => {
           router.refresh();

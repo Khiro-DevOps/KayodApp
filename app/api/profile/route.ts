@@ -83,7 +83,7 @@ export async function GET() {
   const adminClient = getAdminClient();
   const { data, error } = await adminClient
     .from("profiles")
-    .select("id, role, first_name, last_name, email, phone, avatar_url, date_of_birth, address, city, country, created_at, updated_at")
+    .select("*")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -109,6 +109,20 @@ export async function GET() {
       data.first_name = firstName;
       data.last_name = lastName;
     }
+  }
+
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const rawMetadata = getRawUserMetadata(user);
+  const authPhone = normalizeName(
+    metadata.phone ?? metadata.phone_number ?? rawMetadata.phone ?? rawMetadata.phone_number
+  );
+
+  if (!normalizeName(data.phone) && authPhone) {
+    await adminClient
+      .from("profiles")
+      .update({ phone: authPhone })
+      .eq("id", user.id);
+    data.phone = authPhone;
   }
 
   return NextResponse.json({ profile: data }, { status: 200 });

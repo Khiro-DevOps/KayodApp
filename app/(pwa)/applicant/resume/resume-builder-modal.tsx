@@ -5,12 +5,20 @@ import type { Profile, Resume } from "@/lib/types";
 import GenerateResumeTrigger from "./generate-resume-trigger";
 import ResumeBuilderClient from "./resume-builder-client";
 
+export interface ResumePrefill {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+}
+
 interface ResumeBuilderModalProps {
   resumes: Resume[];
   profile: Profile | null;
+  prefill?: ResumePrefill;
 }
 
-export default function ResumeBuilderModal({ resumes, profile }: ResumeBuilderModalProps) {
+export default function ResumeBuilderModal({ resumes, profile, prefill }: ResumeBuilderModalProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -34,7 +42,7 @@ export default function ResumeBuilderModal({ resumes, profile }: ResumeBuilderMo
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
-            <ResumeBuilderClient resumes={resumes} profile={profile} />
+            <ResumeBuilderClient resumes={resumes} profile={profile} prefill={prefill} />
           </div>
         </div>
       )}
