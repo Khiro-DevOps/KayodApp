@@ -1219,8 +1219,8 @@ export default function ScheduleClient({
 
       {/* Recent Attendance Logs & Correction Requests */}
       <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
               Recent Attendance Logs
             </p>
@@ -1228,11 +1228,11 @@ export default function ScheduleClient({
               Submit an attendance correction if you missed a punch or clocked out early.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => openOtModal(todayDateStr)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:text-[#1E1B4B] transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:text-[#1E1B4B] transition-colors whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-[15px]">more_time</span>
               Request OT
@@ -1240,7 +1240,7 @@ export default function ScheduleClient({
             <button
               type="button"
               onClick={() => openCorrectionModal({ defaultDate: todayDateStr, defaultType: "Missing Shift" })}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-[15px]">add_circle</span>
               Missing Shift
