@@ -1,8 +1,4 @@
-import { Suspense } from "react";
-import Link from "next/link";
-import RegisterWizard from "@/components/auth/register-wizard";
-import HrRegisterFormClient from "./hr/hr-register-form-client";
-import { validateHrInviteToken } from "./hr/actions";
+import { redirect } from "next/navigation";
 
 export default async function RegisterPage({
   searchParams,
@@ -14,26 +10,8 @@ export default async function RegisterPage({
     typeof resolvedParams?.invite === "string" ? resolvedParams.invite.trim() : null;
 
   if (inviteToken) {
-    const inviteValidation = await validateHrInviteToken(inviteToken);
-    return (
-      <HrRegisterFormClient
-        inviteToken={inviteToken}
-        inviteValidation={inviteValidation}
-      />
-    );
+    redirect(`/register/hr?invite=${encodeURIComponent(inviteToken)}`);
   }
 
-  return (
-    <>
-      <Suspense>
-        <RegisterWizard />
-      </Suspense>
-
-      <div className="mt-6 text-center">
-        <p className="text-sm text-text-secondary">
-          Looking for work? <Link href="/register/applicant" className="font-medium text-primary">Sign up as an Applicant instead</Link>
-        </p>
-      </div>
-    </>
-  );
+  redirect("/register/hr");
 }

@@ -79,117 +79,117 @@ function LoginForm() {
       {/* Left Panel: Frosted Glass Auth Card matching Right Panel size */}
       <div className="flex flex-col justify-between bg-white/60 p-5 backdrop-blur-xl sm:p-8 lg:col-span-6 lg:p-10">
         <div className="space-y-4 sm:space-y-5">
-            <div className="flex items-center justify-between">
-              <Link
-                href="/"
-                className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-[#1E1B4B]"
-              >
-                Kayod
-              </Link>
-              <Link
-                href="/jobs"
-                className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
-              >
-                Browse jobs
-              </Link>
-            </div>
-
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] sm:text-3xl">
-                Welcome Back
-              </h1>
-              <p className="mt-1 text-sm text-text-muted">
-                Log in to your Kayod account
-              </p>
-            </div>
-
-            {(error || state.error) && (
-              <div
-                role="alert"
-                className="rounded-2xl border border-error/25 bg-error-bg px-4 py-3 text-sm font-medium text-error"
-              >
-                {state.error || error}
-              </div>
-            )}
-
-            <form action={formAction} className="space-y-4">
-              <input type="hidden" name="next" value={next} />
-
-              <div className="space-y-1.5">
-                <label htmlFor="email" className="block text-sm font-semibold text-text-main">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="you@example.com"
-                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="password" className="block text-sm font-semibold text-text-main">
-                    Password
-                  </label>
-                  <Link
-                    href="/forgot-password"
-                    className="inline-flex min-h-[32px] items-center text-xs font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-                <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    placeholder="Enter your password"
-                    className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-1 top-1/2 flex h-[40px] w-[40px] -translate-y-1/2 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={pending}
-                className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1E1B4B] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <span>{pending ? "Logging in..." : "Log In"}</span>
-                {!pending ? <ArrowRight className="h-4 w-4" /> : null}
-              </button>
-            </form>
-          </div>
-
-          <div className="mt-5 border-t border-indigo-100/80 pt-4 text-center text-sm text-text-muted">
-            New here?{" "}
+          <div className="flex items-center justify-between">
+            <Link
+              href="/"
+              className="inline-flex min-h-[44px] items-center text-2xl font-bold tracking-tight text-[#1E1B4B]"
+            >
+              Kayod
+            </Link>
             <Link
               href="/jobs"
-              className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
+              className="inline-flex min-h-[44px] items-center rounded-full bg-primary-light px-3.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
             >
               Browse jobs
-            </Link>{" "}
-            or{" "}
-            <Link
-              href={registerHref}
-              className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
-            >
-              create an account
             </Link>
           </div>
+
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-[#1E1B4B] sm:text-3xl">
+              Welcome Back
+            </h1>
+            <p className="mt-1 text-sm text-text-muted">
+              Log in to your Kayod account
+            </p>
+          </div>
+
+          {(error || state.error) && (
+            <div
+              role="alert"
+              className="rounded-2xl border border-error/25 bg-error-bg px-4 py-3 text-sm font-medium text-error"
+            >
+              {state.error || error}
+            </div>
+          )}
+
+          <form action={formAction} className="space-y-4">
+            <input type="hidden" name="next" value={next} />
+
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-sm font-semibold text-text-main">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@example.com"
+                className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-sm font-semibold text-text-main">
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="inline-flex min-h-[32px] items-center text-xs font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  placeholder="Enter your password"
+                  className="min-h-[44px] w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-4 pr-12 text-sm text-text-main placeholder:text-text-muted outline-none transition-colors focus:border-[#1E1B4B] focus:bg-white focus:ring-2 focus:ring-[#1E1B4B]/15"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-1 top-1/2 flex h-[40px] w-[40px] -translate-y-1/2 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-container-low hover:text-text-main"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={pending}
+              className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1E1B4B] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span>{pending ? "Logging in..." : "Log In"}</span>
+              {!pending ? <ArrowRight className="h-4 w-4" /> : null}
+            </button>
+          </form>
+        </div>
+
+        <div className="mt-5 border-t border-indigo-100/80 pt-4 text-center text-sm text-text-muted">
+          New here?{" "}
+          <Link
+            href="/jobs"
+            className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
+          >
+            Browse jobs
+          </Link>{" "}
+          or{" "}
+          <Link
+            href={registerHref}
+            className="font-semibold text-[#1E1B4B] transition-colors hover:text-indigo-900 hover:underline"
+          >
+            Create an account
+          </Link>
+        </div>
       </div>
 
       {/* Right Panel: Branded Kayod Value Proposition (Desktop only) */}

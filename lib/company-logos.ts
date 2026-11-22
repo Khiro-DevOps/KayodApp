@@ -58,18 +58,18 @@ export async function resolveCompanyLogoUrlForUser(userId: string) {
     return getCompanyLogoFallbackUrl();
   }
 
-  const { data: company, error: companyError } = await admin
-    .from("companies")
+  const { data: tenant, error: tenantError } = await admin
+    .from("tenants")
     .select("logo_url")
     .eq("id", tenantId)
     .maybeSingle<{ logo_url?: string | null }>();
 
-  if (companyError) {
-    console.warn("[company-logos] Failed to load company logo:", companyError.message);
+  if (tenantError) {
+    console.warn("[company-logos] Failed to load company logo:", tenantError.message);
     return getCompanyLogoFallbackUrl();
   }
 
-  const resolvedLogo = typeof company?.logo_url === "string" ? normalizeCompanyLogoPath(company.logo_url) : null;
+  const resolvedLogo = typeof tenant?.logo_url === "string" ? normalizeCompanyLogoPath(tenant.logo_url) : null;
   if (!resolvedLogo) {
     return getCompanyLogoFallbackUrl();
   }

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, Building2, UserCheck } from "lucide-react";
-import BookDemoModal from "@/components/landing/BookDemoModal";
 
 interface RegisterChoicePageProps {
   searchParams: Promise<{ next?: string }>;
@@ -76,10 +75,13 @@ export default async function RegisterChoicePage({ searchParams }: RegisterChoic
               </p>
             </div>
             <div className="mt-6">
-              <BookDemoModal
-                triggerLabel="Onboard Employer Workspace"
-                triggerClassName="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-brand-navy bg-card-bg px-5 text-sm font-semibold text-brand-navy transition-colors hover:bg-primary-light active:scale-95"
-              />
+              <Link
+                href="/register/hr"
+                className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-brand-navy bg-card-bg px-5 text-sm font-semibold text-brand-navy transition-colors hover:bg-primary-light active:scale-95"
+              >
+                <span>Onboard Employer Workspace</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </section>
         </div>

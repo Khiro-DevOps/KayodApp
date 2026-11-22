@@ -25,9 +25,9 @@ export default async function EmployeeLayout({
   const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, first_name, last_name")
+    .select("role, first_name, last_name, tenant_id")
     .eq("id", user.id)
-    .maybeSingle<Pick<Profile, "role" | "first_name" | "last_name">>();
+    .maybeSingle<Pick<Profile, "role" | "first_name" | "last_name" | "tenant_id">>();
 
   let role = effectiveRole(profile?.role, authRole);
 
@@ -70,10 +70,37 @@ export default async function EmployeeLayout({
       ? first.slice(0, 2).toUpperCase()
       : (user.email ?? "U").slice(0, 2).toUpperCase();
 
+  let companyName: string | null = null;
+  try {
+    const admin = getAdminClient();
+    let tenantId = profile?.tenant_id?.trim() || "";
+    if (!tenantId) {
+      const { data: empRow } = await admin
+        .from("employees")
+        .select("tenant_id")
+        .eq("profile_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ tenant_id?: string | null }>();
+      tenantId = empRow?.tenant_id?.trim() || "";
+    }
+    if (tenantId) {
+      const { data: tenantRow } = await admin
+        .from("tenants")
+        .select("name")
+        .eq("id", tenantId)
+        .maybeSingle<{ name?: string | null }>();
+      companyName = tenantRow?.name?.trim() || null;
+    }
+  } catch {
+    companyName = null;
+  }
+
   return (
     <PwaShell
       variant="employee"
       userInitials={userInitials}
+      initialCompanyName={companyName}
       config={{
         label: "Employee Portal",
         navItems: [

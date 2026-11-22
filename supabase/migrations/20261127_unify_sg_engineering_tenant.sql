@@ -14,6 +14,8 @@
 --      job_offers (never touch signed/sent offers).
 -- ============================================================
 
+BEGIN;
+
 -- 1. Ensure required columns on public.tenants
 ALTER TABLE IF EXISTS public.tenants
   ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now(),
@@ -21,7 +23,30 @@ ALTER TABLE IF EXISTS public.tenants
   ADD COLUMN IF NOT EXISTS company_size text,
   ADD COLUMN IF NOT EXISTS address text,
   ADD COLUMN IF NOT EXISTS city text,
-  ADD COLUMN IF NOT EXISTS province text;
+  ADD COLUMN IF NOT EXISTS province text,
+  ADD COLUMN IF NOT EXISTS logo_url text,
+  ADD COLUMN IF NOT EXISTS plan text DEFAULT 'starter',
+  ADD COLUMN IF NOT EXISTS plan_expires_at timestamptz;
+
+DO $$
+BEGIN
+  IF to_regclass('public.companies') IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'companies'
+         AND column_name = 'logo_url'
+     ) THEN
+    UPDATE public.tenants t
+    SET logo_url = c.logo_url
+    FROM public.companies c
+    WHERE c.id = t.id
+      AND t.logo_url IS NULL
+      AND c.logo_url IS NOT NULL;
+  END IF;
+END
+$$;
 
 -- 2. Ensure tenant_id and assumed columns exist on core tenant-scoped tables
 ALTER TABLE IF EXISTS public.profiles
@@ -71,6 +96,7 @@ DECLARE
   v_dup_ids uuid[];
   v_rec record;
   v_col_exists boolean;
+  v_fk_remaining_count bigint;
 BEGIN
   -- 3. Resolve or create the single canonical 'SG Engineering' tenant
   --    Only match known demo tenant names ('SG Engineering', 'Accenture', 'Kayod Dev Workspace');
@@ -381,7 +407,31 @@ BEGIN
     END;
   END LOOP;
 
-  -- 8. Now safe to delete consolidated duplicate demo tenant rows
+  -- 8. Guard: verify zero FK rows still reference any duplicate tenant id before DELETE
+  FOR v_rec IN
+    SELECT
+      conrelid::regclass::text AS table_name,
+      a.attname AS column_name
+    FROM pg_constraint c
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = ANY(c.conkey)
+    WHERE c.contype = 'f'
+      AND c.confrelid = to_regclass('public.tenants')
+  LOOP
+    EXECUTE format(
+      'SELECT count(*) FROM %s WHERE %I = ANY($1) AND %I <> $2',
+      v_rec.table_name, v_rec.column_name, v_rec.column_name
+    ) INTO v_fk_remaining_count USING v_dup_ids, v_canonical_id;
+
+    IF v_fk_remaining_count > 0 THEN
+      RAISE EXCEPTION
+        'Cannot delete duplicate tenants: %.% still has % referencing row(s)',
+        v_rec.table_name, v_rec.column_name, v_fk_remaining_count;
+    END IF;
+  END LOOP;
+
+  -- Now safe to delete consolidated duplicate demo tenant rows
   DELETE FROM public.tenants
   WHERE id = ANY(v_dup_ids)
     AND id <> v_canonical_id;
@@ -516,3 +566,5 @@ SELECT 'job_offers_draft', count(*) FROM public.job_offers
   WHERE (coalesce(job_metadata::text, '') ~* 'accenture' OR coalesce(metadata::text, '') ~* 'accenture')
     AND upper(coalesce(status::text, '')) NOT IN ('SENT', 'SIGNED', 'ACCEPTED', 'HIRED', 'HIRE_CONFIRMED', 'FINALIZED', 'PENDING_SIGNATURE');
 */
+
+COMMIT;

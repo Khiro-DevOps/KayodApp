@@ -464,7 +464,7 @@ export default function ApplicantRegisterForm({
           </span>
           <span>
             Hiring for a team?{" "}
-            <Link href="/register-choice" className="font-semibold text-[#1E1B4B] hover:text-indigo-900 hover:underline">
+            <Link href="/register/hr" className="font-semibold text-[#1E1B4B] hover:text-indigo-900 hover:underline">
               Employer onboarding
             </Link>
           </span>

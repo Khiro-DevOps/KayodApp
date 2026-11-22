@@ -125,7 +125,29 @@ export async function GET() {
     data.phone = authPhone;
   }
 
-  return NextResponse.json({ profile: data }, { status: 200 });
+  let resolvedTenantId = typeof data.tenant_id === "string" ? data.tenant_id.trim() : "";
+  if (!resolvedTenantId) {
+    const { data: empRow } = await adminClient
+      .from("employees")
+      .select("tenant_id")
+      .eq("profile_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ tenant_id?: string | null }>();
+    resolvedTenantId = empRow?.tenant_id?.trim() || "";
+  }
+
+  let companyName: string | null = null;
+  if (resolvedTenantId) {
+    const { data: tenantRow } = await adminClient
+      .from("tenants")
+      .select("name")
+      .eq("id", resolvedTenantId)
+      .maybeSingle<{ name?: string | null }>();
+    companyName = tenantRow?.name?.trim() || null;
+  }
+
+  return NextResponse.json({ profile: data, company_name: companyName }, { status: 200 });
 }
 
 export async function PUT(request: Request) {

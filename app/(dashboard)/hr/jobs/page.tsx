@@ -7,7 +7,6 @@ import ManageJobsWorkspace from "./manage-jobs-workspace";
 import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 
 type WorkspaceProfile = Pick<Profile, "role" | "tenant_id"> & {
-  tenant_name?: string | null;
   tenants?: { name?: string | null } | null;
 };
 
@@ -66,7 +65,7 @@ export default async function ManageJobsPage({
   const admin = getAdminClient();
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("role, tenant_id, tenant_name, tenants(name)")
+    .select("role, tenant_id, tenants(name)")
     .eq("id", user.id)
     .maybeSingle<WorkspaceProfile>();
 

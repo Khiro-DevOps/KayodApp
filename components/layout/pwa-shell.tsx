@@ -209,17 +209,21 @@ export default function PwaShell({
   variant,
   config,
   userInitials,
+  initialCompanyName,
   children,
 }: {
   variant: PwaVariant;
   config?: PwaShellConfig;
   userInitials?: string;
+  initialCompanyName?: string | null;
   children: ReactNode;
 }) {
   const resolvedConfig = config ?? defaultPwaShellConfigByVariant[variant];
   const pathname = usePathname() ?? "";
   const pageHeader = getPageHeader(pathname, variant);
-  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(
+    initialCompanyName?.trim() || null
+  );
   const [initials, setInitials] = useState<string>(userInitials || "U");
 
   useEffect(() => {
@@ -240,9 +244,7 @@ export default function PwaShell({
         if (variant === "employee") {
           const metaCompany =
             user.user_metadata?.company_name ||
-            user.user_metadata?.tenant_name ||
-            user.app_metadata?.company_name ||
-            user.app_metadata?.tenant_name;
+            user.app_metadata?.company_name;
 
           if (metaCompany && isMounted) {
             setCompanyName(metaCompany);
@@ -286,6 +288,21 @@ export default function PwaShell({
             .maybeSingle();
           if (tenant?.name && isMounted) {
             setCompanyName(tenant.name);
+            return;
+          }
+        }
+
+        if (variant === "employee" && !initialCompanyName && isMounted) {
+          try {
+            const res = await fetch("/api/profile", { credentials: "include" });
+            if (res.ok) {
+              const json = (await res.json()) as { company_name?: string | null };
+              if (json.company_name?.trim() && isMounted) {
+                setCompanyName(json.company_name.trim());
+              }
+            }
+          } catch {
+            // Fallback gracefully
           }
         }
       } catch {
@@ -296,7 +313,7 @@ export default function PwaShell({
     return () => {
       isMounted = false;
     };
-  }, [variant, userInitials]);
+  }, [variant, userInitials, initialCompanyName]);
 
   const isApplicantDashboard = variant === "applicant" && pathname === "/applicant/dashboard";
 

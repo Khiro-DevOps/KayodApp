@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Briefcase, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { recalculateMatchScores } from "./actions";
 
@@ -227,8 +228,6 @@ export default function ApplicationsClient({
   );
 }
 
-const MAX_JOB_PILLS = 8;
-
 export function ApplicationsHubClient({
   applications,
   currentCompanyId,
@@ -317,13 +316,9 @@ export function ApplicationsHubClient({
     updateUrlParams(scope, nextJobId);
   }
 
-  const visibleJobPills = useMemo(
-    () => scopedJobs.slice(0, MAX_JOB_PILLS),
-    [scopedJobs],
-  );
-  const overflowJobs = useMemo(
-    () => scopedJobs.slice(MAX_JOB_PILLS),
-    [scopedJobs],
+  const selectedJobIndex = useMemo(
+    () => scopedJobs.findIndex((j) => j.id === effectiveSelectedJobId),
+    [scopedJobs, effectiveSelectedJobId],
   );
 
   const selectedApplications = useMemo(
@@ -407,68 +402,80 @@ export function ApplicationsHubClient({
         }
       />
 
-      {/* Single-Job Selector Bar (up to 8 pills + "More" select) */}
-      <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-indigo-100/80 bg-white/75 p-2 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+      {/* Single-Row Job Selector Bar */}
+      <div className="flex flex-col gap-2.5 rounded-2xl border border-indigo-100/80 bg-white/80 px-3.5 py-2.5 shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
         {scopedJobs.length === 0 ? (
-          <div className="px-3 py-1.5 text-xs text-text-muted">
+          <div className="px-1 py-1 text-xs text-text-muted">
             {scope === "mine"
               ? "You do not own any job postings yet. Switch to All Company to view team jobs."
               : "No job postings found in this workspace."}
           </div>
         ) : (
           <>
-            {visibleJobPills.map((job) => {
-              const activeCount = activeCountByJobId[job.id] ?? 0;
-              const isSelected = job.id === effectiveSelectedJobId;
-              const ownerBadge =
-                scope === "all"
-                  ? ` · Owner: ${job.ownerFirstName || "HR Team"}`
-                  : "";
-              return (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => handleSelectJob(job.id)}
-                  data-job-id={job.id}
-                  className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                    isSelected
-                      ? "bg-[#1E1B4B] text-white shadow-xs"
-                      : "bg-white text-text-muted hover:text-[#1E1B4B] border border-slate-200/80"
-                  }`}
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EDE9F9] text-[#1E1B4B]">
+                <Briefcase className="h-4 w-4" />
+              </div>
+              <span className="hidden shrink-0 text-xs font-semibold uppercase tracking-wider text-text-muted md:inline">
+                Role
+              </span>
+              <div className="relative min-w-0 flex-1 sm:max-w-lg">
+                <select
+                  aria-label="Select job posting"
+                  value={effectiveSelectedJobId}
+                  onChange={(e) => handleSelectJob(e.target.value)}
+                  className="h-9 w-full appearance-none truncate rounded-xl border border-indigo-100 bg-white pl-3 pr-9 text-xs font-semibold text-[#1E1B4B] outline-none transition-colors hover:border-indigo-200 focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/15"
                 >
-                  {job.title} ({activeCount}){ownerBadge}
-                </button>
-              );
-            })}
+                  {scopedJobs.map((job) => {
+                    const activeCount = activeCountByJobId[job.id] ?? 0;
+                    const ownerSuffix =
+                      scope === "all" ? ` · Owner: ${job.ownerFirstName || "HR Team"}` : "";
+                    return (
+                      <option key={job.id} value={job.id}>
+                        {job.title} ({activeCount}){ownerSuffix}
+                      </option>
+                    );
+                  })}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
 
-            {overflowJobs.length > 0 ? (
-              <select
-                aria-label="More job postings"
-                value={overflowJobs.some((j) => j.id === effectiveSelectedJobId) ? effectiveSelectedJobId : ""}
-                onChange={(e) => {
-                  if (e.target.value) handleSelectJob(e.target.value);
-                }}
-                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold outline-none transition-all ${
-                  overflowJobs.some((j) => j.id === effectiveSelectedJobId)
-                    ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
-                    : "border-slate-200/80 bg-white text-text-muted hover:text-[#1E1B4B]"
-                }`}
-              >
-                <option value="" disabled>
-                  More ({overflowJobs.length})
-                </option>
-                {overflowJobs.map((job) => {
-                  const activeCount = activeCountByJobId[job.id] ?? 0;
-                  const ownerSuffix =
-                    scope === "all" ? ` · Owner: ${job.ownerFirstName || "HR Team"}` : "";
-                  return (
-                    <option key={job.id} value={job.id} className="bg-white text-slate-900">
-                      {job.title} ({activeCount}){ownerSuffix}
-                    </option>
-                  );
-                })}
-              </select>
-            ) : null}
+            <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                {scopedJobs.length} {scopedJobs.length === 1 ? "role" : "roles"}
+              </span>
+              {scopedJobs.length > 1 ? (
+                <div className="inline-flex items-center rounded-xl border border-indigo-100 bg-white p-0.5">
+                  <button
+                    type="button"
+                    aria-label="Previous job"
+                    disabled={selectedJobIndex <= 0}
+                    onClick={() => {
+                      if (selectedJobIndex > 0) {
+                        handleSelectJob(scopedJobs[selectedJobIndex - 1].id);
+                      }
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-indigo-50 hover:text-[#1E1B4B] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next job"
+                    disabled={selectedJobIndex < 0 || selectedJobIndex >= scopedJobs.length - 1}
+                    onClick={() => {
+                      if (selectedJobIndex >= 0 && selectedJobIndex < scopedJobs.length - 1) {
+                        handleSelectJob(scopedJobs[selectedJobIndex + 1].id);
+                      }
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-indigo-50 hover:text-[#1E1B4B] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </>
         )}
       </div>

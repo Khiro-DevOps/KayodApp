@@ -131,6 +131,21 @@ export default function DashboardLayout({
           }
         }
 
+        if (!nextCompanyName) {
+          try {
+            const res = await fetch("/api/profile", { credentials: "include" });
+            if (res.ok) {
+              const json = (await res.json()) as { company_name?: string | null };
+              if (json.company_name?.trim()) {
+                nextCompanyName = json.company_name.trim();
+              }
+            }
+          } catch {
+            // Fall back to neutral label
+          }
+        }
+
+        if (!isMounted) return;
         setCompanyName(nextCompanyName || "Company");
         setDisplayName(nextName);
         setAvatarUrl(profile.avatar_url ?? null);

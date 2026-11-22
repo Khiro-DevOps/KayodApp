@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { SmoothScrollButton } from "@/components/smooth-scroll-button";
-import BookDemoModal from "@/components/landing/BookDemoModal";
 import FindYourJobSection from "@/components/landing/FindYourJobSection";
 
 const features: Array<{
@@ -134,10 +133,12 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <BookDemoModal
-                  triggerLabel="I'm hiring"
-                  triggerClassName="rounded-[8px] bg-[#1E1B4B] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-indigo-900 active:scale-95"
-                />
+                <Link
+                  href="/register/hr"
+                  className="inline-flex items-center justify-center rounded-[8px] bg-[#1E1B4B] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-white transition-all hover:bg-indigo-900 active:scale-95"
+                >
+                  I&apos;m hiring
+                </Link>
                 <Link
                   href="/jobs"
                   className="inline-flex items-center justify-center rounded-[8px] border border-[#1E1B4B] px-8 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-[#1E1B4B]/5 active:scale-95"
@@ -427,9 +428,12 @@ export default function Home() {
                       ))}
                     </ul>
 
-                    <BookDemoModal
-                      triggerClassName="w-full rounded-xl bg-white px-6 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-indigo-50 active:scale-95"
-                    />
+                    <Link
+                      href="/register/hr"
+                      className="inline-flex w-full items-center justify-center rounded-xl bg-white px-6 py-3 font-[family-name:var(--font-poppins)] text-[15px] font-semibold text-[#1E1B4B] transition-all hover:bg-indigo-50 active:scale-95"
+                    >
+                      Get Started
+                    </Link>
                   </div>
                 </article>
               </div>
