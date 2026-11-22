@@ -39,6 +39,7 @@ type WorkspaceJob = {
   created_at: string;
   closes_at: string | null;
   departments?: { name?: string | null } | null;
+  required_skills?: string[] | null;
   applicantCount: number;
 };
 
@@ -227,6 +228,7 @@ export default async function ManageJobsPage() {
       created_at: job.created_at,
       closes_at: job.closes_at,
       departments: job.departments,
+      required_skills: job.required_skills ?? null,
       applicantCount: countMap[job.id] ?? 0,
     })),
     ...((legacyJobs ?? []) as LegacyJobListingWithApplicantCount[]).map((job) => {
@@ -250,6 +252,7 @@ export default async function ManageJobsPage() {
         created_at: legacyCreatedAt,
         closes_at: null,
         departments: job.employers ? { name: job.employers.company_name } : null,
+        required_skills: job.skills ?? null,
         applicantCount: legacyCountMap[job.id] ?? 0,
       };
     }),
