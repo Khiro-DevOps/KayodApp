@@ -24,10 +24,30 @@ import {
   ALL_WEEK_DAYS_SHORT,
   normalizeShortWorkDays,
 } from "@/lib/schedule-policy";
+import { validateAndClassifyOvertimeRequest } from "@/lib/shift-calculations";
 import {
+  assignTeamOvertimeAction,
+  reviewTeamLeaveRequestAction,
+  reviewTeamOvertimeRequestAction,
+  reviewTeamWorkModeRequestAction,
   saveWorkModeOverrideAction,
   updateDirectReportScheduleAction,
 } from "./actions";
+
+export interface TeamApprovalItem {
+  id: string;
+  kind: "leave" | "overtime" | "work_mode";
+  employeeId: string;
+  employeeName: string;
+  employeeInitials: string;
+  employeeJobTitle: string;
+  badgeLabel: string;
+  dateRangeLabel: string;
+  reason: string | null;
+  requiresDocVerification: boolean;
+  overtimeType?: "regular_ot" | "rdot";
+  createdAt: string | null;
+}
 
 export interface TeamDirectReport {
   id: string;
@@ -158,22 +178,81 @@ function getTodayModeBadgeClasses(
 
 export default function TeamHubClient({
   directReports,
+  pendingApprovals = [],
   queryError = null,
   todayDateLabel = "",
 }: {
   directReports: TeamDirectReport[];
+  pendingApprovals?: TeamApprovalItem[];
   queryError?: string | null;
   todayDateLabel?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<TeamSubTab>("roster");
+  const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({});
+  const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
+
+  const handleSupervisorApprovalDecision = (
+    item: TeamApprovalItem,
+    decision: "approve" | "reject",
+  ) => {
+    const remarks = (approvalRemarks[item.id] ?? "").trim();
+    if (decision === "reject" && remarks.length < 3) {
+      toast.error("Please enter a brief rejection reason (at least 3 characters).");
+      return;
+    }
+    setProcessingApprovalId(item.id);
+    startTransition(async () => {
+      try {
+        const res =
+          item.kind === "leave"
+            ? await reviewTeamLeaveRequestAction({
+                requestId: item.id,
+                decision,
+                remarks,
+              })
+            : item.kind === "work_mode"
+              ? await reviewTeamWorkModeRequestAction({
+                  requestId: item.id,
+                  decision,
+                  remarks,
+                })
+              : await reviewTeamOvertimeRequestAction({
+                  requestId: item.id,
+                  decision,
+                  remarks,
+                });
+        if (!res.ok) {
+          toast.error(res.error || "Failed to process request.");
+          return;
+        }
+        toast.success(
+          decision === "approve"
+            ? item.kind === "work_mode"
+              ? `Approved ${item.employeeName}'s work mode change.`
+              : `Approved & forwarded ${item.employeeName}'s ${item.kind} request to HR.`
+            : `Rejected ${item.employeeName}'s ${item.kind.replace("_", " ")} request.`,
+        );
+        router.refresh();
+      } finally {
+        setProcessingApprovalId(null);
+      }
+    });
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<WorkModeFilter>("All");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"wfh" | "onsite">("wfh");
   const [overrideReason, setOverrideReason] = useState<string>("");
   const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  const [isAssigningOt, setIsAssigningOt] = useState(false);
+  const [otWorkDate, setOtWorkDate] = useState(
+    todayDateLabel || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
+  );
+  const [otStartTime, setOtStartTime] = useState("08:00");
+  const [otEndTime, setOtEndTime] = useState("17:00");
+  const [otReason, setOtReason] = useState("");
   const [editShiftStart, setEditShiftStart] = useState("08:00");
   const [editShiftEnd, setEditShiftEnd] = useState("17:00");
   const [editDailyModes, setEditDailyModes] = useState<
@@ -198,6 +277,30 @@ export default function TeamHubClient({
     setOverrideMode(member.todayWorkMode === "wfh" ? "wfh" : "onsite");
     setOverrideReason(member.overrideReason ?? "");
     setIsEditingSchedule(false);
+    setIsAssigningOt(false);
+    const defaultDate =
+      todayDateLabel || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const memberCheck = validateAndClassifyOvertimeRequest({
+      workDate: defaultDate,
+      startTime: (member.shiftEnd || "17:00").slice(0, 5),
+      endTime: (member.shiftEnd || "17:00").slice(0, 5),
+      workDays: member.workDays,
+      dailyWorkModes: member.dailyWorkModes ?? null,
+      shiftStart: member.shiftStart,
+      shiftEnd: member.shiftEnd,
+    });
+    setOtWorkDate(defaultDate);
+    if (memberCheck.isRestDay) {
+      setOtStartTime((member.shiftStart || "08:00").slice(0, 5));
+      setOtEndTime((member.shiftEnd || "17:00").slice(0, 5));
+    } else {
+      const endHm = (member.shiftEnd || "17:00").slice(0, 5);
+      const [h, m] = endHm.split(":").map(Number);
+      const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(2, "0");
+      setOtStartTime(endHm);
+      setOtEndTime(`${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`);
+    }
+    setOtReason("");
     setEditShiftStart((member.shiftStart || "08:00").slice(0, 5));
     setEditShiftEnd((member.shiftEnd || "17:00").slice(0, 5));
     const normalizedDays = normalizeShortWorkDays(
@@ -224,6 +327,47 @@ export default function TeamHubClient({
       }
     }
     setEditDailyModes(initialDaily);
+  };
+
+  const memberOtGuardrail = useMemo(() => {
+    if (!selectedMember) return null;
+    return validateAndClassifyOvertimeRequest({
+      workDate: otWorkDate,
+      startTime: otStartTime,
+      endTime: otEndTime,
+      workDays: selectedMember.workDays,
+      dailyWorkModes: selectedMember.dailyWorkModes ?? null,
+      shiftStart: selectedMember.shiftStart,
+      shiftEnd: selectedMember.shiftEnd,
+    });
+  }, [selectedMember, otWorkDate, otStartTime, otEndTime]);
+
+  const handleAssignTeamOvertime = () => {
+    if (!selectedMember || !memberOtGuardrail) return;
+    if (!memberOtGuardrail.valid) {
+      toast.error(memberOtGuardrail.error || "Invalid overtime window.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await assignTeamOvertimeAction({
+        employeeId: selectedMember.id,
+        workDate: otWorkDate,
+        startTime: otStartTime,
+        endTime: otEndTime,
+        overtimeType: memberOtGuardrail.resolvedType,
+        reason: otReason,
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Failed to assign overtime.");
+        return;
+      }
+      toast.success(
+        `Overtime assigned for ${selectedMember.fullName} and routed to HR for final approval.`,
+      );
+      setIsAssigningOt(false);
+      setOtReason("");
+      router.refresh();
+    });
   };
 
   const closeMemberModal = () => {
@@ -404,6 +548,17 @@ export default function TeamHubClient({
           }`}
         >
           <span>Approvals</span>
+          {pendingApprovals.length > 0 && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                activeTab === "approvals"
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {pendingApprovals.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -624,19 +779,120 @@ export default function TeamHubClient({
           )}
         </div>
       ) : activeTab === "approvals" ? (
-        <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
-            <CalendarCheck2 className="h-7 w-7" />
+        pendingApprovals.length === 0 ? (
+          <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
+              <CalendarCheck2 className="h-7 w-7" />
+            </div>
+            <h2 className="mt-4 text-lg font-bold text-[#171542]">
+              All Caught Up!
+            </h2>
+            <p className="mx-auto mt-1.5 max-w-md text-sm text-[#5d5a75]">
+              No pending leave or overtime requests from your direct reports
+              require supervisor review right now.
+            </p>
           </div>
-          <h2 className="mt-4 text-lg font-bold text-[#171542]">
-            Team Leave &amp; Undertime Approvals
-          </h2>
-          <p className="mx-auto mt-1.5 max-w-md text-sm text-[#5d5a75]">
-            Leave and undertime requests filed by your direct reports will
-            appear here for your first-level review and recommendation before
-            final HR sign-off.
-          </p>
-        </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingApprovals.map((item) => {
+              const busy = isPending && processingApprovalId === item.id;
+              return (
+                <div
+                  key={`${item.kind}-${item.id}`}
+                  className="rounded-2xl border border-indigo-100/90 bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgb(30,27,75,0.04)] space-y-3.5"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EDE9F9] text-xs font-bold text-[#1E1B4B]">
+                        {item.employeeInitials}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-[#171542]">
+                          {item.employeeName}
+                        </p>
+                        <p className="text-xs text-[#5d5a75]">
+                          {item.employeeJobTitle}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                          item.kind === "leave"
+                            ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                            : item.kind === "work_mode"
+                              ? "border-purple-200 bg-purple-50 text-purple-700"
+                              : "border-amber-200 bg-amber-50 text-amber-800"
+                        }`}
+                      >
+                        {item.badgeLabel}
+                      </span>
+                      {item.requiresDocVerification && (
+                        <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700">
+                          HR Doc Verification
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs text-slate-700">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#171542]">
+                      <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                      {item.dateRangeLabel}
+                    </span>
+                    {item.reason && (
+                      <span className="text-slate-600 italic">
+                        &ldquo;{item.reason}&rdquo;
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center pt-1">
+                    <input
+                      type="text"
+                      value={approvalRemarks[item.id] ?? ""}
+                      onChange={(e) =>
+                        setApprovalRemarks((prev) => ({
+                          ...prev,
+                          [item.id]: e.target.value,
+                        }))
+                      }
+                      disabled={busy}
+                      placeholder="Remarks (optional for approval, required for rejection)"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-500 focus:bg-white"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          handleSupervisorApprovalDecision(item, "approve")
+                        }
+                        className="flex-1 sm:flex-none rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {busy
+                          ? "Processing..."
+                          : item.kind === "work_mode"
+                            ? "Approve Override"
+                            : "Approve & Forward to HR"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          handleSupervisorApprovalDecision(item, "reject")
+                        }
+                        className="flex-1 sm:flex-none rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : (
         <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
@@ -995,6 +1251,139 @@ export default function TeamHubClient({
                     )}
                   </div>
                 ) : null}
+              </div>
+
+              {/* Assign / File Overtime */}
+              <div className="space-y-3 rounded-2xl border border-indigo-100 bg-white p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#1E1B4B]">
+                    <CalendarCheck2 className="h-4 w-4 text-indigo-600" />
+                    <span>Assign / File Overtime</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => setIsAssigningOt((prev) => !prev)}
+                    className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-[11px] font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                  >
+                    {isAssigningOt ? "Cancel" : "File OT for Staff"}
+                  </button>
+                </div>
+
+                {isAssigningOt ? (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="grid grid-cols-3 gap-2">
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-semibold text-[#5d5a75]">
+                          Work Date
+                        </span>
+                        <input
+                          type="date"
+                          disabled={isPending}
+                          value={otWorkDate}
+                          onChange={(e) => {
+                            const nextDate = e.target.value;
+                            setOtWorkDate(nextDate);
+                            if (selectedMember && nextDate) {
+                              const check = validateAndClassifyOvertimeRequest({
+                                workDate: nextDate,
+                                startTime: otStartTime,
+                                endTime: otEndTime,
+                                workDays: selectedMember.workDays,
+                                dailyWorkModes: selectedMember.dailyWorkModes ?? null,
+                                shiftStart: selectedMember.shiftStart,
+                                shiftEnd: selectedMember.shiftEnd,
+                              });
+                              if (check.isRestDay) {
+                                setOtStartTime((selectedMember.shiftStart || "08:00").slice(0, 5));
+                                setOtEndTime((selectedMember.shiftEnd || "17:00").slice(0, 5));
+                              } else {
+                                const endHm = (selectedMember.shiftEnd || "17:00").slice(0, 5);
+                                const [h, m] = endHm.split(":").map(Number);
+                                const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(2, "0");
+                                setOtStartTime(endHm);
+                                setOtEndTime(`${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`);
+                              }
+                            }
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-semibold text-[#5d5a75]">
+                          Start
+                        </span>
+                        <input
+                          type="time"
+                          disabled={isPending}
+                          value={otStartTime}
+                          onChange={(e) => setOtStartTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-semibold text-[#5d5a75]">
+                          End {otEndTime && otStartTime && otEndTime < otStartTime ? "(+1d)" : ""}
+                        </span>
+                        <input
+                          type="time"
+                          disabled={isPending}
+                          value={otEndTime}
+                          onChange={(e) => setOtEndTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                    {memberOtGuardrail && (
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[11px]">
+                          <span className="font-semibold text-[#1E1B4B]">
+                            {memberOtGuardrail.isRestDay
+                              ? "Scheduled Rest Day → RDOT (1.30x)"
+                              : "Scheduled Workday → Regular OT (1.25x, After Shift)"}
+                          </span>
+                          {memberOtGuardrail.durationHours > 0 && (
+                            <span className="font-bold text-indigo-700">
+                              {memberOtGuardrail.durationHours}h
+                              {memberOtGuardrail.crossesMidnight ? " (+1d)" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {!memberOtGuardrail.valid && memberOtGuardrail.error && (
+                          <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
+                            {memberOtGuardrail.error}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      disabled={isPending}
+                      value={otReason}
+                      onChange={(e) => setOtReason(e.target.value)}
+                      placeholder="Reason / deliverable for overtime (routes to HR)"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#171542] focus:border-[#1E1B4B] focus:bg-white focus:outline-none"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={
+                          isPending ||
+                          otReason.trim().length < 5 ||
+                          !memberOtGuardrail?.valid
+                        }
+                        onClick={handleAssignTeamOvertime}
+                        className="rounded-xl bg-[#1E1B4B] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#1E1B4B]/90 disabled:opacity-50"
+                      >
+                        {isPending ? "Submitting..." : "Submit OT to HR"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-[#5d5a75]">
+                    Directly assign overtime for {selectedMember.fullName}; routes straight to HR for final approval.
+                  </p>
+                )}
               </div>
 
               {/* Emergency Work Mode Override */}

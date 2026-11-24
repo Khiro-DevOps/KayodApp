@@ -25,6 +25,10 @@ import {
   normalizeShortWorkDays,
   resolveDefaultWorkDaysForCount,
 } from "@/lib/schedule-policy";
+import {
+  formatLeaveCreditsDisplay,
+  normalizeLeavePolicyConfig,
+} from "@/lib/leave-policy";
 
 export async function createJob(formData: FormData) {
   const ctx = await requireHrPermission("jobs:manage");
@@ -101,6 +105,17 @@ export async function createJob(formData: FormData) {
   const ph_sick_leave_days = formData.get("ph_sick_leave_days") as string;
   const ph_hmo_provider = formData.get("ph_hmo_provider") as string;
 
+  // Phase 2 structured leave policy fields
+  const leavePolicy = normalizeLeavePolicyConfig({
+    leave_policy_type: formData.get("leave_policy_type"),
+    vacation_leave_days: formData.get("vacation_leave_days") ?? ph_vacation_leave_days,
+    sick_leave_days: formData.get("sick_leave_days") ?? ph_sick_leave_days,
+    service_incentive_leave_days:
+      formData.get("service_incentive_leave_days") ?? ph_service_incentive_leave,
+    leave_eligibility: formData.get("leave_eligibility"),
+  });
+  const leaveCreditsSummary = formatLeaveCreditsDisplay(leavePolicy);
+
   // Additional offer defaults (benefits & terms)
   const selectedBenefits = formData.getAll("selectedBenefits") as string[];
   const offerExpiryDays = formData.get("offer_expiry_days") as string;
@@ -174,9 +189,15 @@ export async function createJob(formData: FormData) {
         ? parseFloat(ph_meal_allowance)
         : undefined,
     phNightDifferential: ph_night_differential ? parseFloat(ph_night_differential) : undefined,
-    phServiceIncentiveLeave: ph_service_incentive_leave ? parseInt(ph_service_incentive_leave, 10) : undefined,
-    phVacationLeaveDays: ph_vacation_leave_days ? parseInt(ph_vacation_leave_days, 10) : undefined,
-    phSickLeaveDays: ph_sick_leave_days ? parseInt(ph_sick_leave_days, 10) : undefined,
+    phServiceIncentiveLeave: leavePolicy.service_incentive_leave_days,
+    phVacationLeaveDays: leavePolicy.vacation_leave_days,
+    phSickLeaveDays: leavePolicy.sick_leave_days,
+    leave_policy_type: leavePolicy.leave_policy_type,
+    vacation_leave_days: leavePolicy.vacation_leave_days,
+    sick_leave_days: leavePolicy.sick_leave_days,
+    service_incentive_leave_days: leavePolicy.service_incentive_leave_days,
+    leave_eligibility: leavePolicy.leave_eligibility,
+    leave_credits_summary: leaveCreditsSummary,
     phHmoProvider: compensationPackage.hmo_coverage.enabled
       ? `HMO (${compensationPackage.hmo_coverage.timing === "day_1" ? "Day 1" : "Upon Regularization"})`
       : ph_hmo_provider || undefined,
@@ -259,6 +280,11 @@ export async function createJob(formData: FormData) {
       is_published: true,
       slots,
       hired_walkin_count: 0,
+      leave_policy_type: leavePolicy.leave_policy_type,
+      vacation_leave_days: leavePolicy.vacation_leave_days,
+      sick_leave_days: leavePolicy.sick_leave_days,
+      service_incentive_leave_days: leavePolicy.service_incentive_leave_days,
+      leave_eligibility: leavePolicy.leave_eligibility,
       offer_letter_settings: Object.keys(offerLetterSettings).length > 0 ? offerLetterSettings : null,
     })
     .select("id")
@@ -405,6 +431,15 @@ export async function updateJob(formData: FormData) {
   const ph_start_date = formData.get("ph_start_date") as string;
   const ph_monthly_basic_salary = formData.get("ph_monthly_basic_salary") as string;
 
+  const leavePolicy = normalizeLeavePolicyConfig({
+    leave_policy_type: formData.get("leave_policy_type"),
+    vacation_leave_days: formData.get("vacation_leave_days"),
+    sick_leave_days: formData.get("sick_leave_days"),
+    service_incentive_leave_days: formData.get("service_incentive_leave_days"),
+    leave_eligibility: formData.get("leave_eligibility"),
+  });
+  const leaveCreditsSummary = formatLeaveCreditsDisplay(leavePolicy);
+
   const skills = skillsRaw
     ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
@@ -492,6 +527,15 @@ export async function updateJob(formData: FormData) {
     work_days,
     work_schedule_summary,
     phWorkSchedule: work_schedule_summary,
+    leave_policy_type: leavePolicy.leave_policy_type,
+    vacation_leave_days: leavePolicy.vacation_leave_days,
+    sick_leave_days: leavePolicy.sick_leave_days,
+    service_incentive_leave_days: leavePolicy.service_incentive_leave_days,
+    leave_eligibility: leavePolicy.leave_eligibility,
+    leave_credits_summary: leaveCreditsSummary,
+    phVacationLeaveDays: leavePolicy.vacation_leave_days,
+    phSickLeaveDays: leavePolicy.sick_leave_days,
+    phServiceIncentiveLeave: leavePolicy.service_incentive_leave_days,
   };
 
   const { data: updatedBranch } =
@@ -536,6 +580,11 @@ export async function updateJob(formData: FormData) {
       target_job_level,
       slots,
       is_published,
+      leave_policy_type: leavePolicy.leave_policy_type,
+      vacation_leave_days: leavePolicy.vacation_leave_days,
+      sick_leave_days: leavePolicy.sick_leave_days,
+      service_incentive_leave_days: leavePolicy.service_incentive_leave_days,
+      leave_eligibility: leavePolicy.leave_eligibility,
       offer_letter_settings: updatedOfferLetterSettings,
       updated_at: new Date().toISOString(),
     })

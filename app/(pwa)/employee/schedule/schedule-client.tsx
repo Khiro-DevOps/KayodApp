@@ -11,11 +11,13 @@ import {
   reopenShiftAction,
   submitAttendanceCorrectionAction,
   submitOvertimeRequestAction,
+  submitWorkModeRequestAction,
   toggleLunchAction,
   toggleShortBreakAction,
   updateLiveAttendanceLocationAction,
 } from "./actions";
 import WorkspaceMap from "@/components/schedule/workspace-map";
+import { validateAndClassifyOvertimeRequest } from "@/lib/shift-calculations";
 
 const CORRECTION_TYPES = [
   "Accidental Clock-Out",
@@ -53,10 +55,21 @@ export interface OvertimeRequestSummary {
   work_date: string;
   start_time: string;
   end_time: string;
+  overtime_type?: string | null;
   reason: string;
   status: string;
   review_note: string | null;
   used_at: string | null;
+  created_at: string;
+}
+
+export interface WorkModeRequestSummary {
+  id: string;
+  request_date: string;
+  requested_mode: "onsite" | "wfh";
+  reason: string;
+  status: string;
+  reviewer_remarks: string | null;
   created_at: string;
 }
 
@@ -95,6 +108,9 @@ interface ScheduleClientProps {
   todayWorkModel?: "onsite" | "wfh" | "off";
   todayApprovedLeave?: { leave_type: string } | null;
   overtimeRequests?: OvertimeRequestSummary[];
+  workModeRequests?: WorkModeRequestSummary[];
+  workDays?: string[];
+  dailyWorkModes?: Record<string, string> | null;
   isTodayOnsite: boolean;
   hasOfficeCoordinates: boolean;
   shiftStart: string;
@@ -159,6 +175,9 @@ export default function ScheduleClient({
   todayWorkModel = "onsite",
   todayApprovedLeave = null,
   overtimeRequests = [],
+  workModeRequests = [],
+  workDays = [],
+  dailyWorkModes = null,
   isTodayOnsite,
   hasOfficeCoordinates,
   shiftStart,
@@ -211,6 +230,17 @@ export default function ScheduleClient({
   const [otReason, setOtReason] = useState("");
   const [submittingOt, setSubmittingOt] = useState(false);
   const [cancellingOtId, setCancellingOtId] = useState<string | null>(null);
+
+  // Work Mode Change Request state & modal
+  const [localWorkModeRequests, setLocalWorkModeRequests] =
+    useState<WorkModeRequestSummary[]>(workModeRequests);
+  const [showWorkModeModal, setShowWorkModeModal] = useState(false);
+  const [wmDate, setWmDate] = useState(todayDateStr);
+  const [wmMode, setWmMode] = useState<"wfh" | "onsite">(
+    todayWorkModel === "onsite" ? "wfh" : "onsite"
+  );
+  const [wmReason, setWmReason] = useState("");
+  const [submittingWm, setSubmittingWm] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(
     initialActiveLog?.distance_meters ?? null
@@ -650,26 +680,92 @@ export default function ScheduleClient({
   const todayOtRequests = localOtRequests.filter((r) => r.work_date === todayDateStr);
   const todayApprovedOt =
     todayOtRequests.find((r) => r.status === "approved" && !r.used_at) ?? null;
-  const todayPendingOt = todayOtRequests.find((r) => r.status === "pending") ?? null;
+  const todayPendingOt =
+    todayOtRequests.find((r) =>
+      ["pending", "pending_supervisor", "pending_hr"].includes(r.status)
+    ) ?? null;
   const todayRejectedOt = todayOtRequests.find((r) => r.status === "rejected") ?? null;
+
+  const handleSubmitWorkMode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingWm(true);
+    const res = await submitWorkModeRequestAction({
+      requestDate: wmDate,
+      requestedMode: wmMode,
+      reason: wmReason,
+    });
+    if (!res.success) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      setLocalWorkModeRequests((prev) => [
+        {
+          id: res.requestId ?? `temp-${Date.now()}`,
+          request_date: wmDate,
+          requested_mode: wmMode,
+          reason: wmReason.trim(),
+          status: "pending_supervisor",
+          reviewer_remarks: null,
+          created_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+      setShowWorkModeModal(false);
+      setWmReason("");
+      router.refresh();
+    }
+    setSubmittingWm(false);
+  };
 
   const openOtModal = (defaultDate = todayDateStr) => {
     setOtWorkDate(defaultDate);
-    setOtStartTime(shiftStart.slice(0, 5) || "08:00");
-    setOtEndTime(shiftEnd.slice(0, 5) || "17:00");
+    const check = validateAndClassifyOvertimeRequest({
+      workDate: defaultDate,
+      startTime: shiftEnd.slice(0, 5) || "17:00",
+      endTime: shiftEnd.slice(0, 5) || "17:00",
+      workDays,
+      dailyWorkModes,
+      shiftStart,
+      shiftEnd,
+    });
+    if (check.isRestDay) {
+      setOtStartTime(shiftStart.slice(0, 5) || "08:00");
+      setOtEndTime(shiftEnd.slice(0, 5) || "17:00");
+    } else {
+      const endHm = shiftEnd.slice(0, 5) || "17:00";
+      const [h, m] = endHm.split(":").map(Number);
+      const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(2, "0");
+      setOtStartTime(endHm);
+      setOtEndTime(`${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`);
+    }
     setOtReason("");
     setShowOtModal(true);
   };
 
+  const otWindowPreview = validateAndClassifyOvertimeRequest({
+    workDate: otWorkDate,
+    startTime: otStartTime,
+    endTime: otEndTime,
+    workDays,
+    dailyWorkModes,
+    shiftStart,
+    shiftEnd,
+  });
+
   const handleSubmitOt = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!otWindowPreview.valid) {
+      toast.error(otWindowPreview.error || "Invalid overtime time window.");
+      return;
+    }
     setSubmittingOt(true);
     const res = await submitOvertimeRequestAction({
       workDate: otWorkDate,
       startTime: otStartTime,
       endTime: otEndTime,
+      overtimeType: otWindowPreview.resolvedType,
       reason: otReason,
-    });
+    } as Parameters<typeof submitOvertimeRequestAction>[0]);
     if (!res.success) {
       toast.error(res.error);
     } else {
@@ -680,8 +776,9 @@ export default function ScheduleClient({
           work_date: otWorkDate,
           start_time: otStartTime,
           end_time: otEndTime,
+          overtime_type: otWindowPreview.resolvedType,
           reason: otReason.trim(),
-          status: "pending",
+          status: "pending_supervisor",
           review_note: null,
           used_at: null,
           created_at: new Date().toISOString(),
@@ -1039,7 +1136,9 @@ export default function ScheduleClient({
                   <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
                     <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-900">
                       <span className="material-symbols-outlined text-[18px]">hourglass_top</span>
-                      Overtime Request Pending HR Approval
+                      {todayPendingOt.status === "pending_supervisor"
+                        ? "Overtime Request Pending Supervisor Approval"
+                        : "Overtime Request Pending HR Approval"}
                     </div>
                     <button
                       type="button"
@@ -1083,15 +1182,30 @@ export default function ScheduleClient({
                   </div>
                 )
               ) : (
-                <button
-                  type="button"
-                  onClick={handleClockIn}
-                  disabled={loading}
-                  className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-[18px]">alarm_on</span>
-                  {loading ? "Clocking In..." : "Clock In Now"}
-                </button>
+                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleClockIn}
+                    disabled={loading}
+                    className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">alarm_on</span>
+                    {loading ? "Clocking In..." : "Clock In Now"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWmDate(todayDateStr);
+                      setWmMode(todayWorkModel === "onsite" ? "wfh" : "onsite");
+                      setWmReason("");
+                      setShowWorkModeModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
+                    Request Work Mode Change
+                  </button>
+                </div>
               )
             ) : (
               <button
@@ -1106,6 +1220,41 @@ export default function ScheduleClient({
             )}
           </div>
         </div>
+
+        {localWorkModeRequests.length > 0 && (
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#1E1B4B]">
+              Work Mode Change Requests
+            </p>
+            <div className="space-y-1.5">
+              {localWorkModeRequests.slice(0, 3).map((wm) => (
+                <div
+                  key={wm.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <span className="font-semibold text-slate-900">
+                      {wm.request_date} ·{" "}
+                      {wm.requested_mode === "wfh" ? "WFH" : "Onsite"}
+                    </span>
+                    <p className="truncate text-[11px] text-slate-500">{wm.reason}</p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      wm.status === "approved"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : wm.status === "rejected"
+                          ? "bg-rose-100 text-rose-800"
+                          : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {wm.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isShiftCompletedToday && todayCompletedLog && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs">
@@ -1457,15 +1606,104 @@ export default function ScheduleClient({
         </div>
       )}
 
+      {/* Request Work Mode Change Modal */}
+      {showWorkModeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-[#1E1B4B]">
+                  Request Work Mode Change
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Send a last-minute WFH or Onsite request to your Direct Supervisor for approval.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWorkModeModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitWorkMode} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={todayDateStr}
+                    value={wmDate}
+                    onChange={(e) => setWmDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Requested Mode
+                  </label>
+                  <select
+                    value={wmMode}
+                    onChange={(e) => setWmMode(e.target.value as "wfh" | "onsite")}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                  >
+                    <option value="wfh">WFH (Work From Home)</option>
+                    <option value="onsite">Onsite (Office Branch)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  minLength={5}
+                  rows={3}
+                  value={wmReason}
+                  onChange={(e) => setWmReason(e.target.value)}
+                  placeholder="e.g., Heavy flooding / transport disruption preventing onsite commute..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowWorkModeModal(false)}
+                  disabled={submittingWm}
+                  className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingWm || wmReason.trim().length < 5}
+                  className="w-full sm:w-auto rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
+                >
+                  {submittingWm ? "Submitting..." : "Send Request to Supervisor"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Request Overtime Modal */}
       {showOtModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-[#1E1B4B]">Request Rest-Day Overtime</h3>
+                <h3 className="text-base font-bold text-[#1E1B4B]">Request Overtime</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Prior HR approval is required before clocking in on a scheduled rest day.
+                  Supports Regular OT (1.25x), Rest Day OT (1.30x), and overnight shifts.
                 </p>
               </div>
               <button
@@ -1478,6 +1716,17 @@ export default function ScheduleClient({
             </div>
 
             <form onSubmit={handleSubmitOt} className="space-y-3.5">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-3.5 py-2.5 text-xs">
+                <span className="font-bold text-[#1E1B4B]">
+                  {otWindowPreview.isRestDay
+                    ? "Scheduled Rest Day → RDOT (1.30x)"
+                    : "Scheduled Workday → Regular OT (1.25x, After Shift)"}
+                </span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700 border border-indigo-100">
+                  Schedule-Locked
+                </span>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Work Date
@@ -1487,7 +1736,31 @@ export default function ScheduleClient({
                   required
                   min={todayDateStr}
                   value={otWorkDate}
-                  onChange={(e) => setOtWorkDate(e.target.value)}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setOtWorkDate(nextDate);
+                    if (nextDate) {
+                      const check = validateAndClassifyOvertimeRequest({
+                        workDate: nextDate,
+                        startTime: otStartTime,
+                        endTime: otEndTime,
+                        workDays,
+                        dailyWorkModes,
+                        shiftStart,
+                        shiftEnd,
+                      });
+                      if (check.isRestDay) {
+                        setOtStartTime(shiftStart.slice(0, 5) || "08:00");
+                        setOtEndTime(shiftEnd.slice(0, 5) || "17:00");
+                      } else {
+                        const endHm = shiftEnd.slice(0, 5) || "17:00";
+                        const [h, m] = endHm.split(":").map(Number);
+                        const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(2, "0");
+                        setOtStartTime(endHm);
+                        setOtEndTime(`${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`);
+                      }
+                    }
+                  }}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
                 />
               </div>
@@ -1507,7 +1780,7 @@ export default function ScheduleClient({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    End Time
+                    End Time {otWindowPreview.crossesMidnight ? "(+1 day)" : ""}
                   </label>
                   <input
                     type="time"
@@ -1517,6 +1790,20 @@ export default function ScheduleClient({
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-[#1E1B4B] focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div
+                className={`rounded-xl border px-3 py-2 text-[11px] font-medium ${
+                  otWindowPreview.valid
+                    ? "border-indigo-100 bg-indigo-50/60 text-[#1E1B4B]"
+                    : "border-rose-200 bg-rose-50 text-rose-700"
+                }`}
+              >
+                {otWindowPreview.valid
+                  ? `Duration: ${otWindowPreview.durationHours} hour${otWindowPreview.durationHours === 1 ? "" : "s"}${
+                      otWindowPreview.crossesMidnight ? " (Cross-midnight +1 calendar day)" : ""
+                    }`
+                  : otWindowPreview.error}
               </div>
 
               <div>
@@ -1545,7 +1832,11 @@ export default function ScheduleClient({
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingOt || otReason.trim().length < 5}
+                  disabled={
+                    submittingOt ||
+                    otReason.trim().length < 5 ||
+                    !otWindowPreview.valid
+                  }
                   className="w-full sm:w-auto rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-[#2d2b68] disabled:opacity-50 transition-colors"
                 >
                   {submittingOt ? "Submitting..." : "Submit Overtime Request"}

@@ -13,6 +13,10 @@ import {
   normalizeShortWorkDays,
   resolveDefaultWorkDaysForCount,
 } from "@/lib/schedule-policy";
+import {
+  formatLeaveCreditsDisplay,
+  resolveLeavePolicyFromSources,
+} from "@/lib/leave-policy";
 
 export interface LoadedApplicantOffer {
   applicationId: string;
@@ -113,6 +117,11 @@ export async function loadApplicantOffer(
       work_days,
       schedule_type,
       rest_days_type,
+      leave_policy_type,
+      vacation_leave_days,
+      sick_leave_days,
+      service_incentive_leave_days,
+      leave_eligibility,
       offer_letter_settings,
       profiles!job_postings_created_by_fkey (
         email,
@@ -165,7 +174,7 @@ export async function loadApplicantOffer(
   }
 
   const jobOfferColumns =
-    "id, status, salary, start_date, work_setup, work_mode, work_location_id, department, shift_start, shift_end, work_days, latest_docuseal_url, job_metadata, metadata, is_active, version_id, updated_at";
+    "id, status, salary, start_date, work_setup, work_mode, work_location_id, department, shift_start, shift_end, work_days, leave_policy_type, vacation_leave_days, sick_leave_days, service_incentive_leave_days, leave_eligibility, latest_docuseal_url, job_metadata, metadata, is_active, version_id, updated_at";
 
   const { data: activeOfferRow } = await admin
     .from("job_offers")
@@ -415,36 +424,12 @@ export async function loadApplicantOffer(
     (typeof offerMeta.reports_to === "string" && offerMeta.reports_to.trim()) ||
     null;
 
-  const silDays =
-    Number(
-      offerMeta.service_incentive_leave ??
-        offerMeta.phServiceIncentiveLeave ??
-        jobSettings?.service_incentive_leave ??
-        jobSettings?.phServiceIncentiveLeave ??
-        5
-    ) || 5;
-  const vlDays =
-    Number(
-      offerMeta.vacation_leave_days ??
-        offerMeta.phVacationLeaveDays ??
-        jobSettings?.vacation_leave_days ??
-        jobSettings?.phVacationLeaveDays ??
-        0
-    ) || 0;
-  const slDays =
-    Number(
-      offerMeta.sick_leave_days ??
-        offerMeta.phSickLeaveDays ??
-        jobSettings?.sick_leave_days ??
-        jobSettings?.phSickLeaveDays ??
-        0
-    ) || 0;
-  const leaveCreditParts = [
-    `${silDays} SIL`,
-    ...(vlDays > 0 ? [`${vlDays} VL`] : []),
-    ...(slDays > 0 ? [`${slDays} SL`] : []),
-  ];
-  const leaveCreditsSummary = `${leaveCreditParts.join(" · ")} / year`;
+  const resolvedLeavePolicy = resolveLeavePolicyFromSources(
+    (activeOffer as Record<string, unknown> | null) ??
+      (jobPosting as Record<string, unknown> | null),
+    { ...(jobSettings ?? {}), ...offerMeta }
+  );
+  const leaveCreditsSummary = formatLeaveCreditsDisplay(resolvedLeavePolicy);
 
   const rawCompPkg = (offerMeta.compensation_package ??
     jobSettings?.compensation_package ??

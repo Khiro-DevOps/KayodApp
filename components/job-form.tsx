@@ -26,6 +26,13 @@ import {
   REST_DAYS_POLICY_OPTIONS,
   SHIFT_ROTATION_PATTERN_OPTIONS,
 } from "@/lib/schedule-policy";
+import {
+  formatLeaveCreditsDisplay,
+  normalizeLeaveEligibility,
+  normalizeLeavePolicyType,
+  type LeaveEligibility,
+  type LeavePolicyType,
+} from "@/lib/leave-policy";
 
 const WORK_MODE_OPTIONS = [
   { value: "onsite", label: "On-Site" },
@@ -92,6 +99,11 @@ export type JobFormValues = {
   departmentId?: string | null;
   defaultSupervisorId?: string | null;
   targetJobLevel?: JobLevel | null;
+  leavePolicyType?: LeavePolicyType | null;
+  vacationLeaveDays?: number | null;
+  sickLeaveDays?: number | null;
+  serviceIncentiveLeaveDays?: number | null;
+  leaveEligibility?: LeaveEligibility | null;
 };
 
 type JobFormProps = {
@@ -154,6 +166,68 @@ export default function JobForm({
   );
   const [compensationPackage, setCompensationPackage] = useState<PhilippineCompensationPackage>(
     () => initialValues?.compensationPackage ?? createDefaultCompensationPackage()
+  );
+
+  const [leavePolicyType, setLeavePolicyType] = useState<LeavePolicyType>(() =>
+    normalizeLeavePolicyType(initialValues?.leavePolicyType)
+  );
+  const [vacationLeaveDays, setVacationLeaveDays] = useState<string>(() =>
+    String(
+      initialValues?.vacationLeaveDays ??
+        (initialValues?.leavePolicyType === "statutory_sil" ? 0 : 15)
+    )
+  );
+  const [sickLeaveDays, setSickLeaveDays] = useState<string>(() =>
+    String(
+      initialValues?.sickLeaveDays ??
+        (initialValues?.leavePolicyType === "statutory_sil" ? 0 : 15)
+    )
+  );
+  const [serviceIncentiveLeaveDays, setServiceIncentiveLeaveDays] = useState<string>(() =>
+    String(
+      initialValues?.serviceIncentiveLeaveDays ??
+        (initialValues?.leavePolicyType === "statutory_sil" ? 5 : 0)
+    )
+  );
+  const [leaveEligibility, setLeaveEligibility] = useState<LeaveEligibility>(() =>
+    normalizeLeaveEligibility(initialValues?.leaveEligibility)
+  );
+
+  const applyLeavePreset = (preset: LeavePolicyType) => {
+    setLeavePolicyType(preset);
+    if (preset === "company_standard") {
+      setVacationLeaveDays("15");
+      setSickLeaveDays("15");
+      setServiceIncentiveLeaveDays("0");
+    } else if (preset === "statutory_sil") {
+      setVacationLeaveDays("0");
+      setSickLeaveDays("0");
+      setServiceIncentiveLeaveDays("5");
+    } else {
+      if (Number(vacationLeaveDays) === 0 && Number(sickLeaveDays) === 0) {
+        setVacationLeaveDays("15");
+        setSickLeaveDays("15");
+      }
+      setServiceIncentiveLeaveDays("0");
+    }
+  };
+
+  const leavePreviewSummary = useMemo(
+    () =>
+      formatLeaveCreditsDisplay({
+        leave_policy_type: leavePolicyType,
+        vacation_leave_days: Number(vacationLeaveDays) || 0,
+        sick_leave_days: Number(sickLeaveDays) || 0,
+        service_incentive_leave_days: Number(serviceIncentiveLeaveDays) || 0,
+        leave_eligibility: leaveEligibility,
+      }),
+    [
+      leavePolicyType,
+      vacationLeaveDays,
+      sickLeaveDays,
+      serviceIncentiveLeaveDays,
+      leaveEligibility,
+    ]
   );
 
   const [departmentId, setDepartmentId] = useState<string>(initialValues?.departmentId ?? "");
@@ -838,6 +912,176 @@ export default function JobForm({
                 hiddenInputName="compensation_package_json"
                 baseSalary={Number(baseSalaryInput) || 0}
               />
+            </section>
+
+            {/* Leave Credits & Benefits Policy Card */}
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3.5">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Leave Credits &amp; Benefits Policy
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Auto-populated into job offers, DocuSeal contracts, and employee leave ledgers on hire.
+                </p>
+              </div>
+
+              <input type="hidden" name="leave_policy_type" value={leavePolicyType} />
+              <input type="hidden" name="leave_eligibility" value={leaveEligibility} />
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => applyLeavePreset("company_standard")}
+                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                    leavePolicyType === "company_standard"
+                      ? "border-indigo-600 bg-indigo-50/70"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Standard PH Company Package
+                    </span>
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                      Default
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    15 VL + 15 SL / year (Upon Regularization or Day 1)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyLeavePreset("statutory_sil")}
+                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                    leavePolicyType === "statutory_sil"
+                      ? "border-indigo-600 bg-indigo-50/70"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Statutory Minimum (Labor Code Art. 95)
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    5 SIL / year (after 1 year of continuous service)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyLeavePreset("custom")}
+                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                    leavePolicyType === "custom"
+                      ? "border-indigo-600 bg-indigo-50/70"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="text-xs font-bold text-slate-900">
+                    Custom Package
+                  </span>
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    Editable Vacation Leave (VL) and Sick Leave (SL) day counts
+                  </p>
+                </button>
+              </div>
+
+              {leavePolicyType === "custom" ? (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="vacation_leave_days"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Vacation Leave (VL)
+                    </label>
+                    <input
+                      id="vacation_leave_days"
+                      name="vacation_leave_days"
+                      type="number"
+                      min={0}
+                      max={60}
+                      step="0.5"
+                      value={vacationLeaveDays}
+                      onChange={(e) => setVacationLeaveDays(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="sick_leave_days"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Sick Leave (SL)
+                    </label>
+                    <input
+                      id="sick_leave_days"
+                      name="sick_leave_days"
+                      type="number"
+                      min={0}
+                      max={60}
+                      step="0.5"
+                      value={sickLeaveDays}
+                      onChange={(e) => setSickLeaveDays(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
+                    />
+                  </div>
+                  <input
+                    type="hidden"
+                    name="service_incentive_leave_days"
+                    value={serviceIncentiveLeaveDays}
+                  />
+                </div>
+              ) : (
+                <>
+                  <input type="hidden" name="vacation_leave_days" value={vacationLeaveDays} />
+                  <input type="hidden" name="sick_leave_days" value={sickLeaveDays} />
+                  <input
+                    type="hidden"
+                    name="service_incentive_leave_days"
+                    value={serviceIncentiveLeaveDays}
+                  />
+                </>
+              )}
+
+              {leavePolicyType !== "statutory_sil" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Leave Eligibility
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLeaveEligibility("upon_regularization")}
+                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                        leaveEligibility === "upon_regularization"
+                          ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Upon Regularization
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLeaveEligibility("day_1")}
+                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                        leaveEligibility === "day_1"
+                          ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Effective Day 1
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600 border border-slate-200/80">
+                <span className="font-semibold text-slate-800">Contract preview: </span>
+                {leavePreviewSummary}
+              </div>
             </section>
 
             {showOfferLetterSettings && (

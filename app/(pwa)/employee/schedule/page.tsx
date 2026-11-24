@@ -194,7 +194,7 @@ export default async function EmployeeSchedulePage() {
     correctionRequests = reqData ?? [];
   }
 
-  // Fetch today and upcoming overtime requests
+  // Fetch today and upcoming overtime & work mode requests
   let overtimeRequests: Array<{
     id: string;
     work_date: string;
@@ -207,17 +207,38 @@ export default async function EmployeeSchedulePage() {
     created_at: string;
   }> = [];
 
+  let workModeRequests: Array<{
+    id: string;
+    request_date: string;
+    requested_mode: "onsite" | "wfh";
+    reason: string;
+    status: string;
+    reviewer_remarks: string | null;
+    created_at: string;
+  }> = [];
+
   if (employee?.id) {
-    const { data: otData } = await admin
-      .from("overtime_requests")
-      .select("id, work_date, start_time, end_time, reason, status, review_note, used_at, created_at")
-      .eq("employee_id", employee.id)
-      .gte("work_date", todayPhtStr)
-      .order("work_date", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(20);
+    const [{ data: otData }, { data: wmData }] = await Promise.all([
+      admin
+        .from("overtime_requests")
+        .select("id, work_date, start_time, end_time, overtime_type, reason, status, review_note, used_at, created_at")
+        .eq("employee_id", employee.id)
+        .gte("work_date", todayPhtStr)
+        .order("work_date", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(20),
+      admin
+        .from("work_mode_requests")
+        .select("id, request_date, requested_mode, reason, status, reviewer_remarks, created_at")
+        .eq("employee_id", employee.id)
+        .gte("request_date", todayPhtStr)
+        .order("request_date", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ]);
 
     overtimeRequests = otData ?? [];
+    workModeRequests = (wmData ?? []) as typeof workModeRequests;
   }
 
   // Safe default values if employee record is not found (e.g. testing / newly promoted)
@@ -376,6 +397,9 @@ export default async function EmployeeSchedulePage() {
                 todayApprovedLeave ? { leave_type: todayApprovedLeave.leave_type } : null
               }
               overtimeRequests={overtimeRequests}
+              workModeRequests={workModeRequests}
+              workDays={hybridDays}
+              dailyWorkModes={(employee?.daily_work_modes as Record<string, string> | null) ?? null}
               isTodayOnsite={isTodayOnsite}
               hasOfficeCoordinates={hasOfficeCoordinates}
               shiftStart={shiftStart}

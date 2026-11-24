@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { LeaveRequest, LeaveBalance, Profile } from "@/lib/types";
@@ -8,6 +9,7 @@ import { reviewLeaveRequest, cancelLeaveRequest } from "./actions";
 import { SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
+import { formatLeaveTypeDisplayLabel } from "@/lib/leave-policy";
 
 interface Props {
   searchParams: Promise<{ error?: string; success?: string }>;
@@ -33,6 +35,15 @@ export default async function LeavesPage({ searchParams }: Props) {
 
   let leaveRequests: LeaveRequest[] = [];
   let balances: LeaveBalance[] = [];
+  let ledgerBalances: Array<{
+    id: string;
+    leave_type: string;
+    year: number;
+    entitled_days: number;
+    used_days: number;
+    pending_days: number;
+    eligibility: string;
+  }> = [];
 
   if (isHR) {
     const { data } = await supabase
@@ -41,35 +52,71 @@ export default async function LeavesPage({ searchParams }: Props) {
       .order("filed_at", { ascending: false });
     leaveRequests = (data as LeaveRequest[]) ?? [];
   } else {
-    const { data: employee } = await supabase
+    const admin = getAdminClient();
+    const { data: employee } = await admin
       .from("employees")
       .select("id")
       .eq("profile_id", user.id)
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!employee) redirect("/applicant/dashboard");
 
-    const [{ data: leaves }, { data: bal }] = await Promise.all([
-      supabase
+    const currentYear = new Date().getFullYear();
+    const [{ data: leaves }, { data: ledger }, { data: bal }] = await Promise.all([
+      admin
         .from("leave_requests")
         .select("*")
         .eq("employee_id", employee.id)
         .order("filed_at", { ascending: false }),
+      admin
+        .from("employee_leave_balances")
+        .select("id, leave_type, year, entitled_days, used_days, pending_days, eligibility")
+        .eq("employee_id", employee.id)
+        .eq("year", currentYear)
+        .eq("is_active", true),
       supabase
         .from("leave_balances")
         .select("*")
         .eq("employee_id", employee.id)
-        .eq("year", new Date().getFullYear()),
+        .eq("year", currentYear),
     ]);
     leaveRequests = (leaves as LeaveRequest[]) ?? [];
-    balances      = (bal as LeaveBalance[]) ?? [];
+    ledgerBalances = (ledger ?? []) as typeof ledgerBalances;
+    balances = (bal as LeaveBalance[]) ?? [];
   }
 
-  const pending = leaveRequests.filter((l) => l.status === "pending");
+  const isPendingStatus = (status: string) =>
+    ["pending", "pending_supervisor", "pending_hr"].includes(status);
+
+  const pending = leaveRequests.filter((l) => isPendingStatus(String(l.status)));
   const approved = leaveRequests.filter((l) => l.status === "approved");
-  const totalLeaveCredits = balances.reduce((sum, b) => sum + (b.remaining ?? 0), 0);
-  const vlRemaining = balances.find((b) => String(b.leave_type).toLowerCase() === "vacation")?.remaining ?? 0;
-  const slRemaining = balances.find((b) => String(b.leave_type).toLowerCase() === "sick")?.remaining ?? 0;
+
+  const ledgerAvailable = (row: (typeof ledgerBalances)[number]) =>
+    Math.max(
+      0,
+      Number(row.entitled_days ?? 0) -
+        Number(row.used_days ?? 0) -
+        Number(row.pending_days ?? 0)
+    );
+
+  const totalLeaveCredits =
+    ledgerBalances.length > 0
+      ? ledgerBalances.reduce((sum, b) => sum + ledgerAvailable(b), 0)
+      : balances.reduce((sum, b) => sum + (b.remaining ?? 0), 0);
+
+  const vlRow = ledgerBalances.find((b) => b.leave_type === "VL");
+  const slRow = ledgerBalances.find((b) => b.leave_type === "SL");
+  const silRow = ledgerBalances.find((b) => b.leave_type === "SIL");
+
+  const vlRemaining = vlRow
+    ? ledgerAvailable(vlRow)
+    : (balances.find((b) => String(b.leave_type).toLowerCase() === "vacation")?.remaining ?? 0);
+  const slRemaining = slRow
+    ? ledgerAvailable(slRow)
+    : (balances.find((b) => String(b.leave_type).toLowerCase() === "sick")?.remaining ?? 0);
+  const silRemaining = silRow ? ledgerAvailable(silRow) : 0;
 
   return (
     <PageContainer>
@@ -96,7 +143,9 @@ export default async function LeavesPage({ searchParams }: Props) {
               </p>
               <p className="mt-1 text-2xl font-bold text-[#1E1B4B]">{totalLeaveCredits}d</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                VL {vlRemaining}d · SL {slRemaining}d
+                {silRow && !vlRow && !slRow
+                  ? `SIL ${silRemaining}d`
+                  : `VL ${vlRemaining}d · SL ${slRemaining}d${silRemaining > 0 ? ` · SIL ${silRemaining}d` : ""}`}
               </p>
             </div>
             <div className="rounded-2xl border border-white/20 bg-white p-4 text-slate-900 shadow-sm">
@@ -201,8 +250,8 @@ function LeaveCard({ leave, isHR }: { leave: LeaveRequest; isHR: boolean }) {
                 {resolveEmployeeSourceOfTruth({ employee: { job_title: emp.job_title } }).position}
               </p>
             )}
-            <p className={`text-sm font-semibold capitalize ${isHR ? "mt-1 text-text-secondary" : "text-text-primary"}`}>
-              {leave.leave_type.replace("_", " ")} leave
+            <p className={`text-sm font-semibold ${isHR ? "mt-1 text-text-secondary" : "text-text-primary"}`}>
+              {formatLeaveTypeDisplayLabel(leave.leave_type)}
             </p>
             <p className="mt-0.5 text-xs text-text-secondary">
               {fmt(leave.start_date)} – {fmt(leave.end_date)}
@@ -210,8 +259,8 @@ function LeaveCard({ leave, isHR }: { leave: LeaveRequest; isHR: boolean }) {
               {leave.total_days} day{leave.total_days !== 1 ? "s" : ""}
             </p>
           </div>
-          <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] whitespace-normal break-words leading-normal max-w-[50%] text-center ${LEAVE_STATUS_COLORS[leave.status]}`}>
-            {leave.status}
+          <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] whitespace-normal break-words leading-normal max-w-[50%] text-center ${LEAVE_STATUS_COLORS[leave.status] ?? "bg-amber-100 text-amber-800"}`}>
+            {String(leave.status).replace(/_/g, " ")}
           </span>
         </div>
 
@@ -231,7 +280,7 @@ function LeaveCard({ leave, isHR }: { leave: LeaveRequest; isHR: boolean }) {
       </div>
 
       {/* HR approve/reject actions */}
-      {isHR && leave.status === "pending" && (
+      {isHR && ["pending", "pending_hr", "pending_supervisor"].includes(String(leave.status)) && (
         <div className="border-t border-[#e6e4f0] px-4 py-3">
           <form action={reviewLeaveRequest} className="flex gap-2">
             <input type="hidden" name="leave_id" value={leave.id} />
@@ -262,7 +311,7 @@ function LeaveCard({ leave, isHR }: { leave: LeaveRequest; isHR: boolean }) {
       )}
 
       {/* Employee cancel button */}
-      {!isHR && leave.status === "pending" && (
+      {!isHR && ["pending", "pending_supervisor", "pending_hr"].includes(String(leave.status)) && (
         <div className="border-t border-[#e6e4f0] px-4 py-3">
           <form action={cancelLeaveRequest}>
             <input type="hidden" name="leave_id" value={leave.id} />

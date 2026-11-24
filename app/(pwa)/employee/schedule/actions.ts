@@ -7,6 +7,11 @@ import { calculateHaversineDistance } from "@/lib/haversine";
 import { resolveEmployeeGeofence } from "@/lib/geofence-resolver";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveDailyWorkModel } from "@/lib/work-arrangement";
+import {
+  calculateShiftAttendanceMetrics,
+  computeOvertimeWindowMinutes,
+  validateAndClassifyOvertimeRequest,
+} from "@/lib/shift-calculations";
 
 export type ClockInPayload = {
   latitude: number;
@@ -53,10 +58,14 @@ function getLogLocalDateStr(log: { date?: string | null; clock_in?: string | nul
 type ResolvedEmployee = {
   id: string;
   tenant_id: string | null;
+  reports_to?: string | null;
   work_mode?: string | null;
   work_location_id?: string | null;
   hybrid_onsite_days?: string[] | null;
   work_days?: string[] | null;
+  daily_work_modes?: Record<string, string | null | undefined> | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
 };
 
 async function resolveCurrentEmployee(userId: string): Promise<ResolvedEmployee | null> {
@@ -167,7 +176,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
   await supabaseAdmin
     .from("overtime_requests")
     .update({ status: "expired" })
-    .eq("status", "pending")
+    .in("status", ["pending", "pending_supervisor", "pending_hr"])
     .lt("work_date", todayDateStr);
 
   // Approved Leave Hard Lock (Highest Priority — overrides any OT approval)
@@ -199,20 +208,37 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
 
   const { data: latestSchedule } = await supabaseAdmin
     .from("schedules")
-    .select("notes")
+    .select("notes, shift_start, shift_end, work_days, daily_work_modes")
     .eq("employee_id", employee.id)
     .eq("is_published", true)
     .lte("week_start", todayDateStr)
     .order("week_start", { ascending: false })
     .order("updated_at", { ascending: false })
     .limit(1)
-    .maybeSingle<{ notes: string | null }>();
+    .maybeSingle<{
+      notes: string | null;
+      shift_start?: string | null;
+      shift_end?: string | null;
+      work_days?: string[] | null;
+      daily_work_modes?: Record<string, string | null | undefined> | null;
+    }>();
+
+  const resolvedDailyWorkModes =
+    employee.daily_work_modes && Object.keys(employee.daily_work_modes).length > 0
+      ? employee.daily_work_modes
+      : latestSchedule?.daily_work_modes ?? null;
 
   const todayDailyModel = resolveDailyWorkModel({
     contractWorkSetup: resolvedSetup,
     schedule: {
       notes: latestSchedule?.notes ?? null,
-      work_days: Array.isArray(employee.work_days) ? employee.work_days : null,
+      daily_work_modes: resolvedDailyWorkModes,
+      work_days:
+        Array.isArray(latestSchedule?.work_days) && latestSchedule.work_days.length > 0
+          ? latestSchedule.work_days
+          : Array.isArray(employee.work_days)
+            ? employee.work_days
+            : null,
     },
   });
 
@@ -247,7 +273,9 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
       hour12: false,
     }).format(new Date());
     outsideApprovedWindow =
-      nowManilaTime < approvedOt.start_time || nowManilaTime > approvedOt.end_time;
+      approvedOt.end_time < approvedOt.start_time
+        ? !(nowManilaTime >= approvedOt.start_time || nowManilaTime <= approvedOt.end_time)
+        : nowManilaTime < approvedOt.start_time || nowManilaTime > approvedOt.end_time;
   }
 
   const geofence = await resolveEmployeeGeofence(supabaseAdmin, {
@@ -257,6 +285,7 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     work_location_id: employee.work_location_id ?? linkedJob?.workLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
+    daily_work_modes: resolvedDailyWorkModes,
     todayDailyModel,
   });
 
@@ -293,6 +322,27 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
     ? "remote_verified"
     : "onsite_verified";
 
+  const clockInNow = new Date();
+  const isRestDayWork = geofence.effectiveWorkMode === "off" || todayDailyModel === "off";
+  const effectiveShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
+  const effectiveShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+
+  // Phase 3: Cross-midnight-safe late calculation (rest-day work is never marked late)
+  const shiftMetrics = isRestDayWork || overtimeRequestId
+    ? { isLate: false, lateMinutes: 0 }
+    : calculateShiftAttendanceMetrics({
+        clockIn: clockInNow,
+        shiftStart: effectiveShiftStart,
+        shiftEnd: effectiveShiftEnd,
+        gracePeriodMinutes: 5,
+      });
+
+  const computedFlagReason =
+    flag_reason ||
+    (isRestDayWork
+      ? "Rest Day Work — pending supervisor/HR verification for PH Labor Code rest-day premium"
+      : null);
+
   // Persistence: Insert into attendance_logs
   const { data: newLog, error: insertError } = await supabaseAdmin
     .from("attendance_logs")
@@ -300,19 +350,23 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
       employee_id: employee.id,
       tenant_id: validTenantId,
       date: todayDateStr,
-      clock_in: new Date().toISOString(),
+      clock_in: clockInNow.toISOString(),
       latitude,
       longitude,
       accuracy_meters,
       distance_meters: Math.round(distanceMeters),
       zone_status: zoneStatus,
       location_used: locationUsed,
-      flag_reason: flag_reason || null,
+      work_mode: geofence.effectiveWorkMode ?? (isRemoteMode ? "wfh" : "onsite"),
+      scheduled_work_mode: todayDailyModel === "off" ? "rest" : todayDailyModel,
+      is_rest_day_work: isRestDayWork,
+      flag_reason: computedFlagReason,
       status: zoneStatus,
       verification_type: locationUsed,
       overtime_request_id: overtimeRequestId,
       outside_approved_window: outsideApprovedWindow,
-      ...(overtimeRequestId ? { is_late: false, late_minutes: 0 } : {}),
+      is_late: shiftMetrics.isLate,
+      late_minutes: shiftMetrics.lateMinutes,
     })
     .select("id")
     .single();
@@ -353,7 +407,7 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
   // Fetch the attendance log record
   const { data: log } = await supabase
     .from("attendance_logs")
-    .select("id, clock_in")
+    .select("id, clock_in, total_lunch_minutes, is_rest_day_work")
     .eq("id", logId)
     .eq("employee_id", employee.id)
     .maybeSingle();
@@ -362,17 +416,40 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
     return { success: false, error: "Attendance log not found." };
   }
 
-  const clockInTime = new Date(log.clock_in);
-  const totalHours = Math.max(0, (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60));
+  const supabaseAdmin = getAdminClient();
+  const { data: latestSchedule } = await supabaseAdmin
+    .from("schedules")
+    .select("shift_start, shift_end")
+    .eq("employee_id", employee.id)
+    .eq("is_published", true)
+    .order("week_start", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ shift_start?: string | null; shift_end?: string | null }>();
 
-  const { error } = await supabase
+  const effectiveShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
+  const effectiveShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+
+  // Phase 3: Cross-midnight-safe worked hours, undertime, and 10% NSD (22:00–06:00 PHT)
+  const shiftMetrics = calculateShiftAttendanceMetrics({
+    clockIn: log.clock_in,
+    clockOut: clockOutTime,
+    shiftStart: effectiveShiftStart,
+    shiftEnd: effectiveShiftEnd,
+    unpaidBreakMinutes: Number(log.total_lunch_minutes ?? 0),
+  });
+
+  const { error } = await supabaseAdmin
     .from("attendance_logs")
     .update({
       clock_out: clockOutTime.toISOString(),
-      total_hours: Number(totalHours.toFixed(2)),
+      total_hours: shiftMetrics.workedHours,
+      undertime_minutes: log.is_rest_day_work ? 0 : shiftMetrics.undertimeMinutes,
+      night_diff_minutes: shiftMetrics.nightDiffMinutes,
       status: "completed",
       active_break_type: null,
       break_status: "clocked_out",
+      updated_at: clockOutTime.toISOString(),
     })
     .eq("id", logId)
     .eq("employee_id", employee.id);
@@ -759,6 +836,7 @@ export async function updateLiveAttendanceLocationAction(
     work_location_id: employee.work_location_id ?? linkedJob?.workLocationId,
     hybrid_onsite_days: employee.hybrid_onsite_days,
     work_days: employee.work_days,
+    daily_work_modes: employee.daily_work_modes,
   });
 
   if (!geofence.configured) {
@@ -1146,21 +1224,64 @@ export async function submitOvertimeRequestAction(
   if (workDate < todayManila) {
     return { success: false, error: "Overtime requests cannot be submitted for past dates." };
   }
-  if (!startTime || !endTime || endTime <= startTime) {
-    return { success: false, error: "End time must be after start time." };
-  }
   if (!reason || reason.length < 5) {
     return { success: false, error: "Please provide a reason (at least 5 characters)." };
   }
 
   const supabaseAdmin = getAdminClient();
 
+  const { data: latestSchedule } = await supabaseAdmin
+    .from("schedules")
+    .select("shift_start, shift_end, work_days, daily_work_modes")
+    .eq("employee_id", employee.id)
+    .eq("is_published", true)
+    .lte("week_start", workDate)
+    .order("week_start", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{
+      shift_start?: string | null;
+      shift_end?: string | null;
+      work_days?: string[] | null;
+      daily_work_modes?: Record<string, string | null | undefined> | null;
+    }>();
+
+  const requestedType = (payload as { overtimeType?: string }).overtimeType;
+  const guardrail = validateAndClassifyOvertimeRequest({
+    workDate,
+    startTime,
+    endTime,
+    requestedType:
+      requestedType === "rdot"
+        ? "rdot"
+        : requestedType === "regular_ot"
+          ? "regular_ot"
+          : null,
+    workDays:
+      Array.isArray(latestSchedule?.work_days) && latestSchedule.work_days.length > 0
+        ? latestSchedule.work_days
+        : employee.work_days ?? null,
+    dailyWorkModes:
+      latestSchedule?.daily_work_modes &&
+      Object.keys(latestSchedule.daily_work_modes).length > 0
+        ? latestSchedule.daily_work_modes
+        : employee.daily_work_modes ?? null,
+    shiftStart: latestSchedule?.shift_start ?? employee.shift_start ?? "08:00",
+    shiftEnd: latestSchedule?.shift_end ?? employee.shift_end ?? "17:00",
+  });
+
+  if (!guardrail.valid) {
+    return { success: false, error: guardrail.error || "Invalid overtime request." };
+  }
+
+  const overtimeType = guardrail.resolvedType;
+
   const { data: existing } = await supabaseAdmin
     .from("overtime_requests")
     .select("id, status")
     .eq("employee_id", employee.id)
     .eq("work_date", workDate)
-    .in("status", ["pending", "approved"])
+    .in("status", ["pending", "pending_supervisor", "pending_hr", "approved"])
     .is("used_at", null)
     .limit(1)
     .maybeSingle();
@@ -1168,11 +1289,15 @@ export async function submitOvertimeRequestAction(
   if (existing) {
     return {
       success: false,
-      error: `You already have a ${existing.status} overtime request for ${workDate}.`,
+      error: `You already have a ${existing.status.replace(/_/g, " ")} overtime request for ${workDate}.`,
     };
   }
 
-  const { data: inserted, error: insertErr } = await supabaseAdmin
+  // Phase 2: Two-stage routing (reports_to -> pending_supervisor, else pending_hr)
+  const hasSupervisor = Boolean(employee.reports_to);
+  const initialOtStatus = hasSupervisor ? "pending_supervisor" : "pending_hr";
+
+  let { data: inserted, error: insertErr } = await supabaseAdmin
     .from("overtime_requests")
     .insert({
       tenant_id: employee.tenant_id,
@@ -1180,12 +1305,36 @@ export async function submitOvertimeRequestAction(
       work_date: workDate,
       start_time: startTime,
       end_time: endTime,
+      overtime_type: overtimeType,
       reason,
-      status: "pending",
+      status: initialOtStatus,
+      supervisor_id: employee.reports_to ?? null,
       requested_by: user.id,
     })
     .select("id")
     .single();
+
+  if (
+    insertErr &&
+    /overtime_type|supervisor_id|check constraint|invalid input value/i.test(insertErr.message)
+  ) {
+    const fallbackRes = await supabaseAdmin
+      .from("overtime_requests")
+      .insert({
+        tenant_id: employee.tenant_id,
+        employee_id: employee.id,
+        work_date: workDate,
+        start_time: startTime,
+        end_time: endTime,
+        reason,
+        status: "pending",
+        requested_by: user.id,
+      })
+      .select("id")
+      .single();
+    inserted = fallbackRes.data;
+    insertErr = fallbackRes.error;
+  }
 
   if (insertErr || !inserted) {
     return { success: false, error: insertErr?.message || "Failed to submit overtime request." };
@@ -1200,34 +1349,56 @@ export async function submitOvertimeRequestAction(
   const employeeName =
     [empProfile?.first_name, empProfile?.last_name].filter(Boolean).join(" ").trim() || "An employee";
 
-  let hrQuery = supabaseAdmin
-    .from("profiles")
-    .select("id, tenant_id")
-    .in("role", ["hr_manager", "hr", "admin"]);
+  if (hasSupervisor && employee.reports_to) {
+    const { data: supRow } = await supabaseAdmin
+      .from("employees")
+      .select("profile_id")
+      .eq("id", employee.reports_to)
+      .maybeSingle<{ profile_id: string | null }>();
 
-  if (employee.tenant_id) {
-    hrQuery = hrQuery.or(`tenant_id.eq.${employee.tenant_id},tenant_id.is.null`);
-  }
-
-  const { data: hrProfiles } = await hrQuery;
-  if (hrProfiles && hrProfiles.length > 0) {
-    await supabaseAdmin.from("notifications").insert(
-      hrProfiles.map((hr) => ({
-        recipient_id: hr.id,
+    if (supRow?.profile_id && supRow.profile_id !== user.id) {
+      await supabaseAdmin.from("notifications").insert({
+        recipient_id: supRow.profile_id,
         sender_id: user.id,
         type: "general" as const,
-        title: "Overtime Request",
-        body: `${employeeName} requested rest-day overtime on ${workDate} (${startTime}–${endTime}).`,
-        action_url: "/hr/attendance",
-      }))
-    );
+        title: "Team Overtime Request Pending Review",
+        body: `${employeeName} requested overtime on ${workDate} (${startTime}–${endTime}). Review and forward to HR.`,
+        action_url: "/employee/team",
+      });
+    }
+  } else {
+    let hrQuery = supabaseAdmin
+      .from("profiles")
+      .select("id, tenant_id, hr_role, is_tenant_owner")
+      .in("role", ["hr_manager", "hr", "admin"]);
+
+    if (employee.tenant_id) {
+      hrQuery = hrQuery.or(`tenant_id.eq.${employee.tenant_id},tenant_id.is.null`);
+    }
+
+    const { data: hrProfiles } = await hrQuery;
+    if (hrProfiles && hrProfiles.length > 0) {
+      await supabaseAdmin.from("notifications").insert(
+        hrProfiles.map((hr) => ({
+          recipient_id: hr.id,
+          sender_id: user.id,
+          type: "general" as const,
+          title: "Overtime Request Pending HR Approval",
+          body: `${employeeName} requested rest-day overtime on ${workDate} (${startTime}–${endTime}).`,
+          action_url: "/hr/attendance",
+        }))
+      );
+    }
   }
 
   revalidatePath("/employee/schedule");
+  revalidatePath("/employee/team");
   revalidatePath("/hr/attendance");
   return {
     success: true,
-    message: "Overtime request submitted for HR approval.",
+    message: hasSupervisor
+      ? "Overtime request submitted to your supervisor for initial approval."
+      : "Overtime request submitted for HR approval.",
     requestId: inserted.id,
   };
 }
@@ -1262,7 +1433,8 @@ export async function cancelOvertimeRequestAction(
   }
 
   const canCancel =
-    reqRow.status === "pending" || (reqRow.status === "approved" && reqRow.used_at === null);
+    ["pending", "pending_supervisor", "pending_hr"].includes(reqRow.status) ||
+    (reqRow.status === "approved" && reqRow.used_at === null);
   if (!canCancel) {
     return { success: false, error: "This overtime request can no longer be cancelled." };
   }
@@ -1280,4 +1452,133 @@ export async function cancelOvertimeRequestAction(
   revalidatePath("/employee/schedule");
   revalidatePath("/hr/attendance");
   return { success: true, message: "Overtime request cancelled." };
+}
+
+export interface WorkModeRequestPayload {
+  requestDate: string;
+  requestedMode: "onsite" | "wfh";
+  reason: string;
+}
+
+export interface WorkModeRequestActionResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  requestId?: string;
+}
+
+export async function submitWorkModeRequestAction(
+  payload: WorkModeRequestPayload
+): Promise<WorkModeRequestActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Authentication required." };
+  }
+
+  const employee = await resolveCurrentEmployee(user.id);
+  if (!employee) {
+    return { success: false, error: "Employee profile not found. Please contact HR." };
+  }
+
+  const todayManila = getTodayLocalDateStr();
+  const requestDate = payload.requestDate?.trim();
+  const requestedMode = payload.requestedMode;
+  const reason = payload.reason?.trim();
+
+  if (!requestDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestDate)) {
+    return { success: false, error: "Please select a valid date." };
+  }
+  if (requestDate < todayManila) {
+    return { success: false, error: "Work mode changes cannot be requested for past dates." };
+  }
+  if (requestedMode !== "onsite" && requestedMode !== "wfh") {
+    return { success: false, error: "Please select WFH or Onsite." };
+  }
+  if (!reason || reason.length < 5) {
+    return { success: false, error: "Please provide a brief reason (at least 5 characters)." };
+  }
+  if (!employee.tenant_id) {
+    return { success: false, error: "Tenant ID is missing on your employee profile." };
+  }
+
+  const supabaseAdmin = getAdminClient();
+
+  const { data: existing } = await supabaseAdmin
+    .from("work_mode_requests")
+    .select("id, status")
+    .eq("employee_id", employee.id)
+    .eq("request_date", requestDate)
+    .eq("status", "pending_supervisor")
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      success: false,
+      error: `You already have a pending work mode change request for ${requestDate}.`,
+    };
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("work_mode_requests")
+    .insert({
+      tenant_id: employee.tenant_id,
+      employee_id: employee.id,
+      supervisor_id: employee.reports_to ?? null,
+      request_date: requestDate,
+      requested_mode: requestedMode,
+      reason,
+      status: "pending_supervisor",
+    })
+    .select("id")
+    .single();
+
+  if (insertErr || !inserted) {
+    return {
+      success: false,
+      error: insertErr?.message || "Failed to submit work mode change request.",
+    };
+  }
+
+  const { data: empProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("first_name, last_name")
+    .eq("id", user.id)
+    .maybeSingle<{ first_name: string | null; last_name: string | null }>();
+
+  const employeeName =
+    [empProfile?.first_name, empProfile?.last_name].filter(Boolean).join(" ").trim() ||
+    "An employee";
+  const modeLabel = requestedMode === "wfh" ? "WFH" : "Onsite";
+
+  if (employee.reports_to) {
+    const { data: supRow } = await supabaseAdmin
+      .from("employees")
+      .select("profile_id")
+      .eq("id", employee.reports_to)
+      .maybeSingle<{ profile_id: string | null }>();
+
+    if (supRow?.profile_id && supRow.profile_id !== user.id) {
+      await supabaseAdmin.from("notifications").insert({
+        recipient_id: supRow.profile_id,
+        sender_id: user.id,
+        type: "schedule_published",
+        title: `Work Mode Change Request: ${employeeName}`,
+        body: `${employeeName} requested ${modeLabel} on ${requestDate}. Reason: ${reason}`,
+        action_url: "/employee/team",
+      });
+    }
+  }
+
+  revalidatePath("/employee/schedule");
+  revalidatePath("/employee/team");
+  return {
+    success: true,
+    message: `Work mode change to ${modeLabel} submitted for supervisor approval.`,
+    requestId: inserted.id,
+  };
 }

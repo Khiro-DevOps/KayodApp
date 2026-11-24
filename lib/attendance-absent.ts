@@ -7,6 +7,7 @@ export interface ApprovedLeaveLike {
   start_date: string;
   end_date: string;
   status?: string | null;
+  leave_type?: string | null;
 }
 
 export interface ComputeUnexcusedAbsencesInput {
@@ -104,7 +105,9 @@ export function computeUnexcusedAbsences(
   }
 
   const activeLeaves = input.approvedLeaves.filter(
-    (lr) => !lr.status || lr.status.toLowerCase() === "approved"
+    (lr) =>
+      (!lr.status || lr.status.toLowerCase() === "approved") &&
+      String(lr.leave_type ?? "").trim().toLowerCase() !== "unpaid"
   );
 
   const absentDates: string[] = [];

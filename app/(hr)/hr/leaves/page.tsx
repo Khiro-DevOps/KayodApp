@@ -4,6 +4,7 @@ import { reviewLeaveRequest } from "@/app/(pwa)/employee/leaves/actions";
 import { requireHrPermission } from "@/lib/rbac/server";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
+import { formatLeaveTypeDisplayLabel, toDbLeaveTypeEnum } from "@/lib/leave-policy";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 
 type LeaveRequestWithEmployee = {
@@ -14,8 +15,11 @@ type LeaveRequestWithEmployee = {
   end_date: string;
   total_days: number;
   reason: string | null;
-  status: "pending" | "approved" | "rejected" | "cancelled";
+  status: "pending" | "pending_supervisor" | "pending_hr" | "approved" | "rejected" | "cancelled";
   hr_remarks: string | null;
+  supervisor_remarks?: string | null;
+  supervisor_action_at?: string | null;
+  requires_document_verification?: boolean | null;
   filed_at?: string;
   created_at?: string;
   employees: {
@@ -29,12 +33,16 @@ type LeaveRequestWithEmployee = {
 };
 
 const LEAVE_TYPE_BADGES: Record<string, string> = {
-  vacation:  "bg-primary-light text-primary-dark border-primary/20",
-  sick:      "bg-error-bg text-error border-error/20",
-  emergency: "bg-warning-bg text-warning border-warning/20",
-  maternity: "bg-primary-light text-primary-dark border-primary/20",
-  paternity: "bg-primary-light text-primary-dark border-primary/20",
-  unpaid:    "bg-surface-bg text-text-muted border-border",
+  vacation:    "bg-primary-light text-primary-dark border-primary/20",
+  sick:        "bg-error-bg text-error border-error/20",
+  sil:         "bg-indigo-50 text-indigo-700 border-indigo-200",
+  emergency:   "bg-warning-bg text-warning border-warning/20",
+  maternity:   "bg-primary-light text-primary-dark border-primary/20",
+  paternity:   "bg-primary-light text-primary-dark border-primary/20",
+  solo_parent: "bg-purple-50 text-purple-700 border-purple-200",
+  vawc:        "bg-rose-50 text-rose-700 border-rose-200",
+  magna_carta: "bg-purple-50 text-purple-700 border-purple-200",
+  unpaid:      "bg-surface-bg text-text-muted border-border",
 };
 
 export default async function HRLeavesPage({
@@ -131,11 +139,16 @@ export default async function HRLeavesPage({
     };
   });
 
-  const pendingRequests = leaveRequests.filter(
-    (r) => String(r.status ?? "pending").toLowerCase() === "pending"
+  const pendingRequests = leaveRequests.filter((r) =>
+    ["pending", "pending_hr", "pending_supervisor"].includes(
+      String(r.status ?? "pending").toLowerCase()
+    )
   );
   const historyRequests = leaveRequests.filter(
-    (r) => String(r.status ?? "pending").toLowerCase() !== "pending"
+    (r) =>
+      !["pending", "pending_hr", "pending_supervisor"].includes(
+        String(r.status ?? "pending").toLowerCase()
+      )
   );
   const reviewedRequests = historyRequests;
 
@@ -212,9 +225,27 @@ export default async function HRLeavesPage({
                           <p className="text-xs text-text-muted">{req.employees?.job_title ?? "Employee"}</p>
                         </div>
                       </div>
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${LEAVE_TYPE_BADGES[req.leave_type] ?? "bg-surface-bg text-text-muted border-border"}`}>
-                        {req.leave_type}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${LEAVE_TYPE_BADGES[toDbLeaveTypeEnum(req.leave_type)] ?? "bg-surface-bg text-text-muted border-border"}`}>
+                          {formatLeaveTypeDisplayLabel(req.leave_type)}
+                        </span>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            req.status === "pending_supervisor"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : "border-indigo-200 bg-indigo-50 text-indigo-700"
+                          }`}
+                        >
+                          {req.status === "pending_supervisor"
+                            ? "Awaiting Supervisor"
+                            : "Ready for HR Final Approval"}
+                        </span>
+                        {req.requires_document_verification && (
+                          <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700">
+                            Doc Verification Required
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 rounded-xl bg-surface-bg border border-border/50 p-3 text-xs">

@@ -16,6 +16,10 @@ import {
   getCurrentManilaWeekStart,
   resolveInitialHireSchedule,
 } from "@/lib/schedule-policy";
+import {
+  provisionEmployeeLeaveBalances,
+  resolveLeavePolicyFromSources,
+} from "@/lib/leave-policy";
 
 export interface PromoteApplicantResult {
   success: boolean;
@@ -196,7 +200,7 @@ export async function promoteApplicantToEmployee(
     // Fetch job posting title & details
     const { data: jobPosting } = await admin
       .from("job_postings")
-      .select("id, title, employment_type, department_id, default_supervisor_id, target_job_level, salary_min, salary_max, work_setup, shift_start, shift_end, work_days, schedule_type, rest_days_type, offer_letter_settings")
+      .select("id, title, employment_type, department_id, default_supervisor_id, target_job_level, salary_min, salary_max, work_setup, shift_start, shift_end, work_days, schedule_type, rest_days_type, leave_policy_type, vacation_leave_days, sick_leave_days, service_incentive_leave_days, leave_eligibility, offer_letter_settings")
       .eq("id", application.job_id)
       .maybeSingle();
 
@@ -417,6 +421,30 @@ export async function promoteApplicantToEmployee(
       );
     } catch (schedErr) {
       console.warn("[promoteApplicantToEmployee] initial schedule upsert warning:", schedErr);
+    }
+
+    // Phase 2: Provision annual leave balances from contracted job_offers / job_postings policy
+    try {
+      const contractedLeavePolicy = resolveLeavePolicyFromSources(
+        (jobOffer as Record<string, unknown> | null) ??
+          (jobPosting as Record<string, unknown> | null),
+        {
+          ...((jobPosting?.offer_letter_settings as Record<string, unknown> | null) ?? {}),
+          ...(offerMeta ?? {}),
+        }
+      );
+      await provisionEmployeeLeaveBalances({
+        admin,
+        tenantId,
+        employeeId: upsertedEmp.id,
+        policy: contractedLeavePolicy,
+        year: new Date().getFullYear(),
+      });
+    } catch (leaveProvisionErr) {
+      console.warn(
+        "[promoteApplicantToEmployee] leave balance provisioning warning:",
+        leaveProvisionErr
+      );
     }
 
     // 3. Update status lifecycle: job_applications.status = 'hired'

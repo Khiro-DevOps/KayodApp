@@ -77,6 +77,7 @@ export interface ScheduleWorkModelInput {
   sun?: string | null;
   day_modes?: Record<string, string | null | undefined> | null;
   daily_modes?: Record<string, string | null | undefined> | null;
+  daily_work_modes?: Record<string, string | null | undefined> | null;
   onsite_days?: string[] | null;
   wfh_days?: string[] | null;
   work_days?: string[] | null;
@@ -131,16 +132,42 @@ export function resolveDailyWorkModel({
   schedule?: ScheduleWorkModelInput | null;
   date?: Date;
 }): DailyWorkModel {
-  const setup = normalizeWorkSetup(contractWorkSetup);
-  if (setup === "onsite") return "onsite";
-  if (setup === "wfh" || setup === "remote") return "wfh";
-
-  if (!schedule) return "onsite";
-
   const weekdayIdx = getPhtWeekdayIndex(date);
   const shortKey = WEEKDAY_SHORT_KEYS[weekdayIdx];
+  const shortTitleKey = shortKey.charAt(0).toUpperCase() + shortKey.slice(1);
   const fullName = WEEKDAY_FULL_NAMES[weekdayIdx];
   const fullLower = fullName.toLowerCase();
+
+  // 0. Per-day `daily_work_modes` map takes highest precedence across ALL work setups (onsite/hybrid/remote)
+  if (schedule?.daily_work_modes && typeof schedule.daily_work_modes === "object") {
+    const dwm = schedule.daily_work_modes;
+    const dwmVal = normalizeDayAssignment(
+      dwm[shortTitleKey] ?? dwm[shortKey] ?? dwm[fullName] ?? dwm[fullLower],
+    );
+    if (dwmVal) return dwmVal;
+  }
+
+  const setup = normalizeWorkSetup(contractWorkSetup);
+  if (setup === "onsite") {
+    if (Array.isArray(schedule?.work_days) && schedule.work_days.length > 0) {
+      const workFull = normalizeDaysToFull(schedule.work_days).map((d) =>
+        d.toLowerCase(),
+      );
+      if (!workFull.includes(fullLower)) return "off";
+    }
+    return "onsite";
+  }
+  if (setup === "wfh" || setup === "remote") {
+    if (Array.isArray(schedule?.work_days) && schedule.work_days.length > 0) {
+      const workFull = normalizeDaysToFull(schedule.work_days).map((d) =>
+        d.toLowerCase(),
+      );
+      if (!workFull.includes(fullLower)) return "off";
+    }
+    return "wfh";
+  }
+
+  if (!schedule) return "onsite";
 
   // 1. Direct mon..sun keys
   const directVal = normalizeDayAssignment(schedule[shortKey]);
@@ -150,7 +177,7 @@ export function resolveDailyWorkModel({
   const modesMap = schedule.day_modes ?? schedule.daily_modes;
   if (modesMap && typeof modesMap === "object") {
     const mapVal = normalizeDayAssignment(
-      modesMap[shortKey] ?? modesMap[fullName] ?? modesMap[fullLower],
+      modesMap[shortTitleKey] ?? modesMap[shortKey] ?? modesMap[fullName] ?? modesMap[fullLower],
     );
     if (mapVal) return mapVal;
   }
