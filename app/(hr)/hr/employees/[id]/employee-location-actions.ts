@@ -1,32 +1,20 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 import { ensureValidWorkLocationId } from "@/lib/employee-position-server";
 import type { WorkSetup } from "@/lib/types";
 
 export async function updateEmployeeLocationAction(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const ctx = await getHrSessionContext();
+  if (!ctx) throw new Error("Unauthorized");
+  if (!canHr(ctx.hr_role, "workforce:manage", ctx.is_tenant_owner)) {
+    throw new Error("Forbidden: insufficient HR permissions");
+  }
 
   const admin = getAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle<{ role: string | null }>();
-
-  const rawMeta = (
-    (user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}
-  ) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMeta.role) as string | undefined;
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) throw new Error("Forbidden: HR role required");
 
   const employeeId = formData.get("employee_id") as string;
   const workMode = formData.get("work_mode") as WorkSetup;
@@ -122,7 +110,7 @@ export async function updateEmployeeLocationAction(formData: FormData) {
 
     const { error: notifErr } = await admin.from("notifications").insert({
       recipient_id: updatedEmp.profile_id,
-      sender_id: user.id,
+      sender_id: ctx.id,
       type: "schedule_published",
       title: "Work Setup & Office Branch Updated",
       body,

@@ -1,9 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import { reviewLeaveRequest } from "@/app/(pwa)/employee/leaves/actions";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
@@ -46,24 +44,7 @@ export default async function HRLeavesPage({
 }) {
   const resolvedParams = searchParams ? await searchParams : {};
   const actionError = resolvedParams?.error ?? null;
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle<{ role: string | null }>();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) {
-    redirect("/dashboard");
-  }
+  await requireHrPermission("leaves:view");
 
   const admin = getAdminClient();
   const { data: initialRequests, error: requestsError } = await admin

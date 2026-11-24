@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import HRPayrollPage from "../payroll/hr-payroll-page";
 import PayrollPage from "../payroll/page";
 
@@ -28,6 +29,7 @@ export default async function HRPayslipsRoutePage({
 
   const role = effectiveRole(profile?.role, authRole);
   if (isHRRole(role)) {
+    await requireHrPermission("payroll:manage");
     return (
       <HRPayrollPage
         selectedPeriodId={resolvedParams?.periodId}

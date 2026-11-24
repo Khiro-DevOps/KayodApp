@@ -1,6 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
+import { requireHrPermission } from "@/lib/rbac/server";
 import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
@@ -18,19 +18,7 @@ interface Props {
 export default async function EmployeeDetailPage({ params }: Props) {
   const resolvedParams = await params;
   const employeeId = resolvedParams.id;
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single<Pick<Profile, "role" | "tenant_id">>();
-
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (!isHR) redirect("/dashboard");
+  const ctx = await requireHrPermission("workforce:view");
 
   const admin = getAdminClient();
   const { data: employee } = await admin
@@ -46,7 +34,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
     .select("id, name")
     .order("name", { ascending: true });
 
-  const tenantId = profile?.tenant_id ?? employee.tenant_id ?? null;
+  const tenantId = ctx.tenant_id ?? employee.tenant_id ?? null;
   let branchesQuery = admin
     .from("office_branches")
     .select("*")

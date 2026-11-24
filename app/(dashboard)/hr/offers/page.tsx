@@ -6,10 +6,9 @@ import {
   markOfferSigned,
   verifyDocusealSubmissionCompleted,
 } from "@/lib/offer-lifecycle";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { Profile } from "@/lib/types";
 import HROffersListClient, {
   type HROfferJobOption,
   type HROfferListItem,
@@ -115,26 +114,9 @@ export default async function HROffersDirectoryPage({
   const initialScope: "mine" | "all" =
     resolvedParams?.scope === "all" ? "all" : "mine";
 
+  const ctx = await requireHrPermission("offers:draft");
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/login");
-  }
-
-  const authRole = user.user_metadata?.role as string | undefined;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single<Pick<Profile, "role" | "tenant_id">>();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) {
-    redirect("/dashboard");
-  }
+  const user = { id: ctx.id };
 
   const jobScope = await getHrJobScope(supabase, user.id);
   const tenantId = jobScope.tenantId;

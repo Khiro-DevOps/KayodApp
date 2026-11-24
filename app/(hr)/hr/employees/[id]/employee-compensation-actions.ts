@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 
 export async function updateEmployeeCompensationAction(formData: FormData): Promise<{
   ok: boolean;
@@ -11,30 +11,19 @@ export async function updateEmployeeCompensationAction(formData: FormData): Prom
   warning?: string;
   error?: string;
 }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const ctx = await getHrSessionContext();
+  if (!ctx) {
     return { ok: false, success: false, error: "Unauthorized" };
   }
 
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> })
-    .raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+  if (
+    !canHr(ctx.hr_role, "workforce:manage", ctx.is_tenant_owner) &&
+    !canHr(ctx.hr_role, "payroll:manage", ctx.is_tenant_owner)
+  ) {
+    return { ok: false, success: false, error: "Forbidden: insufficient HR permissions" };
+  }
 
   const admin = getAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) {
-    return { ok: false, success: false, error: "Forbidden: HR role required" };
-  }
 
   const employeeId = String(formData.get("employee_id") ?? "").trim();
   const rawSalary = Number(formData.get("base_salary"));

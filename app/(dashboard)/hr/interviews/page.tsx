@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 import { HRInterviewClientView } from "./_components/HRInterviewClientView";
 
@@ -48,12 +48,9 @@ export default async function HRInterviewsPage({
   const initialScope: "mine" | "all" =
     resolvedParams?.scope === "all" ? "all" : "mine";
 
+  const ctx = await requireHrPermission("interviews:conduct");
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["hr", "hr_manager", "admin"].includes(String(profile.role))) redirect("/dashboard");
+  const user = { id: ctx.id };
 
   const admin = getAdminClient();
   const jobScope = await getHrJobScope(admin, user.id);

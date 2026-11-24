@@ -7,6 +7,11 @@ import {
   getJobPostingPositionForProfile,
 } from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
+import {
+  getDefaultHrLandingPath,
+  isHrSubRole,
+  type HrSubRole,
+} from "@/lib/rbac/permissions";
 
 type DevRole = "applicant" | "employee" | "hr_manager";
 
@@ -28,7 +33,8 @@ function getAdminClient() {
 
 export async function toggleDevUserRole(
   targetRole: DevRole,
-  email?: string
+  email?: string,
+  hrRole?: HrSubRole
 ) {
   if (process.env.NODE_ENV !== "development") {
     return {
@@ -84,15 +90,24 @@ export async function toggleDevUserRole(
 
     const isCurrentUser = currentUser.id === userId;
     const dbRole = targetRole === "applicant" ? "candidate" : targetRole;
+    const profileUpdatePayload: {
+      role: string;
+      updated_at: string;
+      hr_role?: HrSubRole;
+    } = {
+      role: dbRole,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (targetRole === "hr_manager" && hrRole && isHrSubRole(hrRole)) {
+      profileUpdatePayload.hr_role = hrRole;
+    }
 
     const { data: updatedProfiles, error: updateError } = await admin
       .from("profiles")
-      .update({
-        role: dbRole,
-        updated_at: new Date().toISOString(),
-      })
+      .update(profileUpdatePayload)
       .eq("id", userId)
-      .select("id, email, role");
+      .select("id, email, role, hr_role, is_tenant_owner");
 
     if (updateError) {
       return {
@@ -344,7 +359,10 @@ export async function toggleDevUserRole(
       targetRole === "employee"
         ? "/employee/dashboard"
         : targetRole === "hr_manager"
-          ? "/hr"
+          ? getDefaultHrLandingPath(
+              updatedProfile.hr_role,
+              updatedProfile.is_tenant_owner
+            )
           : "/applicant/dashboard";
 
     return {

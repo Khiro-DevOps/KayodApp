@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import type { JobListing, JobPosting, Profile } from "@/lib/types";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import ManageJobsWorkspace from "./manage-jobs-workspace";
 import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 
@@ -55,12 +55,8 @@ export default async function ManageJobsPage({
   const cursorParam = typeof resolvedParams?.cursor === "string" ? resolvedParams.cursor.trim() : null;
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole =
-    (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
+  const ctx = await requireHrPermission("jobs:view");
+  const user = { id: ctx.id };
 
   const admin = getAdminClient();
   const { data: profile, error: profileError } = await admin
@@ -71,12 +67,6 @@ export default async function ManageJobsPage({
 
   if (profileError) {
     console.error("Profile fetch error:", profileError);
-  }
-
-  const role = effectiveRole(profile?.role, authRole);
-  const isHR = isHRRole(role);
-  if (!isHR) {
-    redirect("/dashboard");
   }
 
   const jobScope = await getHrJobScope(supabase, user.id);

@@ -1,9 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import { effectiveRole, isHRRole } from "@/lib/roles";
-import type { Profile } from "@/lib/types";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { ApplicationsHubClient } from "./applications-client";
 import type { ApplicationHubCard } from "./applications-kanban-board";
 import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
@@ -54,20 +52,9 @@ export default async function HRApplicantsHubPage({
   const initialJobParam =
     typeof resolvedParams?.job === "string" ? resolvedParams.job.trim() : "";
 
+  const ctx = await requireHrPermission("ats:view");
   const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const authRole = (user.user_metadata?.role) as string | undefined;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single<Pick<Profile, "role" | "tenant_id">>();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) redirect("/dashboard");
+  const user = { id: ctx.id };
 
   const admin = getAdminClient();
   const jobScope = await getHrJobScope(admin, user.id);

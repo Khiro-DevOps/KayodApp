@@ -1,6 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
+import { requireHrPermission } from "@/lib/rbac/server";
 import PageContainer from "@/components/ui/page-container";
 import { resolveOfferSalary, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
@@ -21,22 +20,10 @@ function getInitials(fullName: string): string {
 }
 
 export default async function EmployeesPage() {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single<Pick<Profile, "role" | "tenant_id">>();
-
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (!isHR) redirect("/dashboard");
+  const ctx = await requireHrPermission("workforce:view");
 
   const admin = getAdminClient();
-  const tenantId = profile?.tenant_id ?? null;
+  const tenantId = ctx.tenant_id ?? null;
 
   let employeesQuery = admin
     .from("employees")

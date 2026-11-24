@@ -4,7 +4,8 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { isHRRole } from "@/lib/roles";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 
 export type PendingTenantInvite = {
   id: string;
@@ -24,38 +25,22 @@ async function verifyTenantOwnerSession(): Promise<
       error: string;
     }
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const ctx = await getHrSessionContext();
+  if (!ctx) {
     return { ok: false, error: "Unauthorized." };
   }
 
-  const admin = getAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, role, tenant_id, is_tenant_owner")
-    .eq("id", user.id)
-    .maybeSingle<{
-      id: string;
-      role?: string | null;
-      tenant_id?: string | null;
-      is_tenant_owner?: boolean | null;
-    }>();
-
-  if (!profile || !isHRRole(profile.role) || !profile.tenant_id || !profile.is_tenant_owner) {
+  if (!ctx.tenant_id || !canHr(ctx.hr_role, "settings:manage_roles", ctx.is_tenant_owner)) {
     return {
       ok: false,
-      error: "Only the workspace owner HR Manager can manage HR invites.",
+      error: "Only HR Admins or workspace owners can manage HR invites.",
     };
   }
 
   return {
     ok: true,
-    userId: user.id,
-    tenantId: profile.tenant_id,
+    userId: ctx.id,
+    tenantId: ctx.tenant_id,
   };
 }
 

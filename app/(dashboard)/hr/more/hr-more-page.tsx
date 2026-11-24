@@ -4,24 +4,19 @@ import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import Link from "next/link";
 import { logout } from "@/app/(auth)/actions";
-import { effectiveRole, isHRRole, roleLabel } from "@/lib/roles";
+import { canHr, HR_ROLE_LABELS } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 
 export default async function HRMorePage() {
+  const ctx = await getHrSessionContext();
+  if (!ctx) redirect("/login");
+
   const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user.id)
+    .eq("id", ctx.id)
     .single<Profile>();
-
-  const effective = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(effective)) redirect("/dashboard");
 
   const fullName = profile
     ? `${profile.first_name} ${profile.last_name}`.trim()
@@ -38,7 +33,7 @@ export default async function HRMorePage() {
           <div>
             <p className="font-semibold text-text-primary">{fullName}</p>
             <p className="text-xs text-text-secondary capitalize">
-              {roleLabel(effective)}
+              {HR_ROLE_LABELS[ctx.hr_role]}
             </p>
             <p className="text-xs text-text-tertiary">{profile?.email}</p>
           </div>
@@ -50,11 +45,21 @@ export default async function HRMorePage() {
             HR Tools
           </p>
           <div className="rounded-2xl bg-surface border border-border overflow-hidden divide-y divide-border">
-            <MenuLink href="/hr/jobs" label="Manage job postings" emoji="💼" />
-            <MenuLink href="/hr/jobs/new" label="Post a new job" emoji="➕" />
-            <MenuLink href="/hr/payroll" label="Payroll" emoji="💰" />
-            <MenuLink href="/hr/schedules" label="Employee schedules" emoji="🗓️" />
-            <MenuLink href="/hr/leaves" label="Leave requests" emoji="🏖️" />
+            {canHr(ctx.hr_role, "jobs:view", ctx.is_tenant_owner) && (
+              <MenuLink href="/hr/jobs" label="Manage job postings" emoji="💼" />
+            )}
+            {canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner) && (
+              <MenuLink href="/hr/jobs/new" label="Post a new job" emoji="➕" />
+            )}
+            {canHr(ctx.hr_role, "payroll:manage", ctx.is_tenant_owner) && (
+              <MenuLink href="/hr/payroll" label="Payroll" emoji="💰" />
+            )}
+            {canHr(ctx.hr_role, "attendance:view", ctx.is_tenant_owner) && (
+              <MenuLink href="/hr/schedules" label="Employee schedules" emoji="🗓️" />
+            )}
+            {canHr(ctx.hr_role, "leaves:view", ctx.is_tenant_owner) && (
+              <MenuLink href="/hr/leaves" label="Leave requests" emoji="🏖️" />
+            )}
             <MenuLink href="/hr/notifications" label="Notifications" emoji="🔔" />
           </div>
         </section>

@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
 import HRSchedulesClient, { type HRScheduleEmployee } from "./hr-schedules-client";
@@ -23,27 +22,9 @@ export const metadata = {
 };
 
 export default async function HRSchedulesPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  await requireHrPermission("attendance:view");
 
   const admin = getAdminClient();
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) {
-    redirect("/login");
-  }
 
   const [{ data: initialEmployees, error: empError }, { count: pendingLeaveCount }] = await Promise.all([
     admin

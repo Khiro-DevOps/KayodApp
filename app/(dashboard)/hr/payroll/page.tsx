@@ -5,6 +5,7 @@ import type { Payslip, Profile } from "@/lib/types";
 import { PAYROLL_STATUS_COLORS } from "@/lib/types";
 import Link from "next/link";
 import HRPayrollPage from "./hr-payroll-page";
+import { requireHrPermission } from "@/lib/rbac/server";
 
 export default async function PayrollPage({
   searchParams,
@@ -27,6 +28,7 @@ export default async function PayrollPage({
 
   // HR users see full HR Payroll workspace with creation form and management tools
   if (isHR) {
+    await requireHrPermission("payroll:manage");
     return (
       <HRPayrollPage
         selectedPeriodId={resolvedParams?.periodId}

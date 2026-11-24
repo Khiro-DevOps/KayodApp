@@ -1,7 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { requireHrPermission } from "@/lib/rbac/server";
 import { computeUnexcusedAbsences, getTodayPhtIso } from "@/lib/attendance-absent";
 import { getJobPostingPositionsByProfileIds } from "@/lib/employee-position-server";
 import {
@@ -59,33 +57,10 @@ type RawAttendanceLog = {
 };
 
 export default async function HRAttendancePage() {
-  const supabase = await createClient();
-
-  // ── Auth guard ─────────────────────────────────────────────────────────────
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const rawMeta = (
-    (user as { raw_user_meta_data?: Record<string, unknown> })
-      .raw_user_meta_data ?? {}
-  ) as Record<string, unknown>;
-  const authRole = (
-    user.user_metadata?.role ?? rawMeta.role
-  ) as string | undefined;
+  const ctx = await requireHrPermission("attendance:view");
 
   const admin = getAdminClient();
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .maybeSingle<{ role: string | null; tenant_id: string | null }>();
-
-  const role = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(role)) redirect("/dashboard");
-  const tenantId = profile?.tenant_id ?? null;
+  const tenantId = ctx.tenant_id ?? null;
 
   // ── Fetch attendance_logs (last 30 days) joined with employees + profiles ──
   const thirtyDaysAgo = new Date();
@@ -704,7 +679,7 @@ export default async function HRAttendancePage() {
       overtimeRequests={overtimeRequests}
       activeEmployees={activeEmployeeOptions}
       todayDateStr={todayPht}
-      tenantId={profile?.tenant_id ?? null}
+      tenantId={tenantId}
       metrics={{
         presentToday,
         lateToday,

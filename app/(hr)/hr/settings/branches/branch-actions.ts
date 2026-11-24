@@ -3,6 +3,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
+
+async function requireBranchSettingsPermission() {
+  const ctx = await getHrSessionContext();
+  if (!ctx) throw new Error("Unauthorized");
+  if (!canHr(ctx.hr_role, "settings:view", ctx.is_tenant_owner)) {
+    throw new Error("Forbidden: insufficient HR permissions");
+  }
+  return ctx;
+}
 
 type MirrorBranchRow = {
   id: string;
@@ -36,12 +47,9 @@ async function mirrorOfficeBranchToWorkLocation(branch: MirrorBranchRow) {
 }
 
 export async function createBranchAction(formData: FormData) {
+  const ctx = await requireBranchSettingsPermission();
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
-  const tenantId = profile?.tenant_id;
+  const tenantId = ctx.tenant_id;
   if (!tenantId) throw new Error("Tenant not found");
 
   const name = formData.get("name") as string;
@@ -75,9 +83,8 @@ export async function createBranchAction(formData: FormData) {
 }
 
 export async function updateBranchAction(formData: FormData) {
+  await requireBranchSettingsPermission();
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
 
   const id = formData.get("id") as string;
   const name = formData.get("name") as string;
@@ -111,9 +118,8 @@ export async function updateBranchAction(formData: FormData) {
 }
 
 export async function deleteBranchAction(formData: FormData) {
+  await requireBranchSettingsPermission();
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
 
   const id = formData.get("id") as string;
 

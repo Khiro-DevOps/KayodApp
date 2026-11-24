@@ -1,19 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
-import type { Profile } from "@/lib/types";
-import { effectiveRole, isHRRole, roleLabel } from "@/lib/roles";
+import { HR_ROLE_LABELS } from "@/lib/rbac/permissions";
+import { requireHrPermission } from "@/lib/rbac/server";
 import HRDashboardView, { type TopCandidateMatch } from "./hr-dashboard-view";
 
 export default async function HRDashboardPage() {
+  const ctx = await requireHrPermission("settings:manage_roles");
   const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const rawMetadata = ((user as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data ?? {}) as Record<string, unknown>;
-  const authRole = (user.user_metadata?.role ?? rawMetadata.role) as string | undefined;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -23,11 +17,8 @@ export default async function HRDashboardPage() {
         name
       )
     `)
-    .eq("id", user.id)
+    .eq("id", ctx.id)
     .single();
-
-  const effective = effectiveRole(profile?.role, authRole);
-  if (!isHRRole(effective)) redirect("/dashboard");
 
   const fullName = profile
     ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "HR Manager"
@@ -97,7 +88,7 @@ export default async function HRDashboardPage() {
     <PageContainer>
       <HRDashboardView
         fullName={fullName}
-        roleLabelText={roleLabel(effective)}
+        roleLabelText={HR_ROLE_LABELS[ctx.hr_role]}
         totalEmployees={totalEmployees ?? 0}
         activeJobs={activeJobs ?? 0}
         pendingLeaves={pendingLeaves ?? 0}

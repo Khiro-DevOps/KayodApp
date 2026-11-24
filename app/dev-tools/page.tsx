@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { notFound } from "next/navigation";
 import { toast } from "sonner";
-import { toggleDevUserRole } from "@/app/actions/dev-role-toggle";
+import DevRoleToggle from "@/components/dev/DevRoleToggle";
 import { resetApplicantTestData } from "@/app/actions/debug";
 import {
   getStageForStatus,
@@ -39,8 +39,6 @@ const UUID_REGEX =
 function getCanonicalStatus(stageKey: UiStageKey): string | undefined {
   return getStatusesForStage(stageKey)[0];
 }
-
-type Role = "applicant" | "employee" | "hr_manager";
 
 export default function DevToolsPage() {
   const [isPending, startTransition] = useTransition();
@@ -132,48 +130,6 @@ export default function DevToolsPage() {
     const canonical = getCanonicalStatus(nextStage.key);
     if (!canonical) return;
     postStatus(canonical, nextStage.key);
-  };
-
-  const handleRoleChange = (targetRole: Role) => {
-    clearMessages();
-
-    startTransition(async () => {
-      const result = await toggleDevUserRole(
-        targetRole,
-        email.trim() || undefined
-      );
-
-      if (!result.success) {
-        const message = result.error ?? "Failed to change account role.";
-        setErrorMsg(message);
-        toast.error(message);
-        return;
-      }
-
-      const message =
-        result.message ?? `Account role changed to ${targetRole}.`;
-      setSuccessMsg(message);
-      toast.success(message);
-
-      if (result.isCurrentUser) {
-        try {
-          localStorage.clear();
-          sessionStorage.clear();
-        } catch {
-          // Storage may be unavailable; navigation is still required.
-        }
-
-        const destination =
-          result.targetRoute ??
-          (targetRole === "employee"
-            ? "/employee/dashboard"
-            : targetRole === "hr_manager"
-              ? "/hr/dashboard"
-              : "/applicant/jobs");
-
-        window.location.href = destination;
-      }
-    });
   };
 
   const handleResetOfferTest = () => {
@@ -445,33 +401,18 @@ export default function DevToolsPage() {
             />
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => handleRoleChange("applicant")}
-              className="rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPending ? "Switching..." : "Applicant"}
-            </button>
-
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => handleRoleChange("employee")}
-              className="rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPending ? "Switching..." : "Employee"}
-            </button>
-
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => handleRoleChange("hr_manager")}
-              className="rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPending ? "Switching..." : "HR Manager"}
-            </button>
+          <div className="mt-5">
+            <DevRoleToggle
+              email={email}
+              onSuccess={(message) => {
+                setErrorMsg(null);
+                setSuccessMsg(message);
+              }}
+              onError={(message) => {
+                setSuccessMsg(null);
+                setErrorMsg(message);
+              }}
+            />
           </div>
         </section>
 

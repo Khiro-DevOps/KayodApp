@@ -5,30 +5,21 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createJobOfferTemplate, type OfferLetterSettings } from "@/lib/docuseal";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 import { saveJobRequiredDocuments } from "@/lib/pre-employment-actions";
 import {
   computeCompensationTotals,
   parseCompensationPackage,
 } from "@/lib/compensation-package";
 
-async function verifyHR(supabase: Awaited<ReturnType<typeof createClient>>, user: {user_metadata?: Record<string, unknown>, raw_user_meta_data?: Record<string, unknown>, id: string}): Promise<boolean> {
-  const authRole =
-    (user.user_metadata?.role as string | undefined) ??
-    (user.raw_user_meta_data?.role as string | undefined);
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError) {
-    console.error("verifyHR profile fetch error:", profileError);
-  }
-
-  const role = effectiveRole(profile?.role, authRole);
-  return isHRRole(role);
+async function verifyHR(
+  _supabase: Awaited<ReturnType<typeof createClient>>,
+  _user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown>; id: string }
+): Promise<boolean> {
+  const ctx = await getHrSessionContext();
+  if (!ctx) return false;
+  return canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner);
 }
 
 export async function createJob(formData: FormData) {

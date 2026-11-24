@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
-import { effectiveRole, roleLabel, isHRRole } from "@/lib/roles";
+import { effectiveRole, isHRRole } from "@/lib/roles";
+import { HR_ROLE_LABELS, resolveEffectiveHrRole } from "@/lib/rbac/permissions";
 import ProfileDetailsForm from "@/app/(pwa)/applicant/profile/profile-details-form";
 import NotificationPreferencesCard from "@/components/profile/NotificationPreferencesCard";
 import TeamHrInvitesCard from "@/components/hr/TeamHrInvitesCard";
@@ -26,7 +27,7 @@ export default async function HRProfilePage() {
     .from("profiles")
     .select("*, tenants(name)")
     .eq("id", user.id)
-    .maybeSingle<Profile & { is_tenant_owner?: boolean | null; tenants?: { name?: string | null } | null }>();
+    .maybeSingle<Profile & { hr_role?: string | null; is_tenant_owner?: boolean | null; tenants?: { name?: string | null } | null }>();
 
   const effective = effectiveRole(profile?.role, authRole);
   if (!isHRRole(effective)) {
@@ -34,6 +35,7 @@ export default async function HRProfilePage() {
   }
 
   const isTenantOwner = Boolean(profile?.is_tenant_owner);
+  const effectiveHrRole = resolveEffectiveHrRole(profile?.hr_role, isTenantOwner);
   const pendingInvitesResult = isTenantOwner ? await listPendingHrInvitesAction() : null;
   const pendingInvites = pendingInvitesResult?.invites ?? [];
 
@@ -60,7 +62,7 @@ export default async function HRProfilePage() {
               <p className="text-sm text-text-muted truncate">{displayEmail}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="rounded-full bg-primary-light px-2.5 py-0.5 text-xs font-semibold text-primary-dark capitalize">
-                  {roleLabel(effective)}
+                  {HR_ROLE_LABELS[effectiveHrRole]}
                 </span>
                 <span className="text-xs text-text-muted">• {companyName}</span>
               </div>

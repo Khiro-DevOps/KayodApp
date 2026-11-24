@@ -5,21 +5,17 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { sendNotification } from "@/lib/notifications";
 import { computeEmployeeDemoPayslip } from "@/lib/payroll-calculator";
 import { resolveOfferCompensation, type OfferSalarySource } from "@/lib/offer-salary";
-import { effectiveRole, isHRRole } from "@/lib/roles";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 async function verifyHR(
-  user: { id: string; user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> }
+  _user: { id: string; user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> }
 ) {
-  const admin = getAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const authRole = (user.user_metadata?.role ?? user.raw_user_meta_data?.role) as string | undefined;
-  return isHRRole(effectiveRole(profile?.role, authRole));
+  const ctx = await getHrSessionContext();
+  if (!ctx) return false;
+  return canHr(ctx.hr_role, "payroll:manage", ctx.is_tenant_owner);
 }
 
 export async function createPayrollPeriod(formData: FormData) {

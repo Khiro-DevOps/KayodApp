@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireHrPermission } from "@/lib/rbac/server";
 import PageContainer from "@/components/ui/page-container";
 import BranchManager from "./branch-manager";
 import type { OfficeBranch } from "@/lib/types";
@@ -8,21 +8,10 @@ import TeamHrInvitesCard from "@/components/hr/TeamHrInvitesCard";
 import { listPendingHrInvitesAction } from "@/app/(hr)/hr/profile/invite-actions";
 
 export default async function BranchesSettingsPage() {
+  const ctx = await requireHrPermission("settings:view");
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id, is_tenant_owner")
-    .eq("id", user.id)
-    .single<{ role?: string | null; tenant_id?: string | null; is_tenant_owner?: boolean | null }>();
-
-  const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
-  if (!isHR) redirect("/dashboard");
-
-  const isTenantOwner = Boolean(profile?.is_tenant_owner);
+  const isTenantOwner = ctx.is_tenant_owner;
   const pendingInvitesResult = isTenantOwner ? await listPendingHrInvitesAction() : null;
   const pendingInvites = pendingInvitesResult?.invites ?? [];
 
@@ -30,8 +19,8 @@ export default async function BranchesSettingsPage() {
     .from("office_branches")
     .select("*")
     .order("created_at", { ascending: false });
-  if (profile?.tenant_id) {
-    branchesQuery = branchesQuery.eq("tenant_id", profile.tenant_id);
+  if (ctx.tenant_id) {
+    branchesQuery = branchesQuery.eq("tenant_id", ctx.tenant_id);
   }
   const { data: branches } = await branchesQuery.returns<OfficeBranch[]>();
 
