@@ -16,6 +16,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { HR_ROLE_LABELS } from "@/lib/rbac/permissions";
 import {
   acceptHrInviteAtomic,
   registerHrWorkspaceAtomic,
@@ -352,11 +353,14 @@ export default function HrRegisterFormClient({
         ) : (
           <form onSubmit={handleAcceptInvite} className="space-y-4">
             <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
-              <div>
+              <div className="space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-200">
                   Invited Company
                 </p>
                 <p className="text-sm font-semibold text-white">{validInvite.tenantName}</p>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-300/30 bg-indigo-400/20 px-2.5 py-0.5 text-xs font-semibold text-indigo-100">
+                  You are joining as {HR_ROLE_LABELS[validInvite.invitedHrRole]}
+                </span>
               </div>
               {!isUrlInviteMode ? (
                 <button

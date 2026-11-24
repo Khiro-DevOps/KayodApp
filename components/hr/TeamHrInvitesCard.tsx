@@ -7,6 +7,13 @@ import {
   revokeHrInviteAction,
   type PendingTenantInvite,
 } from "@/app/(hr)/hr/profile/invite-actions";
+import {
+  HR_ROLE_DESCRIPTIONS,
+  HR_ROLE_LABELS,
+  HR_SUB_ROLES,
+  isHrSubRole,
+  type HrSubRole,
+} from "@/lib/rbac/permissions";
 
 type TeamHrInvitesCardProps = {
   initialInvites: PendingTenantInvite[];
@@ -15,6 +22,7 @@ type TeamHrInvitesCardProps = {
 export default function TeamHrInvitesCard({ initialInvites }: TeamHrInvitesCardProps) {
   const [invites, setInvites] = useState<PendingTenantInvite[]>(initialInvites);
   const [emailInput, setEmailInput] = useState("");
+  const [selectedRole, setSelectedRole] = useState<HrSubRole>("hr_generalist");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +49,7 @@ export default function TeamHrInvitesCard({ initialInvites }: TeamHrInvitesCardP
     }
 
     startTransition(async () => {
-      const res = await generateHrInviteAction(targetEmail);
+      const res = await generateHrInviteAction(targetEmail, selectedRole);
       if (!res.success || !res.invitePath || !res.invite) {
         setError(res.error || "Failed to generate invite link.");
         return;
@@ -50,6 +58,7 @@ export default function TeamHrInvitesCard({ initialInvites }: TeamHrInvitesCardP
       const fullUrl = buildFullInviteUrl(res.invitePath);
       setGeneratedLink(fullUrl);
       setEmailInput("");
+      setSelectedRole("hr_generalist");
       setInvites((prev) => {
         const filtered = prev.filter((item) => item.id !== res.invite!.id);
         return [res.invite!, ...filtered];
@@ -104,32 +113,53 @@ export default function TeamHrInvitesCard({ initialInvites }: TeamHrInvitesCardP
         </div>
       ) : null}
 
-      <form onSubmit={handleGenerate} className="flex flex-col gap-2.5 sm:flex-row">
-        <input
-          type="email"
-          required
-          value={emailInput}
-          onChange={(e) => setEmailInput(e.target.value)}
-          placeholder="colleague@company.com"
-          className="flex-1 rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main outline-none focus:border-primary"
-        />
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
-        >
-          {isPending && !revokingId ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Generating...</span>
-            </>
-          ) : (
-            <>
-              <Link2 className="h-4 w-4" />
-              <span>Generate Invite Link</span>
-            </>
-          )}
-        </button>
+      <form onSubmit={handleGenerate} className="space-y-2.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row">
+          <input
+            type="email"
+            required
+            aria-label="Colleague work email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="colleague@company.com"
+            className="flex-1 rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main outline-none focus:border-primary"
+          />
+          <select
+            aria-label="Workspace Role"
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value as HrSubRole)}
+            className="rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm font-medium text-text-main outline-none focus:border-primary sm:w-48"
+          >
+            {HR_SUB_ROLES.map((roleKey) => (
+              <option key={roleKey} value={roleKey}>
+                {HR_ROLE_LABELS[roleKey]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
+          >
+            {isPending && !revokingId ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Generating...</span>
+              </>
+            ) : (
+              <>
+                <Link2 className="h-4 w-4" />
+                <span>Generate Invite Link</span>
+              </>
+            )}
+          </button>
+        </div>
+        <p className="text-xs text-text-muted">
+          <span className="font-semibold text-text-main">
+            {HR_ROLE_LABELS[selectedRole]}:
+          </span>{" "}
+          {HR_ROLE_DESCRIPTIONS[selectedRole]}
+        </p>
       </form>
 
       {generatedLink ? (
@@ -176,13 +206,23 @@ export default function TeamHrInvitesCard({ initialInvites }: TeamHrInvitesCardP
         ) : (
           <div className="divide-y divide-border rounded-lg border border-border bg-surface-bg">
             {invites.map((inv) => {
+              const roleKey: HrSubRole = isHrSubRole(inv.invited_hr_role)
+                ? inv.invited_hr_role
+                : "hr_generalist";
               return (
                 <div
                   key={inv.id}
                   className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-text-main truncate">{inv.invited_email}</p>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-semibold text-text-main">
+                        {inv.invited_email}
+                      </p>
+                      <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                        {HR_ROLE_LABELS[roleKey]}
+                      </span>
+                    </div>
                     <p className="text-[11px] text-text-muted">
                       Expires {new Date(inv.expires_at).toLocaleDateString()}
                     </p>

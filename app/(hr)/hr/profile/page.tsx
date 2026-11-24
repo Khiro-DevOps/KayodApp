@@ -3,11 +3,15 @@ import { redirect } from "next/navigation";
 import PageContainer from "@/components/ui/page-container";
 import type { Profile } from "@/lib/types";
 import { effectiveRole, isHRRole } from "@/lib/roles";
-import { HR_ROLE_LABELS, resolveEffectiveHrRole } from "@/lib/rbac/permissions";
+import { canHr, HR_ROLE_LABELS, resolveEffectiveHrRole } from "@/lib/rbac/permissions";
 import ProfileDetailsForm from "@/app/(pwa)/applicant/profile/profile-details-form";
 import NotificationPreferencesCard from "@/components/profile/NotificationPreferencesCard";
 import TeamHrInvitesCard from "@/components/hr/TeamHrInvitesCard";
-import { listPendingHrInvitesAction } from "./invite-actions";
+import HrTeamMembersCard from "@/components/hr/HrTeamMembersCard";
+import {
+  listHrTeamMembersAction,
+  listPendingHrInvitesAction,
+} from "./invite-actions";
 import { logout } from "@/app/(auth)/actions";
 import Link from "next/link";
 
@@ -36,8 +40,15 @@ export default async function HRProfilePage() {
 
   const isTenantOwner = Boolean(profile?.is_tenant_owner);
   const effectiveHrRole = resolveEffectiveHrRole(profile?.hr_role, isTenantOwner);
-  const pendingInvitesResult = isTenantOwner ? await listPendingHrInvitesAction() : null;
+  const canManageRoles = canHr(profile?.hr_role, "settings:manage_roles", isTenantOwner);
+  const canViewSettings = canHr(profile?.hr_role, "settings:view", isTenantOwner);
+
+  const [pendingInvitesResult, teamMembersResult] = await Promise.all([
+    canManageRoles ? listPendingHrInvitesAction() : Promise.resolve(null),
+    canViewSettings ? listHrTeamMembersAction() : Promise.resolve(null),
+  ]);
   const pendingInvites = pendingInvitesResult?.invites ?? [];
+  const teamMembers = teamMembersResult?.members ?? [];
 
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.email || user.email || "HR Manager";
   const displayEmail = profile?.email || user.email || "";
@@ -88,9 +99,18 @@ export default async function HRProfilePage() {
         {/* Editable Personal Details */}
         <ProfileDetailsForm profile={profile ?? null} />
 
-        {/* Team & HR Invites (Tenant Owner Only) */}
-        {isTenantOwner ? (
+        {/* Team & HR Invites (HR Admin / Workspace Owner) */}
+        {canManageRoles ? (
           <TeamHrInvitesCard initialInvites={pendingInvites} />
+        ) : null}
+
+        {/* HR Team Members (HR Admin editable, HR Generalist read-only) */}
+        {canViewSettings ? (
+          <HrTeamMembersCard
+            initialMembers={teamMembers}
+            currentUserId={user.id}
+            canManageRoles={canManageRoles}
+          />
         ) : null}
 
         {/* Notification Preferences */}

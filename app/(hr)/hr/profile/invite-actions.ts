@@ -2,45 +2,57 @@
 
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { canHr } from "@/lib/rbac/permissions";
-import { getHrSessionContext } from "@/lib/rbac/server";
+import {
+  isHrSubRole,
+  resolveEffectiveHrRole,
+  type HrSubRole,
+} from "@/lib/rbac/permissions";
+import { requireHrPermission } from "@/lib/rbac/server";
 
 export type PendingTenantInvite = {
   id: string;
   invited_email: string;
+  invited_hr_role: HrSubRole;
   expires_at: string;
   created_at: string;
 };
 
-async function verifyTenantOwnerSession(): Promise<
-  | {
-      ok: true;
-      userId: string;
-      tenantId: string;
-    }
-  | {
-      ok: false;
-      error: string;
-    }
-> {
-  const ctx = await getHrSessionContext();
-  if (!ctx) {
-    return { ok: false, error: "Unauthorized." };
-  }
+export type HrTeamMember = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  hr_role: HrSubRole;
+  is_tenant_owner: boolean;
+};
 
-  if (!ctx.tenant_id || !canHr(ctx.hr_role, "settings:manage_roles", ctx.is_tenant_owner)) {
-    return {
-      ok: false,
-      error: "Only HR Admins or workspace owners can manage HR invites.",
-    };
-  }
+type RawPendingTenantInvite = {
+  id: string;
+  invited_email: string;
+  invited_hr_role: string | null;
+  expires_at: string;
+  created_at: string;
+};
 
+type RawHrTeamMember = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  hr_role: string | null;
+  is_tenant_owner: boolean | null;
+};
+
+function normalizeInviteRow(row: RawPendingTenantInvite): PendingTenantInvite {
   return {
-    ok: true,
-    userId: ctx.id,
-    tenantId: ctx.tenant_id,
+    id: row.id,
+    invited_email: row.invited_email,
+    invited_hr_role: isHrSubRole(row.invited_hr_role)
+      ? row.invited_hr_role
+      : "hr_generalist",
+    expires_at: row.expires_at,
+    created_at: row.created_at,
   };
 }
 
@@ -49,19 +61,19 @@ export async function listPendingHrInvitesAction(): Promise<{
   invites: PendingTenantInvite[];
   error?: string;
 }> {
-  const auth = await verifyTenantOwnerSession();
-  if (!auth.ok) {
-    return { success: false, invites: [], error: auth.error };
+  const ctx = await requireHrPermission("settings:manage_roles");
+  if (!ctx.tenant_id) {
+    return { success: false, invites: [], error: "Workspace tenant not found." };
   }
 
   const admin = getAdminClient();
   const { data, error } = await admin
     .from("tenant_invites")
-    .select("id, invited_email, expires_at, created_at")
-    .eq("tenant_id", auth.tenantId)
+    .select("id, invited_email, invited_hr_role, expires_at, created_at")
+    .eq("tenant_id", ctx.tenant_id)
     .is("accepted_at", null)
     .order("created_at", { ascending: false })
-    .returns<PendingTenantInvite[]>();
+    .returns<RawPendingTenantInvite[]>();
 
   if (error) {
     return { success: false, invites: [], error: error.message };
@@ -69,24 +81,31 @@ export async function listPendingHrInvitesAction(): Promise<{
 
   return {
     success: true,
-    invites: data ?? [],
+    invites: (data ?? []).map(normalizeInviteRow),
   };
 }
 
-export async function generateHrInviteAction(invitedEmailInput: string): Promise<{
+export async function generateHrInviteAction(
+  invitedEmailInput: string,
+  invitedHrRoleInput: HrSubRole = "hr_generalist"
+): Promise<{
   success: boolean;
   invitePath?: string;
   invite?: PendingTenantInvite;
   error?: string;
 }> {
-  const auth = await verifyTenantOwnerSession();
-  if (!auth.ok) {
-    return { success: false, error: auth.error };
+  const ctx = await requireHrPermission("settings:manage_roles");
+  if (!ctx.tenant_id) {
+    return { success: false, error: "Workspace tenant not found." };
   }
 
   const invitedEmail = invitedEmailInput.trim().toLowerCase();
   if (!invitedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedEmail)) {
     return { success: false, error: "Please enter a valid work email address." };
+  }
+
+  if (!isHrSubRole(invitedHrRoleInput)) {
+    return { success: false, error: "Please select a valid workspace role." };
   }
 
   const rawToken = crypto.randomBytes(32).toString("base64url");
@@ -99,7 +118,7 @@ export async function generateHrInviteAction(invitedEmailInput: string): Promise
   const { data: existingPending } = await admin
     .from("tenant_invites")
     .select("id")
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", ctx.tenant_id)
     .eq("invited_email", invitedEmail)
     .is("accepted_at", null)
     .maybeSingle<{ id: string }>();
@@ -112,34 +131,36 @@ export async function generateHrInviteAction(invitedEmailInput: string): Promise
       .update({
         token_hash: tokenHash,
         expires_at: expiresAt,
-        invited_by: auth.userId,
+        invited_by: ctx.id,
+        invited_hr_role: invitedHrRoleInput,
       })
       .eq("id", existingPending.id)
-      .eq("tenant_id", auth.tenantId)
-      .select("id, invited_email, expires_at, created_at")
-      .single<PendingTenantInvite>();
+      .eq("tenant_id", ctx.tenant_id)
+      .select("id, invited_email, invited_hr_role, expires_at, created_at")
+      .single<RawPendingTenantInvite>();
 
     if (error || !data) {
       return { success: false, error: error?.message || "Failed to refresh invite link." };
     }
-    savedInvite = data;
+    savedInvite = normalizeInviteRow(data);
   } else {
     const { data, error } = await admin
       .from("tenant_invites")
       .insert({
-        tenant_id: auth.tenantId,
+        tenant_id: ctx.tenant_id,
         invited_email: invitedEmail,
-        invited_by: auth.userId,
+        invited_by: ctx.id,
+        invited_hr_role: invitedHrRoleInput,
         token_hash: tokenHash,
         expires_at: expiresAt,
       })
-      .select("id, invited_email, expires_at, created_at")
-      .single<PendingTenantInvite>();
+      .select("id, invited_email, invited_hr_role, expires_at, created_at")
+      .single<RawPendingTenantInvite>();
 
     if (error || !data) {
       return { success: false, error: error?.message || "Failed to create invite link." };
     }
-    savedInvite = data;
+    savedInvite = normalizeInviteRow(data);
   }
 
   revalidatePath("/hr/profile");
@@ -156,9 +177,9 @@ export async function revokeHrInviteAction(inviteId: string): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const auth = await verifyTenantOwnerSession();
-  if (!auth.ok) {
-    return { success: false, error: auth.error };
+  const ctx = await requireHrPermission("settings:manage_roles");
+  if (!ctx.tenant_id) {
+    return { success: false, error: "Workspace tenant not found." };
   }
 
   const trimmedId = inviteId.trim();
@@ -171,7 +192,7 @@ export async function revokeHrInviteAction(inviteId: string): Promise<{
     .from("tenant_invites")
     .delete()
     .eq("id", trimmedId)
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", ctx.tenant_id)
     .is("accepted_at", null);
 
   if (error) {
@@ -182,4 +203,119 @@ export async function revokeHrInviteAction(inviteId: string): Promise<{
   revalidatePath("/hr/settings/branches");
 
   return { success: true };
+}
+
+export async function listHrTeamMembersAction(): Promise<{
+  success: boolean;
+  members: HrTeamMember[];
+  error?: string;
+}> {
+  const ctx = await requireHrPermission("settings:view");
+  if (!ctx.tenant_id) {
+    return { success: false, members: [], error: "Workspace tenant not found." };
+  }
+
+  const admin = getAdminClient();
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id, first_name, last_name, email, hr_role, is_tenant_owner")
+    .eq("tenant_id", ctx.tenant_id)
+    .eq("role", "hr_manager")
+    .order("is_tenant_owner", { ascending: false })
+    .order("email", { ascending: true })
+    .returns<RawHrTeamMember[]>();
+
+  if (error) {
+    return { success: false, members: [], error: error.message };
+  }
+
+  const members: HrTeamMember[] = (data ?? []).map((row) => {
+    const isOwner = Boolean(row.is_tenant_owner);
+    return {
+      id: row.id,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      email: row.email,
+      hr_role: resolveEffectiveHrRole(row.hr_role, isOwner),
+      is_tenant_owner: isOwner,
+    };
+  });
+
+  return {
+    success: true,
+    members,
+  };
+}
+
+export async function updateHrMemberRoleAction(
+  memberId: string,
+  newRole: HrSubRole
+): Promise<{
+  success: boolean;
+  member?: HrTeamMember;
+  error?: string;
+}> {
+  const ctx = await requireHrPermission("settings:manage_roles");
+  if (!ctx.tenant_id) {
+    return { success: false, error: "Workspace tenant not found." };
+  }
+
+  const trimmedId = memberId.trim();
+  if (!trimmedId) {
+    return { success: false, error: "Team member ID is required." };
+  }
+
+  if (!isHrSubRole(newRole)) {
+    return { success: false, error: "Invalid HR workspace role." };
+  }
+
+  const admin = getAdminClient();
+  const { data: target, error: lookupError } = await admin
+    .from("profiles")
+    .select("id, first_name, last_name, email, hr_role, is_tenant_owner")
+    .eq("id", trimmedId)
+    .eq("tenant_id", ctx.tenant_id)
+    .eq("role", "hr_manager")
+    .maybeSingle<RawHrTeamMember>();
+
+  if (lookupError || !target) {
+    return { success: false, error: lookupError?.message || "HR team member not found." };
+  }
+
+  const targetIsOwner = Boolean(target.is_tenant_owner);
+  if (targetIsOwner && newRole !== "hr_admin") {
+    return {
+      success: false,
+      error: "Workspace owners cannot demote themselves or lose HR Admin access.",
+    };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("profiles")
+    .update({ hr_role: newRole })
+    .eq("id", trimmedId)
+    .eq("tenant_id", ctx.tenant_id)
+    .eq("role", "hr_manager")
+    .select("id, first_name, last_name, email, hr_role, is_tenant_owner")
+    .single<RawHrTeamMember>();
+
+  if (updateError || !updated) {
+    return { success: false, error: updateError?.message || "Failed to update team member role." };
+  }
+
+  revalidatePath("/hr/profile");
+  revalidatePath("/hr/settings/branches");
+
+  const updatedIsOwner = Boolean(updated.is_tenant_owner);
+  return {
+    success: true,
+    member: {
+      id: updated.id,
+      first_name: updated.first_name,
+      last_name: updated.last_name,
+      email: updated.email,
+      hr_role: resolveEffectiveHrRole(updated.hr_role, updatedIsOwner),
+      is_tenant_owner: updatedIsOwner,
+    },
+  };
 }

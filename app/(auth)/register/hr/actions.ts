@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { isHrSubRole, type HrSubRole } from "@/lib/rbac/permissions";
 import { isSubscriptionPlan, type SubscriptionPlan } from "@/lib/subscription-tiers";
 
 export type HrInviteValidationResult =
@@ -11,6 +12,7 @@ export type HrInviteValidationResult =
       tenantId: string;
       tenantName: string;
       invitedEmail: string;
+      invitedHrRole: HrSubRole;
       expiresAt: string;
     }
   | {
@@ -61,7 +63,7 @@ export async function validateHrInviteToken(
 
   const { data: invite, error } = await admin
     .from("tenant_invites")
-    .select("id, tenant_id, invited_email, expires_at, accepted_at, tenants(name)")
+    .select("id, tenant_id, invited_email, invited_hr_role, expires_at, accepted_at, tenants(name)")
     .eq("token_hash", tokenHash)
     .is("accepted_at", null)
     .gt("expires_at", new Date().toISOString())
@@ -69,6 +71,7 @@ export async function validateHrInviteToken(
       id: string;
       tenant_id: string;
       invited_email: string;
+      invited_hr_role: string | null;
       expires_at: string;
       accepted_at: string | null;
       tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
@@ -90,12 +93,17 @@ export async function validateHrInviteToken(
     tenantName = tenantRow?.name?.trim() || "Company";
   }
 
+  const invitedHrRole: HrSubRole = isHrSubRole(invite.invited_hr_role)
+    ? invite.invited_hr_role
+    : "hr_generalist";
+
   return {
     valid: true,
     inviteId: invite.id,
     tenantId: invite.tenant_id,
     tenantName,
     invitedEmail: invite.invited_email.trim().toLowerCase(),
+    invitedHrRole,
     expiresAt: invite.expires_at,
   };
 }
