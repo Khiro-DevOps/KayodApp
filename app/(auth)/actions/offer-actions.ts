@@ -31,6 +31,10 @@ import {
   type ScheduleType,
   type ShiftRotationPattern,
 } from "@/lib/schedule-policy";
+import {
+  formatLeaveCreditsDisplay,
+  resolveLeavePolicyFromSources,
+} from "@/lib/leave-policy";
 
 export async function sendHydratedOffer(jobId: string, applicationId: string) {
   const supabase = await createClient();
@@ -460,7 +464,7 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
     const { data: job, error: jobError } = await supabase
       .from("job_postings")
       .select(
-        "title, tenant_id, department_id, work_setup, salary_min, target_job_level, default_supervisor_id, shift_start, shift_end, work_days, schedule_type, rest_days_type, default_supervisor:employees!default_supervisor_id(id, job_title, job_level, profile:profiles!profile_id(first_name, last_name)), offer_letter_settings, docuseal_template_id, created_by"
+        "title, tenant_id, department_id, work_setup, salary_min, target_job_level, default_supervisor_id, shift_start, shift_end, work_days, schedule_type, rest_days_type, leave_policy_type, vacation_leave_days, sick_leave_days, service_incentive_leave_days, leave_eligibility, default_supervisor:employees!default_supervisor_id(id, job_title, job_level, profile:profiles!profile_id(first_name, last_name)), offer_letter_settings, docuseal_template_id, created_by"
       )
       .eq("id", jobId)
       .single();
@@ -626,6 +630,12 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       (typeof settings?.phSupervisorTitle === "string" && settings.phSupervisorTitle) ||
       null;
 
+    const resolvedLeavePolicy = resolveLeavePolicyFromSources(
+      job as unknown as Record<string, unknown>,
+      settings
+    );
+    const leaveCreditsSummary = formatLeaveCreditsDisplay(resolvedLeavePolicy);
+
     const draftPayload = {
       application_id: applicationId,
       job_id: jobId,
@@ -645,6 +655,11 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
       work_days: settingsWorkDays,
       department: resolvedDepartment,
       probation_days: resolvedProbationDays,
+      leave_policy_type: resolvedLeavePolicy.leave_policy_type,
+      vacation_leave_days: resolvedLeavePolicy.vacation_leave_days,
+      sick_leave_days: resolvedLeavePolicy.sick_leave_days,
+      service_incentive_leave_days: resolvedLeavePolicy.service_incentive_leave_days,
+      leave_eligibility: resolvedLeavePolicy.leave_eligibility,
       financial_package: {
         offered_salary: baseSalary,
         monthly_allowance: monthlyAllowance,
@@ -692,12 +707,13 @@ export async function createHydratedOfferDraft(jobIdOrApplicationId: string, may
         attendance_incentive: attendanceIncentive,
         performance_bonus: compTotals.performanceBonusAmount,
         compensation_package: compensationPackage,
-        service_incentive_leave:
-          Number(settings?.service_incentive_leave ?? settings?.phServiceIncentiveLeave ?? 5) || 5,
-        vacation_leave_days:
-          Number(settings?.vacation_leave_days ?? settings?.phVacationLeaveDays ?? 0) || 0,
-        sick_leave_days:
-          Number(settings?.sick_leave_days ?? settings?.phSickLeaveDays ?? 0) || 0,
+        leave_policy_type: resolvedLeavePolicy.leave_policy_type,
+        leave_eligibility: resolvedLeavePolicy.leave_eligibility,
+        leave_credits_summary: leaveCreditsSummary,
+        service_incentive_leave: resolvedLeavePolicy.service_incentive_leave_days,
+        service_incentive_leave_days: resolvedLeavePolicy.service_incentive_leave_days,
+        vacation_leave_days: resolvedLeavePolicy.vacation_leave_days,
+        sick_leave_days: resolvedLeavePolicy.sick_leave_days,
         hmo_provider:
           (typeof settings?.hmo_provider === "string" && settings.hmo_provider.trim()) ||
           (typeof settings?.phHmoProvider === "string" && settings.phHmoProvider.trim()) ||

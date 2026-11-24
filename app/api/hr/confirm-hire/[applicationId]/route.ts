@@ -18,6 +18,10 @@ import {
   getCurrentManilaWeekStart,
   resolveInitialHireSchedule,
 } from "@/lib/schedule-policy";
+import {
+  provisionEmployeeLeaveBalances,
+  resolveLeavePolicyFromSources,
+} from "@/lib/leave-policy";
 
 const HR_ROLES = new Set(["hr_manager", "admin", "hr"]);
 
@@ -177,6 +181,11 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           shift_start,
           shift_end,
           work_days,
+          leave_policy_type,
+          vacation_leave_days,
+          sick_leave_days,
+          service_incentive_leave_days,
+          leave_eligibility,
           docuseal_submission_id,
           updated_at,
           latest_docuseal_url,
@@ -211,6 +220,11 @@ export async function POST(_request: NextRequest, ctx: unknown) {
               work_days,
               schedule_type,
               rest_days_type,
+              leave_policy_type,
+              vacation_leave_days,
+              sick_leave_days,
+              service_incentive_leave_days,
+              leave_eligibility,
               offer_letter_settings
             )
           )
@@ -546,6 +560,23 @@ export async function POST(_request: NextRequest, ctx: unknown) {
           },
           { onConflict: "employee_id,week_start" }
         );
+
+        // Phase 2: Provision annual leave balances from contracted job_offers terms
+        const contractedLeavePolicy = resolveLeavePolicyFromSources(
+          offer as unknown as Record<string, unknown>,
+          {
+            ...(jobOfferSettings ?? {}),
+            ...(jobPosting as unknown as Record<string, unknown> | null),
+            ...jobMetadata,
+          }
+        );
+        await provisionEmployeeLeaveBalances({
+          admin,
+          tenantId,
+          employeeId: empRow.id,
+          policy: contractedLeavePolicy,
+          year: new Date().getFullYear(),
+        });
       }
     } catch (schedErr) {
       console.warn("[Confirm Hire] initial schedule upsert warning:", schedErr);

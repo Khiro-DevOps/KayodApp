@@ -60,6 +60,10 @@ import {
   normalizeShortWorkDays,
   resolveDefaultWorkDaysForCount,
 } from "@/lib/schedule-policy";
+import {
+  formatLeaveCreditsDisplay,
+  resolveLeavePolicyFromSources,
+} from "@/lib/leave-policy";
 
 export function getDocusealBaseUrl() {
   return (
@@ -286,6 +290,12 @@ export interface OfferLetterSettings {
   phServiceIncentiveLeave?: number;
   phVacationLeaveDays?: number;
   phSickLeaveDays?: number;
+  leave_policy_type?: string;
+  vacation_leave_days?: number;
+  sick_leave_days?: number;
+  service_incentive_leave_days?: number;
+  leave_eligibility?: string;
+  leave_credits_summary?: string;
   phHmoProvider?: string;
   phMandatory13thMonth?: boolean;
   phSssEnrolled?: boolean;
@@ -695,34 +705,50 @@ export function buildOfferPrefillFields(
         : "HMO (Upon Regularization)"
       : "Per Company Policy");
 
-  const silDays =
-    Number(
-      offerMeta.service_incentive_leave ??
-        offerMeta.phServiceIncentiveLeave ??
-        job?.service_incentive_leave ??
-        5
-    ) || 5;
-  const vlDays =
-    Number(
-      offerMeta.vacation_leave_days ??
-        offerMeta.phVacationLeaveDays ??
-        job?.vacation_leave_days ??
-        0
-    ) || 0;
-  const slDays =
-    Number(
-      offerMeta.sick_leave_days ??
-        offerMeta.phSickLeaveDays ??
-        job?.sick_leave_days ??
-        0
-    ) || 0;
-  const leaveParts = [
-    `${silDays} SIL / year (Art. 95, Labor Code)`,
-    ...(vlDays > 0 ? [`${vlDays} VL / year`] : []),
-    ...(slDays > 0 ? [`${slDays} SL / year`] : []),
-    "Statutory Leaves (Maternity, Paternity, Solo Parent, Special Leaves)",
-  ];
-  const leaveCreditsText = leaveParts.join(" • ");
+  const offerRecord = offer as Record<string, unknown>;
+  const jobRecord = (job ?? {}) as Record<string, unknown>;
+  const hasExplicitStructuredPolicy =
+    typeof offerRecord.leave_policy_type === "string" ||
+    typeof jobRecord.leave_policy_type === "string" ||
+    typeof offerMeta.leave_policy_type === "string";
+
+  let leaveCreditsText: string;
+  if (hasExplicitStructuredPolicy) {
+    const structuredPolicy = resolveLeavePolicyFromSources(
+      offerRecord.leave_policy_type ? offerRecord : jobRecord,
+      offerMeta
+    );
+    leaveCreditsText = `${formatLeaveCreditsDisplay(structuredPolicy)} • Statutory Leaves (Maternity, Paternity, Solo Parent, VAWC, Magna Carta)`;
+  } else {
+    const silDays =
+      Number(
+        offerMeta.service_incentive_leave ??
+          offerMeta.phServiceIncentiveLeave ??
+          job?.service_incentive_leave ??
+          5
+      ) || 5;
+    const vlDays =
+      Number(
+        offerMeta.vacation_leave_days ??
+          offerMeta.phVacationLeaveDays ??
+          job?.vacation_leave_days ??
+          0
+      ) || 0;
+    const slDays =
+      Number(
+        offerMeta.sick_leave_days ??
+          offerMeta.phSickLeaveDays ??
+          job?.sick_leave_days ??
+          0
+      ) || 0;
+    const leaveParts = [
+      `${silDays} SIL / year (Art. 95, Labor Code)`,
+      ...(vlDays > 0 ? [`${vlDays} VL / year`] : []),
+      ...(slDays > 0 ? [`${slDays} SL / year`] : []),
+      "Statutory Leaves (Maternity, Paternity, Solo Parent, Special Leaves)",
+    ];
+    leaveCreditsText = leaveParts.join(" • ");
+  }
 
   const supervisorName = String(
     (typeof offerMeta.supervisor_name === "string" && offerMeta.supervisor_name.trim()) ||

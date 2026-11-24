@@ -38,6 +38,7 @@ export interface GeofenceEmployeeInput {
   fallback_work_location_id?: string | null;
   hybrid_onsite_days?: string[] | null;
   work_days?: string[] | null;
+  daily_work_modes?: Record<string, string | null | undefined> | null;
   onsite_days?: string[] | null;
   wfh_days?: string[] | null;
   todayDailyModel?: "onsite" | "wfh" | "off";
@@ -168,11 +169,31 @@ export async function resolveEmployeeGeofence(
         ? "remote"
         : "onsite";
 
-  const { full: todayPhtDayName } = getPhtDayInfo();
+  const { full: todayPhtDayName, short: todayPhtShort } = getPhtDayInfo();
   const todayLower = todayPhtDayName.toLowerCase();
+  const todayShortLower = todayPhtShort.toLowerCase();
+
+  // Phase 3: Check per-day `daily_work_modes` map (Mon..Sun) when no emergency override is active
+  let dailyMapMode: "onsite" | "wfh" | "off" | null = null;
+  if (!overrideMode && employee.daily_work_modes && typeof employee.daily_work_modes === "object") {
+    const dwm = employee.daily_work_modes;
+    const rawDaily =
+      dwm[todayPhtShort] ??
+      dwm[todayShortLower] ??
+      dwm[todayPhtDayName] ??
+      dwm[todayLower];
+    const normDaily = String(rawDaily ?? "").trim().toLowerCase();
+    if (normDaily === "wfh" || normDaily === "remote") {
+      dailyMapMode = "wfh";
+    } else if (normDaily === "rest" || normDaily === "off") {
+      dailyMapMode = "off";
+    } else if (normDaily === "onsite" || normDaily === "on-site") {
+      dailyMapMode = "onsite";
+    }
+  }
 
   let isHybridRemoteDay = false;
-  if (!overrideMode && workMode === "hybrid") {
+  if (!overrideMode && !dailyMapMode && workMode === "hybrid") {
     let onsiteDays = normalizeDaysToFull(
       employee.onsite_days ??
         (Array.isArray(employee.hybrid_onsite_days)
@@ -211,11 +232,12 @@ export async function resolveEmployeeGeofence(
     }
   }
 
+  const resolvedDayModel = dailyMapMode ?? employee.todayDailyModel ?? null;
   const isRemoteDay = overrideMode
     ? overrideMode === "wfh"
-    : employee.todayDailyModel === "wfh" ||
-      (!employee.todayDailyModel && (workMode === "remote" || isHybridRemoteDay));
-  const isDayOff = !overrideMode && employee.todayDailyModel === "off";
+    : resolvedDayModel === "wfh" ||
+      (!resolvedDayModel && (workMode === "remote" || isHybridRemoteDay));
+  const isDayOff = !overrideMode && resolvedDayModel === "off";
   const effectiveWorkMode: "onsite" | "wfh" | "off" = isDayOff
     ? "off"
     : isRemoteDay
@@ -278,7 +300,11 @@ export async function resolveEmployeeGeofence(
       configured: false,
       mode: "remote_residence",
       error:
-        "Remote residence geofence not configured. Ask HR to set your home coordinates.",
+        remoteRes?.approval_status === "pending"
+          ? "WFH clock-in blocked: your remote residence is still pending HR approval."
+          : remoteRes?.approval_status === "rejected"
+            ? "WFH clock-in blocked: your remote residence was rejected by HR. Please update and resubmit."
+            : "WFH clock-in blocked: no HR-approved remote residence geofence configured for your account.",
       name: "Remote Residence",
       address: remoteRes?.address ?? null,
       radiusMeters: resolvedRadius,

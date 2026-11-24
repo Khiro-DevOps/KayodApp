@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { sendNotification } from "@/lib/notifications";
 
 export type ReviewAttendanceCorrectionPayload = {
   requestId: string;
@@ -289,11 +290,12 @@ export async function reviewOvertimeRequestAction(
 
   const { data: otRow } = await admin
     .from("overtime_requests")
-    .select("id, employee_id, work_date, start_time, end_time, status")
+    .select("id, employee_id, supervisor_id, work_date, start_time, end_time, status")
     .eq("id", payload.requestId)
     .maybeSingle<{
       id: string;
       employee_id: string;
+      supervisor_id?: string | null;
       work_date: string;
       start_time: string;
       end_time: string;
@@ -303,7 +305,7 @@ export async function reviewOvertimeRequestAction(
   if (!otRow) {
     return { success: false, error: "Overtime request not found." };
   }
-  if (otRow.status !== "pending") {
+  if (!["pending", "pending_hr", "pending_supervisor"].includes(otRow.status)) {
     return { success: false, error: `Overtime request is already ${otRow.status}.` };
   }
 
@@ -314,6 +316,9 @@ export async function reviewOvertimeRequestAction(
     .from("overtime_requests")
     .update({
       status: payload.decision,
+      hr_reviewer_id: user.id,
+      hr_action_at: nowIso,
+      hr_remarks: cleanNote,
       reviewed_by: user.id,
       reviewed_at: nowIso,
       review_note: cleanNote,
@@ -326,14 +331,21 @@ export async function reviewOvertimeRequestAction(
 
   const { data: emp } = await admin
     .from("employees")
-    .select("profile_id")
+    .select("profile_id, reports_to, profile:profiles!profile_id(first_name, last_name)")
     .eq("id", otRow.employee_id)
-    .maybeSingle<{ profile_id: string | null }>();
+    .maybeSingle<{
+      profile_id: string | null;
+      reports_to: string | null;
+      profile?:
+        | { first_name?: string | null; last_name?: string | null }
+        | Array<{ first_name?: string | null; last_name?: string | null }>
+        | null;
+    }>();
 
   if (emp?.profile_id) {
-    await admin.from("notifications").insert({
-      recipient_id: emp.profile_id,
-      sender_id: user.id,
+    await sendNotification({
+      recipientId: emp.profile_id,
+      senderId: user.id,
       type: "general",
       title:
         payload.decision === "approved"
@@ -341,10 +353,42 @@ export async function reviewOvertimeRequestAction(
           : "Overtime Request Rejected",
       body:
         payload.decision === "approved"
-          ? `Your rest-day overtime request for ${otRow.work_date} (${otRow.start_time.slice(0, 5)}–${otRow.end_time.slice(0, 5)}) was approved.`
-          : `Your rest-day overtime request for ${otRow.work_date} was declined.${cleanNote ? ` Note: ${cleanNote}` : ""}`,
-      action_url: "/employee/schedule",
+          ? `Your overtime request for ${otRow.work_date} (${otRow.start_time.slice(0, 5)}–${otRow.end_time.slice(0, 5)}) was approved by HR.`
+          : `Your overtime request for ${otRow.work_date} was declined by HR.${cleanNote ? ` Note: ${cleanNote}` : ""}`,
+      actionUrl: "/employee/schedule",
+      actionName: "reviewOvertimeRequestAction",
     });
+  }
+
+  const supervisorEmpId = otRow.supervisor_id ?? emp?.reports_to ?? null;
+  if (supervisorEmpId) {
+    const { data: supEmp } = await admin
+      .from("employees")
+      .select("profile_id")
+      .eq("id", supervisorEmpId)
+      .maybeSingle<{ profile_id: string | null }>();
+
+    if (supEmp?.profile_id && supEmp.profile_id !== emp?.profile_id) {
+      const empProf = Array.isArray(emp?.profile) ? emp?.profile[0] : emp?.profile;
+      const empName =
+        [empProf?.first_name, empProf?.last_name].filter(Boolean).join(" ").trim() ||
+        "Your direct report";
+      await sendNotification({
+        recipientId: supEmp.profile_id,
+        senderId: user.id,
+        type: "general",
+        title:
+          payload.decision === "approved"
+            ? "Team Overtime Approved by HR"
+            : "Team Overtime Rejected by HR",
+        body:
+          payload.decision === "approved"
+            ? `${empName}'s overtime for ${otRow.work_date} (${otRow.start_time.slice(0, 5)}–${otRow.end_time.slice(0, 5)}) was approved by HR.`
+            : `${empName}'s overtime for ${otRow.work_date} was declined by HR.${cleanNote ? ` Note: ${cleanNote}` : ""}`,
+        actionUrl: "/employee/team",
+        actionName: "reviewOvertimeRequestAction",
+      });
+    }
   }
 
   revalidatePath("/hr/attendance");

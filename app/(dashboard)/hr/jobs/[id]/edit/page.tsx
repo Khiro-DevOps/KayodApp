@@ -7,6 +7,7 @@ import type { RequiredDocumentDraft } from "@/lib/pre-employment-actions";
 import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 import JobForm, { type JobFormValues } from "@/components/job-form";
 import { parseCompensationPackage } from "@/lib/compensation-package";
+import { resolveLeavePolicyFromSources } from "@/lib/leave-policy";
 import {
   fetchDepartmentsAndSupervisors,
   fetchOnlineHiredCountsByJob,
@@ -64,6 +65,10 @@ export default async function EditJobPage({
 
   const settings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
   const compensationPackage = parseCompensationPackage(settings?.compensation_package, settings);
+  const resolvedLeavePolicy = resolveLeavePolicyFromSources(
+    job as unknown as Record<string, unknown>,
+    settings
+  );
 
   const initialValues: JobFormValues = {
     title: job.title,
@@ -142,6 +147,11 @@ export default async function EditJobPage({
     departmentId: job.department_id ?? undefined,
     defaultSupervisorId: job.default_supervisor_id ?? undefined,
     targetJobLevel: job.target_job_level ?? "staff",
+    leavePolicyType: resolvedLeavePolicy.leave_policy_type,
+    vacationLeaveDays: resolvedLeavePolicy.vacation_leave_days,
+    sickLeaveDays: resolvedLeavePolicy.sick_leave_days,
+    serviceIncentiveLeaveDays: resolvedLeavePolicy.service_incentive_leave_days,
+    leaveEligibility: resolvedLeavePolicy.leave_eligibility,
   };
 
   return (

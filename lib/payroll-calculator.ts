@@ -2,15 +2,31 @@ import {
   computeUnexcusedAbsences,
   type ApprovedLeaveLike,
 } from "@/lib/attendance-absent";
+import {
+  computeNsdMinutes,
+  computeOvertimeWindowMinutes,
+  parseTimeHm,
+  resolveShiftWindowForClockIn,
+} from "@/lib/shift-calculations";
 
 export interface PayrollAttendanceLog {
   date?: string | null;
   clock_in?: string | null;
   clock_out?: string | null;
   late_minutes?: number | null;
+  undertime_minutes?: number | null;
+  night_diff_minutes?: number | null;
+  is_rest_day_work?: boolean | null;
   overbreak_minutes?: number | null;
   total_lunch_minutes?: number | null;
   total_break_minutes?: number | null;
+}
+
+export interface PayrollApprovedOvertime {
+  work_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  overtime_type?: string | null;
 }
 
 export interface ContractCompItem {
@@ -31,6 +47,7 @@ export interface ComputeEmployeeDemoPayslipInput {
   workDays?: string[] | null;
   attendanceLogs: PayrollAttendanceLog[];
   approvedLeaves: ApprovedLeaveLike[];
+  approvedOvertimes?: PayrollApprovedOvertime[];
   contractMonthlyAllowance?: number;
   contractAttendanceIncentive?: number;
   contractAllowances?: Array<{ label: string; amount: number }>;
@@ -60,9 +77,16 @@ export interface ComputedDemoPayslip {
     hourlyRate: number;
     eligibleOtMinutes: number;
     eligibleOtHours: number;
+    regularOtMinutes: number;
+    regularOtPay: number;
+    rdotRegularMinutes: number;
+    rdotExcessMinutes: number;
+    rdotPay: number;
     nightDiffMinutes: number;
     nightDiffHours: number;
     nightDiffPay: number;
+    deMinimisExemptAmount: number;
+    taxableIncome: number;
     totalLateMinutes: number;
     lateDeduction: number;
     totalOverbreakMinutes: number;
@@ -142,6 +166,35 @@ function computeNightDiffMinutes(clockInMs: number, clockOutMs: number): number 
 
 const DAY_NUM_TO_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+function computeMonthlyBirTrainTax(monthlyTaxable: number): number {
+  if (monthlyTaxable <= 20_833.33) return 0;
+  if (monthlyTaxable < 33_333) {
+    return (monthlyTaxable - 20_833.33) * 0.15;
+  }
+  if (monthlyTaxable < 66_667) {
+    return 1_875 + (monthlyTaxable - 33_333) * 0.20;
+  }
+  if (monthlyTaxable < 166_667) {
+    return 8_541.80 + (monthlyTaxable - 66_667) * 0.25;
+  }
+  if (monthlyTaxable < 666_667) {
+    return 33_541.80 + (monthlyTaxable - 166_667) * 0.30;
+  }
+  return 183_541.80 + (monthlyTaxable - 666_667) * 0.35;
+}
+
+function computeDeMinimisMonthlyExempt(label: string, monthlyAmount: number): number {
+  const lower = label.toLowerCase();
+  const amt = Math.max(0, monthlyAmount);
+  if (lower.includes("rice")) return Math.min(amt, 2_000);
+  if (lower.includes("clothing") || lower.includes("uniform")) return Math.min(amt, 500);
+  if (lower.includes("laundry")) return Math.min(amt, 300);
+  if (lower.includes("medical")) return Math.min(amt, 833.33);
+  if (lower.includes("meal")) return Math.min(amt, 2_000);
+  if (lower.includes("de minimis") || lower.includes("deminimis")) return Math.min(amt, 2_000);
+  return 0;
+}
+
 function countScheduledWorkdays(
   startIso: string,
   endIso: string,
@@ -208,25 +261,76 @@ export function computeEmployeeDemoPayslip(
   const [shiftEndH, shiftEndM] = parseHm(input.shiftEnd, 17, 0);
 
   let eligibleOtMinutes = 0;
+  let rdotRegularMinutes = 0;
+  let rdotExcessMinutes = 0;
   let nightDiffMinutes = 0;
+  let regularOtNsdMinutes = 0;
+  let rdotNsdMinutes = 0;
   let totalLateMinutes = 0;
   let totalOverbreakMinutes = 0;
+
+  const rdotDates = new Set<string>(
+    (input.approvedOvertimes ?? [])
+      .filter((ot) => ot.overtime_type === "rdot" && ot.work_date)
+      .map((ot) => String(ot.work_date).slice(0, 10))
+  );
+
+  // Group RDOT minutes per work_date so first 8h (480m) = 1.30x and >8h = 1.69x
+  const rdotMinutesByDate = new Map<string, number>();
+  for (const ot of input.approvedOvertimes ?? []) {
+    if (ot.start_time && ot.end_time) {
+      const win = computeOvertimeWindowMinutes(ot.start_time, ot.end_time);
+      if (!win.valid) continue;
+
+      if (ot.work_date) {
+        const [otSH, otSM] = parseTimeHm(ot.start_time, 0, 0);
+        const [otEH, otEM] = parseTimeHm(ot.end_time, 0, 0);
+        const otStartUtc = phtDateHmToUtcMs(ot.work_date.slice(0, 10), otSH, otSM);
+        let otEndUtc = phtDateHmToUtcMs(ot.work_date.slice(0, 10), otEH, otEM);
+        if (otEndUtc <= otStartUtc) otEndUtc += 24 * 60 * 60_000;
+        const otNsd = computeNsdMinutes(otStartUtc, otEndUtc);
+        if (ot.overtime_type === "rdot") {
+          rdotNsdMinutes += otNsd;
+        } else {
+          regularOtNsdMinutes += otNsd;
+        }
+      }
+
+      if (ot.overtime_type === "rdot") {
+        const key = String(ot.work_date ?? "rdot").slice(0, 10);
+        rdotMinutesByDate.set(key, (rdotMinutesByDate.get(key) ?? 0) + win.durationMinutes);
+      }
+    }
+  }
+
+  for (const mins of rdotMinutesByDate.values()) {
+    const first8h = Math.min(480, mins);
+    const excess = Math.max(0, mins - 480);
+    rdotRegularMinutes += first8h;
+    rdotExcessMinutes += excess;
+  }
 
   for (const log of input.attendanceLogs) {
     if (!log.clock_in) continue;
     const clockInMs = Date.parse(log.clock_in);
     if (Number.isNaN(clockInMs)) continue;
 
-    const phtDay = toPhtDateStr(clockInMs);
-    const shiftStartMs = phtDateHmToUtcMs(phtDay, shiftStartH, shiftStartM);
+    // Cross-midnight-safe shift window resolution (handles Graveyard 22:00–07:00)
+    const { shiftStartUtcMs, shiftEndUtcMs } = resolveShiftWindowForClockIn(
+      clockInMs,
+      input.shiftStart,
+      input.shiftEnd
+    );
 
     let rawLateMinutes = 0;
-    if (typeof log.late_minutes === "number" && log.late_minutes > 0) {
-      rawLateMinutes = Math.floor(log.late_minutes);
-    } else {
-      const diffLate = Math.floor((clockInMs - shiftStartMs) / 60_000);
-      if (diffLate > 5) {
-        rawLateMinutes = diffLate;
+    if (!log.is_rest_day_work) {
+      if (typeof log.late_minutes === "number" && log.late_minutes > 0) {
+        rawLateMinutes = Math.floor(log.late_minutes);
+      } else {
+        const diffLate = Math.floor((clockInMs - shiftStartUtcMs) / 60_000);
+        if (diffLate > 5) {
+          rawLateMinutes = diffLate;
+        }
       }
     }
     const effectiveLateMinutes = Math.min(480, Math.max(0, rawLateMinutes));
@@ -251,28 +355,44 @@ export function computeEmployeeDemoPayslip(
     const clockOutMs = Date.parse(log.clock_out);
     if (Number.isNaN(clockOutMs) || clockOutMs <= clockInMs) continue;
 
-    let shiftEndMs = phtDateHmToUtcMs(phtDay, shiftEndH, shiftEndM);
-    if (shiftEndMs <= shiftStartMs) {
-      shiftEndMs += 24 * 60 * 60_000;
-    }
-
-    const elapsedClockMinutes = Math.floor((clockOutMs - clockInMs) / 60_000);
+    const elapsedClockMinutes = Math.max(0, Math.floor((clockOutMs - clockInMs) / 60_000));
     const unpaidLunchMinutes = Math.max(60, Number(log.total_lunch_minutes ?? 60));
     const netWorkedMinutes = Math.max(0, elapsedClockMinutes - unpaidLunchMinutes);
 
-    const otPastShiftEndMinutes = Math.floor((clockOutMs - shiftEndMs) / 60_000);
-    if (otPastShiftEndMinutes >= 30 && netWorkedMinutes > 480) {
+    const logDateIso =
+      (log.date ? String(log.date).slice(0, 10) : null) ??
+      toPhtDateStr(clockInMs);
+    const isRdotLog = Boolean(log.is_rest_day_work) || rdotDates.has(logDateIso);
+
+    const otPastShiftEndMinutes = Math.floor((clockOutMs - shiftEndUtcMs) / 60_000);
+    if (!isRdotLog && otPastShiftEndMinutes >= 30 && netWorkedMinutes > 480) {
       eligibleOtMinutes += Math.min(120, otPastShiftEndMinutes, netWorkedMinutes - 480);
     }
 
-    nightDiffMinutes += computeNightDiffMinutes(clockInMs, clockOutMs);
+    const logNsdMinutes =
+      typeof log.night_diff_minutes === "number" && log.night_diff_minutes > 0
+        ? Math.floor(log.night_diff_minutes)
+        : computeNsdMinutes(clockInMs, clockOutMs);
+    nightDiffMinutes += logNsdMinutes;
   }
 
-  const eligibleOtHours = round2(eligibleOtMinutes / 60);
+  const totalOtMinutes = eligibleOtMinutes + rdotRegularMinutes + rdotExcessMinutes;
+  const eligibleOtHours = round2(totalOtMinutes / 60);
   const nightDiffHours = round2(nightDiffMinutes / 60);
 
-  const overtimePay = round2((eligibleOtMinutes / 60) * hourlyRate * 1.25);
-  const nightDiffPay = round2((nightDiffMinutes / 60) * hourlyRate * 0.10);
+  const regularOtPay = round2((eligibleOtMinutes / 60) * hourlyRate * 1.25);
+  const rdotRegularPay = round2((rdotRegularMinutes / 60) * hourlyRate * 1.30);
+  const rdotExcessPay = round2((rdotExcessMinutes / 60) * hourlyRate * 1.69);
+  const rdotPay = round2(rdotRegularPay + rdotExcessPay);
+  const overtimePay = round2(regularOtPay + rdotPay);
+
+  // NSD: 10% base NSD + compounded 1.25*0.10 / 1.30*0.10 for NSD inside approved OT/RDOT
+  const otNsdTotal = regularOtNsdMinutes + rdotNsdMinutes;
+  const baseNsdFromLogs = Math.max(0, nightDiffMinutes - otNsdTotal);
+  const baseNsdPay = (baseNsdFromLogs / 60) * hourlyRate * 0.10;
+  const regularOtNsdPay = (regularOtNsdMinutes / 60) * hourlyRate * 1.25 * 0.10;
+  const rdotNsdPay = (rdotNsdMinutes / 60) * hourlyRate * 1.30 * 0.10;
+  const nightDiffPay = round2(baseNsdPay + regularOtNsdPay + rdotNsdPay);
 
   const itemizedAllowances = (input.contractAllowances ?? []).filter((a) => a.amount > 0);
   const allowanceSumMonthly =
@@ -350,15 +470,42 @@ export function computeEmployeeDemoPayslip(
 
   const grossPay = round2(basicPay + overtimePay + allowances + bonuses);
 
-  const sssCap = isSemiOrBiweekly ? 675 : 1_350;
-  const sss = round2(Math.min(basicPay * 0.045, sssCap));
-  const philhealth = round2(basicPay * 0.025);
-  const pagibig = basicPay > 0 ? (isSemiOrBiweekly ? 100 : 200) : 0;
+  // 1. SSS (2025/2026): 5% Employee Share on MSC ₱5,000–₱35,000 (₱250–₱1,750/mo)
+  const monthlyMsc =
+    monthlyBase > 0
+      ? Math.min(35_000, Math.max(5_000, Math.round(monthlyBase / 500) * 500))
+      : 0;
+  const monthlySss = monthlyMsc > 0 ? round2(monthlyMsc * 0.05) : 0;
+  const sss = round2(monthlySss / freqDivisor);
 
-  const taxableBase = Math.max(0, grossPay - sss - philhealth - pagibig);
-  const taxThreshold = isSemiOrBiweekly ? 20_833 / 2 : 20_833;
+  // 2. PhilHealth: 5% total / 2.5% EE share, ₱10,000 floor (₱250/mo) and ₱100,000 ceiling (₱2,500/mo)
+  const monthlyPhilhealth =
+    monthlyBase > 0
+      ? round2(Math.min(2_500, Math.max(250, monthlyBase * 0.025)))
+      : 0;
+  const philhealth = round2(monthlyPhilhealth / freqDivisor);
+
+  // 3. Pag-IBIG: 2% EE share capped at ₱200.00/mo (₱100/cutoff on semi-monthly)
+  const monthlyPagibig =
+    monthlyBase > 0 ? round2(Math.min(200, monthlyBase * 0.02)) : 0;
+  const pagibig = round2(monthlyPagibig / freqDivisor);
+
+  // 4. De Minimis Tax Shield (BIR statutory exemptions)
+  const monthlyDeMinimisExempt = itemizedAllowances.reduce(
+    (sum, item) => sum + computeDeMinimisMonthlyExempt(item.label, item.amount),
+    0
+  );
+  const deMinimisExemptAmount = round2(
+    (monthlyDeMinimisExempt / freqDivisor) * prorateFactor
+  );
+
+  // 5. BIR TRAIN Withholding Tax (annualized/monthly brackets scaled by pay frequency)
+  const taxableIncome = round2(
+    Math.max(0, grossPay - deMinimisExemptAmount - sss - philhealth - pagibig)
+  );
+  const monthlyEquivalentTaxable = taxableIncome * freqDivisor;
   const withholdingTax = round2(
-    taxableBase > taxThreshold ? (taxableBase - taxThreshold) * 0.15 : 0
+    computeMonthlyBirTrainTax(monthlyEquivalentTaxable) / freqDivisor
   );
 
   const otherDeductions = round2(
@@ -369,9 +516,19 @@ export function computeEmployeeDemoPayslip(
   );
   const netPay = round2(Math.max(0, grossPay - totalDeductions));
 
+  const rdotTotalHours = round2((rdotRegularMinutes + rdotExcessMinutes) / 60);
   const remarksParts = [
     `Demo Computation (${freq})`,
-    `OT: ${eligibleOtHours.toFixed(2)}h (₱${overtimePay.toFixed(2)})`,
+    `OT: ${round2(eligibleOtMinutes / 60).toFixed(2)}h (₱${regularOtPay.toFixed(2)})`,
+    ...(rdotTotalHours > 0
+      ? [
+          `RDOT: ${rdotTotalHours.toFixed(2)}h (₱${rdotPay.toFixed(2)}${
+            rdotExcessMinutes > 0
+              ? ` incl. ${round2(rdotExcessMinutes / 60).toFixed(2)}h @1.69x`
+              : " @1.30x"
+          })`,
+        ]
+      : []),
     `Night Diff: ${nightDiffHours.toFixed(2)}h (₱${nightDiffPay.toFixed(2)})`,
     `Late: ${totalLateMinutes}m (-₱${lateDeduction.toFixed(2)})`,
     `Absent: ${unexcusedAbsentDays}d (-₱${absenceDeduction.toFixed(2)})`,
@@ -419,9 +576,16 @@ export function computeEmployeeDemoPayslip(
       hourlyRate: round2(hourlyRate),
       eligibleOtMinutes,
       eligibleOtHours,
+      regularOtMinutes: eligibleOtMinutes,
+      regularOtPay,
+      rdotRegularMinutes,
+      rdotExcessMinutes,
+      rdotPay,
       nightDiffMinutes,
       nightDiffHours,
       nightDiffPay,
+      deMinimisExemptAmount,
+      taxableIncome,
       totalLateMinutes,
       lateDeduction,
       totalOverbreakMinutes,

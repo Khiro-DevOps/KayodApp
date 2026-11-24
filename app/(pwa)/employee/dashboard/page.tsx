@@ -94,7 +94,14 @@ export default async function EmployeeDashboardPage({
     );
   }
 
-  const [balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult, linkedJob, latestScheduleResult] = await Promise.all([
+  const currentYear = new Date().getFullYear();
+  const [ledgerBalanceResult, balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult, linkedJob, latestScheduleResult] = await Promise.all([
+    admin
+      .from("employee_leave_balances")
+      .select("id, leave_type, year, entitled_days, used_days, pending_days, eligibility, is_active")
+      .eq("employee_id", employee.id)
+      .eq("year", currentYear)
+      .eq("is_active", true),
     supabase
       .from("leave_balances")
       .select("id, leave_type, year, total_credits, used_credits, remaining, updated_at")
@@ -166,12 +173,34 @@ export default async function EmployeeDashboardPage({
 
   const onboardingProgress = onboardingResult.success ? onboardingResult.data ?? null : null;
 
+  const ledgerBalances = (ledgerBalanceResult.data ?? []) as Array<{
+    id: string;
+    leave_type: string;
+    year: number;
+    entitled_days: number;
+    used_days: number;
+    pending_days: number;
+    eligibility: string;
+  }>;
   const balances = balanceResult.data ?? [];
   const latestPayslip = (payslipResult.data as EmployeePayslip | null) ?? null;
   const recentLeaves = leaveResult.data ?? [];
   const recentTimeLogs = timeLogResult.data ?? [];
 
-  const totalLeaveRemaining = balances.reduce((sum, balance) => sum + balance.remaining, 0);
+  const totalLeaveRemaining =
+    ledgerBalances.length > 0
+      ? ledgerBalances.reduce(
+          (sum, row) =>
+            sum +
+            Math.max(
+              0,
+              Number(row.entitled_days ?? 0) -
+                Number(row.used_days ?? 0) -
+                Number(row.pending_days ?? 0)
+            ),
+          0
+        )
+      : balances.reduce((sum, balance) => sum + balance.remaining, 0);
   const latestTimeLog = recentTimeLogs[0] ?? null;
   const firstName = profile?.first_name || "there";
   const todayLabel = formatLongDate(new Date().toISOString());

@@ -13,6 +13,9 @@ import HRAttendanceClient, {
   type HROvertimeEmployeeOption,
 } from "./hr-attendance-client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata = {
   title: "Attendance Operations | Kayod HR",
   description: "Review, filter and act on employee attendance logs with geofence flags",
@@ -552,53 +555,86 @@ export default async function HRAttendancePage() {
     };
   });
 
-  // ── Fetch overtime requests ────────────────────────────────────────────────
+  // ── Fetch overtime requests (flat query to avoid ambiguous FK embedding with supervisor_id) ──
   let overtimeReqsQuery = admin
     .from("overtime_requests")
-    .select(
-      `
-      id,
-      employee_id,
-      work_date,
-      start_time,
-      end_time,
-      reason,
-      status,
-      review_note,
-      used_at,
-      created_at,
-      employees (
-        profile_id,
-        job_title,
-        work_mode,
-        work_days,
-        profiles (
-          first_name,
-          last_name,
-          avatar_url
-        )
-      )
-    `
-    )
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
   if (tenantId) {
-    overtimeReqsQuery = overtimeReqsQuery.eq("tenant_id", tenantId);
+    overtimeReqsQuery = overtimeReqsQuery.or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
   }
-  const { data: rawOvertimeReqs } = await overtimeReqsQuery;
+  const { data: rawOvertimeReqs, error: otFetchError } = await overtimeReqsQuery;
+  if (otFetchError) {
+    console.error("[HR Attendance] overtime_requests fetch error:", otFetchError.message);
+  }
 
-  const overtimeRequests: HROvertimeRequestRow[] = (rawOvertimeReqs ?? []).map((r) => {
-    const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as {
+  const otEmpIds = Array.from(
+    new Set(
+      (rawOvertimeReqs ?? [])
+        .map((r) => (r as { employee_id?: string | null }).employee_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const otEmpMap = new Map<
+    string,
+    {
       profile_id?: string | null;
       job_title?: string | null;
       work_mode?: string | null;
       work_days?: string[] | null;
-      profiles?:
-        | { first_name?: string | null; last_name?: string | null; avatar_url?: string | null }
-        | Array<{ first_name?: string | null; last_name?: string | null; avatar_url?: string | null }>
-        | null;
-    } | null;
-    const prof = Array.isArray(emp?.profiles) ? emp?.profiles[0] : emp?.profiles;
+      tenant_id?: string | null;
+      profiles?: {
+        first_name?: string | null;
+        last_name?: string | null;
+        avatar_url?: string | null;
+      } | null;
+    }
+  >();
+
+  if (otEmpIds.length > 0) {
+    const { data: otEmps } = await admin
+      .from("employees")
+      .select(
+        "id, tenant_id, profile_id, job_title, work_mode, work_days, profiles:profiles!profile_id(first_name, last_name, avatar_url)"
+      )
+      .in("id", otEmpIds);
+
+    for (const e of otEmps ?? []) {
+      const empRow = e as {
+        id: string;
+        tenant_id?: string | null;
+        profile_id?: string | null;
+        job_title?: string | null;
+        work_mode?: string | null;
+        work_days?: string[] | null;
+        profiles?:
+          | { first_name?: string | null; last_name?: string | null; avatar_url?: string | null }
+          | Array<{ first_name?: string | null; last_name?: string | null; avatar_url?: string | null }>
+          | null;
+      };
+      const prof = Array.isArray(empRow.profiles) ? empRow.profiles[0] : empRow.profiles;
+      otEmpMap.set(empRow.id, {
+        profile_id: empRow.profile_id,
+        job_title: empRow.job_title,
+        work_mode: empRow.work_mode,
+        work_days: empRow.work_days,
+        tenant_id: empRow.tenant_id,
+        profiles: prof ?? null,
+      });
+    }
+  }
+
+  const overtimeRequests: HROvertimeRequestRow[] = (rawOvertimeReqs ?? [])
+    .filter((r) => {
+      if (!tenantId) return true;
+      const rowTenant = (r as { tenant_id?: string | null }).tenant_id;
+      const empTenant = otEmpMap.get((r as { employee_id: string }).employee_id)?.tenant_id;
+      return !rowTenant || rowTenant === tenantId || empTenant === tenantId;
+    })
+    .map((r) => {
+    const emp = otEmpMap.get((r as { employee_id: string }).employee_id) ?? null;
+    const prof = emp?.profiles ?? null;
     const employeeName =
       [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() || "Employee";
     const linkedJob = emp?.profile_id
@@ -643,6 +679,9 @@ export default async function HRAttendancePage() {
       workDate: r.work_date,
       startTime: r.start_time,
       endTime: r.end_time,
+      overtimeType: ((r as { overtime_type?: string | null }).overtime_type === "rdot"
+        ? "rdot"
+        : "regular_ot") as "regular_ot" | "rdot",
       reason: r.reason,
       status: r.status as HROvertimeRequestRow["status"],
       reviewNote: r.review_note,

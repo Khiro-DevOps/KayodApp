@@ -9,7 +9,10 @@ import {
   type DailyWorkModel,
 } from "@/lib/work-arrangement";
 import { parseHybridScheduleNotes } from "@/lib/hybrid-schedule";
-import TeamHubClient, { type TeamDirectReport } from "./team-hub-client";
+import TeamHubClient, {
+  type TeamApprovalItem,
+  type TeamDirectReport,
+} from "./team-hub-client";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,12 +50,17 @@ export default async function EmployeeTeamPage() {
 
   const { data: myEmployee, error: myEmployeeError } = await admin
     .from("employees")
-    .select("id, job_title, job_level")
+    .select("id, tenant_id, job_title, job_level")
     .eq("profile_id", user.id)
     .eq("employment_status", "active")
     .order("created_at", { ascending: false })
     .limit(1)
-    .maybeSingle<{ id: string; job_title?: string | null; job_level?: string | null }>();
+    .maybeSingle<{
+      id: string;
+      tenant_id: string | null;
+      job_title?: string | null;
+      job_level?: string | null;
+    }>();
 
   if (myEmployeeError) {
     console.error("EmployeeTeamPage myEmployee query error:", myEmployeeError);
@@ -65,22 +73,30 @@ export default async function EmployeeTeamPage() {
   let directReportsRaw: unknown[] | null = null;
   let directReportsError: { message: string } | null = null;
 
-  const primaryEmpRes = await admin
+  let primaryEmpQuery = admin
     .from("employees")
     .select(
       `id, employee_number, job_title, job_level, work_mode, shift_start, shift_end, work_days, daily_work_modes, job_offer_id, employment_status, department_id, department:departments!department_id(name), profile:profiles!profile_id(first_name, last_name, email)`,
     )
     .eq("reports_to", myEmployee.id)
     .eq("employment_status", "active");
+  if (myEmployee.tenant_id) {
+    primaryEmpQuery = primaryEmpQuery.eq("tenant_id", myEmployee.tenant_id);
+  }
+  const primaryEmpRes = await primaryEmpQuery;
 
   if (primaryEmpRes.error && /daily_work_modes/i.test(primaryEmpRes.error.message)) {
-    const fallbackEmpRes = await admin
+    let fallbackEmpQuery = admin
       .from("employees")
       .select(
         `id, employee_number, job_title, job_level, work_mode, shift_start, shift_end, work_days, job_offer_id, employment_status, department_id, department:departments!department_id(name), profile:profiles!profile_id(first_name, last_name, email)`,
       )
       .eq("reports_to", myEmployee.id)
       .eq("employment_status", "active");
+    if (myEmployee.tenant_id) {
+      fallbackEmpQuery = fallbackEmpQuery.eq("tenant_id", myEmployee.tenant_id);
+    }
+    const fallbackEmpRes = await fallbackEmpQuery;
     directReportsRaw = fallbackEmpRes.data;
     directReportsError = fallbackEmpRes.error;
   } else {
@@ -286,6 +302,146 @@ export default async function EmployeeTeamPage() {
     (r) => r.workMode === "wfh" || r.workMode === "hybrid",
   ).length;
 
+  // Phase 2: Fetch pending Leave & Overtime requests from direct reports for Supervisor Queue
+  const reportById = new Map(directReports.map((r) => [r.id, r]));
+  const pendingApprovals: TeamApprovalItem[] = [];
+
+  if (directReportIds.length > 0) {
+    const [
+      { data: pendingLeaves, error: leavesErr },
+      { data: pendingOts, error: otsErr },
+      { data: pendingWorkModes, error: wmErr },
+    ] = await Promise.all([
+      admin
+        .from("leave_requests")
+        .select("*")
+        .in("employee_id", directReportIds)
+        .in("status", ["pending_supervisor", "pending"])
+        .order("filed_at", { ascending: false }),
+      admin
+        .from("overtime_requests")
+        .select("*")
+        .in("employee_id", directReportIds)
+        .in("status", ["pending_supervisor", "pending"])
+        .order("created_at", { ascending: false }),
+      admin
+        .from("work_mode_requests")
+        .select("id, employee_id, request_date, requested_mode, reason, status, created_at")
+        .in("employee_id", directReportIds)
+        .eq("status", "pending_supervisor")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (leavesErr) {
+      console.error("EmployeeTeamPage pendingLeaves query error:", leavesErr.message);
+    }
+    if (otsErr) {
+      console.error("EmployeeTeamPage pendingOts query error:", otsErr.message);
+    }
+    if (wmErr) {
+      console.warn("EmployeeTeamPage pendingWorkModes query warning:", wmErr.message);
+    }
+
+    for (const row of pendingLeaves ?? []) {
+      const l = row as {
+        id: string;
+        employee_id: string;
+        leave_type: string;
+        start_date: string;
+        end_date: string;
+        total_days?: number | null;
+        reason?: string | null;
+        status: string;
+        supervisor_action_at?: string | null;
+        requires_document_verification?: boolean | null;
+        filed_at?: string | null;
+      };
+      if (l.supervisor_action_at) continue;
+      const member = reportById.get(l.employee_id);
+      const startMs = Date.parse(`${l.start_date}T00:00:00Z`);
+      const endMs = Date.parse(`${l.end_date}T00:00:00Z`);
+      const days =
+        typeof l.total_days === "number" && l.total_days > 0
+          ? l.total_days
+          : Number.isFinite(startMs) && Number.isFinite(endMs)
+            ? Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1)
+            : 1;
+      pendingApprovals.push({
+        id: l.id,
+        kind: "leave",
+        employeeId: l.employee_id,
+        employeeName: member?.fullName ?? "Direct Report",
+        employeeInitials: member?.initials ?? "DR",
+        employeeJobTitle: member?.jobTitle ?? "Staff",
+        badgeLabel: `${String(l.leave_type ?? "Leave").replace(/_/g, " ")} (${days}d)`,
+        dateRangeLabel:
+          l.start_date === l.end_date
+            ? l.start_date
+            : `${l.start_date} → ${l.end_date}`,
+        reason: l.reason ?? null,
+        requiresDocVerification: Boolean(l.requires_document_verification),
+        createdAt: l.filed_at ?? null,
+      });
+    }
+
+    for (const row of pendingOts ?? []) {
+      const o = row as {
+        id: string;
+        employee_id: string;
+        work_date: string;
+        start_time: string;
+        end_time: string;
+        overtime_type?: string | null;
+        reason?: string | null;
+        status: string;
+        supervisor_action_at?: string | null;
+        created_at?: string | null;
+      };
+      if (o.supervisor_action_at) continue;
+      const member = reportById.get(o.employee_id);
+      const isRdot = o.overtime_type === "rdot";
+      pendingApprovals.push({
+        id: o.id,
+        kind: "overtime",
+        employeeId: o.employee_id,
+        employeeName: member?.fullName ?? "Direct Report",
+        employeeInitials: member?.initials ?? "DR",
+        employeeJobTitle: member?.jobTitle ?? "Staff",
+        badgeLabel: `${isRdot ? "RDOT (1.30x)" : "Regular OT (1.25x)"} · ${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)}`,
+        dateRangeLabel: o.work_date,
+        reason: o.reason ?? null,
+        requiresDocVerification: false,
+        overtimeType: isRdot ? "rdot" : "regular_ot",
+        createdAt: o.created_at ?? null,
+      });
+    }
+
+    for (const row of pendingWorkModes ?? []) {
+      const w = row as {
+        id: string;
+        employee_id: string;
+        request_date: string;
+        requested_mode: "onsite" | "wfh";
+        reason?: string | null;
+        created_at?: string | null;
+      };
+      const member = reportById.get(w.employee_id);
+      pendingApprovals.push({
+        id: w.id,
+        kind: "work_mode",
+        employeeId: w.employee_id,
+        employeeName: member?.fullName ?? "Direct Report",
+        employeeInitials: member?.initials ?? "DR",
+        employeeJobTitle: member?.jobTitle ?? "Staff",
+        badgeLabel: `Work Mode → ${w.requested_mode === "wfh" ? "WFH" : "Onsite"}`,
+        dateRangeLabel: w.request_date,
+        reason: w.reason ?? null,
+        requiresDocVerification: false,
+        createdAt: w.created_at ?? null,
+      });
+    }
+  }
+
   return (
     <PageContainer>
       <div className="space-y-6">
@@ -327,6 +483,7 @@ export default async function EmployeeTeamPage() {
         <div className="mx-auto w-full max-w-[1440px] space-y-5 px-4 sm:px-6 lg:px-10">
           <TeamHubClient
             directReports={directReports}
+            pendingApprovals={pendingApprovals}
             queryError={directReportsError?.message ?? null}
             todayDateLabel={todayPht}
           />

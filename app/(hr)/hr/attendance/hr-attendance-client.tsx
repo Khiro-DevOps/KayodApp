@@ -85,8 +85,9 @@ export type HROvertimeRequestRow = {
   workDate: string;
   startTime: string;
   endTime: string;
+  overtimeType?: "regular_ot" | "rdot";
   reason: string;
-  status: "pending" | "approved" | "rejected" | "cancelled" | "expired";
+  status: "pending" | "pending_supervisor" | "pending_hr" | "approved" | "rejected" | "cancelled" | "expired";
   reviewNote: string | null;
   usedAt: string | null;
   createdAt: string;
@@ -305,7 +306,9 @@ export default function HRAttendanceClient({
 
   const flaggedCount = rows.filter((r) => r.zoneStatus === "outside_zone").length;
   const pendingCorrectionCount = correctionRequests.filter((r) => r.status === "pending").length;
-  const pendingOtCount = overtimeRequests.filter((r) => r.status === "pending").length;
+  const pendingOtCount = overtimeRequests.filter((r) =>
+    ["pending", "pending_hr", "pending_supervisor"].includes(r.status)
+  ).length;
 
   const filteredOvertime = useMemo(() => {
     if (!search.trim()) return overtimeRequests;
@@ -619,7 +622,9 @@ export default function HRAttendanceClient({
             <div className="space-y-3">
               {(showOvertimeQueue
                 ? filteredOvertime
-                : filteredOvertime.filter((r) => r.status === "pending")
+                : filteredOvertime.filter((r) =>
+                    ["pending", "pending_hr", "pending_supervisor"].includes(r.status)
+                  )
               ).map((ot) => {
                 const isBusy = actingOtId === ot.id;
                 return (
@@ -635,7 +640,16 @@ export default function HRAttendanceClient({
                             <p className="text-sm font-bold text-slate-900">{ot.employeeName}</p>
                             <span
                               className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                ot.status === "pending"
+                                ot.overtimeType === "rdot"
+                                  ? "border-purple-200 bg-purple-50 text-purple-700"
+                                  : "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              }`}
+                            >
+                              {ot.overtimeType === "rdot" ? "RDOT (1.30x)" : "Regular OT (1.25x)"}
+                            </span>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                ["pending", "pending_hr", "pending_supervisor"].includes(ot.status)
                                   ? "border-amber-200 bg-amber-50 text-amber-800"
                                   : ot.status === "approved"
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -644,7 +658,7 @@ export default function HRAttendanceClient({
                                       : "border-slate-200 bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {ot.status}
+                              {ot.status.replace(/_/g, " ")}
                             </span>
                             {ot.usedAt && (
                               <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-[#1E1B4B]">
@@ -670,7 +684,7 @@ export default function HRAttendanceClient({
                       <span className="font-semibold text-slate-900">Reason:</span> {ot.reason}
                     </p>
 
-                    {ot.status === "pending" ? (
+                    {["pending", "pending_hr", "pending_supervisor"].includes(ot.status) ? (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 pt-1">
                         <input
                           type="text"

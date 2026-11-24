@@ -45,7 +45,13 @@ export type LeaveType =
   | "unpaid"
   | "other";
 
-export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type LeaveStatus =
+  | "pending"
+  | "pending_supervisor"
+  | "pending_hr"
+  | "approved"
+  | "rejected"
+  | "cancelled";
 
 export type PayrollStatus =
   | "draft"
@@ -506,6 +512,8 @@ export const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, string> = {
 
 export const LEAVE_STATUS_COLORS: Record<LeaveStatus, string> = {
   pending: "bg-yellow-100 text-yellow-700",
+  pending_supervisor: "bg-amber-100 text-amber-800",
+  pending_hr: "bg-indigo-100 text-indigo-700",
   approved: "bg-green-100 text-green-700",
   rejected: "bg-red-100 text-red-700",
   cancelled: "bg-gray-100 text-gray-500",

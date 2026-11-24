@@ -145,19 +145,28 @@ export async function generatePayslips(formData: FormData) {
   const { data: attendanceLogs } = await admin
     .from("attendance_logs")
     .select(
-      "employee_id, date, clock_in, clock_out, late_minutes, overbreak_minutes, total_lunch_minutes, total_break_minutes"
+      "employee_id, date, clock_in, clock_out, late_minutes, undertime_minutes, night_diff_minutes, is_rest_day_work, overbreak_minutes, total_lunch_minutes, total_break_minutes"
     )
     .gte("clock_in", `${period.period_start}T00:00:00Z`)
     .lte("clock_in", `${period.period_end}T23:59:59Z`);
 
   const empIds = employees.map((e) => e.id);
-  const { data: approvedLeaves } = await admin
-    .from("leave_requests")
-    .select("employee_id, start_date, end_date, status")
-    .in("employee_id", empIds)
-    .eq("status", "approved")
-    .lte("start_date", period.period_end)
-    .gte("end_date", period.period_start);
+  const [{ data: approvedLeaves }, { data: approvedOvertimes }] = await Promise.all([
+    admin
+      .from("leave_requests")
+      .select("employee_id, leave_type, start_date, end_date, status")
+      .in("employee_id", empIds)
+      .eq("status", "approved")
+      .lte("start_date", period.period_end)
+      .gte("end_date", period.period_start),
+    admin
+      .from("overtime_requests")
+      .select("employee_id, work_date, start_time, end_time, overtime_type")
+      .in("employee_id", empIds)
+      .eq("status", "approved")
+      .gte("work_date", period.period_start)
+      .lte("work_date", period.period_end),
+  ]);
 
   // 3b. Protect already-published or paid payslips from being overwritten
   const { data: existingLockedSlips } = await admin
@@ -226,6 +235,7 @@ export async function generatePayslips(formData: FormData) {
 
     const empLogs = (attendanceLogs ?? []).filter((l) => l.employee_id === emp.id);
     const empLeaves = (approvedLeaves ?? []).filter((lr) => lr.employee_id === emp.id);
+    const empOvertimes = (approvedOvertimes ?? []).filter((ot) => ot.employee_id === emp.id);
 
     const computed = computeEmployeeDemoPayslip({
       monthlyBaseSalary: monthlySalary,
@@ -238,6 +248,7 @@ export async function generatePayslips(formData: FormData) {
       workDays: Array.isArray(emp.work_days) ? (emp.work_days as string[]) : null,
       attendanceLogs: empLogs,
       approvedLeaves: empLeaves,
+      approvedOvertimes: empOvertimes,
       contractMonthlyAllowance,
       contractAttendanceIncentive,
       contractAllowances: resolvedOfferComp.itemizedAllowances,
