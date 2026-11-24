@@ -14,6 +14,9 @@ export type ResolvedGeofence =
       latitude: number;
       longitude: number;
       radiusMeters: number;
+      isEmergencyOverride?: boolean;
+      overrideReason?: string | null;
+      effectiveWorkMode?: "onsite" | "wfh" | "off";
     }
   | {
       configured: false;
@@ -22,6 +25,9 @@ export type ResolvedGeofence =
       name: string;
       address: string | null;
       radiusMeters: number;
+      isEmergencyOverride?: boolean;
+      overrideReason?: string | null;
+      effectiveWorkMode?: "onsite" | "wfh" | "off";
     };
 
 export interface GeofenceEmployeeInput {
@@ -35,6 +41,7 @@ export interface GeofenceEmployeeInput {
   onsite_days?: string[] | null;
   wfh_days?: string[] | null;
   todayDailyModel?: "onsite" | "wfh" | "off";
+  effectiveDate?: string;
 }
 
 type BranchRow = {
@@ -127,6 +134,30 @@ export async function resolveEmployeeGeofence(
   supabase: SupabaseClient,
   employee: GeofenceEmployeeInput
 ): Promise<ResolvedGeofence> {
+  const targetDate =
+    employee.effectiveDate?.trim() ||
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+  let isEmergencyOverride = false;
+  let overrideReason: string | null = null;
+  let overrideMode: "onsite" | "wfh" | null = null;
+
+  const { data: overrideRow, error: overrideError } = await supabase
+    .from("employee_work_mode_overrides")
+    .select("override_mode, reason")
+    .eq("employee_id", employee.id)
+    .eq("effective_date", targetDate)
+    .maybeSingle<{ override_mode?: string | null; reason?: string | null }>();
+
+  if (!overrideError && overrideRow?.override_mode) {
+    const normalizedOverride = overrideRow.override_mode.trim().toLowerCase();
+    if (normalizedOverride === "wfh" || normalizedOverride === "onsite") {
+      isEmergencyOverride = true;
+      overrideMode = normalizedOverride;
+      overrideReason = overrideRow.reason ?? null;
+    }
+  }
+
   const rawMode = String(employee.work_mode ?? "onsite")
     .trim()
     .toLowerCase();
@@ -141,7 +172,7 @@ export async function resolveEmployeeGeofence(
   const todayLower = todayPhtDayName.toLowerCase();
 
   let isHybridRemoteDay = false;
-  if (workMode === "hybrid") {
+  if (!overrideMode && workMode === "hybrid") {
     let onsiteDays = normalizeDaysToFull(
       employee.onsite_days ??
         (Array.isArray(employee.hybrid_onsite_days)
@@ -180,10 +211,23 @@ export async function resolveEmployeeGeofence(
     }
   }
 
-  const isRemoteDay =
-    employee.todayDailyModel === "wfh" ||
-    (!employee.todayDailyModel && (workMode === "remote" || isHybridRemoteDay));
-  const isDayOff = employee.todayDailyModel === "off";
+  const isRemoteDay = overrideMode
+    ? overrideMode === "wfh"
+    : employee.todayDailyModel === "wfh" ||
+      (!employee.todayDailyModel && (workMode === "remote" || isHybridRemoteDay));
+  const isDayOff = !overrideMode && employee.todayDailyModel === "off";
+  const effectiveWorkMode: "onsite" | "wfh" | "off" = isDayOff
+    ? "off"
+    : isRemoteDay
+      ? "wfh"
+      : "onsite";
+
+  const withOverrideMeta = <T extends ResolvedGeofence>(res: T): T => ({
+    ...res,
+    isEmergencyOverride,
+    overrideReason,
+    effectiveWorkMode,
+  });
 
   if (isRemoteDay) {
     type RemoteRow = {
@@ -219,7 +263,7 @@ export async function resolveEmployeeGeofence(
       !Number.isNaN(Number(remoteRes.latitude)) &&
       !Number.isNaN(Number(remoteRes.longitude))
     ) {
-      return {
+      return withOverrideMeta({
         configured: true,
         mode: "remote_residence",
         name: "Registered Remote Residence",
@@ -227,10 +271,10 @@ export async function resolveEmployeeGeofence(
         latitude: Number(remoteRes.latitude),
         longitude: Number(remoteRes.longitude),
         radiusMeters: resolvedRadius,
-      };
+      });
     }
 
-    return {
+    return withOverrideMeta({
       configured: false,
       mode: "remote_residence",
       error:
@@ -238,7 +282,7 @@ export async function resolveEmployeeGeofence(
       name: "Remote Residence",
       address: remoteRes?.address ?? null,
       radiusMeters: resolvedRadius,
-    };
+    });
   }
 
   if (isDayOff && (workMode === "hybrid" || workMode === "remote")) {
@@ -302,7 +346,7 @@ export async function resolveEmployeeGeofence(
   }
 
   if (hasValidCoords(branch)) {
-    return {
+    return withOverrideMeta({
       configured: true,
       mode: "office_branch",
       name: isDayOff
@@ -312,7 +356,7 @@ export async function resolveEmployeeGeofence(
       latitude: Number(branch.latitude),
       longitude: Number(branch.longitude),
       radiusMeters: Number(branch.radius_meters) || 200,
-    };
+    });
   }
 
   if (isDayOff) {
@@ -331,7 +375,7 @@ export async function resolveEmployeeGeofence(
     const hasWfh =
       Boolean(remoteRow) &&
       (remoteRow?.approval_status === "approved" || remoteRow?.is_active === true);
-    return {
+    return withOverrideMeta({
       configured: true,
       mode: "office_branch",
       name: hasWfh ? "Scheduled Day Off · WFH Verified" : "Scheduled Day Off",
@@ -339,15 +383,15 @@ export async function resolveEmployeeGeofence(
       latitude: Number(remoteRow?.latitude ?? 14.5995),
       longitude: Number(remoteRow?.longitude ?? 120.9842),
       radiusMeters: Number(remoteRow?.radius_meters) || 200,
-    };
+    });
   }
 
-  return {
+  return withOverrideMeta({
     configured: false,
     mode: "office_branch",
     error: "No office branch geofence configured for your account.",
     name: branch?.name || "Office Branch",
     address: branch?.address ?? null,
     radiusMeters: Number(branch?.radius_meters) || 200,
-  };
+  });
 }

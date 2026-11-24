@@ -8,6 +8,7 @@ import {
   type ContractWorkSetup,
 } from "@/lib/work-arrangement";
 import type { Employee, Profile } from "@/lib/types";
+import { normalizeJobLevel } from "@/lib/workforce-hierarchy";
 import EmployeesDirectoryClient, {
   type DirectoryEmployee,
 } from "./employees-directory-client";
@@ -30,7 +31,13 @@ export default async function EmployeesPage() {
     .select(`
       *,
       profiles ( first_name, last_name, email, phone, avatar_url ),
-      departments ( name )
+      departments ( name ),
+      supervisor:employees!reports_to (
+        id,
+        job_title,
+        job_level,
+        profile:profiles!profile_id ( first_name, last_name )
+      )
     `)
     .order("created_at", { ascending: false });
   if (tenantId) {
@@ -338,11 +345,46 @@ export default async function EmployeesPage() {
           }
         : null;
 
+    const supRaw = (
+      emp as unknown as {
+        supervisor?:
+          | {
+              id?: string;
+              job_title?: string | null;
+              profile?:
+                | { first_name?: string | null; last_name?: string | null }
+                | Array<{ first_name?: string | null; last_name?: string | null }>
+                | null;
+            }
+          | Array<{
+              id?: string;
+              job_title?: string | null;
+              profile?:
+                | { first_name?: string | null; last_name?: string | null }
+                | Array<{ first_name?: string | null; last_name?: string | null }>
+                | null;
+            }>
+          | null;
+      }
+    ).supervisor;
+    const sup = Array.isArray(supRaw) ? supRaw[0] ?? null : supRaw ?? null;
+    const supProfile = sup?.profile
+      ? Array.isArray(sup.profile)
+        ? sup.profile[0] ?? null
+        : sup.profile
+      : null;
+    const reportsToName = supProfile
+      ? [supProfile.first_name, supProfile.last_name].filter(Boolean).join(" ").trim() ||
+        null
+      : null;
+
     return {
       id: emp.id,
       fullName,
       initials: getInitials(fullName),
       jobTitle: sourceOfTruth.position,
+      jobLevel: normalizeJobLevel((emp as { job_level?: string | null }).job_level),
+      reportsToName,
       departmentName: sourceOfTruth.department,
       email: p?.email ?? null,
       employmentStatus: emp.employment_status || "active",

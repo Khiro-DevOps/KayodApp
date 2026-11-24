@@ -71,19 +71,35 @@ export default async function EmployeeLayout({
       : (user.email ?? "U").slice(0, 2).toUpperCase();
 
   let companyName: string | null = null;
+  let hasDirectReports = false;
   try {
     const admin = getAdminClient();
     let tenantId = profile?.tenant_id?.trim() || "";
+
+    const { data: myEmployee } = await admin
+      .from("employees")
+      .select("id, tenant_id")
+      .eq("profile_id", user.id)
+      .eq("employment_status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; tenant_id?: string | null }>();
+
     if (!tenantId) {
-      const { data: empRow } = await admin
-        .from("employees")
-        .select("tenant_id")
-        .eq("profile_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle<{ tenant_id?: string | null }>();
-      tenantId = empRow?.tenant_id?.trim() || "";
+      tenantId = myEmployee?.tenant_id?.trim() || "";
     }
+
+    if (myEmployee?.id) {
+      const { data: directReports } = await admin
+        .from("employees")
+        .select(
+          "id, job_title, job_level, work_mode, department_id, profile:profiles!profile_id(first_name, last_name, email)",
+        )
+        .eq("reports_to", myEmployee.id)
+        .eq("employment_status", "active");
+      hasDirectReports = (directReports ?? []).length > 0;
+    }
+
     if (tenantId) {
       const { data: tenantRow } = await admin
         .from("tenants")
@@ -94,7 +110,19 @@ export default async function EmployeeLayout({
     }
   } catch {
     companyName = null;
+    hasDirectReports = false;
   }
+
+  const navItems = [
+    { label: "Home", href: "/employee/dashboard", icon: "home" },
+    { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
+    { label: "Leaves", href: "/employee/leaves", icon: "event_note" },
+    ...(hasDirectReports
+      ? [{ label: "My Team", href: "/employee/team", icon: "groups" }]
+      : []),
+    { label: "Payslips", href: "/employee/payslips", icon: "payments" },
+    { label: "Profile", href: "/employee/profile", icon: "person" },
+  ];
 
   return (
     <PwaShell
@@ -103,13 +131,7 @@ export default async function EmployeeLayout({
       initialCompanyName={companyName}
       config={{
         label: "Employee Portal",
-        navItems: [
-          { label: "Home", href: "/employee/dashboard", icon: "home" },
-          { label: "Schedule", href: "/employee/schedule", icon: "calendar_today" },
-          { label: "Leaves", href: "/employee/leaves", icon: "event_note" },
-          { label: "Payslips", href: "/employee/payslips", icon: "payments" },
-          { label: "Profile", href: "/employee/profile", icon: "person" },
-        ],
+        navItems,
       }}
     >
       {children}

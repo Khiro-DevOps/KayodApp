@@ -10,6 +10,8 @@ export interface ClockInReferenceLocation {
   requiresGeofence: boolean;
   location: WorkLocation | null;
   missingReason: string | null;
+  isEmergencyOverride?: boolean;
+  overrideReason?: string | null;
 }
 
 const FALLBACK_DEFAULT_LOCATION: WorkLocation = {
@@ -206,12 +208,39 @@ export async function getClockInReferenceLocation({
   employeeId,
   profileId,
   workSetup,
+  effectiveDate,
 }: {
   employeeId?: string;
   profileId?: string;
   workSetup?: string | null;
+  effectiveDate?: string;
 }): Promise<ClockInReferenceLocation> {
-  const mode = normalizeWorkSetup(workSetup);
+  let mode = normalizeWorkSetup(workSetup);
+  let isEmergencyOverride = false;
+  let overrideReason: string | null = null;
+
+  if (employeeId) {
+    const supabase = await createClient();
+    const targetDate =
+      effectiveDate?.trim() ||
+      new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+    const { data: overrideRow, error: overrideError } = await supabase
+      .from("employee_work_mode_overrides")
+      .select("override_mode, reason")
+      .eq("employee_id", employeeId)
+      .eq("effective_date", targetDate)
+      .maybeSingle<{ override_mode?: string | null; reason?: string | null }>();
+
+    if (!overrideError && overrideRow?.override_mode) {
+      const normalizedOverride = normalizeWorkSetup(overrideRow.override_mode);
+      if (normalizedOverride === "wfh" || normalizedOverride === "onsite") {
+        mode = normalizedOverride;
+        isEmergencyOverride = true;
+        overrideReason = overrideRow.reason ?? null;
+      }
+    }
+  }
 
   if (mode === "onsite") {
     const officeLocation = await getEmployeeWorkLocation(employeeId, profileId);
@@ -220,6 +249,8 @@ export async function getClockInReferenceLocation({
       requiresGeofence: false,
       location: officeLocation,
       missingReason: null,
+      isEmergencyOverride,
+      overrideReason,
     };
   }
 
@@ -240,6 +271,8 @@ export async function getClockInReferenceLocation({
         requiresGeofence: true,
         location: null,
         missingReason: "Remote/WFH clock-in needs profiles.address, but no address is stored for this employee.",
+        isEmergencyOverride,
+        overrideReason,
       };
     }
 
@@ -251,6 +284,8 @@ export async function getClockInReferenceLocation({
         requiresGeofence: true,
         location: null,
         missingReason: "Remote/WFH clock-in needs a geocodable profiles.address, but the address could not be resolved to coordinates.",
+        isEmergencyOverride,
+        overrideReason,
       };
     }
 
@@ -271,6 +306,8 @@ export async function getClockInReferenceLocation({
         updated_at: new Date().toISOString(),
       },
       missingReason: null,
+      isEmergencyOverride,
+      overrideReason,
     };
   }
 
@@ -281,5 +318,7 @@ export async function getClockInReferenceLocation({
     requiresGeofence: true,
     location: officeLocation,
     missingReason: null,
+    isEmergencyOverride,
+    overrideReason,
   };
 }

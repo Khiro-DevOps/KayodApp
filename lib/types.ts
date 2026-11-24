@@ -89,6 +89,7 @@ export type EmploymentType =
 
 export type EmploymentStatus =
   | "active"
+  | "inactive"
   | "onboarding"
   | "on_leave"
   | "suspended"
@@ -313,10 +314,12 @@ export interface InterviewPanelist {
 
 export interface Employee {
   id: string;
+  tenant_id?: string | null;
   profile_id: string;
   application_id: string | null;
   department_id: string | null;
   reports_to: string | null;
+  job_level?: "staff" | "team_lead" | "supervisor" | "manager";
   employee_number: string;
   job_title: string;
   employment_type: EmploymentType;

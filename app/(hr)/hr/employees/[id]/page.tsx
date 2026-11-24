@@ -5,7 +5,14 @@ import PageContainer from "@/components/ui/page-container";
 import Link from "next/link";
 import GeofenceControlCard from "./geofence-control-card";
 import CompensationEditorCard from "./compensation-editor-card";
+import HierarchyControlCard from "./hierarchy-control-card";
 import HROnboardingDocumentsSection from "./_components/HROnboardingDocumentsSection";
+import { canHr } from "@/lib/rbac/permissions";
+import {
+  filterAndSortSupervisorCandidates,
+  normalizeJobLevel,
+  type SupervisorCandidate,
+} from "@/lib/workforce-hierarchy";
 import { resolveOfferCompensation, type JobPostingSalarySource, type OfferSalarySource } from "@/lib/offer-salary";
 import { getJobPostingPositionForProfile } from "@/lib/employee-position-server";
 import { resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
@@ -50,6 +57,77 @@ export default async function EmployeeDetailPage({ params }: Props) {
     .select("*")
     .eq("employee_id", employeeId)
     .maybeSingle<EmployeeRemoteResidence>();
+
+  let tenantEmployeesQuery = admin
+    .from("employees")
+    .select(
+      `id, tenant_id, department_id, job_title, job_level, employment_status, profile:profiles!profile_id(first_name, last_name), departments(id, name)`,
+    )
+    .eq("employment_status", "active");
+  if (tenantId) {
+    tenantEmployeesQuery = tenantEmployeesQuery.eq("tenant_id", tenantId);
+  }
+
+  const [{ count: activeDirectReportsCount }, { data: rawTenantEmployees }] =
+    await Promise.all([
+      admin
+        .from("employees")
+        .select("id", { count: "exact", head: true })
+        .eq("reports_to", employeeId)
+        .eq("employment_status", "active"),
+      tenantEmployeesQuery,
+    ]);
+
+  const rawCandidates: SupervisorCandidate[] = (rawTenantEmployees ?? []).map(
+    (row) => {
+      const r = row as {
+        id: string;
+        tenant_id?: string | null;
+        department_id?: string | null;
+        job_title?: string | null;
+        job_level?: string | null;
+        employment_status?: string | null;
+        profile?:
+          | { first_name?: string | null; last_name?: string | null }
+          | Array<{ first_name?: string | null; last_name?: string | null }>
+          | null;
+        departments?:
+          | { id?: string; name?: string | null }
+          | Array<{ id?: string; name?: string | null }>
+          | null;
+      };
+      const prof = Array.isArray(r.profile) ? r.profile[0] : r.profile;
+      const dept = Array.isArray(r.departments)
+        ? r.departments[0]
+        : r.departments;
+      const fullName =
+        [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() ||
+        "Employee";
+
+      return {
+        id: r.id,
+        tenant_id: r.tenant_id ?? null,
+        department_id: r.department_id ?? null,
+        department_name: dept?.name ?? null,
+        job_title: r.job_title ?? "Employee",
+        job_level: normalizeJobLevel(r.job_level),
+        employment_status: r.employment_status ?? "active",
+        full_name: fullName,
+      };
+    },
+  );
+
+  const supervisorCandidates = filterAndSortSupervisorCandidates(rawCandidates, {
+    currentEmployeeId: employee.id,
+    tenantId,
+    departmentId: employee.department_id ?? null,
+  });
+
+  const canManageWorkforce = canHr(
+    ctx.hr_role,
+    "workforce:manage",
+    ctx.is_tenant_owner,
+  );
 
   const storedSalary = Number(employee.base_salary ?? employee.salary ?? 0);
   const storedAllowance = (employee as { monthly_allowance?: number | string | null }).monthly_allowance;
@@ -182,6 +260,20 @@ export default async function EmployeeDetailPage({ params }: Props) {
             </p>
           </div>
         </div>
+
+        {/* Organization Hierarchy & Status */}
+        <HierarchyControlCard
+          employeeId={employee.id}
+          employeeName={p ? `${p.first_name} ${p.last_name}` : "Employee"}
+          initialJobLevel={normalizeJobLevel(
+            (employee as { job_level?: string | null }).job_level,
+          )}
+          initialReportsTo={employee.reports_to ?? null}
+          initialEmploymentStatus={String(employee.employment_status ?? "active")}
+          activeDirectReportsCount={activeDirectReportsCount ?? 0}
+          supervisorCandidates={supervisorCandidates}
+          canManage={canManageWorkforce}
+        />
 
         {/* Compensation & Pay Frequency */}
         <CompensationEditorCard

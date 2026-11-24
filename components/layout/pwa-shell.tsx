@@ -173,6 +173,7 @@ function getPageHeader(pathname: string, variant: PwaVariant) {
     ? [
         { prefix: "/employee/schedule", title: "My Schedule", description: "Review your upcoming shifts and work schedule." },
         { prefix: "/employee/leaves", title: "Leave Requests", description: "Review and manage your leave requests." },
+        { prefix: "/employee/team", title: "My Team", description: "View your direct reports, approvals, and technical interviews." },
         { prefix: "/employee/payslips", title: "My Payslips", description: "View and download your pay statements." },
         { prefix: "/employee/profile", title: "My Profile", description: "Keep your personal details up to date." },
         { prefix: "/employee/dashboard", title: "Employee Dashboard", description: "Review schedules, leave requests, payslips, and daily work updates." },

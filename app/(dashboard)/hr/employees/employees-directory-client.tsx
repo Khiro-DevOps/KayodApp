@@ -8,12 +8,16 @@ import { Building2, Home, Laptop, Users } from "lucide-react";
 import { GlassStatTile, PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
 import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
 import type { ContractWorkSetup } from "@/lib/work-arrangement";
+import { JOB_LEVEL_LABELS, type JobLevel } from "@/lib/rbac/permissions";
+import { getJobLevelBadgeClasses } from "@/lib/workforce-hierarchy";
 
 export interface DirectoryEmployee {
   id: string;
   fullName: string;
   initials: string;
   jobTitle: string;
+  jobLevel: JobLevel;
+  reportsToName: string | null;
   departmentName: string | null;
   email: string | null;
   employmentStatus: string;
@@ -244,7 +248,7 @@ export default function EmployeesDirectoryClient({
                   </div>
                 </div>
 
-                {/* Status & Work Mode Pills */}
+                {/* Status, Job Level & Work Mode Pills */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold capitalize ${getStatusBadgeClasses(
@@ -252,6 +256,13 @@ export default function EmployeesDirectoryClient({
                     )}`}
                   >
                     {emp.employmentStatus.replace("_", " ")}
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getJobLevelBadgeClasses(
+                      emp.jobLevel
+                    )}`}
+                  >
+                    {JOB_LEVEL_LABELS[emp.jobLevel]}
                   </span>
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getWorkModeBadgeClasses(
@@ -264,6 +275,12 @@ export default function EmployeesDirectoryClient({
 
                 {/* Metadata rows */}
                 <div className="space-y-1.5 border-t border-slate-100 pt-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-500">Reports To</span>
+                    <span className="truncate font-medium text-slate-900">
+                      {emp.reportsToName ?? "Unassigned"}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-slate-500">Assigned Branch</span>
                     {emp.branchNeedsSetup ? (
