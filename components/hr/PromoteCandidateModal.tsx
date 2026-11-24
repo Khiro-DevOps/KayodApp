@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { promoteApplicantToEmployee } from "@/app/actions/promotion";
+import {
+  getPromoteModalContext,
+  promoteApplicantToEmployee,
+} from "@/app/actions/promotion";
+import {
+  filterAndSortSupervisorCandidates,
+  JOB_LEVEL_LABELS,
+  normalizeJobLevel,
+  type JobLevel,
+  type SupervisorCandidate,
+} from "@/lib/workforce-hierarchy";
 
 interface PromoteModalProps {
   isOpen: boolean;
@@ -18,6 +28,11 @@ interface PromoteModalProps {
   shiftStart?: string;
   shiftEnd?: string;
   probationEndDate?: string;
+  defaultSupervisorId?: string | null;
+  targetJobLevel?: JobLevel | null;
+  departmentId?: string | null;
+  tenantId?: string | null;
+  supervisorCandidates?: SupervisorCandidate[];
 }
 
 export default function PromoteCandidateModal({
@@ -34,8 +49,85 @@ export default function PromoteCandidateModal({
   shiftStart = "08:00:00",
   shiftEnd = "17:00:00",
   probationEndDate,
+  defaultSupervisorId: propDefaultSupervisorId,
+  targetJobLevel: propTargetJobLevel,
+  departmentId: propDepartmentId,
+  tenantId: propTenantId,
+  supervisorCandidates: propSupervisorCandidates,
 }: PromoteModalProps) {
   const [isPromoting, setIsPromoting] = useState(false);
+  const [candidates, setCandidates] = useState<SupervisorCandidate[]>(
+    propSupervisorCandidates ?? []
+  );
+  const [departmentId, setDepartmentId] = useState<string | null>(
+    propDepartmentId ?? null
+  );
+  const [tenantId, setTenantId] = useState<string | null>(propTenantId ?? null);
+  const [selectedReportsTo, setSelectedReportsTo] = useState<string>(
+    propDefaultSupervisorId ?? ""
+  );
+  const [selectedJobLevel, setSelectedJobLevel] = useState<JobLevel>(() =>
+    normalizeJobLevel(propTargetJobLevel)
+  );
+  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false);
+
+  useEffect(() => {
+    if (propSupervisorCandidates) {
+      setCandidates(propSupervisorCandidates);
+    }
+    if (propDepartmentId !== undefined) {
+      setDepartmentId(propDepartmentId ?? null);
+    }
+    if (propTenantId !== undefined) {
+      setTenantId(propTenantId ?? null);
+    }
+    if (propDefaultSupervisorId !== undefined) {
+      setSelectedReportsTo(propDefaultSupervisorId ?? "");
+    }
+    if (propTargetJobLevel !== undefined) {
+      setSelectedJobLevel(normalizeJobLevel(propTargetJobLevel));
+    }
+  }, [
+    propSupervisorCandidates,
+    propDepartmentId,
+    propTenantId,
+    propDefaultSupervisorId,
+    propTargetJobLevel,
+  ]);
+
+  useEffect(() => {
+    if (!isOpen || propSupervisorCandidates !== undefined) return;
+    let active = true;
+    setIsLoadingSupervisors(true);
+    void getPromoteModalContext(applicationId)
+      .then((ctx) => {
+        if (!active) return;
+        setCandidates(ctx.supervisorCandidates);
+        setDepartmentId(ctx.departmentId);
+        setTenantId(ctx.tenantId);
+        setSelectedJobLevel(ctx.targetJobLevel);
+        setSelectedReportsTo((prev) => prev || ctx.defaultSupervisorId || "");
+      })
+      .catch(() => {
+        // Non-blocking fallback
+      })
+      .finally(() => {
+        if (active) setIsLoadingSupervisors(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, applicationId, propSupervisorCandidates]);
+
+  const sortedSupervisors = useMemo(
+    () =>
+      filterAndSortSupervisorCandidates(candidates, {
+        currentEmployeeId: "",
+        tenantId,
+        departmentId,
+      }),
+    [candidates, tenantId, departmentId]
+  );
 
   if (!isOpen) return null;
 
@@ -53,7 +145,10 @@ export default function PromoteCandidateModal({
   const handlePromote = async () => {
     setIsPromoting(true);
     try {
-      const res = await promoteApplicantToEmployee(applicationId);
+      const res = await promoteApplicantToEmployee(applicationId, {
+        reportsTo: selectedReportsTo || null,
+        jobLevel: selectedJobLevel,
+      });
       if (!res.success) {
         toast.error(res.error || "Failed to promote candidate to employee");
         return;
@@ -126,6 +221,51 @@ export default function PromoteCandidateModal({
               <p className="font-medium text-text-muted">Probation Timeline (6 Months)</p>
               <p className="text-sm font-medium text-text-main">Start: Today • End Date: {estimatedProbation}</p>
             </div>
+          </div>
+        </div>
+
+        {/* Job Level & Direct Supervisor / Team Lead */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="promote_job_level" className="block text-xs font-semibold text-text-main">
+              Job Level
+            </label>
+            <select
+              id="promote_job_level"
+              value={selectedJobLevel}
+              onChange={(e) => setSelectedJobLevel(normalizeJobLevel(e.target.value))}
+              disabled={isPromoting || isLoadingSupervisors}
+              className="w-full rounded-xl border border-border bg-card-bg px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary"
+            >
+              {(["staff", "team_lead", "supervisor", "manager"] as const).map((level) => (
+                <option key={level} value={level}>
+                  {JOB_LEVEL_LABELS[level]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="promote_reports_to" className="block text-xs font-semibold text-text-main">
+              Direct Supervisor / Team Lead
+            </label>
+            <select
+              id="promote_reports_to"
+              value={selectedReportsTo}
+              onChange={(e) => setSelectedReportsTo(e.target.value)}
+              disabled={isPromoting || isLoadingSupervisors}
+              className="w-full rounded-xl border border-border bg-card-bg px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary"
+            >
+              <option value="">
+                {isLoadingSupervisors ? "Loading supervisors..." : "No direct supervisor assigned"}
+              </option>
+              {sortedSupervisors.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.full_name} — {JOB_LEVEL_LABELS[candidate.job_level]} ({candidate.job_title})
+                  {candidate.department_name ? ` · ${candidate.department_name}` : ""}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

@@ -27,6 +27,7 @@ import {
   verifyDocusealSubmissionCompleted,
 } from "@/lib/offer-lifecycle";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { canHr } from "@/lib/rbac/permissions";
 import { getContractBucketName } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/server";
 import type { JobOffer, Profile } from "@/lib/types";
@@ -624,13 +625,16 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
 
   const { data: viewerProfile } = await supabase
     .from("profiles")
-    .select("role, tenant_id")
+    .select("role, hr_role, is_tenant_owner, tenant_id")
     .eq("id", user.id)
     .maybeSingle();
 
   const isViewerHRRole = Boolean(
     viewerProfile?.role && ["hr_manager", "admin", "hr"].includes(viewerProfile.role)
   );
+  const canApproveNegotiations = isViewerHRRole
+    ? canHr(viewerProfile?.hr_role, "offers:approve_and_send", viewerProfile?.is_tenant_owner)
+    : false;
 
   // When an application is resolved and either has no offer yet or its active job_offers row is DRAFT,
   // render the HR offer draft creator / editor.
@@ -850,7 +854,117 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
   const jobTitle = application.job_postings?.title ?? "Job Offer";
   const workSetup = jobOfferRow?.work_setup ?? jobOfferRow?.work_mode ?? application.job_postings?.work_setup ?? null;
   const department = jobOfferRow?.department ?? application.job_postings?.department_id ?? null;
-  const location = application.job_postings?.location ?? null;
+  const { data: jobPostingMeta } = application.job_id
+    ? await admin
+        .from("job_postings")
+        .select("tenant_id, work_location_id, offer_letter_settings")
+        .eq("id", application.job_id)
+        .maybeSingle<{
+          tenant_id?: string | null;
+          work_location_id?: string | null;
+          offer_letter_settings?: Record<string, unknown> | null;
+        }>()
+    : { data: null };
+
+  const jobOfferSettings = (jobPostingMeta?.offer_letter_settings ?? null) as Record<
+    string,
+    unknown
+  > | null;
+
+  const rawPostingLocation = application.job_postings?.location?.trim() ?? "";
+  const isUuidLocation = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    rawPostingLocation
+  );
+  const branchIdToResolve =
+    jobOfferRow?.work_location_id ??
+    jobPostingMeta?.work_location_id ??
+    (typeof jobOfferSettings?.work_location_id === "string"
+      ? jobOfferSettings.work_location_id
+      : null) ??
+    (isUuidLocation ? rawPostingLocation : null);
+  let location: string | null =
+    rawPostingLocation && !isUuidLocation ? rawPostingLocation : null;
+  if (branchIdToResolve) {
+    const { data: branchRow } = await admin
+      .from("office_branches")
+      .select("name, address")
+      .eq("id", branchIdToResolve)
+      .maybeSingle<{ name: string; address?: string | null }>();
+    if (branchRow) {
+      location = branchRow.address
+        ? `${branchRow.name} — ${branchRow.address}`
+        : branchRow.name;
+    }
+  }
+  if (!location) {
+    const setupNorm = String(workSetup ?? "").trim().toLowerCase();
+    if (setupNorm === "remote" || setupNorm === "wfh") {
+      location = "Remote";
+    } else if (jobPostingMeta?.tenant_id) {
+      const { data: primaryBranch } = await admin
+        .from("office_branches")
+        .select("name, address")
+        .eq("tenant_id", jobPostingMeta.tenant_id)
+        .order("is_primary", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ name: string; address?: string | null }>();
+      if (primaryBranch) {
+        location = primaryBranch.address
+          ? `${primaryBranch.name} — ${primaryBranch.address}`
+          : primaryBranch.name;
+      }
+    }
+  }
+
+  const silDays =
+    Number(
+      metadata.service_incentive_leave ??
+        metadata.phServiceIncentiveLeave ??
+        jobOfferSettings?.service_incentive_leave ??
+        jobOfferSettings?.phServiceIncentiveLeave ??
+        5
+    ) || 5;
+  const vlDays =
+    Number(
+      metadata.vacation_leave_days ??
+        metadata.phVacationLeaveDays ??
+        jobOfferSettings?.vacation_leave_days ??
+        jobOfferSettings?.phVacationLeaveDays ??
+        0
+    ) || 0;
+  const slDays =
+    Number(
+      metadata.sick_leave_days ??
+        metadata.phSickLeaveDays ??
+        jobOfferSettings?.sick_leave_days ??
+        jobOfferSettings?.phSickLeaveDays ??
+        0
+    ) || 0;
+  const leaveCreditParts = [
+    `${silDays} SIL`,
+    ...(vlDays > 0 ? [`${vlDays} VL`] : []),
+    ...(slDays > 0 ? [`${slDays} SL`] : []),
+  ];
+  const leaveCreditsSummary = `${leaveCreditParts.join(" · ")} / year`;
+
+  const rawCompPkg = (metadata.compensation_package ??
+    jobOfferSettings?.compensation_package ??
+    null) as { hmo_coverage?: { enabled?: boolean; timing?: string } } | null;
+  const hmoProviderText =
+    (typeof metadata.hmo_provider === "string" && metadata.hmo_provider.trim()) ||
+    (typeof metadata.phHmoProvider === "string" && metadata.phHmoProvider.trim()) ||
+    (typeof jobOfferSettings?.hmo_provider === "string" &&
+      jobOfferSettings.hmo_provider.trim()) ||
+    (typeof jobOfferSettings?.phHmoProvider === "string" &&
+      jobOfferSettings.phHmoProvider.trim()) ||
+    null;
+  const hmoCoverageSummary =
+    hmoProviderText ||
+    (rawCompPkg?.hmo_coverage?.enabled
+      ? rawCompPkg.hmo_coverage.timing === "day_1"
+        ? "Company HMO (Effective Day 1)"
+        : "Company HMO (Upon Regularization)"
+      : "Per Company Policy");
   const employmentType = application.job_postings?.employment_type ?? null;
   const startDate =
     jobOfferRow?.start_date ||
@@ -1052,6 +1166,50 @@ export default async function JobOfferPage({ params }: OfferPageParams) {
       signedPdfUrl={signedPdfUrl}
       negotiations={(negotiationRows ?? []) as OfferNegotiationRow[]}
       isHR={isHrOnlyView}
+      canApproveNegotiations={canApproveNegotiations}
+      scheduleType={typeof metadata.schedule_type === "string" ? metadata.schedule_type : null}
+      workDaysPerWeek={
+        typeof metadata.work_days_per_week === "number" ? metadata.work_days_per_week : null
+      }
+      restDaysPolicy={
+        typeof metadata.rest_days_policy === "string" ? metadata.rest_days_policy : null
+      }
+      shiftRotationPattern={
+        typeof metadata.shift_rotation_pattern === "string"
+          ? metadata.shift_rotation_pattern
+          : null
+      }
+      shiftStart={
+        (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
+        (typeof (jobOfferRow as { shift_start?: string | null } | null)?.shift_start === "string"
+          ? (jobOfferRow as { shift_start?: string | null }).shift_start
+          : null)
+      }
+      shiftEnd={
+        (typeof metadata.shift_end === "string" ? metadata.shift_end : null) ??
+        (typeof (jobOfferRow as { shift_end?: string | null } | null)?.shift_end === "string"
+          ? (jobOfferRow as { shift_end?: string | null }).shift_end
+          : null)
+      }
+      workDays={
+        Array.isArray(metadata.work_days)
+          ? (metadata.work_days as string[])
+          : Array.isArray((jobOfferRow as { work_days?: string[] | null } | null)?.work_days)
+            ? ((jobOfferRow as { work_days?: string[] | null }).work_days as string[])
+            : null
+      }
+      workScheduleSummary={
+        typeof metadata.work_schedule_summary === "string"
+          ? metadata.work_schedule_summary
+          : null
+      }
+      reportsTo={
+        (typeof metadata.reports_to_label === "string" && metadata.reports_to_label.trim()) ||
+        (typeof metadata.reports_to === "string" && metadata.reports_to.trim()) ||
+        null
+      }
+      leaveCreditsSummary={leaveCreditsSummary}
+      hmoCoverageSummary={hmoCoverageSummary}
       hrHeaderAction={
         showConfirmHire ? (
           <HireConfirmationModal

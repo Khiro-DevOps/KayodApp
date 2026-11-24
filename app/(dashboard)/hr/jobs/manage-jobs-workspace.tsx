@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { PageHeroHeader, SolidSurfaceCard } from "@/components/ui/option-b-surfaces";
+import { computeJobHeadcount, formatHeadcountPillText } from "@/lib/job-headcount";
+import { closeJobPosting, updateWalkInHireCount } from "./actions";
 
 const PAGE_BATCH_SIZE = 20;
 
@@ -20,6 +24,9 @@ type ManageJobPosting = {
   salary_max: number | null;
   currency: string;
   slots: number;
+  hired_walkin_count?: number;
+  onlineHiredCount?: number;
+  isLegacy?: boolean;
   is_published: boolean;
   created_at: string;
   closes_at: string | null;
@@ -35,6 +42,7 @@ type ManageJobsWorkspaceProps = {
   companyName: string;
   nextCursor?: string | null;
   currentCursor?: string | null;
+  canManageWalkIn?: boolean;
 };
 
 function formatEmploymentType(value: string) {
@@ -116,17 +124,29 @@ export default function ManageJobsWorkspace({
   jobs,
   nextCursor,
   currentCursor,
+  canManageWalkIn = false,
 }: ManageJobsWorkspaceProps) {
+  const router = useRouter();
+  const [jobRows, setJobRows] = useState<ManageJobPosting[]>(jobs);
   const [search, setSearch] = useState("");
   const [activeJobId, setActiveJobId] = useState(jobs[0]?.id ?? "");
   const [visibleCount, setVisibleCount] = useState(PAGE_BATCH_SIZE);
+  const [walkInModalJobId, setWalkInModalJobId] = useState<string | null>(null);
+  const [walkInDraftCount, setWalkInDraftCount] = useState<number>(0);
+  const [walkInNote, setWalkInNote] = useState<string>("");
+  const [isSavingWalkIn, setIsSavingWalkIn] = useState(false);
+  const [isClosingJob, setIsClosingJob] = useState(false);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    setJobRows(jobs);
+  }, [jobs]);
+
   const normalizedSearch = search.trim().toLowerCase();
   const visibleJobs = useMemo(
-    () => jobs.filter((job) => matchesSearch(job, normalizedSearch)),
-    [jobs, normalizedSearch]
+    () => jobRows.filter((job) => matchesSearch(job, normalizedSearch)),
+    [jobRows, normalizedSearch]
   );
 
   const handleSearchChange = (value: string) => {
@@ -195,6 +215,80 @@ export default function ManageJobsWorkspace({
   const selectedSkills = (selectedJob?.required_skills ?? []).filter(
     (skill): skill is string => typeof skill === "string" && skill.trim().length > 0
   );
+  const selectedHeadcount = selectedJob
+    ? computeJobHeadcount({
+        slots: selectedJob.slots,
+        onlineHiredCount: selectedJob.onlineHiredCount ?? 0,
+        hiredWalkinCount: selectedJob.hired_walkin_count ?? 0,
+      })
+    : null;
+  const walkInModalJob = walkInModalJobId
+    ? jobRows.find((job) => job.id === walkInModalJobId) ?? null
+    : null;
+  const walkInModalHeadcount = walkInModalJob
+    ? computeJobHeadcount({
+        slots: walkInModalJob.slots,
+        onlineHiredCount: walkInModalJob.onlineHiredCount ?? 0,
+        hiredWalkinCount: walkInModalJob.hired_walkin_count ?? 0,
+      })
+    : null;
+
+  const openWalkInModal = (job: ManageJobPosting) => {
+    setWalkInModalJobId(job.id);
+    setWalkInDraftCount(job.hired_walkin_count ?? 0);
+    setWalkInNote("");
+  };
+
+  const handleSaveWalkIn = async () => {
+    if (!walkInModalJob) return;
+    setIsSavingWalkIn(true);
+    try {
+      const res = await updateWalkInHireCount({
+        jobId: walkInModalJob.id,
+        nextWalkInCount: walkInDraftCount,
+        note: walkInNote,
+      });
+      if (!res.success) {
+        toast.error(res.error || "Failed to update walk-in headcount");
+        return;
+      }
+
+      setJobRows((prev) =>
+        prev.map((row) =>
+          row.id === walkInModalJob.id
+            ? { ...row, hired_walkin_count: res.hired_walkin_count ?? walkInDraftCount }
+            : row
+        )
+      );
+      toast.success("Walk-in headcount updated");
+      setWalkInModalJobId(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update walk-in headcount");
+    } finally {
+      setIsSavingWalkIn(false);
+    }
+  };
+
+  const handleCloseFullJob = async (jobId: string) => {
+    setIsClosingJob(true);
+    try {
+      const res = await closeJobPosting(jobId);
+      if (!res.success) {
+        toast.error(res.error || "Failed to mark job as closed");
+        return;
+      }
+      setJobRows((prev) =>
+        prev.map((row) => (row.id === jobId ? { ...row, is_published: false } : row))
+      );
+      toast.success("Job posting marked as closed");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to mark job as closed");
+    } finally {
+      setIsClosingJob(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 font-sans">
@@ -384,12 +478,15 @@ export default function ManageJobsWorkspace({
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={`/hr/jobs/${selectedJob.id}`}
-                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50"
-                    >
-                      Open Details
-                    </Link>
+                    {canManageWalkIn && !selectedJob.isLegacy && (
+                      <button
+                        type="button"
+                        onClick={() => openWalkInModal(selectedJob)}
+                        className="rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100"
+                      >
+                        + Walk-In Hire
+                      </button>
+                    )}
                     <Link
                       href={`/hr/jobs/${selectedJob.id}/edit`}
                       className="rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-indigo-900"
@@ -398,6 +495,41 @@ export default function ManageJobsWorkspace({
                     </Link>
                   </div>
                 </div>
+
+                {selectedHeadcount && !selectedJob.isLegacy && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
+                        selectedHeadcount.isFull
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      {formatHeadcountPillText(selectedHeadcount)}
+                    </span>
+                  </div>
+                )}
+
+                {selectedHeadcount?.isFull && selectedJob.is_published && !selectedJob.isLegacy && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-900">
+                    <div>
+                      <p className="font-semibold">All {selectedHeadcount.slots} slots are filled.</p>
+                      <p className="text-amber-800/90">
+                        Moving new candidates into Offer/Hired is disabled until slots are increased. Mark this posting as closed?
+                      </p>
+                    </div>
+                    {canManageWalkIn && (
+                      <button
+                        type="button"
+                        disabled={isClosingJob}
+                        onClick={() => void handleCloseFullJob(selectedJob.id)}
+                        className="shrink-0 rounded-xl bg-amber-700 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60"
+                      >
+                        {isClosingJob ? "Closing..." : "Mark as Closed"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-3 border-b border-slate-200/80 p-5 sm:p-6 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
@@ -540,6 +672,120 @@ export default function ManageJobsWorkspace({
           )}
         </section>
       </div>
+
+      {walkInModalJob && walkInModalHeadcount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Walk-In Hire Counter</h3>
+                <p className="text-xs text-text-muted">{walkInModalJob.title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWalkInModalJobId(null)}
+                disabled={isSavingWalkIn}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-text-muted">Total Slots</span>
+                <span className="font-semibold text-slate-900">{walkInModalHeadcount.slots}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-muted">Online Hired</span>
+                <span className="font-semibold text-slate-900">{walkInModalHeadcount.onlineHiredCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-muted">Max Walk-In Hires Allowed</span>
+                <span className="font-semibold text-slate-900">{walkInModalHeadcount.maxWalkinCount}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">
+                Walk-In Hired Count
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setWalkInDraftCount((prev) => Math.max(0, prev - 1))}
+                  disabled={walkInDraftCount <= 0 || isSavingWalkIn}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-base font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={0}
+                  max={walkInModalHeadcount.maxWalkinCount}
+                  value={walkInDraftCount}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    if (Number.isNaN(parsed)) {
+                      setWalkInDraftCount(0);
+                    } else {
+                      setWalkInDraftCount(
+                        Math.min(walkInModalHeadcount.maxWalkinCount, Math.max(0, parsed))
+                      );
+                    }
+                  }}
+                  className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-bold text-slate-900 outline-none focus:border-[#1E1B4B]"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setWalkInDraftCount((prev) =>
+                      Math.min(walkInModalHeadcount.maxWalkinCount, prev + 1)
+                    )
+                  }
+                  disabled={walkInDraftCount >= walkInModalHeadcount.maxWalkinCount || isSavingWalkIn}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-base font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="walkin_note" className="text-xs font-semibold text-slate-700">
+                Walk-In Candidate Note (Optional)
+              </label>
+              <textarea
+                id="walkin_note"
+                rows={2}
+                value={walkInNote}
+                onChange={(e) => setWalkInNote(e.target.value)}
+                placeholder="e.g. Hired Juan Dela Cruz (walk-in interview)"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-[#1E1B4B]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setWalkInModalJobId(null)}
+                disabled={isSavingWalkIn}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveWalkIn()}
+                disabled={isSavingWalkIn}
+                className="rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-900 disabled:opacity-50"
+              >
+                {isSavingWalkIn ? "Saving..." : "Save Headcount"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

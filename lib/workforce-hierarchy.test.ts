@@ -117,6 +117,31 @@ describe("workforce hierarchy helpers", () => {
     ]);
   });
 
+  it("filters out staff when leadershipOnly is true, falling back to staff only if zero leadership exist", () => {
+    const leadershipResult = filterAndSortSupervisorCandidates(baseCandidates, {
+      currentEmployeeId: "emp-self",
+      tenantId: "tenant-1",
+      departmentId: "dept-eng",
+      leadershipOnly: true,
+    });
+    expect(leadershipResult.map((c) => c.id)).toEqual([
+      "emp-mgr-same-dept",
+      "emp-mgr-other-dept",
+      "emp-sup-same-dept",
+      "emp-lead-same-dept",
+      "emp-lead-other-dept",
+    ]);
+
+    const staffOnlyPool = baseCandidates.filter((c) => c.job_level === "staff");
+    const fallbackResult = filterAndSortSupervisorCandidates(staffOnlyPool, {
+      currentEmployeeId: "emp-self",
+      tenantId: "tenant-1",
+      departmentId: "dept-eng",
+      leadershipOnly: true,
+    });
+    expect(fallbackResult.map((c) => c.id)).toEqual(["emp-staff-same-dept"]);
+  });
+
   it("normalizes unknown job levels to staff", () => {
     expect(normalizeJobLevel("manager")).toBe("manager");
     expect(normalizeJobLevel("supervisor")).toBe("supervisor");

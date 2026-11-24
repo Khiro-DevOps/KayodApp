@@ -62,13 +62,31 @@ export default async function EmployeeTeamPage() {
     redirect("/employee/dashboard");
   }
 
-  const { data: directReportsRaw, error: directReportsError } = await admin
+  let directReportsRaw: unknown[] | null = null;
+  let directReportsError: { message: string } | null = null;
+
+  const primaryEmpRes = await admin
     .from("employees")
     .select(
-      `id, employee_number, job_title, job_level, work_mode, employment_status, department_id, department:departments!department_id(name), profile:profiles!profile_id(first_name, last_name, email)`,
+      `id, employee_number, job_title, job_level, work_mode, shift_start, shift_end, work_days, daily_work_modes, job_offer_id, employment_status, department_id, department:departments!department_id(name), profile:profiles!profile_id(first_name, last_name, email)`,
     )
     .eq("reports_to", myEmployee.id)
     .eq("employment_status", "active");
+
+  if (primaryEmpRes.error && /daily_work_modes/i.test(primaryEmpRes.error.message)) {
+    const fallbackEmpRes = await admin
+      .from("employees")
+      .select(
+        `id, employee_number, job_title, job_level, work_mode, shift_start, shift_end, work_days, job_offer_id, employment_status, department_id, department:departments!department_id(name), profile:profiles!profile_id(first_name, last_name, email)`,
+      )
+      .eq("reports_to", myEmployee.id)
+      .eq("employment_status", "active");
+    directReportsRaw = fallbackEmpRes.data;
+    directReportsError = fallbackEmpRes.error;
+  } else {
+    directReportsRaw = primaryEmpRes.data;
+    directReportsError = primaryEmpRes.error;
+  }
 
   if (directReportsError) {
     console.error("EmployeeTeamPage directReports query error:", directReportsError);
@@ -173,6 +191,10 @@ export default async function EmployeeTeamPage() {
         job_title?: string | null;
         job_level?: string | null;
         work_mode?: string | null;
+        shift_start?: string | null;
+        shift_end?: string | null;
+        work_days?: string[] | null;
+        daily_work_modes?: Record<string, "onsite" | "wfh" | "rest"> | null;
         employment_status?: string | null;
         department_id?: string | null;
         department?:
@@ -241,9 +263,18 @@ export default async function EmployeeTeamPage() {
         isEmergencyOverride: Boolean(override),
         overrideReason: override?.reason ?? null,
         hybridOnsiteDays: parsedHybrid?.onsiteDays ?? [],
-        shiftStart: sched?.shift_start ?? "08:00",
-        shiftEnd: sched?.shift_end ?? "17:00",
-        workDays: Array.isArray(sched?.work_days) ? sched.work_days : [],
+        shiftStart: sched?.shift_start ?? r.shift_start ?? "08:00",
+        shiftEnd: sched?.shift_end ?? r.shift_end ?? "17:00",
+        workDays:
+          Array.isArray(sched?.work_days) && sched.work_days.length > 0
+            ? sched.work_days
+            : Array.isArray(r.work_days)
+              ? r.work_days
+              : [],
+        dailyWorkModes:
+          r.daily_work_modes && typeof r.daily_work_modes === "object"
+            ? r.daily_work_modes
+            : undefined,
         employmentStatus: r.employment_status ?? "active",
         departmentName: dept?.name ?? null,
       };

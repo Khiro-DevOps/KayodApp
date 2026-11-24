@@ -3,6 +3,8 @@
 // Matches the full Supabase schema
 // ============================================================
 
+import type { JobLevel } from "./rbac/permissions";
+
 export type UserRole = "candidate" | "employee" | "hr_manager" | "admin";
 
 export type ApplicationStatus =
@@ -185,6 +187,9 @@ export interface JobPosting {
   salary_max: number | null;
   currency: string;
   slots: number;
+  hired_walkin_count?: number;
+  default_supervisor_id?: string | null;
+  target_job_level?: JobLevel;
   is_published: boolean;
   published_at: string | null;
   closes_at: string | null;

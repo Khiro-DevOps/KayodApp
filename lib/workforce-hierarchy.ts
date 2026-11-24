@@ -27,6 +27,35 @@ export function normalizeJobLevel(value: string | null | undefined): JobLevel {
   return "staff";
 }
 
+export function formatSupervisorDisplayLabel(supervisor: {
+  full_name?: string | null;
+  job_title?: string | null;
+  job_level?: string | null;
+  profile?:
+    | { first_name?: string | null; last_name?: string | null }
+    | Array<{ first_name?: string | null; last_name?: string | null }>
+    | null;
+} | null | undefined): string {
+  if (!supervisor) return "";
+  const prof = Array.isArray(supervisor.profile) ? supervisor.profile[0] : supervisor.profile;
+  const fullName =
+    supervisor.full_name?.trim() ||
+    [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() ||
+    "";
+  if (!fullName) return "";
+  const jobTitle = supervisor.job_title?.trim();
+  const levelLabel = supervisor.job_level
+    ? JOB_LEVEL_LABELS[normalizeJobLevel(supervisor.job_level)]
+    : "";
+  if (jobTitle && levelLabel) {
+    return `${fullName} — ${jobTitle} (${levelLabel})`;
+  }
+  if (jobTitle) {
+    return `${fullName} — ${jobTitle}`;
+  }
+  return fullName;
+}
+
 /**
  * Filters and sorts `Reports To` supervisor/team-lead candidates:
  * - Active employees only (`employment_status === 'active'`)
@@ -35,24 +64,36 @@ export function normalizeJobLevel(value: string | null | undefined): JobLevel {
  * - Sorted by `JOB_LEVEL_PRIORITY` (manager -> supervisor -> team_lead -> staff),
  *   then same `department_id` first, then alphabetical by full name.
  */
+const LEADERSHIP_JOB_LEVELS = new Set<JobLevel>(["team_lead", "supervisor", "manager"]);
+
 export function filterAndSortSupervisorCandidates(
   candidates: SupervisorCandidate[],
   options: {
     currentEmployeeId: string;
     tenantId: string | null;
     departmentId: string | null;
+    leadershipOnly?: boolean;
   },
 ): SupervisorCandidate[] {
-  const { currentEmployeeId, tenantId, departmentId } = options;
+  const { currentEmployeeId, tenantId, departmentId, leadershipOnly = false } = options;
 
-  return candidates
-    .filter((candidate) => {
-      if (candidate.id === currentEmployeeId) return false;
-      if (candidate.employment_status !== "active") return false;
-      if (tenantId && candidate.tenant_id !== tenantId) return false;
-      return true;
-    })
-    .sort((a, b) => {
+  const baseEligible = candidates.filter((candidate) => {
+    if (candidate.id === currentEmployeeId) return false;
+    if (candidate.employment_status !== "active") return false;
+    if (tenantId && candidate.tenant_id !== tenantId) return false;
+    return true;
+  });
+
+  const leadershipPool = leadershipOnly
+    ? baseEligible.filter((candidate) =>
+        LEADERSHIP_JOB_LEVELS.has(normalizeJobLevel(candidate.job_level)),
+      )
+    : [];
+
+  const pool =
+    leadershipOnly && leadershipPool.length > 0 ? leadershipPool : baseEligible;
+
+  return [...pool].sort((a, b) => {
       const priorityDiff =
         JOB_LEVEL_PRIORITY[normalizeJobLevel(a.job_level)] -
         JOB_LEVEL_PRIORITY[normalizeJobLevel(b.job_level)];

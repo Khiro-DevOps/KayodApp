@@ -170,8 +170,11 @@ interface ConfirmSheetAppState {
 }
 
 function getQuickAction(app: ApplicationRow, hasSignedContract: boolean): QuickAction | null {
-  if (app.status === "pre_employment" || (hasSignedContract && !["hired", "hire_confirmed"].includes(app.status))) {
-    return { label: "Review docs", action: "documents", colorClassName: "bg-sky-500" };
+  if (
+    (hasSignedContract || app.status === "offer_accepted" || app.status === "pre_employment") &&
+    !["hired", "hire_confirmed"].includes(app.status)
+  ) {
+    return { label: "Confirm Hire", action: "confirm_hire", colorClassName: "bg-emerald-600" };
   }
 
   switch (app.status) {
@@ -258,7 +261,12 @@ export default function ApplicantsHubClient({
   interviews,
   jobOffers: initialJobOffers,
   signedDocuments: initialSignedDocuments,
-}: ApplicantsHubClientProps) {
+  isJobFull = false,
+  headcountLabel,
+}: ApplicantsHubClientProps & {
+  isJobFull?: boolean;
+  headcountLabel?: string;
+}) {
   const router = useRouter();
   const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>(applications);
   const [interviewMap, setInterviewMap] = useState<Map<string, Interview>>(interviews);
@@ -624,6 +632,10 @@ export default function ApplicantsHubClient({
         }
 
         case "send_offer": {
+          if (isJobFull) {
+            toast.error("All job slots are filled. Increase slots on the job posting before moving candidates to Offer.");
+            return;
+          }
           toast.info("Preparing offer draft...");
           try {
             const result = await createHydratedOfferDraft(jobId, app.id);
@@ -750,9 +762,22 @@ export default function ApplicantsHubClient({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className="truncate font-(family-name:--font-heading) text-lg font-bold text-text-primary">{jobTitle}</h1>
-                <p className="text-xs text-text-secondary">
-                  {activePipelineCount} Active {activePipelineCount === 1 ? "Applicant" : "Applicants"}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-text-secondary">
+                    {activePipelineCount} Active {activePipelineCount === 1 ? "Applicant" : "Applicants"}
+                  </p>
+                  {headcountLabel && (
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                        isJobFull
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      {headcountLabel}
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
@@ -861,6 +886,7 @@ export default function ApplicantsHubClient({
                         onCardClick={() => handleCardClick(app)}
                         onQuickAction={(action) => handleQuickAction(app, action)}
                         isMobile={false}
+                        isJobFull={isJobFull}
                       />
                     </div>
                   );
@@ -899,6 +925,7 @@ export default function ApplicantsHubClient({
                         onCardClick={() => handleCardClick(app)}
                         onQuickAction={(action) => handleQuickAction(app, action)}
                         isMobile={false}
+                        isJobFull={isJobFull}
                       />
                     ))
                   )}
@@ -930,6 +957,7 @@ export default function ApplicantsHubClient({
                   onCardClick={() => handleCardClick(app)}
                   onQuickAction={(action) => handleQuickAction(app, action)}
                   isMobile={true}
+                  isJobFull={isJobFull}
                 />
               ))}
             </div>
@@ -1013,6 +1041,7 @@ function ApplicantCardComponent({
   onCardClick,
   onQuickAction,
   isMobile,
+  isJobFull = false,
 }: {
   app: ApplicationRow;
   candidate: CandidateProfile | null;
@@ -1021,6 +1050,7 @@ function ApplicantCardComponent({
   onCardClick: () => void;
   onQuickAction: (action: NonNullable<QuickAction["action"]>) => void;
   isMobile: boolean;
+  isJobFull?: boolean;
 }) {
   const fullName = getApplicantName(candidate);
   const statusColorClass = (APPLICATION_STATUS_COLORS as Record<string, string>)[app.status] ?? "bg-blue-50 text-blue-600";
@@ -1181,10 +1211,12 @@ function ApplicantCardComponent({
                 event.stopPropagation();
                 void onQuickAction("send_offer");
               }}
+              disabled={isJobFull}
+              title={isJobFull ? "All slots are filled. Increase slots to send new offers." : undefined}
               type="button"
-              className="w-full rounded-xl bg-orange-500 py-3 text-sm font-semibold tracking-wide text-white shadow-sm transition-transform transition-shadow hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
+              className="w-full rounded-xl bg-orange-500 py-3 text-sm font-semibold tracking-wide text-white shadow-sm transition-transform transition-shadow hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             >
-              Send Offer to DocuSeal
+              {isJobFull ? "Slots Full — Increase Slots to Offer" : "Send Offer to DocuSeal"}
             </button>
           )}
 
@@ -1195,8 +1227,18 @@ function ApplicantCardComponent({
                 event.stopPropagation();
                 void onQuickAction(quickAction.action!);
               }}
+              disabled={
+                isJobFull &&
+                (quickAction.action === "send_offer" || quickAction.action === "confirm_hire")
+              }
+              title={
+                isJobFull &&
+                (quickAction.action === "send_offer" || quickAction.action === "confirm_hire")
+                  ? "All slots are filled. Increase slots on the job posting first."
+                  : undefined
+              }
               type="button"
-              className={`w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 ${quickAction.colorClassName}`}
+              className={`w-full rounded-xl py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${quickAction.colorClassName}`}
             >
               {quickAction.label}
             </button>

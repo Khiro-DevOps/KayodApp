@@ -26,6 +26,7 @@ interface NegotiationPanelProps {
   status: string;
   negotiations?: OfferNegotiationRow[];
   isHR?: boolean;
+  canApproveNegotiations?: boolean;
   signSectionRef: RefObject<HTMLDivElement | null>;
   onAccept?: () => Promise<void>;
   isPreparingSigningSession?: boolean;
@@ -116,6 +117,7 @@ export default function NegotiationPanel({
   status,
   negotiations = [],
   isHR = false,
+  canApproveNegotiations = true,
   signSectionRef,
   onAccept,
   isPreparingSigningSession,
@@ -230,12 +232,35 @@ export default function NegotiationPanel({
     };
 
     return (
-      <section className="rounded-2xl border border-border bg-surface shadow-sm">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold text-text-primary">Negotiation requests</h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            Review each candidate change request and approve, counter, or reject.
-          </p>
+      <section
+        className={`rounded-2xl shadow-sm ${
+          hasPending
+            ? "border-2 border-amber-300 bg-gradient-to-br from-amber-50/90 via-white to-indigo-50/60"
+            : "border border-border bg-surface"
+        }`}
+      >
+        <div
+          className={`flex flex-wrap items-start justify-between gap-3 px-5 py-4 ${
+            hasPending ? "border-b border-amber-200/80" : "border-b border-border"
+          }`}
+        >
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">
+                {hasPending
+                  ? "Candidate Counter-Offer / Negotiation Request"
+                  : "Negotiation requests"}
+              </h2>
+              {hasPending && (
+                <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
+                  Action Required
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-slate-600">
+              Review each candidate change request and approve, counter, or decline to maintain the standing offer.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-4 p-5">
@@ -322,42 +347,48 @@ export default function NegotiationPanel({
                     </p>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => void handleHrRespond(req.id, "approved")}
-                      className="inline-flex items-center rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        setActiveHrAction((prev) => ({
-                          ...prev,
-                          [req.id]: prev[req.id] === "counter" ? null : "counter",
-                        }))
-                      }
-                      className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                    >
-                      Counter
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        setActiveHrAction((prev) => ({
-                          ...prev,
-                          [req.id]: prev[req.id] === "reject" ? null : "reject",
-                        }))
-                      }
-                      className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
-                  </div>
+                  {canApproveNegotiations ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handleHrRespond(req.id, "approved")}
+                        className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Approve &amp; Update Offer
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          setActiveHrAction((prev) => ({
+                            ...prev,
+                            [req.id]: prev[req.id] === "counter" ? null : "counter",
+                          }))
+                        }
+                        className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-[#1E1B4B] hover:bg-indigo-100 disabled:opacity-50"
+                      >
+                        Counter
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          setActiveHrAction((prev) => ({
+                            ...prev,
+                            [req.id]: prev[req.id] === "reject" ? null : "reject",
+                          }))
+                        }
+                        className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        Decline / Maintain Standing Offer
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs text-[#1E1B4B]">
+                      Negotiation approvals, counters, and standing-offer decisions are locked to HR Admin and HR Generalist.
+                    </p>
+                  )}
 
                   {mode === "counter" && (
                     <div className="space-y-2 rounded-md border border-border bg-surface p-3">
@@ -425,7 +456,7 @@ export default function NegotiationPanel({
             })}
           </div>
 
-          {canSendRevisedOffer && (
+          {canApproveNegotiations && canSendRevisedOffer && (
             <div className="pt-2">
               <button
                 type="button"

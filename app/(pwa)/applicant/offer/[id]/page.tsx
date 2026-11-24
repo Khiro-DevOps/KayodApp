@@ -34,6 +34,17 @@ export default async function ApplicantOfferOverviewPage({
         currency={offer.currency}
         hrEmail={offer.hrEmail}
         isHR={offer.isHR}
+        scheduleType={offer.scheduleType}
+        workDaysPerWeek={offer.workDaysPerWeek}
+        restDaysPolicy={offer.restDaysPolicy}
+        shiftRotationPattern={offer.shiftRotationPattern}
+        shiftStart={offer.shiftStart}
+        shiftEnd={offer.shiftEnd}
+        workDays={offer.workDays}
+        workScheduleSummary={offer.workScheduleSummary}
+        reportsTo={offer.reportsTo}
+        leaveCreditsSummary={offer.leaveCreditsSummary}
+        hmoCoverageSummary={offer.hmoCoverageSummary}
       />
     </PageContainer>
   );

@@ -8,6 +8,7 @@ type ContractTemplateResolveParams = {
   jobPostingId: string;
   docusealTemplateId: string;
   createdBy: string;
+  templateVersion?: string;
 };
 
 type SignedDocumentCreateParams = ContractTemplateResolveParams & {
@@ -52,11 +53,12 @@ export async function getOrCreateContractTemplateId(
     return existingTemplate.id as string;
   }
 
+  const versionSuffix = params.templateVersion ? ` [${params.templateVersion}]` : "";
   const { data: newTemplate, error } = await supabase
     .from(tableName)
     .insert({
       job_posting_id: params.jobPostingId,
-      template_name: `Template ${templateKey}`,
+      template_name: `Template ${templateKey}${versionSuffix}`,
       docuseal_template_id: templateKey,
       external_id: templateKey,
       created_by: params.createdBy,

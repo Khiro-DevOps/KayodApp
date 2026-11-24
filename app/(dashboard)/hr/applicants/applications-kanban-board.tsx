@@ -57,6 +57,7 @@ export type ApplicationHubCard = {
   rejection_reason?: string | null;
   submitted_at: string;
   updated_at: string;
+  offer_status?: string | null;
   // Supabase .select('*, candidate:profiles(*), job:job_postings(*)')
   candidate?: CandidateProfile | CandidateProfile[] | null;
   job?: JobPostingSummary | JobPostingSummary[] | null;
@@ -222,7 +223,18 @@ function getStageLabel(stageKey: UiStageKey): string {
   return UI_STAGES.find((stage) => stage.key === stageKey)?.label ?? "New";
 }
 
-function getPrimaryActionLabel(stageKey: UiStageKey): string {
+function isOfferSignedOrAccepted(application: ApplicationHubCard): boolean {
+  const appStatus = String(application.status ?? "").trim().toLowerCase();
+  const offerStatus = String(application.offer_status ?? "").trim().toLowerCase();
+  return (
+    appStatus === "offer_accepted" ||
+    appStatus === "pre_employment" ||
+    offerStatus === "signed" ||
+    offerStatus === "accepted"
+  );
+}
+
+function getPrimaryActionLabel(stageKey: UiStageKey, application: ApplicationHubCard): string {
   switch (stageKey) {
     case "new":
       return "Screen Candidate";
@@ -231,7 +243,7 @@ function getPrimaryActionLabel(stageKey: UiStageKey): string {
     case "interview":
       return "Schedule Room/Interview";
     case "offer":
-      return "Send Offer";
+      return isOfferSignedOrAccepted(application) ? "Confirm Hire" : "Send Offer";
     case "hired":
       return "View Employee";
     case "closed":
@@ -256,7 +268,8 @@ function ApplicationCard({
 }) {
   const profile = resolveProfile(application);
   const stageKey = getStageForStatus(application.status);
-  const actionLabel = getPrimaryActionLabel(stageKey);
+  const actionLabel = getPrimaryActionLabel(stageKey, application);
+  const isConfirmHireCta = stageKey === "offer" && isOfferSignedOrAccepted(application);
   const scoreDisplay = formatMatchScore(application.match_score);
 
   return (
@@ -320,7 +333,11 @@ function ApplicationCard({
             event.stopPropagation();
             onPrimaryAction(application);
           }}
-          className="w-full rounded-lg bg-primary hover:bg-primary-hover px-3 py-2 text-xs font-semibold text-white transition-colors shadow-xs"
+          className={`w-full rounded-lg px-3 py-2 text-xs font-semibold text-white transition-colors shadow-xs ${
+            isConfirmHireCta
+              ? "bg-emerald-600 hover:bg-emerald-700"
+              : "bg-primary hover:bg-primary-hover"
+          }`}
         >
           {actionLabel}
         </button>
@@ -911,7 +928,11 @@ export default function ApplicationsKanbanBoard({
     }
 
     if (stageKey === "offer") {
-      router.push(`/job-offer/${encodeURIComponent(application.id)}`);
+      if (isOfferSignedOrAccepted(application)) {
+        setSelectedApplicationId(application.id);
+      } else {
+        router.push(`/job-offer/${encodeURIComponent(application.id)}`);
+      }
       return;
     }
 

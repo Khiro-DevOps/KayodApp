@@ -46,6 +46,20 @@ import {
   parseCompensationPackage,
   type PhilippineCompensationPackage,
 } from "@/lib/compensation-package";
+import { JOB_LEVEL_LABELS, normalizeJobLevel } from "@/lib/workforce-hierarchy";
+import {
+  buildWorkScheduleSummary,
+  clampWorkDaysPerWeek,
+  formatRestDaysPolicyLabel,
+  formatScheduleTime12h,
+  formatScheduleTypeLabel,
+  formatShiftRotationPatternLabel,
+  normalizeRestDaysPolicy,
+  normalizeScheduleType,
+  normalizeShiftRotationPattern,
+  normalizeShortWorkDays,
+  resolveDefaultWorkDaysForCount,
+} from "@/lib/schedule-policy";
 
 export function getDocusealBaseUrl() {
   return (
@@ -255,6 +269,12 @@ export interface OfferLetterSettings {
   phEmploymentStatus?: string;
   phProbationPeriodDays?: number;
   phStartDate?: string;
+  department?: string;
+  supervisor_name?: string;
+  supervisor_title?: string;
+  employment_status?: string;
+  probation_days?: number;
+  expected_start_date?: string;
   phWorkSchedule?: string;
   phMonthlyBasicSalary?: number;
   phPayFrequency?: string;
@@ -274,6 +294,15 @@ export interface OfferLetterSettings {
   compensation_package?: PhilippineCompensationPackage;
   monthly_allowance?: number;
   attendance_incentive?: number;
+  // Work schedule & shift rotation policy
+  schedule_type?: string;
+  work_days_per_week?: number;
+  rest_days_policy?: string;
+  shift_rotation_pattern?: string;
+  shift_start?: string;
+  shift_end?: string;
+  work_days?: string[];
+  work_schedule_summary?: string;
 }
 
 export interface JobOfferInput {
@@ -292,15 +321,7 @@ export interface TenantInfo {
   email?: string;
 }
 
-const DEFAULT_OFFER_INTRO = `Dear Candidate,
-
-We are pleased to extend an offer of employment to you for the position of {{job_title}} at {{company_name}}.
-
-We believe you will be an excellent addition to our team, and we look forward to welcoming you on board.`;
-
-const DEFAULT_OFFER_CLOSING = `Please review this offer carefully and sign below to indicate your acceptance.
-
-We look forward to working with you!`;
+export const OFFER_TEMPLATE_VERSION = "v3-formal-ph-contract";
 
 export const REQUIRED_OFFER_TEMPLATE_FIELDS = [
   "candidate_name",
@@ -312,47 +333,72 @@ export const REQUIRED_OFFER_TEMPLATE_FIELDS = [
   "work_setup",
   "work_location",
   "probation_days",
+  "reporting_line",
+  "allowances",
+  "leave_credits",
+  "hmo_coverage",
   "signature",
   "date_signed",
 ] as const;
 
 export type OfferPrefillFields = {
-  candidate_name: string;
-  job_title: string;
+  issue_date: string;
   company_name: string;
-  employer_name: string;
+  candidate_name: string;
+  candidate_email: string;
+  job_title: string;
+  job_level: string;
   department: string;
-  salary: string;
-  base_salary?: string;
-  monthly_allowance?: string;
-  rice_allowance?: string;
-  transport_allowance?: string;
-  internet_allowance?: string;
-  meal_allowance?: string;
-  clothing_allowance?: string;
-  attendance_incentive?: string;
-  performance_bonus?: string;
-  total_monthly_package?: string;
-  work_schedule_and_breaks?: string;
-  probation_terms?: string;
-  compensation_and_benefits_summary?: string;
+  employment_type: string;
+  probation_days: string;
   start_date: string;
+  reporting_line: string;
   work_setup: string;
   work_location: string;
-  probation_days: string;
+  schedule_type: string;
+  shift_rotation_pattern: string;
+  shift_hours: string;
+  work_days_per_week: string;
+  rest_days_policy: string;
+  work_schedule_summary: string;
+  salary: string;
+  pay_frequency: string;
+  allowances: string;
+  leave_credits: string;
+  hmo_coverage: string;
 };
 
 function formatWorkSetupHumanLabel(raw: string | null | undefined): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";
   const lower = value.toLowerCase();
-  if (lower === "remote") return "Remote";
+  if (lower === "remote" || lower === "wfh") return "Remote";
   if (lower === "hybrid") return "Hybrid";
-  if (lower === "onsite" || lower === "on_site" || lower === "on-site") return "On-site";
+  if (lower === "onsite" || lower === "on_site" || lower === "on-site") return "Onsite";
   if (lower === "flexible") return "Flexible";
   return value
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function formatEmploymentTypeHumanLabel(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (!value) return "Full-Time";
+  if (value === "full_time" || value === "full-time") return "Full-Time";
+  if (value === "part_time" || value === "part-time") return "Part-Time";
+  if (value === "intern" || value === "internship") return "Internship";
+  if (value === "contract" || value === "project_based" || value === "project-based") {
+    return value === "contract" ? "Contract" : "Project-Based";
+  }
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value.trim()
+  );
 }
 
 export function buildOfferPrefillFields(
@@ -374,15 +420,32 @@ export function buildOfferPrefillFields(
     title?: string | null;
     currency?: string | null;
     location?: string | null;
+    employment_type?: string | null;
     company_name?: string | null;
     tenant_name?: string | null;
     shift_start?: string | null;
     shift_end?: string | null;
     work_days?: string[] | null;
+    schedule_type?: string | null;
+    rest_days_type?: string | null;
+    rest_days_policy?: string | null;
+    shift_rotation_pattern?: string | null;
+    work_days_per_week?: number | null;
+    reports_to?: string | null;
+    supervisor_name?: string | null;
+    supervisor_title?: string | null;
+    expected_start_date?: string | null;
+    target_job_level?: string | null;
+    pay_frequency?: string | null;
+    hmo_provider?: string | null;
+    service_incentive_leave?: number | null;
+    vacation_leave_days?: number | null;
+    sick_leave_days?: number | null;
   } | null | undefined,
   applicant: {
     first_name?: string | null;
     last_name?: string | null;
+    email?: string | null;
   } | null | undefined,
   branch?: {
     name?: string | null;
@@ -425,9 +488,15 @@ export function buildOfferPrefillFields(
       : "";
 
   let startDate = "";
-  const rawStartDate = offer?.start_date ? String(offer.start_date).trim() : "";
-  if (rawStartDate) {
-    const parsed = new Date(rawStartDate.includes("T") ? rawStartDate : `${rawStartDate}T00:00:00Z`);
+  const rawStartDate =
+    offer?.start_date ??
+    (typeof offerMeta.start_date === "string" ? offerMeta.start_date : null) ??
+    (typeof offerMeta.expected_start_date === "string" ? offerMeta.expected_start_date : null) ??
+    job?.expected_start_date ??
+    null;
+  const trimmedStartDate = rawStartDate ? String(rawStartDate).trim() : "";
+  if (trimmedStartDate) {
+    const parsed = new Date(trimmedStartDate.includes("T") ? trimmedStartDate : `${trimmedStartDate}T00:00:00Z`);
     if (!Number.isNaN(parsed.getTime())) {
       startDate = new Intl.DateTimeFormat("en-US", {
         month: "long",
@@ -436,17 +505,27 @@ export function buildOfferPrefillFields(
         timeZone: "UTC",
       }).format(parsed);
     } else {
-      startDate = rawStartDate;
+      startDate = trimmedStartDate;
     }
   }
 
   const workSetup = formatWorkSetupHumanLabel(offer?.work_setup ?? offer?.work_mode ?? "");
+  const employmentTypeLabel = formatEmploymentTypeHumanLabel(
+    (typeof offerMeta.employment_type === "string" ? offerMeta.employment_type : null) ??
+      job?.employment_type ??
+      "full_time"
+  );
 
   const branchParts = [branch?.name?.trim(), branch?.address?.trim()].filter(Boolean);
+  const rawJobLocation = String(job?.location ?? "").trim();
   const workLocation =
     branchParts.length > 0
-      ? branchParts.join(", ")
-      : String(job?.location ?? "").trim();
+      ? branchParts.join(" — ")
+      : rawJobLocation && !isUuidLike(rawJobLocation)
+        ? rawJobLocation
+        : workSetup === "Remote"
+          ? "Remote"
+          : "";
 
   const probationDays =
     offer?.probation_days !== null &&
@@ -504,49 +583,198 @@ export function buildOfferPrefillFields(
   );
   const totalMonthlyPackage = formatOptionalAmount(compTotals.totalMonthlyPackage);
 
-  const shiftStartStr = (offer?.shift_start ?? job?.shift_start ?? "08:00").slice(0, 5);
-  const shiftEndStr = (offer?.shift_end ?? job?.shift_end ?? "17:00").slice(0, 5);
-  const workDaysArr =
+  const shiftStartStr = (
+    offer?.shift_start ??
+    (typeof offerMeta.shift_start === "string" ? offerMeta.shift_start : null) ??
+    job?.shift_start ??
+    "08:00"
+  ).slice(0, 5);
+  const shiftEndStr = (
+    offer?.shift_end ??
+    (typeof offerMeta.shift_end === "string" ? offerMeta.shift_end : null) ??
+    job?.shift_end ??
+    "17:00"
+  ).slice(0, 5);
+  const resolvedScheduleType = normalizeScheduleType(
+    offerMeta.schedule_type ?? job?.schedule_type
+  );
+  const rawOfferWorkDays = normalizeShortWorkDays(
     Array.isArray(offer?.work_days) && offer.work_days.length > 0
       ? offer.work_days
-      : Array.isArray(job?.work_days) && job.work_days.length > 0
-        ? job.work_days
+      : Array.isArray(offerMeta.work_days) && offerMeta.work_days.length > 0
+        ? offerMeta.work_days
+        : job?.work_days
+  );
+  const workDaysPerWeekNum = clampWorkDaysPerWeek(
+    offerMeta.work_days_per_week ?? job?.work_days_per_week,
+    rawOfferWorkDays.length > 0 ? rawOfferWorkDays.length : 5
+  );
+  const resolvedRestDaysPolicy = normalizeRestDaysPolicy(
+    offerMeta.rest_days_policy ?? job?.rest_days_policy ?? job?.rest_days_type,
+    resolvedScheduleType
+  );
+  const resolvedShiftRotationPattern = normalizeShiftRotationPattern(
+    offerMeta.shift_rotation_pattern ?? job?.shift_rotation_pattern,
+    resolvedScheduleType
+  );
+  const workDaysArr =
+    rawOfferWorkDays.length > 0
+      ? rawOfferWorkDays
+      : resolvedScheduleType === "rotating"
+        ? resolveDefaultWorkDaysForCount(workDaysPerWeekNum)
         : ["Mon", "Tue", "Wed", "Thu", "Fri"];
-  const workScheduleAndBreaks = `${workDaysArr.join(", ")} · ${shiftStartStr} – ${shiftEndStr} PHT (8 hrs paid + 1 hr unpaid lunch, 2 × 15-min paid breaks)`;
+  const shiftHoursLabel = `${formatScheduleTime12h(shiftStartStr)} – ${formatScheduleTime12h(shiftEndStr)} PHT`;
+  const scheduleTypeLabel = formatScheduleTypeLabel(resolvedScheduleType);
+  const restDaysPolicyLabel = formatRestDaysPolicyLabel(resolvedRestDaysPolicy);
+  const shiftRotationPatternLabel = formatShiftRotationPatternLabel(resolvedShiftRotationPattern);
+  const workScheduleSummary =
+    (typeof offerMeta.work_schedule_summary === "string" && offerMeta.work_schedule_summary.trim()) ||
+    buildWorkScheduleSummary({
+      scheduleType: resolvedScheduleType,
+      workDaysPerWeek: workDaysPerWeekNum,
+      restDaysPolicy: resolvedRestDaysPolicy,
+      shiftRotationPattern: resolvedShiftRotationPattern,
+      shiftStart: shiftStartStr,
+      shiftEnd: shiftEndStr,
+      workDays: workDaysArr,
+    });
+  const workScheduleAndBreaks =
+    resolvedScheduleType === "rotating"
+      ? `${workScheduleSummary} (8 hrs paid + 1 hr unpaid lunch, 2 × 15-min paid breaks)`
+      : `${workDaysArr.join(", ")} · ${shiftStartStr} – ${shiftEndStr} PHT (8 hrs paid + 1 hr unpaid lunch, 2 × 15-min paid breaks)`;
 
   const probationTerms = probationDays
-    ? `${probationDays} days probationary period (Art. 281, Labor Code of the Philippines)`
+    ? `${probationDays} Calendar Days (pursuant to Art. 296 of the Labor Code of the Philippines)`
     : "Regular employment terms";
 
-  const compensationSummary =
-    numericSalary !== null && Number.isFinite(numericSalary)
-      ? formatCompensationSummaryText(compPkg, numericSalary, currency)
-      : "";
+  const issueDate = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(new Date());
+
+  const candidateEmail = applicant?.email?.trim() ?? "";
+
+  const rawPayFreq = String(
+    (typeof offerMeta.pay_frequency === "string" && offerMeta.pay_frequency.trim()) ||
+      job?.pay_frequency ||
+      "semi_monthly"
+  )
+    .trim()
+    .toLowerCase();
+  const payFrequencyLabel =
+    rawPayFreq === "monthly"
+      ? "Monthly"
+      : rawPayFreq === "weekly"
+        ? "Weekly"
+        : "Semi-Monthly (15th & 30th)";
+
+  const allowanceItems: string[] = [];
+  if (riceAllowance) allowanceItems.push(`Rice Subsidy: ${riceAllowance}/mo`);
+  if (mealAllowance) allowanceItems.push(`Meal Allowance: ${mealAllowance}/mo`);
+  if (internetAllowance) allowanceItems.push(`Communication / Internet: ${internetAllowance}/mo`);
+  if (transportAllowance) allowanceItems.push(`Transportation: ${transportAllowance}/mo`);
+  if (clothingAllowance) allowanceItems.push(`Clothing / Uniform: ${clothingAllowance}/mo`);
+  if (attendanceIncentive) allowanceItems.push(`Attendance / KPI Incentive: ${attendanceIncentive}/mo`);
+  if (performanceBonus) allowanceItems.push(`Performance Bonus: ${performanceBonus}/mo`);
+  if (allowanceItems.length === 0 && monthlyAllowance) {
+    allowanceItems.push(`Monthly Allowances: ${monthlyAllowance}/mo`);
+  }
+  const allowancesText =
+    allowanceItems.length > 0
+      ? `${allowanceItems.join(" • ")} | Statutory 13th-Month Pay (PD 851) & SSS / PhilHealth / Pag-IBIG`
+      : "None / Base Salary Only | Statutory 13th-Month Pay (PD 851) & SSS / PhilHealth / Pag-IBIG";
+
+  const hmoCoverage =
+    (typeof offerMeta.hmo_provider === "string" && offerMeta.hmo_provider.trim()) ||
+    job?.hmo_provider?.trim() ||
+    (compPkg.hmo_coverage?.enabled
+      ? compPkg.hmo_coverage.timing === "day_1"
+        ? "HMO (Day 1)"
+        : "HMO (Upon Regularization)"
+      : "Per Company Policy");
+
+  const silDays =
+    Number(
+      offerMeta.service_incentive_leave ??
+        offerMeta.phServiceIncentiveLeave ??
+        job?.service_incentive_leave ??
+        5
+    ) || 5;
+  const vlDays =
+    Number(
+      offerMeta.vacation_leave_days ??
+        offerMeta.phVacationLeaveDays ??
+        job?.vacation_leave_days ??
+        0
+    ) || 0;
+  const slDays =
+    Number(
+      offerMeta.sick_leave_days ??
+        offerMeta.phSickLeaveDays ??
+        job?.sick_leave_days ??
+        0
+    ) || 0;
+  const leaveParts = [
+    `${silDays} SIL / year (Art. 95, Labor Code)`,
+    ...(vlDays > 0 ? [`${vlDays} VL / year`] : []),
+    ...(slDays > 0 ? [`${slDays} SL / year`] : []),
+    "Statutory Leaves (Maternity, Paternity, Solo Parent, Special Leaves)",
+  ];
+  const leaveCreditsText = leaveParts.join(" • ");
+
+  const supervisorName = String(
+    (typeof offerMeta.supervisor_name === "string" && offerMeta.supervisor_name.trim()) ||
+      job?.supervisor_name ||
+      ""
+  ).trim();
+  const supervisorTitle = String(
+    (typeof offerMeta.supervisor_title === "string" && offerMeta.supervisor_title.trim()) ||
+      job?.supervisor_title ||
+      ""
+  ).trim();
+  const reportingLine = String(
+    (typeof offerMeta.reports_to_label === "string" && offerMeta.reports_to_label.trim()) ||
+      (typeof offerMeta.reports_to === "string" && offerMeta.reports_to.trim()) ||
+      job?.reports_to ||
+      (supervisorName
+        ? supervisorTitle
+          ? `${supervisorName} — ${supervisorTitle}`
+          : supervisorName
+        : "")
+  ).trim();
+  const rawJobLevel =
+    (typeof offerMeta.target_job_level === "string" && offerMeta.target_job_level.trim()) ||
+    job?.target_job_level ||
+    "";
+  const jobLevel = rawJobLevel ? JOB_LEVEL_LABELS[normalizeJobLevel(rawJobLevel)] : "Staff";
 
   return {
-    candidate_name: candidateName,
-    job_title: jobTitle,
-    company_name: companyName,
-    employer_name: companyName,
-    department,
-    salary,
-    ...(salary ? { base_salary: salary } : {}),
-    ...(monthlyAllowance ? { monthly_allowance: monthlyAllowance } : {}),
-    ...(riceAllowance ? { rice_allowance: riceAllowance } : {}),
-    ...(transportAllowance ? { transport_allowance: transportAllowance } : {}),
-    ...(internetAllowance ? { internet_allowance: internetAllowance } : {}),
-    ...(mealAllowance ? { meal_allowance: mealAllowance } : {}),
-    ...(clothingAllowance ? { clothing_allowance: clothingAllowance } : {}),
-    ...(attendanceIncentive ? { attendance_incentive: attendanceIncentive } : {}),
-    ...(performanceBonus ? { performance_bonus: performanceBonus } : {}),
-    ...(totalMonthlyPackage ? { total_monthly_package: totalMonthlyPackage } : {}),
-    work_schedule_and_breaks: workScheduleAndBreaks,
-    probation_terms: probationTerms,
-    ...(compensationSummary ? { compensation_and_benefits_summary: compensationSummary } : {}),
-    start_date: startDate,
-    work_setup: workSetup,
-    work_location: workLocation,
-    probation_days: probationDays,
+    issue_date: issueDate,
+    company_name: companyName || "Company",
+    candidate_name: candidateName || "Candidate",
+    candidate_email: candidateEmail || "N/A",
+    job_title: jobTitle || "Position",
+    job_level: jobLevel,
+    department: department || "General",
+    employment_type: employmentTypeLabel,
+    probation_days: probationTerms,
+    start_date: startDate || "To be confirmed",
+    reporting_line: reportingLine || "Assigned Direct Supervisor",
+    work_setup: workSetup || "Onsite",
+    work_location: workLocation || (workSetup === "Remote" ? "Remote" : "Company Office"),
+    schedule_type: scheduleTypeLabel,
+    shift_rotation_pattern: shiftRotationPatternLabel,
+    shift_hours: shiftHoursLabel,
+    work_days_per_week: `${workDaysPerWeekNum} Work Days / Week`,
+    rest_days_policy: restDaysPolicyLabel,
+    work_schedule_summary: workScheduleSummary,
+    salary: salary || "PHP 0.00",
+    pay_frequency: payFrequencyLabel,
+    allowances: allowancesText,
+    leave_credits: leaveCreditsText,
+    hmo_coverage: hmoCoverage,
   };
 }
 
@@ -558,56 +786,9 @@ export function buildOfferLetterHtml(
   tenant: TenantInfo,
   settings?: OfferLetterSettings
 ): string {
-  const rawIntro = settings?.introMessage || DEFAULT_OFFER_INTRO;
-
-  // Helper: replace common merge-tag styles ({{job_title}} and [JOB_TITLE])
-  function applyMergeTags(text: string) {
-    return text
-      .replace(/\{\{job_title\}\}/gi, "[JOB_TITLE]")
-      .replace(/\{\{company_name\}\}/gi, "[COMPANY_NAME]")
-      // Normalize other common placeholders to bracket form
-      .replace(/\{\{location\}\}/gi, "[LOCATION]")
-      .replace(/\{\{salary\}\}/gi, "[SALARY]")
-      // Uppercase bracket form to ensure case-insensitive handling
-      .replace(/\[job_title\]/gi, "[JOB_TITLE]")
-      .replace(/\[company_name\]/gi, "[COMPANY_NAME]")
-      .replace(/\[location\]/gi, "[LOCATION]")
-      .replace(/\[salary\]/gi, "[SALARY]");
-  }
-
-  // Convert merge tags into DocuSeal inline form fields after escaping
-  function injectFieldTags(escaped: string) {
-    return escaped
-      .replace(/\[JOB_TITLE\]/g,
-        `<text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:280px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-      )
-      .replace(/\[COMPANY_NAME\]/g,
-        `<text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-      )
-      .replace(/\[LOCATION\]/g,
-        `<text-field name="location" role="Candidate" readonly="true" style="display:inline-block;width:200px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-      )
-      .replace(/\[SALARY\]/g,
-        `<text-field name="salary" role="Candidate" readonly="true" style="display:inline-block;width:220px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field>`
-      );
-  }
-
-  // Escape HTML first, normalize placeholders, then inject DocuSeal field tags
-  const escapedIntro = injectFieldTags(escapeHtml(applyMergeTags(rawIntro)));
-  const additionalTerms = settings?.additionalTerms || "";
-  const hasCountersignature = settings?.requireCountersignature ?? false;
-
-  let salaryText = "";
-  if (job.salary_min || job.salary_max) {
-    const currency = job.currency || "PHP";
-    if (job.salary_min && job.salary_max) {
-      salaryText = `<strong>Salary Range:</strong> ${currency} ${job.salary_min.toLocaleString()} - ${job.salary_max.toLocaleString()}`;
-    } else if (job.salary_min) {
-      salaryText = `<strong>Salary:</strong> ${currency} ${job.salary_min.toLocaleString()}`;
-    } else if (job.salary_max) {
-      salaryText = `<strong>Salary:</strong> Up to ${currency} ${job.salary_max.toLocaleString()}`;
-    }
-  }
+  const additionalTerms = settings?.additionalTerms?.trim() || "";
+  const roField = (name: string, multiline = false) =>
+    `<text-field name="${name}" role="Candidate" readonly="true" style="display: block; width: 100%; min-height: ${multiline ? "38px" : "22px"}; font-size: 13px; line-height: 1.4; text-align: left; border: none; background: transparent; color: #111827;"></text-field>`;
 
   return `
 <!DOCTYPE html>
@@ -615,110 +796,142 @@ export function buildOfferLetterHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Offer Letter</title>
+  <title>Philippine Employment Offer &amp; Contract Agreement (${OFFER_TEMPLATE_VERSION})</title>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-      line-height: 1.6;
-      color: #333;
-      max-width: 800px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.5;
+      color: #111827;
+      max-width: 820px;
       margin: 0 auto;
-      padding: 40px 20px;
-      background: #f9fafb;
+      padding: 24px 18px;
+      background: #ffffff;
     }
     .container {
-      background: white;
-      padding: 40px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      background: #ffffff;
+      padding: 32px 36px;
+      border: 1px solid #d1d5db;
     }
     .header {
-      text-align: center;
-      border-bottom: 2px solid #1f2937;
-      padding-bottom: 30px;
-      margin-bottom: 30px;
-    }
-    .company-logo-wrap {
-      min-height: 72px;
-      margin-bottom: 12px;
-    }
-    .company-name {
-      font-size: 28px;
-      font-weight: 700;
-      color: #1f2937;
-      margin: 0;
-    }
-    .content {
-      margin: 30px 0;
-    }
-    .intro-section {
-      margin-bottom: 30px;
-      white-space: pre-wrap;
-    }
-    .details-section {
-      background: #f3f4f6;
-      padding: 20px;
-      border-radius: 6px;
-      margin: 30px 0;
-    }
-    .detail-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    .detail-row:last-child {
-      border-bottom: none;
-    }
-    .detail-label {
-      font-weight: 600;
-      color: #374151;
-      min-width: 150px;
-    }
-    .detail-value {
-      color: #1f2937;
-    }
-    .terms-section {
-      margin: 30px 0;
-    }
-    .terms-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1f2937;
-      margin-bottom: 10px;
-    }
-    .terms-content {
-      white-space: pre-wrap;
-      background: #f3f4f6;
-      padding: 15px;
-      border-left: 3px solid #3b82f6;
-      border-radius: 4px;
-    }
-    .signature-section {
-      margin-top: 40px;
-      padding-top: 30px;
-      border-top: 1px solid #e5e7eb;
-    }
-    .signature-block {
-      margin-bottom: 40px;
-    }
-    .signature-role {
-      font-size: 14px;
-      font-weight: 600;
-      color: #1f2937;
+      border-bottom: 2px solid #1e1b4b;
+      padding-bottom: 16px;
       margin-bottom: 20px;
     }
-    .signature-line {
-      margin: 10px 0;
+    .company-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1e1b4b;
+      margin: 0;
+      letter-spacing: 0.01em;
     }
-    .signature-label {
-      font-size: 12px;
-      color: #6b7280;
+    .doc-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #4b5563;
+      margin: 4px 0 0 0;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
     }
-    .closing {
-      margin-top: 30px;
-      white-space: pre-wrap;
+    .opening-paragraph {
+      font-size: 13px;
       color: #1f2937;
+      margin: 0 0 20px 0;
+      line-height: 1.6;
+    }
+    .section {
+      margin: 18px 0;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1e1b4b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 5px;
+      margin-bottom: 8px;
+    }
+    .schedule-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .schedule-table tr {
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .schedule-table tr:last-child {
+      border-bottom: none;
+    }
+    .schedule-table th {
+      text-align: left;
+      padding: 7px 12px 7px 0;
+      font-weight: 600;
+      color: #374151;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    .schedule-table td {
+      text-align: left;
+      padding: 7px 0;
+      color: #111827;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    .legal-clause {
+      font-size: 12.5px;
+      color: #374151;
+      margin: 10px 0 0 0;
+      padding: 10px 14px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      line-height: 1.5;
+    }
+    .legal-clause strong {
+      color: #111827;
+    }
+    .legal-list {
+      margin: 8px 0 0 0;
+      padding-left: 18px;
+      font-size: 12.5px;
+      color: #374151;
+    }
+    .legal-list li {
+      margin-bottom: 7px;
+      line-height: 1.5;
+    }
+    .signature-section {
+      margin-top: 26px;
+      padding-top: 16px;
+      border-top: 2px solid #1e1b4b;
+      font-size: 13px;
+    }
+    .signature-declaration {
+      font-size: 12.5px;
+      color: #374151;
+      margin-bottom: 16px;
+    }
+    .signature-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    .signature-table td {
+      padding: 8px 16px 8px 0;
+      vertical-align: bottom;
+    }
+    .sig-field {
+      border-bottom: 1px solid #9ca3af;
+      padding-bottom: 4px;
+    }
+    .sig-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 4px;
+      display: block;
     }
   </style>
 </head>
@@ -726,116 +939,215 @@ export function buildOfferLetterHtml(
   <div class="container">
     <div class="header">
       <p class="company-name">${escapeHtml(tenant.name)}</p>
+      <p class="doc-title">Philippine Employment Offer &amp; Contract Agreement</p>
     </div>
 
-    <div class="content">
-      <div class="intro-section">${escapedIntro}</div>
+    <p class="opening-paragraph">
+      This Employment Offer &amp; Contract Agreement (&ldquo;Agreement&rdquo;) sets forth the formal offer of employment
+      extended by <strong>${escapeHtml(tenant.name)}</strong> (&ldquo;Company&rdquo;) to the Candidate named below,
+      subject to the terms, compensation schedule, and statutory provisions of the Labor Code of the Philippines.
+    </p>
 
-      <div class="details-section">
-        <div class="detail-row">
-          <span class="detail-label">Position:</span>
-          <span class="detail-value">${escapeHtml(job.jobTitle)}</span>
-        </div>
-        ${job.department ? `
-        <div class="detail-row">
-          <span class="detail-label">Department:</span>
-          <span class="detail-value">${escapeHtml(job.department)}</span>
-        </div>
-        ` : ""}
-        <div class="detail-row">
-          <span class="detail-label">Employment Type:</span>
-          <span class="detail-value">${escapeHtml(job.employmentType)}</span>
-        </div>
-        ${job.location ? `
-        <div class="detail-row">
-          <span class="detail-label">Location:</span>
-          <span class="detail-value">${escapeHtml(job.location)}</span>
-        </div>
-        ` : ""}
-        ${salaryText ? `
-        <div class="detail-row">
-          <span class="detail-label">Compensation:</span>
-          <span class="detail-value">${salaryText}</span>
-        </div>
-        ` : ""}
+    <div class="section">
+      <div class="section-title">Parties &amp; Issuance Details</div>
+      <table class="schedule-table">
+        <colgroup>
+          <col style="width: 32%;">
+          <col style="width: 68%;">
+        </colgroup>
+        <tr>
+          <th>Date of Issuance</th>
+          <td>${roField("issue_date")}</td>
+        </tr>
+        <tr>
+          <th>Employer / Company</th>
+          <td>${roField("company_name")}</td>
+        </tr>
+        <tr>
+          <th>Candidate Full Name</th>
+          <td>${roField("candidate_name")}</td>
+        </tr>
+        <tr>
+          <th>Candidate Email</th>
+          <td>${roField("candidate_email")}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Section 1 &mdash; Position, Reporting Line &amp; Work Arrangement</div>
+      <table class="schedule-table">
+        <colgroup>
+          <col style="width: 32%;">
+          <col style="width: 68%;">
+        </colgroup>
+        <tr>
+          <th>Position Title</th>
+          <td>${roField("job_title")}</td>
+        </tr>
+        <tr>
+          <th>Role Tier / Job Level</th>
+          <td>${roField("job_level")}</td>
+        </tr>
+        <tr>
+          <th>Department</th>
+          <td>${roField("department")}</td>
+        </tr>
+        <tr>
+          <th>Employment Type</th>
+          <td>${roField("employment_type")}</td>
+        </tr>
+        <tr>
+          <th>Probationary Period</th>
+          <td>${roField("probation_days", true)}</td>
+        </tr>
+        <tr>
+          <th>Target Start Date</th>
+          <td>${roField("start_date")}</td>
+        </tr>
+        <tr>
+          <th>Reporting Line</th>
+          <td>${roField("reporting_line", true)}</td>
+        </tr>
+        <tr>
+          <th>Work Setup</th>
+          <td>${roField("work_setup")}</td>
+        </tr>
+        <tr>
+          <th>Physical Office Location</th>
+          <td>${roField("work_location", true)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Section 2 &mdash; Work Hours, Shift Rotation &amp; Rest Days</div>
+      <table class="schedule-table">
+        <colgroup>
+          <col style="width: 32%;">
+          <col style="width: 68%;">
+        </colgroup>
+        <tr>
+          <th>Schedule Type</th>
+          <td>${roField("schedule_type")}</td>
+        </tr>
+        <tr>
+          <th>Shift Rotation Pattern</th>
+          <td>${roField("shift_rotation_pattern", true)}</td>
+        </tr>
+        <tr>
+          <th>Initial Shift Hours</th>
+          <td>${roField("shift_hours")}</td>
+        </tr>
+        <tr>
+          <th>Work Days per Week</th>
+          <td>${roField("work_days_per_week")}</td>
+        </tr>
+        <tr>
+          <th>Rest Days Policy</th>
+          <td>${roField("rest_days_policy")}</td>
+        </tr>
+        <tr>
+          <th>Work Schedule Summary</th>
+          <td>${roField("work_schedule_summary", true)}</td>
+        </tr>
+      </table>
+      <div class="legal-clause">
+        <strong>Night Shift Differential (Art. 86, Labor Code of the Philippines):</strong>
+        For work performed between 10:00 PM and 6:00 AM, the Employee shall be paid a Night Shift Differential
+        of not less than ten percent (10%) of their regular wage for each hour of work performed during such period,
+        in addition to applicable overtime, rest-day, or holiday premiums mandated by Philippine labor law.
       </div>
+    </div>
 
-      ${job.jobDescription ? `
-      <div class="terms-section">
-        <div class="terms-title">Position Overview</div>
-        <div class="terms-content">${escapeHtml(job.jobDescription)}</div>
-      </div>
-      ` : ""}
+    <div class="section">
+      <div class="section-title">Section 3 &mdash; Compensation, Allowances &amp; Statutory Benefits</div>
+      <table class="schedule-table">
+        <colgroup>
+          <col style="width: 32%;">
+          <col style="width: 68%;">
+        </colgroup>
+        <tr>
+          <th>Monthly Basic Salary</th>
+          <td>${roField("salary")}</td>
+        </tr>
+        <tr>
+          <th>Pay Frequency</th>
+          <td>${roField("pay_frequency")}</td>
+        </tr>
+        <tr>
+          <th>Monthly Allowances &amp; Incentives</th>
+          <td>${roField("allowances", true)}</td>
+        </tr>
+        <tr>
+          <th>Leave Credits</th>
+          <td>${roField("leave_credits", true)}</td>
+        </tr>
+        <tr>
+          <th>HMO / Medical Coverage</th>
+          <td>${roField("hmo_coverage", true)}</td>
+        </tr>
+      </table>
+    </div>
 
+    <div class="section">
+      <div class="section-title">Section 4 &mdash; Confidentiality, Probationary Terms &amp; Acceptance</div>
+      <ol class="legal-list">
+        <li>
+          <strong>Probationary &amp; Regularization Standards:</strong> Where a probationary period applies,
+          continued employment and regularization are subject to reasonable performance, conduct, and attendance
+          standards communicated to the Employee upon onboarding pursuant to Article 296 of the Labor Code of the Philippines.
+        </li>
+        <li>
+          <strong>Confidentiality &amp; Company Property:</strong> During and after employment, the Employee shall
+          maintain strict confidentiality over all proprietary, client, operational, and financial information of
+          ${escapeHtml(tenant.name)} and shall return all Company assets upon separation.
+        </li>
+        <li>
+          <strong>Governing Law &amp; Entire Agreement:</strong> This Agreement is governed by the laws of the Republic
+          of the Philippines and supersedes prior verbal representations regarding the terms stated herein.
+        </li>
+      </ol>
       ${additionalTerms ? `
-      <div class="terms-section">
-        <div class="terms-title">Additional Terms & Conditions</div>
-        <div class="terms-content">${injectFieldTags(escapeHtml(applyMergeTags(additionalTerms)))}</div>
+      <div class="legal-clause">
+        <strong>Additional Stipulations:</strong> ${escapeHtml(additionalTerms)}
       </div>
       ` : ""}
+    </div>
 
-      <div class="terms-section">
-        <div class="terms-title">Offer terms</div>
-        <div class="details-section">
-          ${!escapedIntro.includes('name="job_title"') ? `
-          <div class="detail-row">
-            <span class="detail-label">Position:</span>
-            <span class="detail-value"><text-field name="job_title" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          ` : ""}
-          ${!escapedIntro.includes('name="company_name"') ? `
-          <div class="detail-row">
-            <span class="detail-label">Company:</span>
-            <span class="detail-value"><text-field name="company_name" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          ` : ""}
-          <div class="detail-row">
-            <span class="detail-label">Department:</span>
-            <span class="detail-value"><text-field name="department" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Salary:</span>
-            <span class="detail-value"><text-field name="salary" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Start Date:</span>
-            <span class="detail-value"><text-field name="start_date" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Work Setup:</span>
-            <span class="detail-value"><text-field name="work_setup" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Work Location:</span>
-            <span class="detail-value"><text-field name="work_location" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Probation Days:</span>
-            <span class="detail-value"><text-field name="probation_days" role="Candidate" readonly="true" style="display:inline-block;width:240px;height:22px;vertical-align:middle;border:none;background:transparent;font-size:inherit;font-family:inherit;"></text-field></span>
-          </div>
-        </div>
-      </div>
-
-        <div class="signature-section">
-            <div class="signature-block">
-                <div class="signature-role">Candidate Acceptance</div>
-                <div class="signature-line">
-                <strong>Candidate Name:</strong>
-                <text-field name="candidate_name" role="Candidate" style="width: 200px; height: 24px;"></text-field>
-                </div>
-                <div class="signature-line">
-                <strong>Signature:</strong>
-                <signature-field name="signature" role="Candidate" style="width: 200px; height: 40px;"></signature-field>
-                </div>
-                <div class="signature-line">
-                <strong>Date Signed:</strong>
-                <date-field name="date_signed" role="Candidate" style="width: 150px; height: 24px;"></date-field>
-                </div>
+    <div class="signature-section">
+      <p class="signature-declaration">
+        By signing below, I acknowledge that I have read, understood, and voluntarily accept the terms and conditions
+        of this Employment Offer &amp; Contract Agreement with <strong>${escapeHtml(tenant.name)}</strong>.
+      </p>
+      <table class="signature-table">
+        <colgroup>
+          <col style="width: 55%;">
+          <col style="width: 45%;">
+        </colgroup>
+        <tr>
+          <td>
+            <div class="sig-field">
+              <text-field name="candidate_name" role="Candidate" style="display: block; width: 100%; min-height: 24px; font-size: 13px; text-align: left;"></text-field>
             </div>
-          </div>
-      </div>
-
-      <div class="closing">${injectFieldTags(escapeHtml(applyMergeTags(DEFAULT_OFFER_CLOSING)))}</div>
+            <span class="sig-label">Candidate Printed Name</span>
+          </td>
+          <td>
+            <div class="sig-field">
+              <date-field name="date_signed" role="Candidate" style="display: block; width: 100%; min-height: 24px; font-size: 13px; text-align: left;"></date-field>
+            </div>
+            <span class="sig-label">Date Signed</span>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding-top: 14px;">
+            <div class="sig-field">
+              <signature-field name="signature" role="Candidate" style="display: block; width: 320px; height: 48px;"></signature-field>
+            </div>
+            <span class="sig-label">Candidate Signature</span>
+          </td>
+        </tr>
+      </table>
     </div>
   </div>
 </body>
@@ -852,33 +1164,14 @@ export async function createJobOfferTemplate(
   tenant: TenantInfo,
   settings?: OfferLetterSettings
 ): Promise<string> {
-  // If no additionalTerms provided, request a short AI-generated terms block
-  let aiTerms = "";
-  try {
-    if (!settings?.additionalTerms) {
-      aiTerms = await generateContractBody({
-        job_title: job.jobTitle,
-        location: job.location ?? "",
-        salary: job.salary_min ?? job.salary_max ?? "",
-      });
-    }
-  } catch (e) {
-    console.warn("AI contract generation failed, falling back to static terms", e);
-  }
-
-  const mergedSettings = {
-    ...(settings ?? {}),
-    additionalTerms: settings?.additionalTerms || aiTerms || settings?.additionalTerms || "",
-  } as OfferLetterSettings;
-
-  const html = buildOfferLetterHtml(job, tenant, mergedSettings);
+  const html = buildOfferLetterHtml(job, tenant, settings);
   const signingDeadlineDays = settings?.signingDeadlineDays ?? 7;
   const requireCountersignature = settings?.requireCountersignature ?? false;
 
   const expireAt = new Date();
   expireAt.setDate(expireAt.getDate() + signingDeadlineDays);
 
-  const templateName = `${tenant.name} — ${job.jobTitle} Offer Letter`;
+  const templateName = `${tenant.name} — ${job.jobTitle} Offer Letter [${OFFER_TEMPLATE_VERSION}]`;
 
   // ── Step 1: Create the template from HTML ──────────────────
   const createResponse = await fetch(`${getDocusealBaseUrl()}/templates/html`, {

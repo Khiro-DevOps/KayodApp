@@ -26,7 +26,7 @@ export const HR_ROLE_DESCRIPTIONS: Record<HrSubRole, string> = {
   hr_generalist:
     "Manages workforce operations, leave approvals, offer approvals, hire confirmations, and employee relations.",
   recruiter:
-    "Manages job postings, applicant pipelines, interviews, and draft offers.",
+    "Manages job postings, applicant pipelines, interviews, and standard job offers.",
   payroll_officer:
     "Manages attendance operations, payroll runs, and payslips with read-only workforce and leave access.",
 };
@@ -52,6 +52,7 @@ export type Permission =
   | "ats:view"
   | "interviews:conduct"
   | "offers:draft"
+  | "offers:send_standard"
   | "offers:approve_and_send"
   | "hires:confirm"
   | "workforce:manage"
@@ -72,6 +73,7 @@ const ALL_PERMISSIONS: readonly Permission[] = [
   "ats:view",
   "interviews:conduct",
   "offers:draft",
+  "offers:send_standard",
   "offers:approve_and_send",
   "hires:confirm",
   "workforce:manage",
@@ -93,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<HrSubRole, readonly Permission[]> = {
     "ats:view",
     "interviews:conduct",
     "offers:draft",
+    "offers:send_standard",
     "offers:approve_and_send",
     "hires:confirm",
     "workforce:manage",
@@ -110,6 +113,7 @@ export const ROLE_PERMISSIONS: Record<HrSubRole, readonly Permission[]> = {
     "ats:view",
     "interviews:conduct",
     "offers:draft",
+    "offers:send_standard",
   ],
   payroll_officer: [
     "workforce:view",

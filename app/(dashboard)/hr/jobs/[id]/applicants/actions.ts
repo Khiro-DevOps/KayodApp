@@ -546,7 +546,7 @@ export async function acceptJobOffer(formData: FormData) {
           type: "application_status_changed",
           title: "Offer Accepted ✅",
           body: `Candidate has accepted the job offer for ${jobData.title}.`,
-          action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
+          action_url: `/hr/applicants?job=${application.job_posting_id}&scope=all`,
         })
       ).then(({ error: notifError }) => {
       if (notifError) console.error("Notification insert failed:", notifError.message);
@@ -642,7 +642,7 @@ export async function declineJobOffer(formData: FormData) {
           body: reason
             ? `Candidate declined the offer for ${jobData.title}. Reason: ${reason}`
             : `Candidate declined the offer for ${jobData.title}.`,
-          action_url: `/hr/jobs/${application.job_posting_id}/applicants`,
+          action_url: `/hr/applicants?job=${application.job_posting_id}&scope=all`,
         })
       ).then(({ error: notifError }) => {
       if (notifError) console.error("Notification insert failed:", notifError.message);

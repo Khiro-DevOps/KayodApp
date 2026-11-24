@@ -146,6 +146,27 @@ export default async function HRApplicantsHubPage({
 
     applications = mapped;
 
+    const appIds = applications.map((a) => a.id).filter(Boolean);
+    if (appIds.length > 0) {
+      const { data: offerRows } = await admin
+        .from("job_offers")
+        .select("application_id, status, is_active, updated_at")
+        .in("application_id", appIds)
+        .order("is_active", { ascending: false })
+        .order("updated_at", { ascending: false });
+
+      const offerStatusByAppId = new Map<string, string>();
+      for (const row of offerRows ?? []) {
+        const r = row as { application_id?: string | null; status?: string | null };
+        if (r.application_id && r.status && !offerStatusByAppId.has(r.application_id)) {
+          offerStatusByAppId.set(r.application_id, r.status);
+        }
+      }
+      for (const app of applications) {
+        app.offer_status = offerStatusByAppId.get(app.id) ?? null;
+      }
+    }
+
     // Auto-compute any unscored applications using canonical scoring engine
     const unscoredApps = applications.filter((a) => a.match_score === null || Number(a.match_score) === 0);
     if (unscoredApps.length > 0) {

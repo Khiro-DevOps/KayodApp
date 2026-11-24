@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 type FailureMode =
   | { kind: "error-object"; message: string }
   | { kind: "throw"; message: string };

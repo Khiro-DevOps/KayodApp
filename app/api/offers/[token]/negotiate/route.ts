@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { sendNotification } from "@/lib/notifications";
+import { notifyTenantOfferDecisionMakers, sendNotification } from "@/lib/notifications";
 import type { NegotiationPayload } from "@/lib/types";
 
 function normalizeIntent(intent: string | undefined) {
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest, ctx: any) {
     const { data: application, error: applicationError } = await admin
       .from("applications")
       .select(
-        `id, candidate_id, job_postings ( title )`
+        `id, candidate_id, job_postings ( title, tenant_id, created_by )`
       )
       .eq("id", offer.application_id)
       .maybeSingle();
@@ -111,19 +111,46 @@ export async function POST(req: NextRequest, ctx: any) {
     }
 
     const candidateName = [candidateResult.data?.first_name, candidateResult.data?.last_name].filter(Boolean).join(" ") || "The candidate";
-    const jobTitle = (application as { job_postings?: { title?: string | null } | null }).job_postings?.title ?? "the offer";
+    const jobPostingRecord = (application as {
+      job_postings?: { title?: string | null; tenant_id?: string | null; created_by?: string | null } | null;
+    }).job_postings;
+    const jobTitle = jobPostingRecord?.title ?? "the offer";
 
-    if (hrRecipientId) {
+    let resolvedTenantId = jobPostingRecord?.tenant_id ?? null;
+    const fallbackProfileId = jobPostingRecord?.created_by ?? hrRecipientId;
+    if (!resolvedTenantId && fallbackProfileId) {
+      const { data: creatorProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", fallbackProfileId)
+        .maybeSingle();
+      resolvedTenantId = creatorProfile?.tenant_id ?? null;
+    }
+
+    const notifiedDecisionMakers = await notifyTenantOfferDecisionMakers({
+      tenantId: resolvedTenantId,
+      type: "offer_letter",
+      title: `Action Required: Offer Negotiation / Salary Review for ${candidateName}`,
+      body:
+        intent === "counter"
+          ? `${candidateName} requested different terms for ${jobTitle}.`
+          : `${candidateName} asked a question about ${jobTitle}.`,
+      actionUrl: `/hr/offers/${offer.id}`,
+      senderId: application.candidate_id,
+      actionName: "offerNegotiateRoute",
+    });
+
+    if (hrRecipientId && !notifiedDecisionMakers.includes(hrRecipientId)) {
       await sendNotification({
         supabase: admin,
         recipientId: hrRecipientId,
-        type: "offer_negotiation_submitted",
-        title: intent === "counter" ? "Negotiation request received" : "Question received",
+        type: "offer_letter",
+        title: `Action Required: Offer Negotiation / Salary Review for ${candidateName}`,
         body:
           intent === "counter"
             ? `${candidateName} requested different terms for ${jobTitle}.`
             : `${candidateName} asked a question about ${jobTitle}.`,
-        actionUrl: `/job-offer/${offer.id}`,
+        actionUrl: `/hr/offers/${offer.id}`,
         senderId: application.candidate_id,
       });
     }

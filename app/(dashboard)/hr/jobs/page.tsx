@@ -3,6 +3,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import type { JobListing, JobPosting, Profile } from "@/lib/types";
 import { requireHrPermission } from "@/lib/rbac/server";
+import { canHr } from "@/lib/rbac/permissions";
+import { fetchOnlineHiredCountsByJob } from "@/lib/job-headcount-server";
 import ManageJobsWorkspace from "./manage-jobs-workspace";
 import { getHrJobScope, getTenantTeamNamesMap, resolveOwnerName } from "@/lib/hr-job-scope";
 
@@ -34,6 +36,9 @@ type WorkspaceJob = {
   salary_max: number | null;
   currency: string;
   slots: number;
+  hired_walkin_count: number;
+  onlineHiredCount: number;
+  isLegacy?: boolean;
   is_published: boolean;
   created_at: string;
   closes_at: string | null;
@@ -180,9 +185,10 @@ export default async function ManageJobsPage({
 
   const countMap: Record<string, number> = {};
   const legacyCountMap: Record<string, number> = {};
+  let onlineHiredMap: Record<string, number> = {};
 
   if (jobIds.length) {
-    const [{ data: counts, error: countErr }, { data: jaCounts, error: jaCountErr }] = await Promise.all([
+    const [{ data: counts, error: countErr }, { data: jaCounts, error: jaCountErr }, fetchedOnlineHired] = await Promise.all([
       supabase
         .from("applications")
         .select("job_posting_id, status")
@@ -193,7 +199,9 @@ export default async function ManageJobsPage({
         .select("job_id, status")
         .in("job_id", jobIds as string[])
         .not("status", "in", '("rejected","withdrawn")'),
+      fetchOnlineHiredCountsByJob(jobIds),
     ]);
+    onlineHiredMap = fetchedOnlineHired;
 
     if (countErr) {
       console.error("Applicant count fetch error (applications):", countErr);
@@ -247,7 +255,10 @@ export default async function ManageJobsPage({
       salary_min: job.salary_min,
       salary_max: job.salary_max,
       currency: job.currency,
-      slots: job.slots,
+      slots: job.slots ?? 1,
+      hired_walkin_count: job.hired_walkin_count ?? 0,
+      onlineHiredCount: onlineHiredMap[job.id] ?? 0,
+      isLegacy: false,
       is_published: job.is_published,
       created_at: job.created_at,
       closes_at: job.closes_at,
@@ -274,6 +285,9 @@ export default async function ManageJobsPage({
         salary_max: null,
         currency: "PHP",
         slots: 1,
+        hired_walkin_count: 0,
+        onlineHiredCount: 0,
+        isLegacy: true,
         is_published: String(job.status).toLowerCase() === "active",
         created_at: legacyCreatedAt,
         closes_at: null,
@@ -286,12 +300,17 @@ export default async function ManageJobsPage({
     }),
   ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
 
+  const canManageWalkIn =
+    canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner) ||
+    canHr(ctx.hr_role, "hires:confirm", ctx.is_tenant_owner);
+
   return (
     <ManageJobsWorkspace
       jobs={jobsWithCounts}
       companyName={companyName}
       nextCursor={nextCursor}
       currentCursor={cursorParam}
+      canManageWalkIn={canManageWalkIn}
     />
   );
 }

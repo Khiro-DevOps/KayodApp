@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { ApplicationStatus, Profile } from "@/lib/types";
+import { fetchJobHeadcountSummary } from "@/lib/job-headcount-server";
 
 function toSingle<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -48,7 +49,7 @@ export async function moveToScreening(applicationId: string): Promise<PipelineTr
     // Fetch the application
     const { data: application, error: fetchError } = await supabase
       .from("applications")
-      .select("id, status, profiles!applications_candidate_id_fkey(first_name, last_name)")
+      .select("id, status, job_posting_id, profiles!applications_candidate_id_fkey(first_name, last_name)")
       .eq("id", applicationId)
       .single();
 
@@ -198,7 +199,7 @@ export async function confirmInterviewScheduled(applicationId: string): Promise<
     // Fetch the application
     const { data: application, error: fetchError } = await supabase
       .from("applications")
-      .select("id, status, profiles!applications_candidate_id_fkey(first_name, last_name)")
+      .select("id, status, job_posting_id, profiles!applications_candidate_id_fkey(first_name, last_name)")
       .eq("id", applicationId)
       .single();
 
@@ -272,6 +273,16 @@ export async function moveToOffer(applicationId: string): Promise<PipelineTransi
       };
     }
 
+    if (application.job_posting_id) {
+      const headcount = await fetchJobHeadcountSummary(application.job_posting_id);
+      if (headcount?.isFull) {
+        return {
+          success: false,
+          error: "All job slots are filled. Increase slots on the job posting before moving candidates to Offer.",
+        };
+      }
+    }
+
     // Check if offer already exists
     const { data: existingOffer } = await supabase
       .from("job_offers")
@@ -340,12 +351,22 @@ export async function confirmOfferSent(applicationId: string): Promise<PipelineT
     // Fetch the application
     const { data: application, error: fetchError } = await supabase
       .from("applications")
-      .select("id, status, profiles!applications_candidate_id_fkey(first_name, last_name)")
+      .select("id, status, job_posting_id, profiles!applications_candidate_id_fkey(first_name, last_name)")
       .eq("id", applicationId)
       .single();
 
     if (fetchError || !application) {
       return { success: false, error: "Application not found" };
+    }
+
+    if (application.job_posting_id) {
+      const headcount = await fetchJobHeadcountSummary(application.job_posting_id);
+      if (headcount?.isFull) {
+        return {
+          success: false,
+          error: "All job slots are filled. Increase slots on the job posting before sending an offer.",
+        };
+      }
     }
 
     // Update status to offer_sent
@@ -396,12 +417,22 @@ export async function moveToHired(applicationId: string): Promise<PipelineTransi
     // Fetch the application
     const { data: application, error: fetchError } = await supabase
       .from("applications")
-      .select("id, status, profiles!applications_candidate_id_fkey(first_name, last_name)")
+      .select("id, status, job_posting_id, profiles!applications_candidate_id_fkey(first_name, last_name)")
       .eq("id", applicationId)
       .single();
 
     if (fetchError || !application) {
       return { success: false, error: "Application not found" };
+    }
+
+    if (application.job_posting_id) {
+      const headcount = await fetchJobHeadcountSummary(application.job_posting_id);
+      if (headcount?.isFull) {
+        return {
+          success: false,
+          error: "All job slots are filled. Increase slots on the job posting before sending an offer.",
+        };
+      }
     }
 
     // Validate current status is in "offer" stage

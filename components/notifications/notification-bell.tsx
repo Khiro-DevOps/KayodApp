@@ -52,6 +52,14 @@ function getRelativeTime(dateString: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function normalizeNotificationActionUrl(url: string): string {
+  const legacyJobApplicantsMatch = url.match(/^\/hr\/jobs\/([^/]+)\/applicants/);
+  if (legacyJobApplicantsMatch) {
+    return `/hr/applicants?job=${legacyJobApplicantsMatch[1]}&scope=all`;
+  }
+  return url;
+}
+
 export default function NotificationBell({ userId }: { userId?: string | null }) {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -261,10 +269,11 @@ export default function NotificationBell({ userId }: { userId?: string | null })
 
     setIsOpen(false);
     if (notification.action_url) {
-      if (notification.action_url.startsWith("/api/")) {
-        window.location.assign(notification.action_url);
+      const targetUrl = normalizeNotificationActionUrl(notification.action_url);
+      if (targetUrl.startsWith("/api/")) {
+        window.location.assign(targetUrl);
       } else {
-        router.push(notification.action_url);
+        router.push(targetUrl);
       }
     }
   };

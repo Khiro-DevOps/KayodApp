@@ -5,11 +5,104 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { ensureValidWorkLocationId } from "@/lib/employee-position-server";
 import { resolveContractWorkSetup, resolveEmployeeSourceOfTruth } from "@/lib/work-arrangement";
+import { requireHrPermission } from "@/lib/rbac/server";
+import { fetchDepartmentsAndSupervisors } from "@/lib/job-headcount-server";
+import {
+  normalizeJobLevel,
+  type JobLevel,
+  type SupervisorCandidate,
+} from "@/lib/workforce-hierarchy";
+import {
+  getCurrentManilaWeekStart,
+  resolveInitialHireSchedule,
+} from "@/lib/schedule-policy";
 
 export interface PromoteApplicantResult {
   success: boolean;
   employeeId?: string;
   error?: string;
+}
+
+export interface PromoteModalHierarchyContext {
+  defaultSupervisorId: string | null;
+  targetJobLevel: JobLevel;
+  departmentId: string | null;
+  tenantId: string | null;
+  supervisorCandidates: SupervisorCandidate[];
+}
+
+export async function getPromoteModalContext(
+  applicationId: string,
+): Promise<PromoteModalHierarchyContext> {
+  const ctx = await requireHrPermission("hires:confirm");
+  const admin = getAdminClient();
+
+  let jobId: string | null = null;
+  const { data: jobApp } = await admin
+    .from("job_applications")
+    .select("job_id")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (jobApp?.job_id) {
+    jobId = jobApp.job_id;
+  } else {
+    const { data: legacyApp } = await admin
+      .from("applications")
+      .select("job_posting_id")
+      .eq("id", applicationId)
+      .maybeSingle();
+    jobId = legacyApp?.job_posting_id ?? null;
+  }
+
+  let defaultSupervisorId: string | null = null;
+  let targetJobLevel: JobLevel = "staff";
+  let departmentId: string | null = null;
+  let tenantId: string | null = ctx.tenant_id ?? null;
+
+  const [{ data: posting }, { data: latestOffer }] = await Promise.all([
+    jobId
+      ? admin
+          .from("job_postings")
+          .select("default_supervisor_id, target_job_level, department_id, tenant_id")
+          .eq("id", jobId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin
+      .from("job_offers")
+      .select("job_metadata")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (posting) {
+    defaultSupervisorId = posting.default_supervisor_id ?? null;
+    targetJobLevel = normalizeJobLevel(
+      (posting as { target_job_level?: string | null }).target_job_level
+    );
+    departmentId = posting.department_id ?? null;
+    tenantId = posting.tenant_id ?? tenantId;
+  }
+
+  const offerMeta = (latestOffer?.job_metadata ?? null) as Record<string, unknown> | null;
+  if (typeof offerMeta?.reports_to_employee_id === "string" && offerMeta.reports_to_employee_id) {
+    defaultSupervisorId = offerMeta.reports_to_employee_id;
+  }
+  if (typeof offerMeta?.target_job_level === "string" && offerMeta.target_job_level) {
+    targetJobLevel = normalizeJobLevel(offerMeta.target_job_level);
+  }
+
+  const { supervisorCandidates } = await fetchDepartmentsAndSupervisors(tenantId);
+
+  return {
+    defaultSupervisorId,
+    targetJobLevel,
+    departmentId,
+    tenantId,
+    supervisorCandidates,
+  };
 }
 
 /**
@@ -19,7 +112,11 @@ export interface PromoteApplicantResult {
  * Step 2: Atomic Promotion Workflow (Profile mapping fix, Salary & Job params, Location & Schedule, Probation, Status lifecycle, Role update)
  * Step 3: Revalidations & Return
  */
-export async function promoteApplicantToEmployee(applicationId: string): Promise<PromoteApplicantResult> {
+export async function promoteApplicantToEmployee(
+  applicationId: string,
+  options?: { reportsTo?: string | null; jobLevel?: JobLevel },
+): Promise<PromoteApplicantResult> {
+  const ctx = await requireHrPermission("hires:confirm");
   const supabase = await createClient();
   const admin = getAdminClient();
 
@@ -29,18 +126,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     return { success: false, error: "Not authenticated" };
   }
 
-  const { data: hrProfile } = await supabase
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .single();
-
-  const isHR = hrProfile?.role === "hr_manager" || hrProfile?.role === "admin";
-  if (!isHR) {
-    return { success: false, error: "Forbidden: Only HR managers or admins can promote applicants to employees" };
-  }
-
-  const tenantId = hrProfile?.tenant_id || "00000000-0000-0000-0000-000000000001";
+  const tenantId = ctx.tenant_id || "00000000-0000-0000-0000-000000000001";
 
   try {
     // Fetch job_applications or applications record
@@ -110,7 +196,7 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
     // Fetch job posting title & details
     const { data: jobPosting } = await admin
       .from("job_postings")
-      .select("id, title, employment_type, department_id, salary_min, salary_max, work_setup, offer_letter_settings")
+      .select("id, title, employment_type, department_id, default_supervisor_id, target_job_level, salary_min, salary_max, work_setup, shift_start, shift_end, work_days, schedule_type, rest_days_type, offer_letter_settings")
       .eq("id", application.job_id)
       .maybeSingle();
 
@@ -182,18 +268,19 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
       jobWorkSetup:
         (jobPosting?.work_setup as string | null | undefined) ?? null,
     });
-    let shiftStart = "08:00:00";
-    let shiftEnd = "17:00:00";
-    let workDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const initialSchedule = resolveInitialHireSchedule({
+      offer: jobOffer,
+      jobPosting,
+    });
+    const shiftStart = initialSchedule.shiftStart;
+    const shiftEnd = initialSchedule.shiftEnd;
+    const workDays = initialSchedule.workDays;
 
     if (jobOffer?.logistics) {
       const logistics = jobOffer.logistics as Record<string, unknown>;
       if (!workLocationId && typeof logistics.work_location_id === "string") {
         workLocationId = logistics.work_location_id;
       }
-      if (typeof logistics.shift_start === "string") shiftStart = logistics.shift_start;
-      if (typeof logistics.shift_end === "string") shiftEnd = logistics.shift_end;
-      if (Array.isArray(logistics.work_days)) workDays = logistics.work_days as string[];
     }
 
     const resolvedTruth = resolveEmployeeSourceOfTruth({
@@ -260,6 +347,22 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
       // Non-critical
     }
 
+    const offerMeta = (jobOffer?.job_metadata ?? null) as Record<string, unknown> | null;
+    const offerReportsTo =
+      typeof offerMeta?.reports_to_employee_id === "string" && offerMeta.reports_to_employee_id
+        ? offerMeta.reports_to_employee_id
+        : null;
+    const resolvedReportsTo =
+      options?.reportsTo !== undefined
+        ? options.reportsTo || null
+        : offerReportsTo ?? jobPosting?.default_supervisor_id ?? null;
+
+    const resolvedJobLevel = normalizeJobLevel(
+      options?.jobLevel ??
+        (typeof offerMeta?.target_job_level === "string" ? offerMeta.target_job_level : null) ??
+        (jobPosting as { target_job_level?: string | null } | null)?.target_job_level
+    );
+
     // 2. Upsert employee record with all required columns
     const employeePayload: any = {
       tenant_id: tenantId,
@@ -267,6 +370,8 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
       application_id: applicationId,
       job_offer_id: jobOffer?.id || jobOfferApp?.id || null,
       department_id: jobPosting?.department_id || null,
+      reports_to: resolvedReportsTo,
+      job_level: resolvedJobLevel,
       job_title: resolvedJobTitle,
       employment_type: jobPosting?.employment_type || "full_time",
       employment_status: "onboarding", // Set employment_status = 'onboarding'
@@ -290,6 +395,28 @@ export async function promoteApplicantToEmployee(applicationId: string): Promise
 
     if (empErr) {
       return { success: false, error: `Failed to create/update employee record: ${empErr.message}` };
+    }
+
+    // Best-effort initial published schedule row for the current week
+    try {
+      const weekStart = getCurrentManilaWeekStart();
+      await admin.from("schedules").upsert(
+        {
+          employee_id: upsertedEmp.id,
+          week_start: weekStart,
+          shift_start: shiftStart,
+          shift_end: shiftEnd,
+          work_days: workDays,
+          location: workMode === "remote" ? "remote" : workMode === "hybrid" ? "hybrid" : "office",
+          notes: initialSchedule.workScheduleSummary,
+          is_published: true,
+          created_by: user.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "employee_id,week_start" }
+      );
+    } catch (schedErr) {
+      console.warn("[promoteApplicantToEmployee] initial schedule upsert warning:", schedErr);
     }
 
     // 3. Update status lifecycle: job_applications.status = 'hired'

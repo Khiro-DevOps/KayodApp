@@ -4,6 +4,15 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateDocusealEmbedSrc } from "@/lib/docuseal-actions";
 import { effectiveRole, isHRRole } from "@/lib/roles";
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
+import {
+  buildWorkScheduleSummary,
+  clampWorkDaysPerWeek,
+  normalizeRestDaysPolicy,
+  normalizeScheduleType,
+  normalizeShiftRotationPattern,
+  normalizeShortWorkDays,
+  resolveDefaultWorkDaysForCount,
+} from "@/lib/schedule-policy";
 
 export interface LoadedApplicantOffer {
   applicationId: string;
@@ -31,6 +40,17 @@ export interface LoadedApplicantOffer {
   docusealEmbedError: string | null;
   signedPdfUrl: string | null;
   negotiations: OfferNegotiationRow[];
+  scheduleType: string;
+  workDaysPerWeek: number;
+  restDaysPolicy: string;
+  shiftRotationPattern: string;
+  shiftStart: string;
+  shiftEnd: string;
+  workDays: string[];
+  workScheduleSummary: string;
+  reportsTo: string | null;
+  leaveCreditsSummary: string | null;
+  hmoCoverageSummary: string | null;
 }
 
 function normalizeText(value: unknown): string {
@@ -79,13 +99,21 @@ export async function loadApplicantOffer(
     ),
     job_postings!job_applications_job_id_fkey (
       id,
+      tenant_id,
       title,
       location,
+      work_location_id,
       work_setup,
       salary_min,
       salary_max,
       currency,
       employment_type,
+      shift_start,
+      shift_end,
+      work_days,
+      schedule_type,
+      rest_days_type,
+      offer_letter_settings,
       profiles!job_postings_created_by_fkey (
         email,
         tenants (
@@ -137,7 +165,7 @@ export async function loadApplicantOffer(
   }
 
   const jobOfferColumns =
-    "id, status, salary, start_date, work_setup, work_mode, work_location_id, department, latest_docuseal_url, job_metadata, metadata, is_active, version_id, updated_at";
+    "id, status, salary, start_date, work_setup, work_mode, work_location_id, department, shift_start, shift_end, work_days, latest_docuseal_url, job_metadata, metadata, is_active, version_id, updated_at";
 
   const { data: activeOfferRow } = await admin
     .from("job_offers")
@@ -195,13 +223,21 @@ export async function loadApplicantOffer(
 
   const jobPosting = toSingle(rawApplication.job_postings) as {
     id?: string;
+    tenant_id?: string | null;
     title?: string | null;
     location?: string | null;
+    work_location_id?: string | null;
     work_setup?: string | null;
     salary_min?: number | null;
     salary_max?: number | null;
     currency?: string | null;
     employment_type?: string | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    work_days?: string[] | null;
+    schedule_type?: string | null;
+    rest_days_type?: string | null;
+    offer_letter_settings?: Record<string, unknown> | null;
     profiles?:
       | {
           email?: string | null;
@@ -227,15 +263,56 @@ export async function loadApplicantOffer(
     (metaCompanyName && metaCompanyName !== "Hiring Company" ? metaCompanyName : "") ||
     "Company";
 
-  let resolvedLocation: string | null = jobPosting?.location ?? null;
-  if (activeOffer?.work_location_id) {
+  const jobSettingsEarly = (jobPosting?.offer_letter_settings ?? null) as Record<
+    string,
+    unknown
+  > | null;
+  const rawPostingLocation = jobPosting?.location?.trim() ?? "";
+  const isUuidLocation = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    rawPostingLocation
+  );
+  const branchIdToResolve =
+    activeOffer?.work_location_id ??
+    jobPosting?.work_location_id ??
+    (typeof jobSettingsEarly?.work_location_id === "string"
+      ? jobSettingsEarly.work_location_id
+      : null) ??
+    (isUuidLocation ? rawPostingLocation : null);
+  let resolvedLocation: string | null =
+    rawPostingLocation && !isUuidLocation ? rawPostingLocation : null;
+  if (branchIdToResolve) {
     const { data: branchRow } = await admin
       .from("office_branches")
       .select("name, address")
-      .eq("id", activeOffer.work_location_id)
+      .eq("id", branchIdToResolve)
       .maybeSingle();
     if (branchRow) {
-      resolvedLocation = [branchRow.name, branchRow.address].filter(Boolean).join(", ");
+      resolvedLocation = branchRow.address
+        ? `${branchRow.name} — ${branchRow.address}`
+        : branchRow.name;
+    }
+  }
+  if (!resolvedLocation) {
+    const setupNorm = String(
+      activeOffer?.work_setup ?? activeOffer?.work_mode ?? jobPosting?.work_setup ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    if (setupNorm === "remote" || setupNorm === "wfh") {
+      resolvedLocation = "Remote";
+    } else if (jobPosting?.tenant_id) {
+      const { data: primaryBranch } = await admin
+        .from("office_branches")
+        .select("name, address")
+        .eq("tenant_id", jobPosting.tenant_id)
+        .order("is_primary", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (primaryBranch) {
+        resolvedLocation = primaryBranch.address
+          ? `${primaryBranch.name} — ${primaryBranch.address}`
+          : primaryBranch.name;
+      }
     }
   }
 
@@ -278,6 +355,114 @@ export async function loadApplicantOffer(
   const salaryValue =
     activeOffer?.salary != null ? Number(activeOffer.salary) : null;
 
+  const jobSettings = (jobPosting?.offer_letter_settings ?? null) as Record<string, unknown> | null;
+  const resolvedScheduleType = normalizeScheduleType(
+    offerMeta.schedule_type ?? jobSettings?.schedule_type ?? jobPosting?.schedule_type
+  );
+  const resolvedShiftStart =
+    (activeOffer as { shift_start?: string | null } | null)?.shift_start ??
+    (typeof offerMeta.shift_start === "string" ? offerMeta.shift_start : null) ??
+    jobPosting?.shift_start ??
+    (typeof jobSettings?.shift_start === "string" ? jobSettings.shift_start : null) ??
+    "08:00";
+  const resolvedShiftEnd =
+    (activeOffer as { shift_end?: string | null } | null)?.shift_end ??
+    (typeof offerMeta.shift_end === "string" ? offerMeta.shift_end : null) ??
+    jobPosting?.shift_end ??
+    (typeof jobSettings?.shift_end === "string" ? jobSettings.shift_end : null) ??
+    "17:00";
+  const rawWorkDays = normalizeShortWorkDays(
+    Array.isArray((activeOffer as { work_days?: string[] | null } | null)?.work_days) &&
+      ((activeOffer as { work_days?: string[] | null }).work_days?.length ?? 0) > 0
+      ? (activeOffer as { work_days?: string[] | null }).work_days
+      : Array.isArray(offerMeta.work_days) && offerMeta.work_days.length > 0
+        ? offerMeta.work_days
+        : Array.isArray(jobPosting?.work_days) && jobPosting.work_days.length > 0
+          ? jobPosting.work_days
+          : jobSettings?.work_days
+  );
+  const workDaysPerWeek = clampWorkDaysPerWeek(
+    offerMeta.work_days_per_week ?? jobSettings?.work_days_per_week,
+    rawWorkDays.length > 0 ? rawWorkDays.length : 5
+  );
+  const restDaysPolicy = normalizeRestDaysPolicy(
+    offerMeta.rest_days_policy ?? jobSettings?.rest_days_policy ?? jobPosting?.rest_days_type,
+    resolvedScheduleType
+  );
+  const shiftRotationPattern = normalizeShiftRotationPattern(
+    offerMeta.shift_rotation_pattern ?? jobSettings?.shift_rotation_pattern,
+    resolvedScheduleType
+  );
+  const resolvedWorkDays =
+    rawWorkDays.length > 0
+      ? rawWorkDays
+      : resolvedScheduleType === "rotating"
+        ? resolveDefaultWorkDaysForCount(workDaysPerWeek)
+        : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const workScheduleSummary =
+    (typeof offerMeta.work_schedule_summary === "string" && offerMeta.work_schedule_summary.trim()) ||
+    buildWorkScheduleSummary({
+      scheduleType: resolvedScheduleType,
+      workDaysPerWeek,
+      restDaysPolicy,
+      shiftRotationPattern,
+      shiftStart: resolvedShiftStart,
+      shiftEnd: resolvedShiftEnd,
+      workDays: resolvedWorkDays,
+    });
+  const reportsTo =
+    (typeof offerMeta.reports_to_label === "string" && offerMeta.reports_to_label.trim()) ||
+    (typeof offerMeta.reports_to === "string" && offerMeta.reports_to.trim()) ||
+    null;
+
+  const silDays =
+    Number(
+      offerMeta.service_incentive_leave ??
+        offerMeta.phServiceIncentiveLeave ??
+        jobSettings?.service_incentive_leave ??
+        jobSettings?.phServiceIncentiveLeave ??
+        5
+    ) || 5;
+  const vlDays =
+    Number(
+      offerMeta.vacation_leave_days ??
+        offerMeta.phVacationLeaveDays ??
+        jobSettings?.vacation_leave_days ??
+        jobSettings?.phVacationLeaveDays ??
+        0
+    ) || 0;
+  const slDays =
+    Number(
+      offerMeta.sick_leave_days ??
+        offerMeta.phSickLeaveDays ??
+        jobSettings?.sick_leave_days ??
+        jobSettings?.phSickLeaveDays ??
+        0
+    ) || 0;
+  const leaveCreditParts = [
+    `${silDays} SIL`,
+    ...(vlDays > 0 ? [`${vlDays} VL`] : []),
+    ...(slDays > 0 ? [`${slDays} SL`] : []),
+  ];
+  const leaveCreditsSummary = `${leaveCreditParts.join(" · ")} / year`;
+
+  const rawCompPkg = (offerMeta.compensation_package ??
+    jobSettings?.compensation_package ??
+    null) as { hmo_coverage?: { enabled?: boolean; timing?: string } } | null;
+  const hmoProviderText =
+    (typeof offerMeta.hmo_provider === "string" && offerMeta.hmo_provider.trim()) ||
+    (typeof offerMeta.phHmoProvider === "string" && offerMeta.phHmoProvider.trim()) ||
+    (typeof jobSettings?.hmo_provider === "string" && jobSettings.hmo_provider.trim()) ||
+    (typeof jobSettings?.phHmoProvider === "string" && jobSettings.phHmoProvider.trim()) ||
+    null;
+  const hmoCoverageSummary =
+    hmoProviderText ||
+    (rawCompPkg?.hmo_coverage?.enabled
+      ? rawCompPkg.hmo_coverage.timing === "day_1"
+        ? "Company HMO (Effective Day 1)"
+        : "Company HMO (Upon Regularization)"
+      : "Per Company Policy");
+
   return {
     applicationId: rawApplication.id,
     applicationStatus: rawApplication.status ?? null,
@@ -313,5 +498,16 @@ export async function loadApplicantOffer(
     docusealEmbedError,
     signedPdfUrl: signedDocument?.pdf_file_path ?? null,
     negotiations,
+    scheduleType: resolvedScheduleType,
+    workDaysPerWeek,
+    restDaysPolicy,
+    shiftRotationPattern,
+    shiftStart: resolvedShiftStart,
+    shiftEnd: resolvedShiftEnd,
+    workDays: resolvedWorkDays,
+    workScheduleSummary,
+    reportsTo,
+    leaveCreditsSummary,
+    hmoCoverageSummary,
   };
 }

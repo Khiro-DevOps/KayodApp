@@ -6,43 +6,80 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createJobOfferTemplate, type OfferLetterSettings } from "@/lib/docuseal";
 import { canHr } from "@/lib/rbac/permissions";
-import { getHrSessionContext } from "@/lib/rbac/server";
+import { getHrSessionContext, requireHrPermission } from "@/lib/rbac/server";
 import { saveJobRequiredDocuments } from "@/lib/pre-employment-actions";
+import { computeJobHeadcount } from "@/lib/job-headcount";
+import { fetchOnlineHiredCountsByJob } from "@/lib/job-headcount-server";
+import { JOB_LEVEL_LABELS, normalizeJobLevel } from "@/lib/workforce-hierarchy";
 import {
   computeCompensationTotals,
   parseCompensationPackage,
 } from "@/lib/compensation-package";
-
-async function verifyHR(
-  _supabase: Awaited<ReturnType<typeof createClient>>,
-  _user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown>; id: string }
-): Promise<boolean> {
-  const ctx = await getHrSessionContext();
-  if (!ctx) return false;
-  return canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner);
-}
+import {
+  buildWorkScheduleSummary,
+  clampWorkDaysPerWeek,
+  mapRestDaysPolicyToLegacyType,
+  normalizeRestDaysPolicy,
+  normalizeScheduleType,
+  normalizeShiftRotationPattern,
+  normalizeShortWorkDays,
+  resolveDefaultWorkDaysForCount,
+} from "@/lib/schedule-policy";
 
 export async function createJob(formData: FormData) {
+  const ctx = await requireHrPermission("jobs:manage");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !(await verifyHR(supabase, user))) redirect("/dashboard");
+  if (!user) redirect("/login");
 
   // Job Posting Fields (from Section 1)
   const title = formData.get("title") as string;
   const industry = formData.get("industry") as string;
-  const job_category = formData.get("job_category") as string;
+  const target_job_level = normalizeJobLevel(formData.get("target_job_level") as string | null);
+  const job_category = JOB_LEVEL_LABELS[target_job_level];
   const description = formData.get("description") as string;
   const requirements = formData.get("requirements") as string;
   const work_mode = formData.get("work_mode") as string;
   const employment_type = formData.get("employment_type") as string;
   const work_location_id = formData.get("work_location_id") as string;
-  const shift_start = formData.get("shift_start") as string;
-  const shift_end = formData.get("shift_end") as string;
-  const work_days = formData.getAll("work_days") as string[];
-  const schedule_type = (formData.get("schedule_type") as string) || "fixed";
-  const rest_days_type = (formData.get("rest_days_type") as string) || "fixed";
+  const shift_start = (formData.get("shift_start") as string) || "08:00";
+  const shift_end = (formData.get("shift_end") as string) || "17:00";
+  const raw_work_days = normalizeShortWorkDays(formData.getAll("work_days") as string[]);
+  const schedule_type = normalizeScheduleType(formData.get("schedule_type"));
+  const work_days_per_week = clampWorkDaysPerWeek(
+    formData.get("work_days_per_week") ?? formData.get("work_days_count"),
+    raw_work_days.length > 0 ? raw_work_days.length : 5
+  );
+  const rest_days_policy = normalizeRestDaysPolicy(
+    formData.get("rest_days_policy") ?? formData.get("rest_days_type"),
+    schedule_type
+  );
+  const rest_days_type = mapRestDaysPolicyToLegacyType(rest_days_policy);
+  const shift_rotation_pattern = normalizeShiftRotationPattern(
+    formData.get("shift_rotation_pattern"),
+    schedule_type
+  );
+  const work_days =
+    raw_work_days.length > 0
+      ? raw_work_days
+      : schedule_type === "rotating"
+        ? resolveDefaultWorkDaysForCount(work_days_per_week)
+        : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const work_schedule_summary = buildWorkScheduleSummary({
+    scheduleType: schedule_type,
+    workDaysPerWeek: work_days_per_week,
+    restDaysPolicy: rest_days_policy,
+    shiftRotationPattern: shift_rotation_pattern,
+    shiftStart: shift_start,
+    shiftEnd: shift_end,
+    workDays: work_days,
+  });
   const salary_range = formData.get("salary_range") as string;
   const skillsRaw = formData.get("skills") as string;
+  const rawSlots = Number(formData.get("slots"));
+  const slots = Number.isFinite(rawSlots) && rawSlots >= 1 ? Math.floor(rawSlots) : 1;
+  const department_id = (formData.get("department_id") as string)?.trim() || null;
+  const default_supervisor_id = (formData.get("default_supervisor_id") as string)?.trim() || null;
 
   // Philippine Offer Letter Fields (from Section 2)
   const ph_department = formData.get("ph_department") as string;
@@ -103,7 +140,21 @@ export async function createJob(formData: FormData) {
     phEmploymentStatus: ph_employment_status || undefined,
     phProbationPeriodDays: ph_probation_period_days ? parseInt(ph_probation_period_days, 10) : undefined,
     phStartDate: ph_start_date || undefined,
-    phWorkSchedule: ph_work_schedule || undefined,
+    department: ph_department || undefined,
+    supervisor_name: ph_supervisor_name || undefined,
+    supervisor_title: ph_supervisor_title || undefined,
+    employment_status: ph_employment_status || undefined,
+    probation_days: ph_probation_period_days ? parseInt(ph_probation_period_days, 10) : undefined,
+    expected_start_date: ph_start_date || undefined,
+    phWorkSchedule: ph_work_schedule || work_schedule_summary || undefined,
+    schedule_type,
+    work_days_per_week,
+    rest_days_policy,
+    shift_rotation_pattern,
+    shift_start: shift_start || "08:00",
+    shift_end: shift_end || "17:00",
+    work_days,
+    work_schedule_summary,
     phMonthlyBasicSalary: ph_monthly_basic_salary ? parseFloat(ph_monthly_basic_salary) : undefined,
     phPayFrequency: ph_pay_frequency || undefined,
     phSigningBonus: ph_signing_bonus ? parseFloat(ph_signing_bonus) : undefined,
@@ -151,29 +202,51 @@ export async function createJob(formData: FormData) {
   };
 
   const adminClient = getAdminClient();
-  const { data: creatorProfile } = await adminClient
-    .from("profiles")
-    .select("email, tenant_id, tenants(name)")
-    .eq("id", user.id)
-    .maybeSingle<{
-      email?: string | null;
-      tenant_id?: string | null;
-      tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
-    }>();
+  const [{ data: creatorProfile }, { data: selectedBranch }] = await Promise.all([
+    adminClient
+      .from("profiles")
+      .select("email, tenant_id, tenants(name)")
+      .eq("id", user.id)
+      .maybeSingle<{
+        email?: string | null;
+        tenant_id?: string | null;
+        tenants?: { name?: string | null } | Array<{ name?: string | null }> | null;
+      }>(),
+    work_location_id && work_mode !== "remote"
+      ? adminClient
+          .from("office_branches")
+          .select("name, address")
+          .eq("id", work_location_id)
+          .maybeSingle<{ name: string; address?: string | null }>()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const formattedLocation =
+    work_mode === "remote"
+      ? "Remote"
+      : selectedBranch
+        ? selectedBranch.address
+          ? `${selectedBranch.name} — ${selectedBranch.address}`
+          : selectedBranch.name
+        : null;
 
   const { data: jobData, error } = await adminClient
     .from("job_postings")
     .insert({
       created_by: user.id,
-      tenant_id: creatorProfile?.tenant_id ?? null,
+      tenant_id: creatorProfile?.tenant_id ?? ctx.tenant_id ?? null,
       title,
       industry: industry || null,
       job_category: job_category || null,
+      department_id,
+      default_supervisor_id,
+      target_job_level,
       description,
       requirements: requirements || null,
       work_setup: work_mode || "onsite",
       employment_type: employment_type || "full_time",
       work_location_id: work_location_id || null,
+      location: formattedLocation,
       shift_start: shift_start || null,
       shift_end: shift_end || null,
       work_days: work_days.length > 0 ? work_days : null,
@@ -184,7 +257,8 @@ export async function createJob(formData: FormData) {
       required_skills: skills,
       currency: "PHP",
       is_published: true,
-      slots: 1,
+      slots,
+      hired_walkin_count: 0,
       offer_letter_settings: Object.keys(offerLetterSettings).length > 0 ? offerLetterSettings : null,
     })
     .select("id")
@@ -265,6 +339,7 @@ export async function createJob(formData: FormData) {
 }
 
 export async function updateJob(formData: FormData) {
+  await requireHrPermission("jobs:manage");
   const supabase = await createClient();
 
   const {
@@ -277,16 +352,48 @@ export async function updateJob(formData: FormData) {
   const description = formData.get("description") as string;
   const requirements = formData.get("requirements") as string;
   const skillsRaw = formData.get("skills") as string;
+  const rawSlots = Number(formData.get("slots"));
+  const slots = Number.isFinite(rawSlots) && rawSlots >= 1 ? Math.floor(rawSlots) : 1;
+  const department_id = (formData.get("department_id") as string)?.trim() || null;
+  const default_supervisor_id = (formData.get("default_supervisor_id") as string)?.trim() || null;
   const work_mode = formData.get("work_mode") as string;
   const work_location_id = formData.get("work_location_id") as string;
-  const shift_start = formData.get("shift_start") as string;
-  const shift_end = formData.get("shift_end") as string;
-  const work_days = formData.getAll("work_days") as string[];
-  const schedule_type = (formData.get("schedule_type") as string) || "fixed";
-  const rest_days_type = (formData.get("rest_days_type") as string) || "fixed";
+  const shift_start = (formData.get("shift_start") as string) || "08:00";
+  const shift_end = (formData.get("shift_end") as string) || "17:00";
+  const raw_work_days = normalizeShortWorkDays(formData.getAll("work_days") as string[]);
+  const schedule_type = normalizeScheduleType(formData.get("schedule_type"));
+  const work_days_per_week = clampWorkDaysPerWeek(
+    formData.get("work_days_per_week") ?? formData.get("work_days_count"),
+    raw_work_days.length > 0 ? raw_work_days.length : 5
+  );
+  const rest_days_policy = normalizeRestDaysPolicy(
+    formData.get("rest_days_policy") ?? formData.get("rest_days_type"),
+    schedule_type
+  );
+  const rest_days_type = mapRestDaysPolicyToLegacyType(rest_days_policy);
+  const shift_rotation_pattern = normalizeShiftRotationPattern(
+    formData.get("shift_rotation_pattern"),
+    schedule_type
+  );
+  const work_days =
+    raw_work_days.length > 0
+      ? raw_work_days
+      : schedule_type === "rotating"
+        ? resolveDefaultWorkDaysForCount(work_days_per_week)
+        : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const work_schedule_summary = buildWorkScheduleSummary({
+    scheduleType: schedule_type,
+    workDaysPerWeek: work_days_per_week,
+    restDaysPolicy: rest_days_policy,
+    shiftRotationPattern: shift_rotation_pattern,
+    shiftStart: shift_start,
+    shiftEnd: shift_end,
+    workDays: work_days,
+  });
   const salary_range = formData.get("salary_range") as string;
   const industry = formData.get("industry") as string;
-  const job_category = formData.get("job_category") as string;
+  const target_job_level = normalizeJobLevel(formData.get("target_job_level") as string | null);
+  const job_category = JOB_LEVEL_LABELS[target_job_level];
   const is_published = formData.get("is_published") === "true";
   const requiredDocumentsJson = formData.get("required_documents_json");
   const compensationPackageRaw = formData.get("compensation_package_json");
@@ -310,11 +417,25 @@ export async function updateJob(formData: FormData) {
     : null;
 
   const adminClient = getAdminClient();
-  const { data: existingJob } = await adminClient
-    .from("job_postings")
-    .select("offer_letter_settings")
-    .eq("id", jobId)
-    .maybeSingle();
+  const [{ data: existingJob }, onlineHiredMap] = await Promise.all([
+    adminClient
+      .from("job_postings")
+      .select("offer_letter_settings, hired_walkin_count")
+      .eq("id", jobId)
+      .maybeSingle(),
+    fetchOnlineHiredCountsByJob([jobId]),
+  ]);
+
+  const onlineHiredCount = onlineHiredMap[jobId] ?? 0;
+  const hiredWalkinCount = existingJob?.hired_walkin_count ?? 0;
+  const minimumSlots = onlineHiredCount + hiredWalkinCount;
+  if (slots < minimumSlots) {
+    redirect(
+      `/hr/jobs/${jobId}/edit?error=${encodeURIComponent(
+        `Slots cannot be lower than current hired headcount (${minimumSlots}: ${onlineHiredCount} online + ${hiredWalkinCount} walk-in).`
+      )}`
+    );
+  }
 
   let parsedCompensationRaw: unknown = null;
   if (typeof compensationPackageRaw === "string" && compensationPackageRaw.trim()) {
@@ -338,14 +459,22 @@ export async function updateJob(formData: FormData) {
 
   const updatedOfferLetterSettings: OfferLetterSettings = {
     ...(existingSettings as OfferLetterSettings),
-    ...(ph_department ? { phDepartment: ph_department } : {}),
-    ...(ph_supervisor_name ? { phSupervisorName: ph_supervisor_name } : {}),
-    ...(ph_supervisor_title ? { phSupervisorTitle: ph_supervisor_title } : {}),
+    phDepartment: ph_department || undefined,
+    phSupervisorName: ph_supervisor_name || undefined,
+    phSupervisorTitle: ph_supervisor_title || undefined,
     ...(ph_employment_status ? { phEmploymentStatus: ph_employment_status } : {}),
     ...(ph_probation_period_days
       ? { phProbationPeriodDays: parseInt(ph_probation_period_days, 10) }
       : {}),
     ...(ph_start_date ? { phStartDate: ph_start_date } : {}),
+    department: ph_department || undefined,
+    supervisor_name: ph_supervisor_name || undefined,
+    supervisor_title: ph_supervisor_title || undefined,
+    ...(ph_employment_status ? { employment_status: ph_employment_status } : {}),
+    ...(ph_probation_period_days
+      ? { probation_days: parseInt(ph_probation_period_days, 10) }
+      : {}),
+    ...(ph_start_date ? { expected_start_date: ph_start_date } : {}),
     ...(ph_monthly_basic_salary
       ? { phMonthlyBasicSalary: parseFloat(ph_monthly_basic_salary) }
       : {}),
@@ -354,7 +483,34 @@ export async function updateJob(formData: FormData) {
     monthly_allowance: compTotals.monthlyAllowancesTotal,
     attendance_incentive: compTotals.attendanceIncentiveAmount,
     selectedBenefits: compTotals.selectedBenefitLabels,
+    schedule_type,
+    work_days_per_week,
+    rest_days_policy,
+    shift_rotation_pattern,
+    shift_start: shift_start || "08:00",
+    shift_end: shift_end || "17:00",
+    work_days,
+    work_schedule_summary,
+    phWorkSchedule: work_schedule_summary,
   };
+
+  const { data: updatedBranch } =
+    work_location_id && work_mode !== "remote"
+      ? await adminClient
+          .from("office_branches")
+          .select("name, address")
+          .eq("id", work_location_id)
+          .maybeSingle<{ name: string; address?: string | null }>()
+      : { data: null };
+
+  const formattedUpdatedLocation =
+    work_mode === "remote"
+      ? "Remote"
+      : updatedBranch
+        ? updatedBranch.address
+          ? `${updatedBranch.name} — ${updatedBranch.address}`
+          : updatedBranch.name
+        : null;
 
   const { error } = await adminClient
     .from("job_postings")
@@ -365,6 +521,7 @@ export async function updateJob(formData: FormData) {
       required_skills: skills,
       work_setup: work_mode || "onsite",
       work_location_id: work_location_id || null,
+      location: formattedUpdatedLocation,
       shift_start: shift_start || null,
       shift_end: shift_end || null,
       work_days: work_days.length > 0 ? work_days : null,
@@ -374,6 +531,10 @@ export async function updateJob(formData: FormData) {
       salary_max: salaryMax,
       industry: industry || null,
       job_category: job_category || null,
+      department_id,
+      default_supervisor_id,
+      target_job_level,
+      slots,
       is_published,
       offer_letter_settings: updatedOfferLetterSettings,
       updated_at: new Date().toISOString(),
@@ -393,13 +554,13 @@ export async function updateJob(formData: FormData) {
 }
 
 export async function deleteJob(formData: FormData) {
+  await requireHrPermission("jobs:manage");
   const supabase = await createClient();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!(await verifyHR(supabase, user))) redirect("/dashboard");
 
   const jobId = formData.get("job_id") as string;
   if (!jobId) redirect("/hr/jobs");
@@ -418,4 +579,163 @@ export async function deleteJob(formData: FormData) {
   revalidatePath("/jobs");
   revalidatePath("/hr/jobs");
   redirect("/hr/jobs");
+}
+
+export async function updateWalkInHireCount(input: {
+  jobId: string;
+  nextWalkInCount: number;
+  note?: string;
+}): Promise<{
+  success: boolean;
+  error?: string;
+  hired_walkin_count?: number;
+  remainingSlots?: number;
+}> {
+  const ctx = await getHrSessionContext();
+  if (!ctx) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const canManageWalkIn =
+    canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner) ||
+    canHr(ctx.hr_role, "hires:confirm", ctx.is_tenant_owner);
+
+  if (!canManageWalkIn) {
+    return {
+      success: false,
+      error: "Forbidden: Only Recruiters, HR Generalists, or HR Admins can update walk-in hires.",
+    };
+  }
+
+  const { jobId, nextWalkInCount, note } = input;
+  if (!jobId) {
+    return { success: false, error: "Missing job ID" };
+  }
+
+  const admin = getAdminClient();
+  const [{ data: job, error: jobErr }, onlineMap] = await Promise.all([
+    admin
+      .from("job_postings")
+      .select("id, tenant_id, slots, hired_walkin_count, offer_letter_settings")
+      .eq("id", jobId)
+      .maybeSingle(),
+    fetchOnlineHiredCountsByJob([jobId]),
+  ]);
+
+  if (jobErr || !job) {
+    return { success: false, error: jobErr?.message || "Job posting not found" };
+  }
+
+  if (ctx.tenant_id && job.tenant_id && ctx.tenant_id !== job.tenant_id) {
+    return { success: false, error: "Forbidden: Cross-tenant job update not allowed" };
+  }
+
+  const onlineHiredCount = onlineMap[jobId] ?? 0;
+  const slots = Math.max(1, Number(job.slots ?? 1) || 1);
+  const maxWalkIn = Math.max(slots - onlineHiredCount, 0);
+
+  if (!Number.isInteger(nextWalkInCount) || nextWalkInCount < 0 || nextWalkInCount > maxWalkIn) {
+    return {
+      success: false,
+      error: `Walk-in count must be between 0 and ${maxWalkIn}.`,
+    };
+  }
+
+  const existingSettings = (job.offer_letter_settings ?? {}) as Record<string, unknown>;
+  const trimmedNote = note?.trim();
+  const existingLogs = Array.isArray(existingSettings.walk_in_logs)
+    ? (existingSettings.walk_in_logs as Array<Record<string, unknown>>)
+    : [];
+
+  const updatedSettings = trimmedNote
+    ? {
+        ...existingSettings,
+        walk_in_logs: [
+          {
+            previous_count: job.hired_walkin_count ?? 0,
+            new_count: nextWalkInCount,
+            note: trimmedNote,
+            updated_by: ctx.id,
+            updated_at: new Date().toISOString(),
+          },
+          ...existingLogs,
+        ].slice(0, 25),
+      }
+    : existingSettings;
+
+  const { error: updateError } = await admin
+    .from("job_postings")
+    .update({
+      hired_walkin_count: nextWalkInCount,
+      ...(trimmedNote ? { offer_letter_settings: updatedSettings } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  const summary = computeJobHeadcount({
+    slots,
+    onlineHiredCount,
+    hiredWalkinCount: nextWalkInCount,
+  });
+
+  revalidatePath("/hr/jobs");
+  revalidatePath(`/hr/jobs/${jobId}/applicants`);
+  revalidatePath("/jobs");
+
+  return {
+    success: true,
+    hired_walkin_count: nextWalkInCount,
+    remainingSlots: summary.remainingSlots,
+  };
+}
+
+export async function closeJobPosting(
+  jobId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const ctx = await getHrSessionContext();
+  if (!ctx) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const canClose =
+    canHr(ctx.hr_role, "jobs:manage", ctx.is_tenant_owner) ||
+    canHr(ctx.hr_role, "hires:confirm", ctx.is_tenant_owner);
+
+  if (!canClose) {
+    return { success: false, error: "Forbidden" };
+  }
+
+  const admin = getAdminClient();
+  const { data: job } = await admin
+    .from("job_postings")
+    .select("id, tenant_id")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (!job) {
+    return { success: false, error: "Job posting not found" };
+  }
+
+  if (ctx.tenant_id && job.tenant_id && ctx.tenant_id !== job.tenant_id) {
+    return { success: false, error: "Forbidden" };
+  }
+
+  const { error } = await admin
+    .from("job_postings")
+    .update({ is_published: false, updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/hr/jobs");
+  revalidatePath(`/hr/jobs/${jobId}/applicants`);
+  revalidatePath("/jobs");
+
+  return { success: true };
 }

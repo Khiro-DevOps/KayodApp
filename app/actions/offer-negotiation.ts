@@ -7,7 +7,12 @@ import {
   updateOfferDraft,
 } from "@/app/(auth)/actions/offer-actions";
 import { getDocusealBaseUrl } from "@/lib/docuseal";
-import { notifyJobCreator, sendNotification } from "@/lib/notifications";
+import {
+  notifyJobCreator,
+  notifyTenantOfferDecisionMakers,
+  sendNotification,
+} from "@/lib/notifications";
+import { canHr } from "@/lib/rbac/permissions";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -150,7 +155,7 @@ async function verifyHrAndTenant(
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("role, tenant_id")
+    .select("role, hr_role, is_tenant_owner, tenant_id")
     .eq("id", user.id)
     .single();
 
@@ -160,6 +165,13 @@ async function verifyHrAndTenant(
 
   if (!["hr_manager", "admin", "hr"].includes(String(profile.role ?? ""))) {
     return { ok: false, error: "Forbidden: HR role required" };
+  }
+
+  if (!canHr(profile.hr_role, "offers:approve_and_send", profile.is_tenant_owner)) {
+    return {
+      ok: false,
+      error: "Forbidden: Only HR Admin or HR Generalist can approve, counter, or decline offer negotiations.",
+    };
   }
 
   const { data: appRow, error: appError } = await admin
@@ -434,14 +446,36 @@ export async function submitOfferNegotiation(
     const jobPosting = toSingle(typedApplication.job_postings);
     const jobTitle = jobPosting?.title?.trim() || "position";
 
-    await notifyJobCreator({
-      jobId: typedApplication.job_id,
+    let resolvedTenantId = jobPosting?.tenant_id ?? null;
+    if (!resolvedTenantId && jobPosting?.created_by) {
+      const { data: creatorProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", jobPosting.created_by)
+        .maybeSingle();
+      resolvedTenantId = creatorProfile?.tenant_id ?? null;
+    }
+
+    const notifiedDecisionMakers = await notifyTenantOfferDecisionMakers({
+      tenantId: resolvedTenantId,
       type: "offer_letter",
-      title: `Negotiation Request for ${jobTitle}`,
-      body: `${candidateName} requested changes to the job offer.`,
-      link: `/hr/offers/${applicationId}`,
+      title: `Action Required: Offer Negotiation / Salary Review for ${candidateName}`,
+      body: `${candidateName} submitted a counter-offer / negotiation request for ${jobTitle}.`,
+      actionUrl: `/hr/offers/${activeOffer.id}`,
       senderId: user.id,
+      actionName: "submitOfferNegotiation",
     });
+
+    if (!jobPosting?.created_by || !notifiedDecisionMakers.includes(jobPosting.created_by)) {
+      await notifyJobCreator({
+        jobId: typedApplication.job_id,
+        type: "offer_letter",
+        title: `Action Required: Offer Negotiation / Salary Review for ${candidateName}`,
+        body: `${candidateName} requested changes to the job offer for ${jobTitle}.`,
+        link: `/hr/offers/${activeOffer.id}`,
+        senderId: user.id,
+      });
+    }
 
     revalidatePath(`/applicant/applications/${applicationId}`);
     revalidatePath(`/applicant/offer/${applicationId}`);
@@ -455,6 +489,76 @@ export async function submitOfferNegotiation(
       success: false,
       error: error instanceof Error ? error.message : "Failed to submit offer negotiation",
     };
+  }
+}
+
+function applyNegotiatedTermToOffer(
+  offer: ActiveOfferRecord & { financial_package?: Record<string, unknown> | null },
+  targetField: string,
+  rawVal: unknown
+): Record<string, unknown> | null {
+  if (rawVal === null || rawVal === undefined || String(rawVal).trim() === "") {
+    return null;
+  }
+
+  const existingMeta = {
+    ...((offer.job_metadata ?? offer.metadata ?? {}) as Record<string, unknown>),
+  };
+  const existingPkg = {
+    ...((offer.financial_package ?? {}) as Record<string, unknown>),
+  };
+
+  const updates: Record<string, unknown> = {};
+
+  switch (targetField) {
+    case "salary": {
+      const parsedSalary = Number(String(rawVal).replace(/[^0-9.-]/g, ""));
+      if (!Number.isFinite(parsedSalary) || parsedSalary <= 0) return null;
+      updates.salary = parsedSalary;
+      existingPkg.offered_salary = parsedSalary;
+      existingMeta.base_salary = parsedSalary;
+      updates.financial_package = existingPkg;
+      updates.job_metadata = existingMeta;
+      return updates;
+    }
+    case "allowance":
+    case "allowances":
+    case "monthly_allowance": {
+      const parsedAllowance = Number(String(rawVal).replace(/[^0-9.-]/g, ""));
+      if (!Number.isFinite(parsedAllowance) || parsedAllowance < 0) return null;
+      existingPkg.monthly_allowance = parsedAllowance;
+      existingMeta.monthly_allowance = parsedAllowance;
+      updates.financial_package = existingPkg;
+      updates.job_metadata = existingMeta;
+      return updates;
+    }
+    case "start_date": {
+      const nextStartDate = String(rawVal).trim();
+      updates.start_date = nextStartDate;
+      existingMeta.start_date = nextStartDate;
+      existingMeta.expected_start_date = nextStartDate;
+      updates.job_metadata = existingMeta;
+      return updates;
+    }
+    case "work_setup": {
+      const nextSetup = String(rawVal).trim();
+      updates.work_setup = nextSetup;
+      updates.work_mode = nextSetup.toLowerCase();
+      return updates;
+    }
+    case "probation_days": {
+      const parsedDays = Number.parseInt(String(rawVal).replace(/[^0-9-]/g, ""), 10);
+      if (!Number.isFinite(parsedDays) || parsedDays < 0) return null;
+      updates.probation_days = parsedDays;
+      return updates;
+    }
+    case "other": {
+      existingMeta.other = rawVal;
+      updates.job_metadata = existingMeta;
+      return updates;
+    }
+    default:
+      return null;
   }
 }
 
@@ -484,7 +588,7 @@ export async function respondToNegotiation(
 
     const { data: negotiationRow, error: negotiationError } = await admin
       .from("job_offer_negotiations")
-      .select("id, application_id, offer_id, round, status")
+      .select("id, application_id, offer_id, round, status, target_field, requested_value")
       .eq("id", negotiationId)
       .single();
 
@@ -512,6 +616,57 @@ export async function respondToNegotiation(
 
     if (updateError) {
       return { success: false, error: updateError.message };
+    }
+
+    // Immediately persist approved or countered terms back onto the active job_offers record
+    let resolvedOfferId: string | null = negotiationRow.offer_id ?? null;
+    if (decision === "approved" || decision === "countered") {
+      const agreedRawValue =
+        decision === "approved"
+          ? extractNegotiationPrimitive(negotiationRow.requested_value)
+          : extractNegotiationPrimitive(counterValue);
+
+      let offerQuery = admin
+        .from("job_offers")
+        .select(
+          "id, application_id, job_id, status, version_id, is_active, salary, start_date, work_setup, work_mode, work_location_id, shift_start, shift_end, work_days, department, probation_days, financial_package, job_metadata, metadata"
+        );
+      if (negotiationRow.offer_id) {
+        offerQuery = offerQuery.eq("id", negotiationRow.offer_id);
+      } else {
+        offerQuery = offerQuery
+          .eq("application_id", negotiationRow.application_id)
+          .order("is_active", { ascending: false })
+          .order("version_id", { ascending: false })
+          .order("updated_at", { ascending: false })
+          .limit(1);
+      }
+
+      const { data: activeOffer } = await offerQuery.maybeSingle<
+        ActiveOfferRecord & { financial_package?: Record<string, unknown> | null }
+      >();
+
+      if (activeOffer) {
+        resolvedOfferId = activeOffer.id;
+        const offerUpdates = applyNegotiatedTermToOffer(
+          activeOffer,
+          negotiationRow.target_field,
+          agreedRawValue
+        );
+        if (offerUpdates) {
+          const { error: offerSyncError } = await admin
+            .from("job_offers")
+            .update({
+              ...offerUpdates,
+              updated_at: nowIso,
+            })
+            .eq("id", activeOffer.id);
+
+          if (offerSyncError) {
+            return { success: false, error: offerSyncError.message };
+          }
+        }
+      }
     }
 
     const { data: remainingPending, error: remainingError } = await admin
@@ -542,6 +697,11 @@ export async function respondToNegotiation(
       });
     }
 
+    if (resolvedOfferId) {
+      revalidatePath(`/hr/offers/${resolvedOfferId}`);
+      revalidatePath(`/applicant/offer/${resolvedOfferId}`);
+      revalidatePath(`/job-offer/${resolvedOfferId}`);
+    }
     revalidatePath(`/hr/offers/${negotiationRow.application_id}`);
     revalidatePath(`/applicant/applications/${negotiationRow.application_id}`);
     revalidatePath(`/applicant/offer/${negotiationRow.application_id}`);
@@ -553,6 +713,117 @@ export async function respondToNegotiation(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to respond to negotiation",
+    };
+  }
+}
+
+export async function acceptCounterOffer(negotiationId: string): Promise<ActionResult> {
+  try {
+    if (!negotiationId) {
+      return { success: false, error: "Negotiation ID is required" };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const admin = getAdminClient();
+    const { data: negotiationRow, error: negErr } = await admin
+      .from("job_offer_negotiations")
+      .select("id, application_id, offer_id, status, target_field, counter_value")
+      .eq("id", negotiationId)
+      .single();
+
+    if (negErr || !negotiationRow) {
+      return { success: false, error: negErr?.message ?? "Counter-offer not found" };
+    }
+
+    if (negotiationRow.status !== "countered") {
+      return { success: false, error: "Only countered requests can be accepted" };
+    }
+
+    const { data: appRow } = await admin
+      .from("job_applications")
+      .select("id, applicant_id")
+      .eq("id", negotiationRow.application_id)
+      .maybeSingle();
+
+    if (!appRow || appRow.applicant_id !== user.id) {
+      return { success: false, error: "Forbidden: You do not own this application" };
+    }
+
+    const nowIso = new Date().toISOString();
+
+    let offerQuery = admin
+      .from("job_offers")
+      .select(
+        "id, application_id, job_id, status, version_id, is_active, salary, start_date, work_setup, work_mode, work_location_id, shift_start, shift_end, work_days, department, probation_days, financial_package, job_metadata, metadata"
+      );
+    if (negotiationRow.offer_id) {
+      offerQuery = offerQuery.eq("id", negotiationRow.offer_id);
+    } else {
+      offerQuery = offerQuery
+        .eq("application_id", negotiationRow.application_id)
+        .order("is_active", { ascending: false })
+        .order("version_id", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .limit(1);
+    }
+
+    const { data: activeOffer } = await offerQuery.maybeSingle<
+      ActiveOfferRecord & { financial_package?: Record<string, unknown> | null }
+    >();
+
+    if (!activeOffer) {
+      return { success: false, error: "Active job offer not found" };
+    }
+
+    const offerUpdates = applyNegotiatedTermToOffer(
+      activeOffer,
+      negotiationRow.target_field,
+      extractNegotiationPrimitive(negotiationRow.counter_value)
+    );
+
+    if (offerUpdates) {
+      const { error: offerUpdateError } = await admin
+        .from("job_offers")
+        .update({
+          ...offerUpdates,
+          updated_at: nowIso,
+        })
+        .eq("id", activeOffer.id);
+
+      if (offerUpdateError) {
+        return { success: false, error: offerUpdateError.message };
+      }
+    }
+
+    await admin
+      .from("job_offer_negotiations")
+      .update({
+        status: "approved",
+        resolved_at: nowIso,
+      })
+      .eq("id", negotiationId);
+
+    revalidatePath(`/hr/offers/${activeOffer.id}`);
+    revalidatePath(`/hr/offers/${negotiationRow.application_id}`);
+    revalidatePath(`/applicant/offer/${activeOffer.id}`);
+    revalidatePath(`/applicant/offer/${negotiationRow.application_id}`);
+    revalidatePath(`/applicant/offer/${negotiationRow.application_id}/sign`);
+    revalidatePath(`/applicant/applications/${negotiationRow.application_id}`);
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to accept counter-offer",
     };
   }
 }
@@ -573,14 +844,14 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
     const { data: currentOffer, error: offerError } = await admin
       .from("job_offers")
       .select(
-        "id, application_id, job_id, status, version_id, is_active, salary, start_date, work_setup, work_mode, work_location_id, shift_start, shift_end, work_days, department, probation_days, latest_docuseal_url, docuseal_submission_id, job_metadata, metadata"
+        "id, application_id, job_id, status, version_id, is_active, salary, start_date, work_setup, work_mode, work_location_id, shift_start, shift_end, work_days, department, probation_days, latest_docuseal_url, docuseal_submission_id, financial_package, job_metadata, metadata"
       )
       .eq("application_id", applicationId)
       .order("is_active", { ascending: false })
       .order("version_id", { ascending: false })
       .order("updated_at", { ascending: false })
       .limit(1)
-      .maybeSingle<ActiveOfferRecord>();
+      .maybeSingle<ActiveOfferRecord & { financial_package?: Record<string, unknown> | null }>();
 
     if (offerError) {
       return { success: false, error: offerError.message };
@@ -619,6 +890,10 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
     };
     delete existingMeta.docuseal_embed_src;
 
+    const existingPkg = {
+      ...((currentOffer.financial_package ?? {}) as Record<string, unknown>),
+    };
+
     const newTerms: Record<string, unknown> = {
       salary: currentOffer.salary ?? 0,
       start_date: currentOffer.start_date ?? null,
@@ -632,6 +907,7 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
       work_days: currentOffer.work_days ?? null,
       department: currentOffer.department ?? null,
       probation_days: currentOffer.probation_days ?? 180,
+      financial_package: existingPkg,
       job_metadata: existingMeta,
     };
 
@@ -654,6 +930,8 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
           const parsedSalary = Number(String(rawVal).replace(/[^0-9.-]/g, ""));
           if (Number.isFinite(parsedSalary)) {
             newTerms.salary = parsedSalary;
+            existingPkg.offered_salary = parsedSalary;
+            existingMeta.base_salary = parsedSalary;
           }
           break;
         }
@@ -744,10 +1022,13 @@ export async function sendRevisedOffer(applicationId: string): Promise<ActionRes
     // 6. Best-effort archive of old DocuSeal submission (logs errors, never fails)
     await archiveDocusealSubmissionBestEffort(currentOffer);
 
+    revalidatePath(`/hr/offers/${revisedOfferId}`);
     revalidatePath(`/hr/offers/${applicationId}`);
     revalidatePath(`/applicant/applications/${applicationId}`);
+    revalidatePath(`/applicant/offer/${revisedOfferId}`);
     revalidatePath(`/applicant/offer/${applicationId}`);
     revalidatePath(`/applicant/offer/${applicationId}/sign`);
+    revalidatePath(`/job-offer/${revisedOfferId}`);
     revalidatePath(`/job-offer/${applicationId}`);
 
     return { success: true };

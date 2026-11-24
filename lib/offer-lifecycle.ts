@@ -1,7 +1,11 @@
 import "server-only";
 
 import { getDocusealBaseUrl } from "@/lib/docuseal";
-import { notifyJobCreator, sendNotification } from "@/lib/notifications";
+import {
+  notifyJobCreator,
+  notifyTenantOfferDecisionMakers,
+  sendNotification,
+} from "@/lib/notifications";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 export type OfferLifecycleSource =
@@ -38,6 +42,9 @@ type ApplicationContext = {
   job_id: string | null;
   status: string | null;
   candidateName: string;
+  tenantId: string | null;
+  jobTitle: string | null;
+  jobCreatedBy: string | null;
 };
 
 function formatCandidateName(
@@ -86,7 +93,9 @@ async function resolveOfferAndApplication(
 
   const { data: appRow, error: appError } = await admin
     .from("job_applications")
-    .select("id, applicant_id, job_id, status, profiles!job_applications_applicant_id_fkey(first_name, last_name)")
+    .select(
+      "id, applicant_id, job_id, status, profiles!job_applications_applicant_id_fkey(first_name, last_name), job_postings!job_applications_job_id_fkey(tenant_id, title, created_by)"
+    )
     .eq("id", effectiveAppId)
     .maybeSingle();
 
@@ -121,6 +130,26 @@ async function resolveOfferAndApplication(
     : null;
   const profile = Array.isArray(rawProfile) ? rawProfile[0] ?? null : rawProfile;
 
+  const rawJobPosting = appRow
+    ? (appRow as {
+        job_postings?:
+          | { tenant_id?: string | null; title?: string | null; created_by?: string | null }
+          | Array<{ tenant_id?: string | null; title?: string | null; created_by?: string | null }>
+          | null;
+      }).job_postings
+    : null;
+  const jobPosting = Array.isArray(rawJobPosting) ? rawJobPosting[0] ?? null : rawJobPosting;
+
+  let resolvedTenantId = jobPosting?.tenant_id ?? null;
+  if (!resolvedTenantId && jobPosting?.created_by) {
+    const { data: creatorProfile } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", jobPosting.created_by)
+      .maybeSingle();
+    resolvedTenantId = creatorProfile?.tenant_id ?? null;
+  }
+
   const application: ApplicationContext | null = appRow
     ? {
         id: (appRow as { id: string }).id,
@@ -128,6 +157,9 @@ async function resolveOfferAndApplication(
         job_id: (appRow as { job_id: string | null }).job_id ?? null,
         status: (appRow as { status: string | null }).status ?? null,
         candidateName: formatCandidateName(profile),
+        tenantId: resolvedTenantId,
+        jobTitle: jobPosting?.title ?? null,
+        jobCreatedBy: jobPosting?.created_by ?? null,
       }
     : null;
 
@@ -298,13 +330,28 @@ export async function markOfferSigned({
   }
 
   if (application?.job_id) {
-    await notifyJobCreator({
-      jobId: application.job_id,
+    const kanbanUrl = `/hr/applicants?job=${application.job_id}&scope=all`;
+    const notifiedDecisionMakers = await notifyTenantOfferDecisionMakers({
+      tenantId: application.tenantId,
       type: "application_status_changed",
-      title: "Offer signed",
-      body: `${application.candidateName} signed the offer. Confirm hire.`,
-      link: "/hr/applicants",
+      title: `Contract Signed: ${application.candidateName} is Ready for Hire Confirmation`,
+      body: `${application.candidateName} signed the contract${application.jobTitle ? ` for ${application.jobTitle}` : ""}. Open the Applicants board to Confirm Hire.`,
+      actionUrl: kanbanUrl,
+      actionName: `offerLifecycle:${source}`,
     });
+
+    if (
+      !application.jobCreatedBy ||
+      !notifiedDecisionMakers.includes(application.jobCreatedBy)
+    ) {
+      await notifyJobCreator({
+        jobId: application.job_id,
+        type: "application_status_changed",
+        title: `Contract Signed: ${application.candidateName} is Ready for Hire Confirmation`,
+        body: `${application.candidateName} signed the offer. Confirm hire.`,
+        link: kanbanUrl,
+      });
+    }
   }
 
   return {
@@ -420,7 +467,7 @@ export async function markOfferDeclined({
       type: "application_status_changed",
       title: "Offer declined",
       body: `${application.candidateName} declined the offer.`,
-      link: "/hr/applicants",
+      link: `/hr/applicants?job=${application.job_id}&scope=all`,
     });
   }
 
@@ -549,7 +596,7 @@ export async function markOfferExpired({
       type: "application_status_changed",
       title: "Offer expired",
       body: `Offer for ${application.candidateName} has expired.`,
-      link: "/hr/applicants",
+      link: `/hr/applicants?job=${application.job_id}&scope=all`,
     });
   }
 

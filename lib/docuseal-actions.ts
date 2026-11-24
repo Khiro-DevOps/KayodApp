@@ -3,6 +3,7 @@
 import {
   createJobOfferTemplate,
   getDocusealBaseUrl,
+  OFFER_TEMPLATE_VERSION,
   REQUIRED_OFFER_TEMPLATE_FIELDS,
   type OfferLetterSettings,
 } from "@/lib/docuseal";
@@ -276,6 +277,7 @@ export async function getOrCreateDocusealEmbedSrc(jobOfferId: string): Promise<s
 
 type DocusealTemplatePayload = {
   id?: string | number;
+  name?: string | null;
   archived_at?: string | null;
   archived?: boolean | null;
   fields?: Array<{ name?: string | null }>;
@@ -340,8 +342,11 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
         const isArchived = Boolean(payload?.archived_at) || payload?.archived === true;
         const fieldNames = extractTemplateFieldNames(payload);
         const hasAllRequired = REQUIRED_OFFER_TEMPLATE_FIELDS.every((field) => fieldNames.has(field));
+        const hasCurrentVersion =
+          typeof payload?.name === "string" &&
+          payload.name.includes(OFFER_TEMPLATE_VERSION);
 
-        if (!isArchived && hasAllRequired) {
+        if (!isArchived && hasAllRequired && hasCurrentVersion) {
           isTemplateValid = true;
         }
       }
@@ -356,6 +361,7 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
         jobPostingId: job.id,
         docusealTemplateId: currentTemplateId,
         createdBy: job.created_by,
+        templateVersion: OFFER_TEMPLATE_VERSION,
       });
     }
     return currentTemplateId;
@@ -426,6 +432,7 @@ export async function ensureOfferTemplate(jobId: string): Promise<string> {
       jobPostingId: job.id,
       docusealTemplateId: newTemplateId,
       createdBy: job.created_by,
+      templateVersion: OFFER_TEMPLATE_VERSION,
     });
   }
 

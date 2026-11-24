@@ -11,6 +11,13 @@ import {
 } from "@/lib/offer-lifecycle";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { canHr } from "@/lib/rbac/permissions";
+import { getHrSessionContext } from "@/lib/rbac/server";
+import { normalizeJobLevel } from "@/lib/workforce-hierarchy";
+import {
+  getCurrentManilaWeekStart,
+  resolveInitialHireSchedule,
+} from "@/lib/schedule-policy";
 
 const HR_ROLES = new Set(["hr_manager", "admin", "hr"]);
 
@@ -20,6 +27,8 @@ type JobPostingRelation = {
   created_by?: string | null;
   tenant_id?: string | null;
   department_id?: string | null;
+  default_supervisor_id?: string | null;
+  target_job_level?: string | null;
   salary_min?: number | null;
   salary_max?: number | null;
   work_setup?: string | null;
@@ -192,9 +201,16 @@ export async function POST(_request: NextRequest, ctx: unknown) {
               created_by,
               tenant_id,
               department_id,
+              default_supervisor_id,
+              target_job_level,
               salary_min,
               salary_max,
               work_setup,
+              shift_start,
+              shift_end,
+              work_days,
+              schedule_type,
+              rest_days_type,
               offer_letter_settings
             )
           )
@@ -218,14 +234,17 @@ export async function POST(_request: NextRequest, ctx: unknown) {
     const normalizedOfferStatus = normalizeStatus(offer.status);
     const normalizedApplicationStatus = normalizeStatus(application.status);
 
+    const hrSession = await getHrSessionContext();
     const isHrRole = HR_ROLES.has(String(actorProfile?.role ?? ""));
-    const isCreator = Boolean(jobPosting?.created_by && jobPosting.created_by === user.id);
+    const canConfirmHire = hrSession
+      ? canHr(hrSession.hr_role, "hires:confirm", hrSession.is_tenant_owner)
+      : false;
     const sameTenant =
       !actorProfile?.tenant_id ||
       !jobPosting?.tenant_id ||
       actorProfile.tenant_id === jobPosting.tenant_id;
 
-    if ((!isHrRole && !isCreator) || !sameTenant) {
+    if (!isHrRole || !canConfirmHire || !sameTenant) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -362,23 +381,13 @@ export async function POST(_request: NextRequest, ctx: unknown) {
         jobMetadata.work_arrangement,
     );
 
-    const defaultWorkDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-    const extractedWorkDays =
-      Array.isArray(offer.work_days) && offer.work_days.length > 0
-        ? offer.work_days
-        : defaultWorkDays;
-
-    const extractedShiftStart =
-      offer.shift_start ??
-      (typeof metadata.shift_start === "string" ? metadata.shift_start : null) ??
-      (typeof jobMetadata.shift_start === "string" ? jobMetadata.shift_start : null) ??
-      "08:00";
-
-    const extractedShiftEnd =
-      offer.shift_end ??
-      (typeof metadata.shift_end === "string" ? metadata.shift_end : null) ??
-      (typeof jobMetadata.shift_end === "string" ? jobMetadata.shift_end : null) ??
-      "17:00";
+    const initialSchedule = resolveInitialHireSchedule({
+      offer,
+      jobPosting: jobPosting as Parameters<typeof resolveInitialHireSchedule>[0]["jobPosting"],
+    });
+    const extractedWorkDays = initialSchedule.workDays;
+    const extractedShiftStart = initialSchedule.shiftStart;
+    const extractedShiftEnd = initialSchedule.shiftEnd;
 
     const tenantId =
       jobPosting?.tenant_id ??
@@ -427,7 +436,16 @@ export async function POST(_request: NextRequest, ctx: unknown) {
       application_id: applicationId as string | null,
       job_offer_id: offer.id,
       department_id: jobPosting?.department_id ?? null,
-      reports_to: null,
+      reports_to:
+        (typeof jobMetadata.reports_to_employee_id === "string" && jobMetadata.reports_to_employee_id
+          ? jobMetadata.reports_to_employee_id
+          : null) ??
+        jobPosting?.default_supervisor_id ??
+        null,
+      job_level: normalizeJobLevel(
+        (typeof jobMetadata.target_job_level === "string" ? jobMetadata.target_job_level : null) ??
+          jobPosting?.target_job_level
+      ),
       job_title: jobTitle,
       employment_type: normalizeEmploymentType(jobMetadata.employment_type),
       employment_status: "active",
@@ -494,6 +512,43 @@ export async function POST(_request: NextRequest, ctx: unknown) {
         console.warn("[Confirm Hire] failed to rollback after employee upsert failure", rollbackErr);
       }
       return NextResponse.json({ error: employeeInsertError.message }, { status: 500 });
+    }
+
+    // Seed initial published schedule row for the current week (best-effort)
+    try {
+      const { data: empRow } = await admin
+        .from("employees")
+        .select("id")
+        .eq("profile_id", application.applicant_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (empRow?.id) {
+        const weekStart = getCurrentManilaWeekStart();
+        await admin.from("schedules").upsert(
+          {
+            employee_id: empRow.id,
+            week_start: weekStart,
+            shift_start: extractedShiftStart,
+            shift_end: extractedShiftEnd,
+            work_days: extractedWorkDays,
+            location:
+              extractedWorkMode === "remote"
+                ? "remote"
+                : extractedWorkMode === "hybrid"
+                  ? "hybrid"
+                  : "office",
+            notes: initialSchedule.workScheduleSummary,
+            is_published: true,
+            created_by: user.id,
+            updated_at: now,
+          },
+          { onConflict: "employee_id,week_start" }
+        );
+      }
+    } catch (schedErr) {
+      console.warn("[Confirm Hire] initial schedule upsert warning:", schedErr);
     }
 
     // 5) Cascade-close secondary open applications, pending interviews, and open offers

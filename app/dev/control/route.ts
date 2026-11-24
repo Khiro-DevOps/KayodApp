@@ -122,19 +122,70 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const wasHired = String(existingApp.status ?? "").toLowerCase() === "hired";
-  const isPreHireStage = String(stage).toLowerCase() !== "hired";
+  const normalizedTargetStage = String(stage).toLowerCase();
+  const wasHired = ["hired", "hire_confirmed"].includes(
+    String(existingApp.status ?? "").toLowerCase()
+  );
+  const isPreHireStage = !["hired", "hire_confirmed"].includes(normalizedTargetStage);
+  const shouldResetOfferChain = [
+    "applied",
+    "draft",
+    "submitted",
+    "screening",
+    "under_review",
+    "shortlisted",
+    "interview",
+    "interviewing",
+    "interview_scheduled",
+    "interviewed",
+    "offer",
+  ].includes(normalizedTargetStage);
+
+  const nowIso = new Date().toISOString();
+
+  // When moving back to 'offer' (default) or any pre-offer stage, clean up existing
+  // offer/contract rows so the UI no longer derives 'Offer Sent' / 'Signed' from stale records.
+  if (shouldResetOfferChain) {
+    if (wasHired && existingApp.applicant_id) {
+      await admin
+        .from("employees")
+        .delete()
+        .or(`application_id.eq.${applicationId},profile_id.eq.${existingApp.applicant_id}`);
+    } else {
+      await admin.from("employees").delete().eq("application_id", applicationId);
+    }
+
+    try {
+      await admin
+        .from("job_offer_negotiations")
+        .delete()
+        .eq("application_id", applicationId);
+    } catch {
+      // Non-blocking cleanup
+    }
+
+    await admin
+      .from("signed_documents")
+      .delete()
+      .eq("application_id", applicationId);
+
+    await admin
+      .from("job_offers")
+      .delete()
+      .eq("application_id", applicationId);
+  }
+
   const updatePayload: {
     status: Stage;
     contract_offer_id?: null;
     updated_at?: string;
   } = {
     status: stage,
+    updated_at: nowIso,
   };
 
-  if (wasHired && isPreHireStage) {
+  if (shouldResetOfferChain || (wasHired && isPreHireStage)) {
     updatePayload.contract_offer_id = null;
-    updatePayload.updated_at = new Date().toISOString();
   }
 
   const { data, error } = await admin
@@ -159,8 +210,8 @@ export async function POST(request: NextRequest) {
     await admin
       .from("profiles")
       .update({
-        role: "applicant",
-        updated_at: new Date().toISOString(),
+        role: "candidate",
+        updated_at: nowIso,
       })
       .eq("id", existingApp.applicant_id)
       .eq("role", "employee");

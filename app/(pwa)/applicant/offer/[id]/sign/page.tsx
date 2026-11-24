@@ -39,6 +39,8 @@ export default async function ApplicantOfferSignPage({
         signedPdfUrl={offer.signedPdfUrl}
         negotiations={offer.negotiations}
         isHR={offer.isHR}
+        leaveCreditsSummary={offer.leaveCreditsSummary}
+        hmoCoverageSummary={offer.hmoCoverageSummary}
       />
     </PageContainer>
   );

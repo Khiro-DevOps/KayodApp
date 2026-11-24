@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { JOB_INDUSTRIES } from "@/lib/constants";
 import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 import type { RequiredDocumentDraft } from "@/lib/pre-employment-actions";
@@ -12,6 +12,20 @@ import {
   createDefaultCompensationPackage,
   type PhilippineCompensationPackage,
 } from "@/lib/compensation-package";
+import {
+  filterAndSortSupervisorCandidates,
+  JOB_LEVEL_LABELS,
+  normalizeJobLevel,
+  type JobLevel,
+  type SupervisorCandidate,
+} from "@/lib/workforce-hierarchy";
+import {
+  clampWorkDaysPerWeek,
+  normalizeRestDaysPolicy,
+  normalizeShiftRotationPattern,
+  REST_DAYS_POLICY_OPTIONS,
+  SHIFT_ROTATION_PATTERN_OPTIONS,
+} from "@/lib/schedule-policy";
 
 const WORK_MODE_OPTIONS = [
   { value: "onsite", label: "On-Site" },
@@ -68,7 +82,16 @@ export type JobFormValues = {
   phHmoProvider?: string | null;
   scheduleType?: "fixed" | "flexible" | "rotating" | null;
   restDaysType?: "fixed" | "rotating" | "flexible" | null;
+  workDaysPerWeek?: number | null;
+  restDaysPolicy?: string | null;
+  shiftRotationPattern?: string | null;
   compensationPackage?: PhilippineCompensationPackage;
+  slots?: number | null;
+  onlineHiredCount?: number | null;
+  hiredWalkinCount?: number | null;
+  departmentId?: string | null;
+  defaultSupervisorId?: string | null;
+  targetJobLevel?: JobLevel | null;
 };
 
 type JobFormProps = {
@@ -83,6 +106,9 @@ type JobFormProps = {
   showOfferLetterSettings?: boolean;
   showPublicationStatus?: boolean;
   workLocations?: Array<{ id: string; name: string }>;
+  departments?: Array<{ id: string; name: string }>;
+  supervisorCandidates?: SupervisorCandidate[];
+  tenantId?: string | null;
 };
 
 function toCsvSkills(value?: string[] | string | null) {
@@ -102,14 +128,26 @@ export default function JobForm({
   showOfferLetterSettings = false,
   showPublicationStatus = false,
   workLocations = [],
+  departments = [],
+  supervisorCandidates = [],
+  tenantId = null,
 }: JobFormProps) {
-  const [scheduleType, setScheduleType] = useState<"fixed" | "rotating">(
+  const initialScheduleType: "fixed" | "rotating" =
     initialValues?.scheduleType === "rotating" || initialValues?.scheduleType === "flexible"
       ? "rotating"
-      : "fixed"
+      : "fixed";
+  const [scheduleType, setScheduleType] = useState<"fixed" | "rotating">(initialScheduleType);
+  const [restDaysPolicy, setRestDaysPolicy] = useState<string>(() =>
+    normalizeRestDaysPolicy(
+      initialValues?.restDaysPolicy ?? initialValues?.restDaysType,
+      initialScheduleType
+    )
   );
-  const [restDaysType, setRestDaysType] = useState<string>(
-    initialValues?.restDaysType ?? "rotating"
+  const [shiftRotationPattern, setShiftRotationPattern] = useState<string>(() =>
+    normalizeShiftRotationPattern(
+      initialValues?.shiftRotationPattern,
+      initialScheduleType
+    )
   );
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>(
     initialValues?.phMonthlyBasicSalary != null ? String(initialValues.phMonthlyBasicSalary) : ""
@@ -117,6 +155,131 @@ export default function JobForm({
   const [compensationPackage, setCompensationPackage] = useState<PhilippineCompensationPackage>(
     () => initialValues?.compensationPackage ?? createDefaultCompensationPackage()
   );
+
+  const [departmentId, setDepartmentId] = useState<string>(initialValues?.departmentId ?? "");
+  const [defaultSupervisorId, setDefaultSupervisorId] = useState<string>(
+    initialValues?.defaultSupervisorId ?? ""
+  );
+  const [phDepartment, setPhDepartment] = useState<string>(initialValues?.phDepartment ?? "");
+  const [phDepartmentDirty, setPhDepartmentDirty] = useState<boolean>(false);
+  const [phSupervisorName, setPhSupervisorName] = useState<string>(
+    initialValues?.phSupervisorName ?? ""
+  );
+  const [phSupervisorTitle, setPhSupervisorTitle] = useState<string>(
+    initialValues?.phSupervisorTitle ?? ""
+  );
+  const [showOtherDepartments, setShowOtherDepartments] = useState<boolean>(() => {
+    if (!initialValues?.defaultSupervisorId || !initialValues?.departmentId) return false;
+    const match = supervisorCandidates.find((c) => c.id === initialValues.defaultSupervisorId);
+    return Boolean(match && match.department_id !== initialValues.departmentId);
+  });
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [invalidFields, setInvalidFields] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (error) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [error]);
+
+  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    const missing: Array<{ name: string; label: string }> = [];
+
+    const checkRequired = (name: string, label: string) => {
+      const val = String(data.get(name) ?? "").trim();
+      if (!val) {
+        missing.push({ name, label });
+      }
+    };
+
+    checkRequired("title", "Job Title");
+    checkRequired("industry", "Industry");
+    checkRequired("target_job_level", "Position Job Level");
+    checkRequired("employment_type", "Employment Type");
+    checkRequired("work_location_id", "Office Branch");
+    checkRequired("description", "Job Description");
+
+    const rawSlots = Number(data.get("slots"));
+    if (!Number.isFinite(rawSlots) || rawSlots < minSlots) {
+      missing.push({ name: "slots", label: `Applicants Needed (minimum ${minSlots})` });
+    }
+
+    if (showOfferLetterSettings && !jobId) {
+      checkRequired("ph_employment_status", "Employment Status");
+      checkRequired("ph_start_date", "Expected Start Date");
+    }
+
+    if (missing.length > 0) {
+      e.preventDefault();
+      const nextInvalid: Record<string, boolean> = {};
+      for (const item of missing) {
+        nextInvalid[item.name] = true;
+      }
+      setInvalidFields(nextInvalid);
+      setClientError(
+        `Please complete the required field${missing.length > 1 ? "s" : ""}: ${missing
+          .map((m) => m.label)
+          .join(", ")}.`
+      );
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setInvalidFields({});
+    setClientError(null);
+  };
+
+  const displayError = clientError || error || null;
+  const fieldErrorRing = (fieldName: string) =>
+    invalidFields[fieldName]
+      ? "border-rose-500 ring-2 ring-rose-500/20"
+      : "border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20";
+
+  const onlineHiredCount = Math.max(0, initialValues?.onlineHiredCount ?? 0);
+  const hiredWalkinCount = Math.max(0, initialValues?.hiredWalkinCount ?? 0);
+  const minSlots = Math.max(1, onlineHiredCount + hiredWalkinCount);
+
+  const sortedSupervisorOptions = useMemo(() => {
+    const sorted = filterAndSortSupervisorCandidates(supervisorCandidates, {
+      currentEmployeeId: "",
+      tenantId,
+      departmentId: departmentId || null,
+      leadershipOnly: true,
+    });
+    if (!showOtherDepartments && departmentId) {
+      return sorted.filter((candidate) => candidate.department_id === departmentId);
+    }
+    return sorted;
+  }, [supervisorCandidates, tenantId, departmentId, showOtherDepartments]);
+
+  const handleDepartmentChange = (nextDepartmentId: string) => {
+    setDepartmentId(nextDepartmentId);
+    if (!phDepartmentDirty) {
+      const deptName = departments.find((d) => d.id === nextDepartmentId)?.name ?? "";
+      setPhDepartment(deptName);
+    }
+    if (!showOtherDepartments) {
+      setDefaultSupervisorId("");
+      setPhSupervisorName("");
+      setPhSupervisorTitle("");
+    }
+  };
+
+  const handleDefaultSupervisorChange = (nextSupervisorId: string) => {
+    setDefaultSupervisorId(nextSupervisorId);
+    if (!nextSupervisorId) {
+      setPhSupervisorName("");
+      setPhSupervisorTitle("");
+      return;
+    }
+    const sup = supervisorCandidates.find((c) => c.id === nextSupervisorId);
+    if (sup) {
+      setPhSupervisorName(sup.full_name);
+      setPhSupervisorTitle(sup.job_title?.trim() || JOB_LEVEL_LABELS[sup.job_level]);
+    }
+  };
 
   return (
     <PageContainer>
@@ -146,13 +309,21 @@ export default function JobForm({
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm font-medium text-rose-700">
-            {error}
+        {displayError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm font-medium text-rose-700"
+          >
+            {displayError}
           </div>
         )}
 
-        <form action={action} className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+        <form
+          action={action}
+          noValidate
+          onSubmit={handleFormSubmit}
+          className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start"
+        >
           {jobId ? <input type="hidden" name="job_id" value={jobId} /> : null}
 
           {/* Left 8 Columns: Role Basics, Work Setup & Branch, Shift & Break Policy, Description, Documents */}
@@ -175,7 +346,7 @@ export default function JobForm({
                   required
                   defaultValue={initialValues?.title ?? ""}
                   placeholder="e.g. Senior Frontend Developer"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("title")}`}
                 />
               </div>
 
@@ -189,7 +360,7 @@ export default function JobForm({
                     name="industry"
                     required
                     defaultValue={initialValues?.industry ?? ""}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("industry")}`}
                   >
                     <option value="">Select Industry</option>
                     {JOB_INDUSTRIES.map((industryOption) => (
@@ -201,17 +372,22 @@ export default function JobForm({
                 </div>
 
                 <div className="space-y-1">
-                  <label htmlFor="job_category" className="text-xs font-semibold text-slate-700">
-                    Position Level
+                  <label htmlFor="target_job_level" className="text-xs font-semibold text-slate-700">
+                    Position Job Level <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    id="job_category"
-                    name="job_category"
-                    type="text"
-                    defaultValue={initialValues?.jobCategory ?? ""}
-                    placeholder="e.g. Senior, Manager, Lead"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  />
+                  <select
+                    id="target_job_level"
+                    name="target_job_level"
+                    required
+                    defaultValue={normalizeJobLevel(initialValues?.targetJobLevel)}
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("target_job_level")}`}
+                  >
+                    {(["staff", "team_lead", "supervisor", "manager"] as const).map((level) => (
+                      <option key={level} value={level}>
+                        {JOB_LEVEL_LABELS[level]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -225,7 +401,7 @@ export default function JobForm({
                     name="employment_type"
                     required
                     defaultValue={initialValues?.employmentType ?? "full_time"}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("employment_type")}`}
                   >
                     <option value="" disabled>
                       Select employment type
@@ -267,6 +443,82 @@ export default function JobForm({
                     placeholder="e.g. 35000"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 pt-1">
+                <div className="space-y-1">
+                  <label htmlFor="slots" className="text-xs font-semibold text-slate-700">
+                    Applicants Needed (Slots) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="slots"
+                    name="slots"
+                    type="number"
+                    min={minSlots}
+                    required
+                    defaultValue={Math.max(minSlots, initialValues?.slots ?? 1)}
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("slots")}`}
+                  />
+                  {minSlots > 1 && (
+                    <p className="text-[11px] text-amber-700">
+                      Minimum {minSlots} ({onlineHiredCount} online + {hiredWalkinCount} walk-in hired)
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="department_id" className="text-xs font-semibold text-slate-700">
+                    Department
+                  </label>
+                  <select
+                    id="department_id"
+                    name="department_id"
+                    value={departmentId}
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="default_supervisor_id" className="text-xs font-semibold text-slate-700">
+                    Default Team Lead / Supervisor
+                  </label>
+                  <select
+                    id="default_supervisor_id"
+                    name="default_supervisor_id"
+                    value={defaultSupervisorId}
+                    onChange={(e) => handleDefaultSupervisorChange(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="">None (Assign during hire)</option>
+                    {sortedSupervisorOptions.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.full_name} — {JOB_LEVEL_LABELS[candidate.job_level]} ({candidate.job_title})
+                        {showOtherDepartments && candidate.department_name
+                          ? ` · ${candidate.department_name}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1.5 cursor-pointer pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={showOtherDepartments}
+                      onChange={(e) => setShowOtherDepartments(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-slate-600">
+                      Show supervisors from other departments
+                    </span>
+                  </label>
                 </div>
               </div>
             </section>
@@ -314,7 +566,7 @@ export default function JobForm({
                     name="work_location_id"
                     required
                     defaultValue={initialValues?.workLocationId ?? ""}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("work_location_id")}`}
                   >
                     <option value="">Select Branch</option>
                     {workLocations?.map((branch) => (
@@ -359,10 +611,18 @@ export default function JobForm({
                     name="schedule_type_radio"
                     value="rotating"
                     checked={scheduleType === "rotating"}
-                    onChange={() => setScheduleType("rotating")}
+                    onChange={() => {
+                      setScheduleType("rotating");
+                      if (restDaysPolicy === "fixed_weekends" && !initialValues?.restDaysPolicy) {
+                        setRestDaysPolicy("rotating_rest_days");
+                      }
+                      if (shiftRotationPattern === "fixed_shift_hours" && !initialValues?.shiftRotationPattern) {
+                        setShiftRotationPattern("weekly_rotation");
+                      }
+                    }}
                     className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  <span className="text-xs font-semibold text-slate-800">Rotating / Flexible Rest Days</span>
+                  <span className="text-xs font-semibold text-slate-800">Rotating / Shifting Schedule</span>
                 </label>
                 <input type="hidden" name="schedule_type" value={scheduleType} />
               </div>
@@ -413,56 +673,88 @@ export default function JobForm({
                     </div>
                   </div>
                   <input type="hidden" name="rest_days_type" value="fixed" />
+                  <input type="hidden" name="rest_days_policy" value="fixed_weekends" />
+                  <input type="hidden" name="shift_rotation_pattern" value="fixed_shift_hours" />
                 </div>
               ) : (
-                <div className="space-y-3 border-t border-slate-100 pt-3">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-700">Shift Start &amp; End Time</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          name="shift_start"
-                          defaultValue={initialValues?.shiftStart ?? "08:00"}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                        />
-                        <span className="text-xs text-slate-500">to</span>
-                        <input
-                          type="time"
-                          name="shift_end"
-                          defaultValue={initialValues?.shiftEnd ?? "17:00"}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                        />
-                      </div>
+                <div className="space-y-4 border-t border-slate-100 pt-4">
+                  {/* Row 1: Full-width Default / Initial Shift Start & End Time */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Default / Initial Shift Start &amp; End Time
+                    </label>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+                      <input
+                        type="time"
+                        name="shift_start"
+                        defaultValue={initialValues?.shiftStart ?? "08:00"}
+                        className="w-full min-w-[140px] rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                      <span className="text-center text-xs font-medium text-slate-500">to</span>
+                      <input
+                        type="time"
+                        name="shift_end"
+                        defaultValue={initialValues?.shiftEnd ?? "17:00"}
+                        className="w-full min-w-[140px] rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      />
                     </div>
+                  </div>
+
+                  {/* Row 2: Work Days / Week, Rest Days Policy, Shift Rotation Pattern */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-1">
-                      <label htmlFor="work_days_count" className="text-xs font-semibold text-slate-700">
+                      <label htmlFor="work_days_per_week" className="text-xs font-semibold text-slate-700">
                         Work Days / Week
                       </label>
                       <input
-                        id="work_days_count"
-                        name="work_days_count"
+                        id="work_days_per_week"
+                        name="work_days_per_week"
                         type="number"
-                        min="1"
-                        max="7"
-                        defaultValue={initialValues?.workDays?.length ? initialValues.workDays.length : 5}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                        min={1}
+                        max={7}
+                        defaultValue={clampWorkDaysPerWeek(
+                          initialValues?.workDaysPerWeek ?? initialValues?.workDays?.length,
+                          5
+                        )}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                       />
                     </div>
+
                     <div className="space-y-1">
-                      <label htmlFor="rest_days_type" className="text-xs font-semibold text-slate-700">
+                      <label htmlFor="rest_days_policy" className="text-xs font-semibold text-slate-700">
                         Rest Days Policy
                       </label>
                       <select
-                        id="rest_days_type"
-                        name="rest_days_type"
-                        value={restDaysType}
-                        onChange={(e) => setRestDaysType(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                        id="rest_days_policy"
+                        name="rest_days_policy"
+                        value={restDaysPolicy}
+                        onChange={(e) => setRestDaysPolicy(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                       >
-                        <option value="rotating">Rotating Rest Days</option>
-                        <option value="flexible">Flexible / Roster-Based</option>
-                        <option value="manager_assigned">Manager Assigned</option>
+                        {REST_DAYS_POLICY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="shift_rotation_pattern" className="text-xs font-semibold text-slate-700">
+                        Shift Rotation Pattern
+                      </label>
+                      <select
+                        id="shift_rotation_pattern"
+                        name="shift_rotation_pattern"
+                        value={shiftRotationPattern}
+                        onChange={(e) => setShiftRotationPattern(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        {SHIFT_ROTATION_PATTERN_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -487,7 +779,7 @@ export default function JobForm({
                   rows={4}
                   defaultValue={initialValues?.description ?? ""}
                   placeholder="Describe the role, responsibilities, and what the job entails..."
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  className={`w-full resize-none rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors ${fieldErrorRing("description")}`}
                 />
               </div>
 
@@ -563,7 +855,11 @@ export default function JobForm({
                     type="text"
                     id="ph_department"
                     name="ph_department"
-                    defaultValue={initialValues?.phDepartment ?? ""}
+                    value={phDepartment}
+                    onChange={(e) => {
+                      setPhDepartment(e.target.value);
+                      setPhDepartmentDirty(true);
+                    }}
                     placeholder="e.g. Engineering, Sales, HR"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                   />
@@ -578,7 +874,8 @@ export default function JobForm({
                       type="text"
                       id="ph_supervisor_name"
                       name="ph_supervisor_name"
-                      defaultValue={initialValues?.phSupervisorName ?? ""}
+                      value={phSupervisorName}
+                      onChange={(e) => setPhSupervisorName(e.target.value)}
                       placeholder="Full name"
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                     />
@@ -591,7 +888,8 @@ export default function JobForm({
                       type="text"
                       id="ph_supervisor_title"
                       name="ph_supervisor_title"
-                      defaultValue={initialValues?.phSupervisorTitle ?? ""}
+                      value={phSupervisorTitle}
+                      onChange={(e) => setPhSupervisorTitle(e.target.value)}
                       placeholder="Team Lead"
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                     />
@@ -643,7 +941,9 @@ export default function JobForm({
                     name="ph_start_date"
                     required={!jobId}
                     defaultValue={initialValues?.phStartDate ?? ""}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
+                    className={`w-full rounded-xl border bg-white px-3 py-2 text-xs text-slate-900 ${
+                      invalidFields.ph_start_date ? "border-rose-500 ring-2 ring-rose-500/20" : "border-slate-200"
+                    }`}
                   />
                 </div>
               </section>

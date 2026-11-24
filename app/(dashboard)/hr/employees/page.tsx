@@ -31,13 +31,7 @@ export default async function EmployeesPage() {
     .select(`
       *,
       profiles ( first_name, last_name, email, phone, avatar_url ),
-      departments ( name ),
-      supervisor:employees!reports_to (
-        id,
-        job_title,
-        job_level,
-        profile:profiles!profile_id ( first_name, last_name )
-      )
+      departments ( name )
     `)
     .order("created_at", { ascending: false });
   if (tenantId) {
@@ -222,6 +216,13 @@ export default async function EmployeesPage() {
   );
   const jobPostingByProfileId = await getJobPostingPositionsByProfileIds(allProfileIds);
 
+  const employeeById = new Map<string, Employee>();
+  for (const empRow of employees ?? []) {
+    if (empRow.id) {
+      employeeById.set(empRow.id, empRow);
+    }
+  }
+
   const directoryEmployees: DirectoryEmployee[] = (employees ?? []).map((emp) => {
     const p = emp.profiles as unknown as {
       first_name?: string;
@@ -345,34 +346,17 @@ export default async function EmployeesPage() {
           }
         : null;
 
-    const supRaw = (
-      emp as unknown as {
-        supervisor?:
-          | {
-              id?: string;
-              job_title?: string | null;
-              profile?:
-                | { first_name?: string | null; last_name?: string | null }
-                | Array<{ first_name?: string | null; last_name?: string | null }>
-                | null;
-            }
-          | Array<{
-              id?: string;
-              job_title?: string | null;
-              profile?:
-                | { first_name?: string | null; last_name?: string | null }
-                | Array<{ first_name?: string | null; last_name?: string | null }>
-                | null;
-            }>
-          | null;
-      }
-    ).supervisor;
-    const sup = Array.isArray(supRaw) ? supRaw[0] ?? null : supRaw ?? null;
-    const supProfile = sup?.profile
-      ? Array.isArray(sup.profile)
-        ? sup.profile[0] ?? null
-        : sup.profile
+    const supervisor = emp.reports_to
+      ? employeeById.get(emp.reports_to) ?? null
       : null;
+    const supProfileRaw = supervisor?.profiles as
+      | { first_name?: string | null; last_name?: string | null }
+      | Array<{ first_name?: string | null; last_name?: string | null }>
+      | null
+      | undefined;
+    const supProfile = Array.isArray(supProfileRaw)
+      ? supProfileRaw[0] ?? null
+      : supProfileRaw ?? null;
     const reportsToName = supProfile
       ? [supProfile.first_name, supProfile.last_name].filter(Boolean).join(" ").trim() ||
         null

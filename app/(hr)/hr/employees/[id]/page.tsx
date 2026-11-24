@@ -121,6 +121,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
     currentEmployeeId: employee.id,
     tenantId,
     departmentId: employee.department_id ?? null,
+    leadershipOnly: true,
   });
 
   const canManageWorkforce = canHr(

@@ -20,7 +20,14 @@ import {
 } from "lucide-react";
 import { JOB_LEVEL_LABELS, type JobLevel } from "@/lib/rbac/permissions";
 import { getJobLevelBadgeClasses } from "@/lib/workforce-hierarchy";
-import { saveWorkModeOverrideAction } from "./actions";
+import {
+  ALL_WEEK_DAYS_SHORT,
+  normalizeShortWorkDays,
+} from "@/lib/schedule-policy";
+import {
+  saveWorkModeOverrideAction,
+  updateDirectReportScheduleAction,
+} from "./actions";
 
 export interface TeamDirectReport {
   id: string;
@@ -38,6 +45,7 @@ export interface TeamDirectReport {
   shiftStart: string;
   shiftEnd: string;
   workDays: string[];
+  dailyWorkModes?: Record<string, "onsite" | "wfh" | "rest">;
   employmentStatus: string;
   departmentName: string | null;
 }
@@ -165,6 +173,20 @@ export default function TeamHubClient({
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"wfh" | "onsite">("wfh");
   const [overrideReason, setOverrideReason] = useState<string>("");
+  const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  const [editShiftStart, setEditShiftStart] = useState("08:00");
+  const [editShiftEnd, setEditShiftEnd] = useState("17:00");
+  const [editDailyModes, setEditDailyModes] = useState<
+    Record<string, "onsite" | "wfh" | "rest">
+  >({
+    Mon: "onsite",
+    Tue: "onsite",
+    Wed: "onsite",
+    Thu: "onsite",
+    Fri: "onsite",
+    Sat: "rest",
+    Sun: "rest",
+  });
 
   const selectedMember = useMemo(
     () => directReports.find((m) => m.id === selectedMemberId) ?? null,
@@ -175,11 +197,103 @@ export default function TeamHubClient({
     setSelectedMemberId(member.id);
     setOverrideMode(member.todayWorkMode === "wfh" ? "wfh" : "onsite");
     setOverrideReason(member.overrideReason ?? "");
+    setIsEditingSchedule(false);
+    setEditShiftStart((member.shiftStart || "08:00").slice(0, 5));
+    setEditShiftEnd((member.shiftEnd || "17:00").slice(0, 5));
+    const normalizedDays = normalizeShortWorkDays(
+      member.workDays.length > 0 ? member.workDays : DEFAULT_WEEK_DAYS,
+    );
+    const activeDays =
+      normalizedDays.length > 0
+        ? normalizedDays
+        : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const hybridOnsiteNormalized = normalizeShortWorkDays(member.hybridOnsiteDays);
+    const initialDaily: Record<string, "onsite" | "wfh" | "rest"> = {};
+    for (const day of ALL_WEEK_DAYS_SHORT) {
+      const saved = member.dailyWorkModes?.[day];
+      if (saved === "onsite" || saved === "wfh" || saved === "rest") {
+        initialDaily[day] = saved;
+      } else if (!activeDays.includes(day)) {
+        initialDaily[day] = "rest";
+      } else if (member.workMode === "wfh") {
+        initialDaily[day] = "wfh";
+      } else if (member.workMode === "hybrid" && hybridOnsiteNormalized.length > 0) {
+        initialDaily[day] = hybridOnsiteNormalized.includes(day) ? "onsite" : "wfh";
+      } else {
+        initialDaily[day] = "onsite";
+      }
+    }
+    setEditDailyModes(initialDaily);
   };
 
   const closeMemberModal = () => {
     setSelectedMemberId(null);
     setOverrideReason("");
+    setIsEditingSchedule(false);
+  };
+
+  const editWorkDays = useMemo(
+    () =>
+      ALL_WEEK_DAYS_SHORT.filter(
+        (day) => editDailyModes[day] === "onsite" || editDailyModes[day] === "wfh",
+      ),
+    [editDailyModes],
+  );
+
+  const setDayMode = (day: string, mode: "onsite" | "wfh" | "rest") => {
+    setEditDailyModes((prev) => ({
+      ...prev,
+      [day]: mode,
+    }));
+  };
+
+  const setAllActiveDaysMode = (mode: "onsite" | "wfh") => {
+    setEditDailyModes((prev) => {
+      const next: Record<string, "onsite" | "wfh" | "rest"> = { ...prev };
+      for (const day of ALL_WEEK_DAYS_SHORT) {
+        if (next[day] !== "rest") {
+          next[day] = mode;
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleSaveSchedule = () => {
+    if (!selectedMember) return;
+    if (editWorkDays.length < 1) {
+      toast.error("Select at least 1 working day.");
+      return;
+    }
+    if (editWorkDays.length > 6) {
+      toast.error(
+        "DOLE compliance requires at least 1 rest day per week (max 6 working days).",
+      );
+      return;
+    }
+
+    const hasOnsite = editWorkDays.some((d) => editDailyModes[d] === "onsite");
+    const hasWfh = editWorkDays.some((d) => editDailyModes[d] === "wfh");
+    const derivedWorkMode: "onsite" | "wfh" | "hybrid" =
+      hasOnsite && hasWfh ? "hybrid" : hasWfh ? "wfh" : "onsite";
+
+    startTransition(async () => {
+      const res = await updateDirectReportScheduleAction({
+        employeeId: selectedMember.id,
+        shiftStart: editShiftStart,
+        shiftEnd: editShiftEnd,
+        workDays: editWorkDays,
+        workMode: derivedWorkMode,
+        dailyWorkModes: editDailyModes,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to update weekly schedule.");
+        return;
+      }
+      toast.success(`Updated ${selectedMember.fullName}'s per-day shift & work mode roster.`);
+      setIsEditingSchedule(false);
+      router.refresh();
+    });
   };
 
   const handleSaveOverride = () => {
@@ -645,38 +759,218 @@ export default function TeamHubClient({
 
               {/* Shift & Weekly Schedule */}
               <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-[#1E1B4B]">
-                  <Clock className="h-4 w-4" />
-                  <span>Shift &amp; Weekly Schedule</span>
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#5d5a75]">Shift Hours</span>
-                  <span className="font-semibold text-[#171542]">
-                    {formatTime12h(selectedMember.shiftStart)} –{" "}
-                    {formatTime12h(selectedMember.shiftEnd)}
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="flex items-center gap-1.5 text-xs text-[#5d5a75]">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Weekly Work Days
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(selectedMember.workDays.length > 0
-                      ? selectedMember.workDays
-                      : DEFAULT_WEEK_DAYS
-                    ).map((day) => (
-                      <span
-                        key={day}
-                        className="rounded-lg border border-indigo-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1E1B4B]"
-                      >
-                        {SHORT_DAY_MAP[day.trim().toLowerCase()] ?? day}
-                      </span>
-                    ))}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#1E1B4B]">
+                    <Clock className="h-4 w-4" />
+                    <span>Shift &amp; Weekly Schedule</span>
                   </div>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => setIsEditingSchedule((prev) => !prev)}
+                    className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100/70 disabled:opacity-50"
+                  >
+                    {isEditingSchedule ? "Cancel Edit" : "Edit Shift & Rest Days"}
+                  </button>
                 </div>
+
+                {isEditingSchedule ? (
+                  <div className="space-y-3 rounded-xl border border-indigo-100 bg-white p-3.5">
+                    <div className="space-y-1.5">
+                      <span className="block text-[11px] font-semibold text-[#171542]">
+                        Quick Shift Presets
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "Morning 8AM–5PM", start: "08:00", end: "17:00" },
+                          { label: "Mid 2PM–11PM", start: "14:00", end: "23:00" },
+                          { label: "Graveyard 10PM–7AM", start: "22:00", end: "07:00" },
+                        ].map((preset) => {
+                          const isActive =
+                            editShiftStart === preset.start &&
+                            editShiftEnd === preset.end;
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => {
+                                setEditShiftStart(preset.start);
+                                setEditShiftEnd(preset.end);
+                              }}
+                              className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                                isActive
+                                  ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
+                                  : "border-slate-200 bg-slate-50 text-[#171542] hover:bg-slate-100"
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <label className="block space-y-1">
+                        <span className="text-[11px] font-semibold text-[#5d5a75]">
+                          Shift Start
+                        </span>
+                        <input
+                          type="time"
+                          disabled={isPending}
+                          value={editShiftStart}
+                          onChange={(e) => setEditShiftStart(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[11px] font-semibold text-[#5d5a75]">
+                          Shift End
+                        </span>
+                        <input
+                          type="time"
+                          disabled={isPending}
+                          value={editShiftEnd}
+                          onChange={(e) => setEditShiftEnd(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-[#171542]">
+                          Per-Day Work Mode &amp; Rest Days
+                        </span>
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-[#1E1B4B]">
+                          {editWorkDays.length} Work Days • {7 - editWorkDays.length} Rest Days
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => setAllActiveDaysMode("onsite")}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-[#171542] transition-colors hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          <Building2 className="h-3 w-3" />
+                          Set All Active Days Onsite
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => setAllActiveDaysMode("wfh")}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-[10px] font-semibold text-[#1E1B4B] transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                        >
+                          <Home className="h-3 w-3" />
+                          Set All Active Days WFH
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        {ALL_WEEK_DAYS_SHORT.map((day) => {
+                          const mode = editDailyModes[day] ?? "rest";
+                          return (
+                            <div
+                              key={day}
+                              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-2.5 py-1.5"
+                            >
+                              <span className="w-10 text-xs font-bold text-[#171542]">
+                                {day}
+                              </span>
+                              <div className="grid grid-cols-3 gap-1 flex-1 max-w-[240px]">
+                                {(
+                                  [
+                                    { value: "onsite", label: "Onsite" },
+                                    { value: "wfh", label: "WFH" },
+                                    { value: "rest", label: "Rest" },
+                                  ] as const
+                                ).map((opt) => {
+                                  const active = mode === opt.value;
+                                  const activeStyle =
+                                    opt.value === "onsite"
+                                      ? "border-[#1E1B4B] bg-[#1E1B4B] text-white"
+                                      : opt.value === "wfh"
+                                        ? "border-indigo-600 bg-indigo-600 text-white"
+                                        : "border-slate-500 bg-slate-600 text-white";
+                                  return (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      disabled={isPending}
+                                      onClick={() => setDayMode(day, opt.value)}
+                                      className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                                        active
+                                          ? activeStyle
+                                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-[#5d5a75]">
+                        Assign Onsite, WFH, or Rest per day (DOLE requires at least 1 rest day/week). Employee &amp; HR are notified with the daily split.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setIsEditingSchedule(false)}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={handleSaveSchedule}
+                        className="rounded-xl bg-[#1E1B4B] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#1E1B4B]/90 disabled:opacity-50"
+                      >
+                        {isPending ? "Saving..." : "Save Schedule"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#5d5a75]">Shift Hours</span>
+                      <span className="font-semibold text-[#171542]">
+                        {formatTime12h(selectedMember.shiftStart)} –{" "}
+                        {formatTime12h(selectedMember.shiftEnd)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="flex items-center gap-1.5 text-xs text-[#5d5a75]">
+                        <Calendar className="h-3.5 w-3.5" />
+                        Weekly Work Days
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(selectedMember.workDays.length > 0
+                          ? selectedMember.workDays
+                          : DEFAULT_WEEK_DAYS
+                        ).map((day) => (
+                          <span
+                            key={day}
+                            className="rounded-lg border border-indigo-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1E1B4B]"
+                          >
+                            {SHORT_DAY_MAP[day.trim().toLowerCase()] ?? day}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {selectedMember.workMode === "hybrid" ? (
                   <div className="space-y-1.5 border-t border-indigo-100 pt-2.5">

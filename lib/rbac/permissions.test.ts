@@ -40,6 +40,7 @@ describe("RBAC permissions", () => {
     expect(canHr("recruiter", "ats:manage")).toBe(true);
     expect(canHr("recruiter", "interviews:conduct")).toBe(true);
     expect(canHr("recruiter", "offers:draft")).toBe(true);
+    expect(canHr("recruiter", "offers:send_standard")).toBe(true);
 
     expect(canHr("recruiter", "offers:approve_and_send")).toBe(false);
     expect(canHr("recruiter", "hires:confirm")).toBe(false);
@@ -56,6 +57,7 @@ describe("RBAC permissions", () => {
 
     expect(canHr("payroll_officer", "jobs:view")).toBe(false);
     expect(canHr("payroll_officer", "ats:view")).toBe(false);
+    expect(canHr("payroll_officer", "offers:send_standard")).toBe(false);
     expect(canHr("payroll_officer", "workforce:manage")).toBe(false);
     expect(canHr("payroll_officer", "settings:view")).toBe(false);
   });
@@ -63,6 +65,7 @@ describe("RBAC permissions", () => {
   it("enforces hr_generalist boundaries", () => {
     expect(canHr("hr_generalist", "workforce:manage")).toBe(true);
     expect(canHr("hr_generalist", "leaves:final_approve")).toBe(true);
+    expect(canHr("hr_generalist", "offers:send_standard")).toBe(true);
     expect(canHr("hr_generalist", "offers:approve_and_send")).toBe(true);
     expect(canHr("hr_generalist", "hires:confirm")).toBe(true);
     expect(canHr("hr_generalist", "settings:view")).toBe(true);

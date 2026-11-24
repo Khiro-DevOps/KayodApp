@@ -19,6 +19,18 @@ import { useRouter } from "next/navigation";
 import type { OfferNegotiationRow } from "@/app/actions/offer-negotiation";
 import NegotiationPanel from "@/components/job-offer/NegotiationPanel";
 import SigningModal from "@/components/job-offer/SigningModal";
+import {
+  buildWorkScheduleSummary,
+  clampWorkDaysPerWeek,
+  formatRestDaysPolicyLabel,
+  formatScheduleTime12h,
+  formatScheduleTypeLabel,
+  formatShiftRotationPatternLabel,
+  normalizeRestDaysPolicy,
+  normalizeScheduleType,
+  normalizeShiftRotationPattern,
+  normalizeShortWorkDays,
+} from "@/lib/schedule-policy";
 
 interface OfferSummary {
   status: string;
@@ -55,8 +67,20 @@ interface OfferPageClientProps {
   signedPdfUrl?: string | null;
   negotiations?: OfferNegotiationRow[];
   isHR?: boolean;
+  canApproveNegotiations?: boolean;
   hrHeaderAction?: ReactNode;
   mode?: "default" | "overview" | "sign";
+  scheduleType?: string | null;
+  workDaysPerWeek?: number | null;
+  restDaysPolicy?: string | null;
+  shiftRotationPattern?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  workDays?: string[] | null;
+  workScheduleSummary?: string | null;
+  reportsTo?: string | null;
+  leaveCreditsSummary?: string | null;
+  hmoCoverageSummary?: string | null;
 }
 
 function formatDate(value: string) {
@@ -304,6 +328,18 @@ export default function OfferPageClient({
   isHR,
   hrHeaderAction,
   mode = "default",
+  scheduleType,
+  workDaysPerWeek,
+  restDaysPolicy,
+  shiftRotationPattern,
+  shiftStart,
+  shiftEnd,
+  workDays,
+  workScheduleSummary,
+  reportsTo,
+  leaveCreditsSummary,
+  hmoCoverageSummary,
+  canApproveNegotiations = true,
 }: OfferPageClientProps) {
   const router = useRouter();
   const signSectionRef = useRef<HTMLDivElement>(null);
@@ -493,6 +529,33 @@ export default function OfferPageClient({
   const semiMonthlyText = formatSalaryRange(semiMonthlyMin, semiMonthlyMax, currency);
   const formattedEmploymentType = formatEnumTitleCase(employmentType);
   const formattedWorkSetup = formatEnumTitleCase(workSetup);
+  const resolvedScheduleType = normalizeScheduleType(scheduleType);
+  const resolvedWorkDays = normalizeShortWorkDays(workDays);
+  const resolvedWorkDaysPerWeek = clampWorkDaysPerWeek(
+    workDaysPerWeek,
+    resolvedWorkDays.length > 0 ? resolvedWorkDays.length : 5
+  );
+  const resolvedRestDaysPolicy = normalizeRestDaysPolicy(restDaysPolicy, resolvedScheduleType);
+  const resolvedRotationPattern = normalizeShiftRotationPattern(
+    shiftRotationPattern,
+    resolvedScheduleType
+  );
+  const resolvedShiftStart = shiftStart || "08:00";
+  const resolvedShiftEnd = shiftEnd || "17:00";
+  const shiftHoursText = `${formatScheduleTime12h(resolvedShiftStart)} – ${formatScheduleTime12h(
+    resolvedShiftEnd
+  )}`;
+  const resolvedScheduleSummary =
+    workScheduleSummary?.trim() ||
+    buildWorkScheduleSummary({
+      scheduleType: resolvedScheduleType,
+      workDaysPerWeek: resolvedWorkDaysPerWeek,
+      restDaysPolicy: resolvedRestDaysPolicy,
+      shiftRotationPattern: resolvedRotationPattern,
+      shiftStart: resolvedShiftStart,
+      shiftEnd: resolvedShiftEnd,
+      workDays: resolvedWorkDays,
+    });
   const displayCandidateName = candidateFullName?.trim() || candidateFirstName;
   const isHired = normalizedApplicationStatus === "hired" || normalizedStatus === "hired";
   const pipelineHref = jobId
@@ -513,77 +576,139 @@ export default function OfferPageClient({
     </div>
   ) : null;
 
-  if (!isHR && mode !== "overview" && normalizedApplicationStatus === "pre_employment") {
+  if (
+    !isHR &&
+    mode !== "overview" &&
+    (normalizedApplicationStatus === "pre_employment" || (mode === "sign" && hasSigned))
+  ) {
     return (
-      <div className="w-full">
+      <div className="w-full pb-24 md:pb-8">
         {toastBanner}
-        <div className="mx-auto w-full max-w-[720px] px-4 py-6 pb-16 sm:px-6 sm:py-8">
-          <div className="space-y-6">
-            <section className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 p-6 shadow-sm sm:p-8">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md">
-                  <CheckCircle className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Signature recorded</p>
-                  <h1 className="mt-2 text-2xl font-semibold text-text-primary sm:text-3xl">
-                    Thank you! Your signature has been recorded.
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-sm text-text-secondary sm:text-base">
-                    Next, please complete your onboarding documents below.
-                  </p>
-                </div>
+        <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+          {/* Deep Royal Purple Header Banner */}
+          <section className="rounded-3xl bg-[#1E1B4B] px-6 py-7 text-white shadow-lg sm:px-8 sm:py-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-200">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Signature Recorded
+                </span>
+                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                  Offer Accepted &amp; Signed
+                </h1>
+                <p className="text-sm text-indigo-200 sm:text-base">
+                  {jobTitle} · {companyName}
+                </p>
               </div>
-            </section>
+              <div className="inline-flex items-center gap-2 self-start rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-medium text-indigo-100 backdrop-blur-md">
+                <span>Signed by {displayCandidateName}</span>
+              </div>
+            </div>
+          </section>
 
-            <section className="grid gap-4 sm:grid-cols-3">
-              {[
-                {
-                  title: "Document submission",
-                  body: "Upload the remaining pre-employment requirements at your own pace.",
-                },
-                {
-                  title: "Background verification",
-                  body: "HR will review the submitted documents once they arrive.",
-                },
-                {
-                  title: "Onboarding confirmation",
-                  body: "Complete the final checklist before your first day.",
-                },
-              ].map((item) => (
-                <div key={item.title} className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
-                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
-                    <CheckCircle className="h-5 w-5" />
+          {/* 2-Column Desktop / 1-Column Mobile Layout */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
+            {/* Left: Onboarding & Next Steps Tracker */}
+            <section className="lg:col-span-2 rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-sm space-y-5">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Onboarding &amp; Next Steps Tracker
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Your signed employment offer is locked in. Complete your pre-employment checklist to finalize your hire.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {[
+                  {
+                    step: "1. Offer & Contract Signed",
+                    status: "Completed",
+                    body: "Your digital signature is recorded and shared with HR.",
+                    done: true,
+                  },
+                  {
+                    step: "2. Pre-Employment Documents",
+                    status: "Up Next",
+                    body: "Upload your required government IDs and onboarding forms.",
+                    done: false,
+                  },
+                  {
+                    step: "3. HR Verification & Day 1",
+                    status: "Pending",
+                    body: "HR verifies your documents and confirms your start date.",
+                    done: false,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.step}
+                    className={`rounded-2xl border p-4 space-y-2 ${
+                      item.done
+                        ? "border-emerald-200 bg-emerald-50/60"
+                        : "border-slate-200 bg-slate-50/70"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                          item.done
+                            ? "bg-emerald-600 text-white"
+                            : "bg-indigo-100 text-[#1E1B4B]"
+                        }`}
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          item.done
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-indigo-100 text-[#1E1B4B]"
+                        }`}
+                      >
+                        {item.status}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-slate-900">{item.step}</h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">{item.body}</p>
                   </div>
-                  <h2 className="text-sm font-semibold text-text-primary">{item.title}</h2>
-                  <p className="mt-2 text-sm text-text-secondary">{item.body}</p>
-                </div>
-              ))}
+                ))}
+              </div>
             </section>
 
-            <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-text-primary">What happens next</h2>
-              <div className="mt-4 space-y-3 text-sm text-text-secondary">
-                <p>• Your signed offer is recorded and the HR team can now review the onboarding checklist.</p>
-                <p>• Any required documents can be uploaded from the pre-employment document page.</p>
-                <p>• You can return here anytime to check the status of your onboarding journey.</p>
+            {/* Right: Deep Purple What Happens Next Action Card */}
+            <section className="lg:col-span-1 rounded-3xl bg-[#1E1B4B] p-6 text-white shadow-md space-y-4">
+              <div>
+                <h2 className="text-base font-bold">What Happens Next</h2>
+                <p className="mt-1.5 text-xs text-indigo-200 leading-relaxed">
+                  Proceed to your onboarding checklist to submit pre-employment requirements, or return to your applications hub.
+                </p>
               </div>
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+
+              <div className="space-y-2.5 pt-1">
                 <button
                   type="button"
-                  onClick={() => router.push(`/applicant/applications/${encodeURIComponent(applicationId)}`)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                  onClick={() =>
+                    router.push(`/applicant/applications/${encodeURIComponent(applicationId)}`)
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#1E1B4B] shadow-xs transition-colors hover:bg-indigo-50"
                 >
-                  Open onboarding documents
+                  Open Onboarding Documents
                 </button>
+                <Link
+                  href="/applicant/applications"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+                >
+                  Back to My Applications
+                </Link>
                 {signedPdfUrl && (
                   <a
                     href={signedPdfUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm font-semibold text-text-primary transition-colors hover:bg-surface"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/20 px-4 py-2.5 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/30"
                   >
-                    Review signed contract
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Download Signed Contract
                   </a>
                 )}
               </div>
@@ -595,6 +720,10 @@ export default function OfferPageClient({
   }
 
   if (isHR && mode === "default") {
+    const hasPendingNegotiation =
+      normalizedStatus === "negotiating" ||
+      (negotiations ?? []).some((n) => n.status === "pending");
+
     return (
       <div className="w-full space-y-6">
         {toastBanner}
@@ -663,8 +792,23 @@ export default function OfferPageClient({
 
         {/* Responsive 12-Column Executive Workspace */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
-          {/* Left 8 Columns: Offer Terms, Negotiations, Contract & Signature Status */}
+          {/* Left 8 Columns: Pending Negotiation (if any), Offer Terms, Negotiations, Contract & Signature Status */}
           <div className="space-y-6 lg:col-span-8">
+            {hasPendingNegotiation && (
+              <NegotiationPanel
+                token={token}
+                applicationId={applicationId}
+                status={status}
+                negotiations={negotiations}
+                isHR
+                canApproveNegotiations={canApproveNegotiations}
+                signSectionRef={signSectionRef}
+                onAccept={handlePrepareSigningSession}
+                isPreparingSigningSession={isPreparingSigningSession}
+                acceptError={signingSessionError}
+              />
+            )}
+
             <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs">
               <div className="mb-4 flex items-center justify-between gap-2">
                 <h2 className="text-base font-bold text-slate-900">Offer Terms</h2>
@@ -682,20 +826,52 @@ export default function OfferPageClient({
                   label="Start Date"
                   value={startDate ? formatDate(startDate) : "To be confirmed"}
                 />
+                {reportsTo ? <TermItem label="Reporting Line" value={reportsTo} /> : null}
+                {leaveCreditsSummary ? (
+                  <TermItem label="Leave Credits" value={leaveCreditsSummary} />
+                ) : null}
+                {hmoCoverageSummary ? (
+                  <TermItem label="HMO Coverage" value={hmoCoverageSummary} />
+                ) : null}
+              </div>
+
+              <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E1B4B]">
+                    Work Schedule &amp; Shift Rotation
+                  </h3>
+                  <span className="rounded-full border border-indigo-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#1E1B4B]">
+                    {formatScheduleTypeLabel(resolvedScheduleType)}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">{resolvedScheduleSummary}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <TermItem label="Schedule Type" value={formatScheduleTypeLabel(resolvedScheduleType)} />
+                  <TermItem
+                    label="Shift Rotation Pattern"
+                    value={formatShiftRotationPatternLabel(resolvedRotationPattern)}
+                  />
+                  <TermItem label="Work Days / Week" value={`${resolvedWorkDaysPerWeek} Work Days / Week`} />
+                  <TermItem label="Rest Days Policy" value={formatRestDaysPolicyLabel(resolvedRestDaysPolicy)} />
+                  <TermItem label="Shift Hours" value={shiftHoursText} />
+                </div>
               </div>
             </section>
 
-            <NegotiationPanel
-              token={token}
-              applicationId={applicationId}
-              status={status}
-              negotiations={negotiations}
-              isHR
-              signSectionRef={signSectionRef}
-              onAccept={handlePrepareSigningSession}
-              isPreparingSigningSession={isPreparingSigningSession}
-              acceptError={signingSessionError}
-            />
+            {!hasPendingNegotiation && (
+              <NegotiationPanel
+                token={token}
+                applicationId={applicationId}
+                status={status}
+                negotiations={negotiations}
+                isHR
+                canApproveNegotiations={canApproveNegotiations}
+                signSectionRef={signSectionRef}
+                onAccept={handlePrepareSigningSession}
+                isPreparingSigningSession={isPreparingSigningSession}
+                acceptError={signingSessionError}
+              />
+            )}
 
             <section className="rounded-2xl border border-[#e6e4f0] bg-white p-6 shadow-xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -816,6 +992,18 @@ export default function OfferPageClient({
                     Semi-Monthly (15th &amp; 30th)
                   </span>
                 </div>
+                {leaveCreditsSummary ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                    <p className="text-xs font-medium text-slate-500">Leave Credits (SIL / VL / SL)</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{leaveCreditsSummary}</p>
+                  </div>
+                ) : null}
+                {hmoCoverageSummary ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                    <p className="text-xs font-medium text-slate-500">HMO Coverage</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{hmoCoverageSummary}</p>
+                  </div>
+                ) : null}
               </div>
             </section>
 
@@ -872,7 +1060,7 @@ export default function OfferPageClient({
   return (
     <div className="w-full">
       {toastBanner}
-      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-6 pb-16 sm:px-6 lg:px-8">
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-10 space-y-6">
         <div className="space-y-6">
           {mode === "overview" && (
             <div>
@@ -941,6 +1129,35 @@ export default function OfferPageClient({
                 <TermItem label="Work setup" value={formattedWorkSetup} />
                 <TermItem label="Department" value={department ?? "General"} />
                 <TermItem label="Start date" value={startDate ? formatDate(startDate) : "To be confirmed"} />
+                {reportsTo ? <TermItem label="Reporting line" value={reportsTo} /> : null}
+                {leaveCreditsSummary ? (
+                  <TermItem label="Leave credits" value={leaveCreditsSummary} />
+                ) : null}
+                {hmoCoverageSummary ? (
+                  <TermItem label="HMO coverage" value={hmoCoverageSummary} />
+                ) : null}
+              </div>
+
+              <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E1B4B]">
+                    Work Schedule &amp; Shift Rotation
+                  </h3>
+                  <span className="rounded-full border border-indigo-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#1E1B4B]">
+                    {formatScheduleTypeLabel(resolvedScheduleType)}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">{resolvedScheduleSummary}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <TermItem label="Schedule Type" value={formatScheduleTypeLabel(resolvedScheduleType)} />
+                  <TermItem
+                    label="Shift Rotation Pattern"
+                    value={formatShiftRotationPatternLabel(resolvedRotationPattern)}
+                  />
+                  <TermItem label="Work Days / Week" value={`${resolvedWorkDaysPerWeek} Work Days / Week`} />
+                  <TermItem label="Rest Days Policy" value={formatRestDaysPolicyLabel(resolvedRestDaysPolicy)} />
+                  <TermItem label="Shift Hours" value={shiftHoursText} />
+                </div>
               </div>
             </section>
           )}
@@ -1115,6 +1332,7 @@ export default function OfferPageClient({
                     status={status}
                     negotiations={negotiations}
                     isHR={isHR}
+                    canApproveNegotiations={canApproveNegotiations}
                     signSectionRef={signSectionRef}
                     onAccept={handlePrepareSigningSession}
                     isPreparingSigningSession={isPreparingSigningSession}

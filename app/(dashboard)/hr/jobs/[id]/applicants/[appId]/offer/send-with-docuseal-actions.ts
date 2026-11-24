@@ -6,11 +6,15 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { buildOfferPrefillFields, createDocusealSubmission } from "@/lib/docuseal";
 import { ensureOfferTemplate } from "@/lib/docuseal-actions";
+import { formatSupervisorDisplayLabel } from "@/lib/workforce-hierarchy";
+import { canHr } from "@/lib/rbac/permissions";
+import { notifyTenantOfferDecisionMakers } from "@/lib/notifications";
 
 type SendOfferWithDocuSealResult =
   | {
       success: true;
       url: string;
+      handoverNotified?: boolean;
     }
   | {
       success: false;
@@ -35,16 +39,22 @@ export async function sendOfferWithDocuSeal(
 
     const { data: callerProfile } = await admin
       .from("profiles")
-      .select("role")
+      .select("role, hr_role, is_tenant_owner, tenant_id")
       .eq("id", user.id)
       .maybeSingle();
-    if (!callerProfile || !["hr", "hr_manager", "admin"].includes(String(callerProfile.role))) {
+    if (
+      !callerProfile ||
+      !["hr", "hr_manager", "admin"].includes(String(callerProfile.role)) ||
+      !canHr(callerProfile.hr_role, "offers:send_standard", callerProfile.is_tenant_owner)
+    ) {
       throw new Error("Unauthorized");
     }
 
     const { data: job, error: jobError } = await admin
       .from("job_postings")
-      .select("id, tenant_id, title, location, currency, docuseal_template_id, created_by, offer_letter_settings")
+      .select(
+        "id, tenant_id, title, location, work_location_id, currency, employment_type, docuseal_template_id, created_by, target_job_level, default_supervisor_id, shift_start, shift_end, work_days, schedule_type, rest_days_type, default_supervisor:employees!default_supervisor_id(id, job_title, job_level, profile:profiles!profile_id(first_name, last_name)), offer_letter_settings"
+      )
       .eq("id", jobId)
       .maybeSingle();
 
@@ -89,14 +99,6 @@ export async function sendOfferWithDocuSeal(
       throw new Error(offerError?.message ?? "Job offer not found");
     }
 
-    const { data: branchRow } = offerRow.work_location_id
-      ? await admin
-          .from("office_branches")
-          .select("id, name, address")
-          .eq("id", offerRow.work_location_id)
-          .maybeSingle()
-      : { data: null };
-
     const { data: creatorProfile } = job.created_by
       ? await admin
           .from("profiles")
@@ -108,7 +110,42 @@ export async function sendOfferWithDocuSeal(
     const resolvedTenantId =
       (job as { tenant_id?: string | null }).tenant_id ||
       creatorProfile?.tenant_id ||
+      callerProfile?.tenant_id ||
       null;
+
+    const offerSettingsForLoc = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
+    const rawJobLoc = String(job.location ?? "").trim();
+    const isUuidJobLoc = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawJobLoc);
+    const resolvedBranchId =
+      offerRow.work_location_id ||
+      (job as { work_location_id?: string | null }).work_location_id ||
+      (typeof offerSettingsForLoc?.work_location_id === "string"
+        ? offerSettingsForLoc.work_location_id
+        : null) ||
+      (isUuidJobLoc ? rawJobLoc : null);
+
+    let branchRow: { id: string; name: string; address?: string | null } | null = null;
+    if (resolvedBranchId) {
+      const { data } = await admin
+        .from("office_branches")
+        .select("id, name, address")
+        .eq("id", resolvedBranchId)
+        .maybeSingle();
+      branchRow = data;
+    }
+    if (!branchRow && (!rawJobLoc || isUuidJobLoc) && resolvedTenantId) {
+      const workSetupNorm = String(offerRow.work_setup ?? offerRow.work_mode ?? "").toLowerCase();
+      if (workSetupNorm !== "remote" && workSetupNorm !== "wfh") {
+        const { data: primaryBranch } = await admin
+          .from("office_branches")
+          .select("id, name, address")
+          .eq("tenant_id", resolvedTenantId)
+          .order("is_primary", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        branchRow = primaryBranch;
+      }
+    }
 
     const { data: tenantRow } = resolvedTenantId
       ? await admin
@@ -124,6 +161,32 @@ export async function sendOfferWithDocuSeal(
     }
 
     const offerSettings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
+    const rawDefaultSupervisor = (job as { default_supervisor?: unknown }).default_supervisor;
+    const defaultSupervisor = Array.isArray(rawDefaultSupervisor)
+      ? rawDefaultSupervisor[0]
+      : rawDefaultSupervisor;
+    const defaultReportsToLabel = formatSupervisorDisplayLabel(
+      defaultSupervisor as Parameters<typeof formatSupervisorDisplayLabel>[0]
+    );
+    const settingsExpectedStartDate =
+      (typeof offerSettings?.expected_start_date === "string" && offerSettings.expected_start_date.trim()) ||
+      (typeof offerSettings?.phStartDate === "string" && offerSettings.phStartDate.trim()) ||
+      null;
+    const settingsSupervisorName =
+      (typeof offerSettings?.supervisor_name === "string" && offerSettings.supervisor_name.trim()) ||
+      (typeof offerSettings?.phSupervisorName === "string" && offerSettings.phSupervisorName.trim()) ||
+      null;
+    const settingsSupervisorTitle =
+      (typeof offerSettings?.supervisor_title === "string" && offerSettings.supervisor_title.trim()) ||
+      (typeof offerSettings?.phSupervisorTitle === "string" && offerSettings.phSupervisorTitle.trim()) ||
+      null;
+    const jobWithSched = job as typeof job & {
+      shift_start?: string | null;
+      shift_end?: string | null;
+      work_days?: string[] | null;
+      schedule_type?: string | null;
+      rest_days_type?: string | null;
+    };
     const templateId = await ensureOfferTemplate(jobId);
     const prefillFields = buildOfferPrefillFields(
       offerRow,
@@ -131,10 +194,58 @@ export async function sendOfferWithDocuSeal(
         title: job.title,
         currency: job.currency,
         location: job.location,
+        employment_type: (job as { employment_type?: string | null }).employment_type ?? null,
         company_name: resolvedCompanyName,
-        shift_start: typeof offerSettings?.shift_start === "string" ? offerSettings.shift_start : null,
-        shift_end: typeof offerSettings?.shift_end === "string" ? offerSettings.shift_end : null,
-        work_days: Array.isArray(offerSettings?.work_days) ? (offerSettings.work_days as string[]) : null,
+        shift_start:
+          jobWithSched.shift_start ??
+          (typeof offerSettings?.shift_start === "string" ? offerSettings.shift_start : null),
+        shift_end:
+          jobWithSched.shift_end ??
+          (typeof offerSettings?.shift_end === "string" ? offerSettings.shift_end : null),
+        work_days:
+          Array.isArray(jobWithSched.work_days) && jobWithSched.work_days.length > 0
+            ? jobWithSched.work_days
+            : Array.isArray(offerSettings?.work_days)
+              ? (offerSettings.work_days as string[])
+              : null,
+        schedule_type:
+          (typeof offerSettings?.schedule_type === "string" ? offerSettings.schedule_type : null) ??
+          jobWithSched.schedule_type ??
+          null,
+        rest_days_type: jobWithSched.rest_days_type ?? null,
+        rest_days_policy:
+          typeof offerSettings?.rest_days_policy === "string"
+            ? offerSettings.rest_days_policy
+            : null,
+        shift_rotation_pattern:
+          typeof offerSettings?.shift_rotation_pattern === "string"
+            ? offerSettings.shift_rotation_pattern
+            : null,
+        work_days_per_week:
+          typeof offerSettings?.work_days_per_week === "number"
+            ? offerSettings.work_days_per_week
+            : null,
+        reports_to: defaultReportsToLabel || null,
+        supervisor_name: settingsSupervisorName,
+        supervisor_title: settingsSupervisorTitle,
+        expected_start_date: settingsExpectedStartDate,
+        target_job_level: (job as { target_job_level?: string | null }).target_job_level ?? null,
+        pay_frequency:
+          typeof offerSettings?.phPayFrequency === "string"
+            ? offerSettings.phPayFrequency
+            : null,
+        hmo_provider:
+          typeof offerSettings?.hmo_provider === "string"
+            ? offerSettings.hmo_provider
+            : typeof offerSettings?.phHmoProvider === "string"
+              ? offerSettings.phHmoProvider
+              : null,
+        service_incentive_leave:
+          Number(offerSettings?.service_incentive_leave ?? offerSettings?.phServiceIncentiveLeave ?? 0) || null,
+        vacation_leave_days:
+          Number(offerSettings?.vacation_leave_days ?? offerSettings?.phVacationLeaveDays ?? 0) || null,
+        sick_leave_days:
+          Number(offerSettings?.sick_leave_days ?? offerSettings?.phSickLeaveDays ?? 0) || null,
       },
       candidate,
       branchRow
@@ -161,11 +272,25 @@ export async function sendOfferWithDocuSeal(
       throw new Error(`DocuSeal submission was created, but the job offer record could not be updated: ${updateError.message}`);
     }
 
+    const notifiedIds = await notifyTenantOfferDecisionMakers({
+      tenantId: resolvedTenantId,
+      excludeUserId: user.id,
+      type: "offer_letter",
+      title: `Offer Handover: Standard Offer Sent for ${candidateName} (${job.title || "Job Role"})`,
+      body: `A standard job offer was sent to ${candidateName} for ${job.title || "the role"} via DocuSeal. Review the outgoing contract for oversight.`,
+      actionUrl: `/hr/offers/${offerId}`,
+      senderId: user.id,
+      actionName: "sendOfferWithDocuSeal",
+    });
+
+    revalidatePath(`/hr/applicants`);
+    revalidatePath(`/hr/offers/${offerId}`);
     revalidatePath(`/hr/jobs/${jobId}/applicants`);
 
     return {
       success: true,
       url: submission.signingUrl,
+      handoverNotified: notifiedIds.length > 0,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to send offer via DocuSeal";

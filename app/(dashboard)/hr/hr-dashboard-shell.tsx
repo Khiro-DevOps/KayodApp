@@ -198,18 +198,11 @@ export default function HrDashboardShell({
           if (jobIds.length === 0) {
             setApplicantsBadge(null);
           } else {
-            const excludedStatuses = [
-              ...getStatusesForStage("hired"),
-              ...getStatusesForStage("closed"),
-              ...getStatusesForStage("offer").filter(
-                (status) => status.endsWith("_declined") || status.endsWith("_expired")
-              ),
-            ];
             const { count } = await supabase
               .from("job_applications")
               .select("id", { count: "exact", head: true })
               .in("job_id", jobIds)
-              .not("status", "in", `(${excludedStatuses.join(",")})`);
+              .eq("status", "applied");
             if (isMounted) {
               setApplicantsBadge((count ?? 0) > 0 ? String(count) : null);
             }

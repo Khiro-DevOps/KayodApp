@@ -7,6 +7,8 @@ import ApplicantsHubClient from "./applicants-list-client";
 import type { Interview, JobListing, JobPosting, Profile } from "@/lib/types";
 import Link from "next/link";
 import { effectiveRole, isHRRole } from "@/lib/roles";
+import { fetchJobHeadcountSummary } from "@/lib/job-headcount-server";
+import { formatHeadcountPillText } from "@/lib/job-headcount";
 
 type JobOfferRow = {
   id: string;
@@ -246,6 +248,7 @@ export default async function ApplicantsPage({
     }, {});
 
   const updatedApplications = applications;
+  const headcountSummary = currentJob ? await fetchJobHeadcountSummary(currentJob.id) : null;
 
   return (
     <PageContainer>
@@ -281,6 +284,8 @@ export default async function ApplicantsPage({
             interviews={interviewMap}
             jobOffers={jobOfferData}
             signedDocuments={signedDocumentMap}
+            isJobFull={headcountSummary?.isFull ?? false}
+            headcountLabel={headcountSummary ? formatHeadcountPillText(headcountSummary) : undefined}
           />
         </div>
       </div>

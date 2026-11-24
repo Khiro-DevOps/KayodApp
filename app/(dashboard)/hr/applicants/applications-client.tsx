@@ -281,6 +281,13 @@ export function ApplicationsHubClient({
     return initialList[0]?.id ?? "";
   });
 
+  useEffect(() => {
+    setScope(initialScope);
+    if (initialJobId && localJobs.some((j) => j.id === initialJobId)) {
+      setSelectedJobId(initialJobId);
+    }
+  }, [initialScope, initialJobId, localJobs]);
+
   // Ensure selectedJobId stays valid within current scope
   const effectiveSelectedJobId = useMemo(() => {
     if (selectedJobId && scopedJobs.some((j) => j.id === selectedJobId)) {

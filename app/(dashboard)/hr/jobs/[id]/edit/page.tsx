@@ -1,100 +1,80 @@
-"use client";
-
-import { useSearchParams } from "next/navigation";
-import { Suspense, use } from "react";
+import { notFound } from "next/navigation";
+import { requireHrPermission } from "@/lib/rbac/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { updateJob } from "../../actions";
-import { createClient } from "@/lib/supabase/client";
-import { useEffect, useState } from "react";
 import type { JobPosting } from "@/lib/types";
 import type { RequiredDocumentDraft } from "@/lib/pre-employment-actions";
 import { DEFAULT_REQUIRED_DOCUMENTS } from "@/lib/pre-employment-defaults";
 import JobForm, { type JobFormValues } from "@/components/job-form";
 import { parseCompensationPackage } from "@/lib/compensation-package";
+import {
+  fetchDepartmentsAndSupervisors,
+  fetchOnlineHiredCountsByJob,
+} from "@/lib/job-headcount-server";
 
-export default function EditJobPage({
+export default async function EditJobPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ error?: string }>;
 }) {
-  const { id } = use(params);
-  return (
-    <Suspense>
-      <EditJobForm jobId={id} />
-    </Suspense>
-  );
-}
+  const ctx = await requireHrPermission("jobs:manage");
+  const { id: jobId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const error = typeof resolvedSearchParams?.error === "string" ? resolvedSearchParams.error : null;
 
-function EditJobForm({ jobId }: { jobId: string }) {
-  const searchParams = useSearchParams();
-  const error = searchParams.get("error");
-  const [job, setJob] = useState<JobPosting | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [requiredDocuments, setRequiredDocuments] = useState<RequiredDocumentDraft[]>(DEFAULT_REQUIRED_DOCUMENTS);
-  const [workLocations, setWorkLocations] = useState<any[]>([]);
+  const admin = getAdminClient();
 
-  useEffect(() => {
-    async function fetchJob() {
-      const supabase = createClient();
-      const [{ data: jobData }, { data: documentData }, { data: branchesData }] = await Promise.all([
-        supabase
-          .from("job_postings")
-          .select("*")
-          .eq("id", jobId)
-          .single(),
-        supabase
-          .from("job_required_documents")
-          .select("id, name, is_required")
-          .eq("job_posting_id", jobId)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("office_branches")
-          .select("*")
-          .order("name", { ascending: true }),
-      ]);
+  const [
+    { data: jobData },
+    { data: documentData },
+    { data: branchesData },
+    { departments, supervisorCandidates },
+    onlineHiredMap,
+  ] = await Promise.all([
+    admin.from("job_postings").select("*").eq("id", jobId).maybeSingle(),
+    admin
+      .from("job_required_documents")
+      .select("id, name, is_required")
+      .eq("job_posting_id", jobId)
+      .order("created_at", { ascending: true }),
+    admin.from("office_branches").select("*").order("name", { ascending: true }),
+    fetchDepartmentsAndSupervisors(ctx.tenant_id),
+    fetchOnlineHiredCountsByJob([jobId]),
+  ]);
 
-      setJob(jobData as JobPosting | null);
-      setRequiredDocuments((documentData ?? []).length > 0 ? (documentData as RequiredDocumentDraft[]) : DEFAULT_REQUIRED_DOCUMENTS);
-      setWorkLocations(branchesData ?? []);
-      setLoading(false);
-    }
-    fetchJob();
-  }, [jobId]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="space-y-4 animate-pulse">
-          <div className="h-6 w-32 bg-gray-200 rounded" />
-          <div className="h-10 bg-gray-200 rounded-xl" />
-          <div className="h-24 bg-gray-200 rounded-xl" />
-          <div className="h-16 bg-gray-200 rounded-xl" />
-        </div>
-      </div>
-    );
+  if (!jobData) {
+    notFound();
   }
 
-  if (!job) {
-    return (
-      <div>
-        <p className="text-sm text-text-secondary">Job not found.</p>
-      </div>
-    );
-  }
+  const job = jobData as JobPosting & {
+    work_mode?: string | null;
+    work_location_id?: string | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    work_days?: string[] | null;
+    offer_letter_settings?: Record<string, unknown> | null;
+  };
 
-  const settings = ((job as { offer_letter_settings?: Record<string, unknown> | null }).offer_letter_settings ??
-    null) as Record<string, unknown> | null;
+  const requiredDocuments =
+    (documentData ?? []).length > 0
+      ? (documentData as RequiredDocumentDraft[])
+      : DEFAULT_REQUIRED_DOCUMENTS;
+
+  const settings = (job.offer_letter_settings ?? null) as Record<string, unknown> | null;
   const compensationPackage = parseCompensationPackage(settings?.compensation_package, settings);
 
   const initialValues: JobFormValues = {
     title: job.title,
     industry: job.industry ?? undefined,
     jobCategory: job.job_category ?? undefined,
-    workMode: (job as any).work_mode ?? (job as any).work_setup ?? undefined,
+    workMode: job.work_mode ?? job.work_setup ?? undefined,
     employmentType: job.employment_type ?? undefined,
-    workLocationId: (job as any).work_location_id ?? (job as any).location ?? undefined,
-    shiftStart: (job as any).shift_start ?? undefined,
-    shiftEnd: (job as any).shift_end ?? undefined,
-    workDays: (job as any).work_days ?? undefined,
+    workLocationId: job.work_location_id ?? job.location ?? undefined,
+    shiftStart: job.shift_start ?? undefined,
+    shiftEnd: job.shift_end ?? undefined,
+    workDays: job.work_days ?? undefined,
     salaryRange:
       job.salary_min != null || job.salary_max != null
         ? `${job.salary_min ?? ""}-${job.salary_max ?? ""}`.replace(/^-|-$|--/g, "")
@@ -103,21 +83,65 @@ function EditJobForm({ jobId }: { jobId: string }) {
     requirements: job.requirements ?? undefined,
     skills: job.required_skills ?? [],
     isPublished: job.is_published,
-    phDepartment: typeof settings?.phDepartment === "string" ? settings.phDepartment : undefined,
+    phDepartment:
+      typeof settings?.department === "string"
+        ? settings.department
+        : typeof settings?.phDepartment === "string"
+          ? settings.phDepartment
+          : undefined,
     phSupervisorName:
-      typeof settings?.phSupervisorName === "string" ? settings.phSupervisorName : undefined,
+      typeof settings?.supervisor_name === "string"
+        ? settings.supervisor_name
+        : typeof settings?.phSupervisorName === "string"
+          ? settings.phSupervisorName
+          : undefined,
     phSupervisorTitle:
-      typeof settings?.phSupervisorTitle === "string" ? settings.phSupervisorTitle : undefined,
+      typeof settings?.supervisor_title === "string"
+        ? settings.supervisor_title
+        : typeof settings?.phSupervisorTitle === "string"
+          ? settings.phSupervisorTitle
+          : undefined,
     phEmploymentStatus:
-      typeof settings?.phEmploymentStatus === "string" ? settings.phEmploymentStatus : undefined,
+      typeof settings?.employment_status === "string"
+        ? settings.employment_status
+        : typeof settings?.phEmploymentStatus === "string"
+          ? settings.phEmploymentStatus
+          : undefined,
     phProbationPeriodDays:
-      settings?.phProbationPeriodDays != null ? String(settings.phProbationPeriodDays) : undefined,
-    phStartDate: typeof settings?.phStartDate === "string" ? settings.phStartDate : undefined,
+      (settings?.probation_days ?? settings?.phProbationPeriodDays) != null
+        ? String(settings?.probation_days ?? settings?.phProbationPeriodDays)
+        : undefined,
+    phStartDate:
+      typeof settings?.expected_start_date === "string"
+        ? settings.expected_start_date
+        : typeof settings?.phStartDate === "string"
+          ? settings.phStartDate
+          : undefined,
     phMonthlyBasicSalary:
       settings?.phMonthlyBasicSalary != null ? String(settings.phMonthlyBasicSalary) : undefined,
-    scheduleType: ((job as any).schedule_type as JobFormValues["scheduleType"]) ?? undefined,
-    restDaysType: ((job as any).rest_days_type as JobFormValues["restDaysType"]) ?? undefined,
+    scheduleType: job.schedule_type ?? undefined,
+    restDaysType: job.rest_days_type ?? undefined,
+    workDaysPerWeek:
+      typeof settings?.work_days_per_week === "number"
+        ? settings.work_days_per_week
+        : Array.isArray(job.work_days) && job.work_days.length > 0
+          ? job.work_days.length
+          : undefined,
+    restDaysPolicy:
+      typeof settings?.rest_days_policy === "string"
+        ? settings.rest_days_policy
+        : job.rest_days_type ?? undefined,
+    shiftRotationPattern:
+      typeof settings?.shift_rotation_pattern === "string"
+        ? settings.shift_rotation_pattern
+        : undefined,
     compensationPackage,
+    slots: job.slots ?? 1,
+    onlineHiredCount: onlineHiredMap[jobId] ?? 0,
+    hiredWalkinCount: job.hired_walkin_count ?? 0,
+    departmentId: job.department_id ?? undefined,
+    defaultSupervisorId: job.default_supervisor_id ?? undefined,
+    targetJobLevel: job.target_job_level ?? "staff",
   };
 
   return (
@@ -130,7 +154,10 @@ function EditJobForm({ jobId }: { jobId: string }) {
       jobId={job.id}
       initialValues={initialValues}
       initialDocuments={requiredDocuments}
-      workLocations={workLocations}
+      workLocations={branchesData ?? []}
+      departments={departments}
+      supervisorCandidates={supervisorCandidates}
+      tenantId={ctx.tenant_id}
       showOfferLetterSettings
       showPublicationStatus
     />
