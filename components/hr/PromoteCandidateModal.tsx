@@ -29,7 +29,7 @@ export default function PromoteCandidateModal({
   candidateEmail,
   jobTitle,
   salary,
-  workLocationName = "Manila Main Headquarters",
+  workLocationName = "Office Branch",
   workMode = "onsite",
   shiftStart = "08:00:00",
   shiftEnd = "17:00:00",

@@ -37,8 +37,7 @@ export default async function EmployeeProfilePage() {
     .from("employees")
     .select(`
       *,
-      departments ( id, name ),
-      office_branches ( id, name, address, latitude, longitude, radius_meters )
+      departments ( id, name )
     `)
     .eq("profile_id", user.id)
     .maybeSingle();
@@ -48,8 +47,7 @@ export default async function EmployeeProfilePage() {
       .from("employees")
       .select(`
         *,
-        departments ( id, name ),
-        office_branches ( id, name, address, latitude, longitude, radius_meters )
+        departments ( id, name )
       `)
       .eq("email", user.email)
       .maybeSingle();
@@ -71,21 +69,27 @@ export default async function EmployeeProfilePage() {
   // If employee's work_location_id points to a branch not joined (or linkedJob has one), fetch via admin
   type EmployeeWithRelations = Employee & {
     departments?: Department | null;
-    office_branches?: OfficeBranch | OfficeBranch[] | null;
   };
   const empTyped = employee as EmployeeWithRelations | null;
-  let officeBranch: OfficeBranch | null = Array.isArray(empTyped?.office_branches)
-    ? empTyped.office_branches[0] ?? null
-    : empTyped?.office_branches ?? null;
+  let officeBranch: OfficeBranch | null = null;
 
-  const branchId = linkedJob?.workLocationId ?? employee?.work_location_id ?? null;
-  if (!officeBranch && branchId) {
+  const branchId = employee?.work_location_id ?? linkedJob?.workLocationId ?? null;
+  if (branchId) {
     const { data: branchRow } = await admin
       .from("office_branches")
       .select("id, name, address, latitude, longitude, radius_meters")
       .eq("id", branchId)
       .maybeSingle<OfficeBranch>();
-    officeBranch = branchRow ?? null;
+    if (branchRow) {
+      officeBranch = branchRow;
+    } else {
+      const { data: wlRow } = await admin
+        .from("work_locations")
+        .select("id, name, address, latitude, longitude, radius_meters")
+        .eq("id", branchId)
+        .maybeSingle<OfficeBranch>();
+      officeBranch = wlRow ?? null;
+    }
   }
 
   const sourceOfTruth = resolveEmployeeSourceOfTruth({

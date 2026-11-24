@@ -111,16 +111,6 @@ async function fetchDefaultBranchForTenant(
     return anyOfficeBranch;
   }
 
-  const { data: defaultWorkLoc } = await supabase
-    .from("work_locations")
-    .select("name, address, latitude, longitude, radius_meters")
-    .eq("is_default", true)
-    .limit(1)
-    .maybeSingle<BranchRow>();
-  if (hasValidCoords(defaultWorkLoc)) {
-    return defaultWorkLoc;
-  }
-
   const { data: anyWorkLoc } = await supabase
     .from("work_locations")
     .select("name, address, latitude, longitude, radius_meters")

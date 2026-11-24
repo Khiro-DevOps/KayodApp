@@ -261,12 +261,13 @@ export function resolveEmployeeSourceOfTruth({
     extractDeptName(jobPosting?.departments) ||
     offer?.department?.trim() ||
     "";
+  const empJoinedDept = extractDeptName(employee?.departments);
   const empDeptRaw =
-    employee?.department?.trim() || extractDeptName(employee?.departments) || "";
+    employee?.department?.trim() || empJoinedDept || "";
   const validEmpDept =
     empDeptRaw && empDeptRaw.toLowerCase() !== "general" ? empDeptRaw : "";
 
-  const department = postingDept || validEmpDept || empDeptRaw || "General";
+  const department = empJoinedDept || validEmpDept || postingDept || empDeptRaw || "General";
 
   const workSetup = resolveContractWorkSetup({
     offerWorkSetup: offer?.work_setup ?? offer?.work_mode,

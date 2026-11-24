@@ -7,10 +7,17 @@ import { updateEmployeeLocationAction } from "./employee-location-actions";
 import { reviewWfhLocationAction } from "@/app/(pwa)/employee/profile/wfh-actions";
 import type { OfficeBranch, EmployeeRemoteResidence, WorkSetup } from "@/lib/types";
 
+interface DepartmentOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   employeeId: string;
   initialWorkMode: WorkSetup | "onsite" | "wfh" | "hybrid";
   initialBranchId: string | null;
+  initialDepartmentId?: string | null;
+  departments?: DepartmentOption[];
   officeBranches: OfficeBranch[];
   remoteResidence: EmployeeRemoteResidence | null;
 }
@@ -19,6 +26,8 @@ export default function GeofenceControlCard({
   employeeId,
   initialWorkMode,
   initialBranchId,
+  initialDepartmentId = null,
+  departments = [],
   officeBranches,
   remoteResidence,
 }: Props) {
@@ -26,6 +35,10 @@ export default function GeofenceControlCard({
   const [isReviewPending, startReviewTransition] = useTransition();
   const [workMode, setWorkMode] = useState<string>(initialWorkMode || "onsite");
   const [selectedBranchId, setSelectedBranchId] = useState<string>(initialBranchId || "");
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>(
+    initialDepartmentId || (departments.length === 0 ? "__new__" : ""),
+  );
+  const [newDepartmentName, setNewDepartmentName] = useState<string>("");
   const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
@@ -35,6 +48,11 @@ export default function GeofenceControlCard({
   useEffect(() => {
     setSelectedBranchId(initialBranchId || "");
   }, [initialBranchId]);
+
+  useEffect(() => {
+    setSelectedDepartmentId(initialDepartmentId || (departments.length === 0 ? "__new__" : ""));
+    setNewDepartmentName("");
+  }, [initialDepartmentId, departments.length]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -138,6 +156,63 @@ export default function GeofenceControlCard({
       ) : null}
 
       <form onSubmit={handleSubmit} className="p-5 space-y-6">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-sm font-medium text-text-main">Department</label>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedDepartmentId === "__new__") {
+                  setSelectedDepartmentId(initialDepartmentId || "");
+                  setNewDepartmentName("");
+                } else {
+                  setSelectedDepartmentId("__new__");
+                }
+              }}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              {selectedDepartmentId === "__new__"
+                ? "Select existing department"
+                : "+ Create new department"}
+            </button>
+          </div>
+          {departments.length > 0 && selectedDepartmentId !== "__new__" ? (
+            <select
+              name="department_id"
+              value={selectedDepartmentId}
+              onChange={(e) => setSelectedDepartmentId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="">General (Unassigned)</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+              <option value="__new__">+ Create new department...</option>
+            </select>
+          ) : (
+            <div className="space-y-1.5">
+              <input
+                type="hidden"
+                name="department_id"
+                value={selectedDepartmentId === "__new__" ? "__new__" : ""}
+              />
+              <input
+                type="text"
+                name="new_department_name"
+                value={newDepartmentName}
+                onChange={(e) => setNewDepartmentName(e.target.value)}
+                placeholder="Type new department name (e.g. Engineering, Operations)..."
+                className="w-full rounded-lg border border-border bg-surface-bg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <p className="text-[11px] text-text-muted">
+                Leave blank to keep General, or enter a name to create &amp; assign the department on save.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-3">
           <label className="text-sm font-medium text-text-main">Work Setup</label>
           <select

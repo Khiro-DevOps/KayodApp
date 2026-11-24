@@ -57,17 +57,22 @@ export default async function EmployeesPage() {
     officeBranchesQuery = officeBranchesQuery.eq("tenant_id", tenantId);
   }
 
-  const [{ data: employees }, { data: officeBranches }, { data: remoteResidences }] = await Promise.all([
+  const [{ data: employees }, { data: officeBranches }, { data: workLocations }, { data: remoteResidences }] = await Promise.all([
     employeesQuery.returns<Employee[]>(),
     officeBranchesQuery.returns<Array<{ id: string; name: string }>>(),
+    admin.from("work_locations").select("id, name").returns<Array<{ id: string; name: string }>>(),
     admin
       .from("employee_remote_residences")
       .select("*"),
   ]);
 
-  const branchNameById = new Map(
-    (officeBranches ?? []).map((b) => [b.id, b.name])
-  );
+  const branchNameById = new Map<string, string>();
+  for (const wl of workLocations ?? []) {
+    if (wl.id && wl.name) branchNameById.set(wl.id, wl.name);
+  }
+  for (const b of officeBranches ?? []) {
+    if (b.id && b.name) branchNameById.set(b.id, b.name);
+  }
   const remoteResidenceByEmpId = new Map<
     string,
     {
@@ -231,7 +236,7 @@ export default async function EmployeesPage() {
     } | null;
     const dept = emp.departments as unknown as { name?: string } | null;
     const linkedJob = emp.profile_id ? jobPostingByProfileId[emp.profile_id] : undefined;
-    const effectiveBranchId = linkedJob?.workLocationId ?? emp.work_location_id ?? null;
+    const effectiveBranchId = emp.work_location_id ?? linkedJob?.workLocationId ?? null;
     const resolvedBranchName = effectiveBranchId
       ? branchNameById.get(effectiveBranchId) ?? null
       : null;
@@ -302,13 +307,19 @@ export default async function EmployeesPage() {
       }
     } else if (effectiveWorkMode === "hybrid") {
       if (hasPendingWfh) {
-        branchName = "Pending WFH Approval";
+        branchName = resolvedBranchName
+          ? `${resolvedBranchName} + WFH Pending`
+          : "Pending WFH Approval";
         branchNeedsSetup = true;
         branchStatus = "pending";
       } else if (resolvedBranchName && hasApprovedWfh) {
-        branchName = `${resolvedBranchName} + WFH`;
+        branchName = `${resolvedBranchName} + WFH Verified`;
         branchNeedsSetup = false;
         branchStatus = "ok";
+      } else if (resolvedBranchName) {
+        branchName = `${resolvedBranchName} + WFH To be set`;
+        branchNeedsSetup = true;
+        branchStatus = "setup";
       }
     } else if (effectiveWorkMode === "remote" || effectiveWorkMode === "wfh") {
       if (hasPendingWfh) {

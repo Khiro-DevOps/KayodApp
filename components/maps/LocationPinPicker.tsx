@@ -13,6 +13,7 @@ interface LocationPinPickerProps {
   latitude: number;
   longitude: number;
   radius?: number;
+  disabled?: boolean;
   onChange: (next: {
     address: string;
     latitude: number;
@@ -25,6 +26,7 @@ export default function LocationPinPicker({
   latitude,
   longitude,
   radius = 200,
+  disabled = false,
   onChange,
 }: LocationPinPickerProps) {
   const [search, setSearch] = useState("");
@@ -35,7 +37,7 @@ export default function LocationPinPicker({
   const [geoError, setGeoError] = useState("");
 
   useEffect(() => {
-    if (search.trim().length < 3) {
+    if (disabled || search.trim().length < 3) {
       return;
     }
     const timer = window.setTimeout(() => {
@@ -45,7 +47,7 @@ export default function LocationPinPicker({
         .catch(() => setResults([]));
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [disabled, search]);
 
   return (
     <div className="space-y-3">
@@ -55,7 +57,9 @@ export default function LocationPinPicker({
           longitude={longitude}
           radius={radius}
           target={target}
+          disabled={disabled}
           onLocationChange={(lat, lng, nextAddress) => {
+            if (disabled) return;
             const fallbackAddress = `Pinned Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
             onChange({
               latitude: lat,
@@ -69,18 +73,22 @@ export default function LocationPinPicker({
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
+              disabled={disabled}
               value={search}
               onChange={(e) => {
+                if (disabled) return;
                 const next = e.target.value;
                 setSearch(next);
                 if (next.trim().length < 3) setResults([]);
               }}
               placeholder="Search Philippine address..."
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-[#1E1B4B]/20"
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-[#1E1B4B]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
             />
             <button
               type="button"
+              disabled={disabled}
               onClick={() => {
+                if (disabled) return;
                 setGeoError("");
                 navigator.geolocation.getCurrentPosition(
                   (position) => {
@@ -99,13 +107,13 @@ export default function LocationPinPicker({
                   () => setGeoError("Location permission was denied."),
                 );
               }}
-              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#1E1B4B] shadow-sm transition-colors hover:bg-indigo-50"
+              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#1E1B4B] shadow-sm transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             >
               Use Current GPS Location
             </button>
           </div>
 
-          {results.length > 0 && (
+          {!disabled && results.length > 0 && (
             <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md">
               {results.map((result) => (
                 <button

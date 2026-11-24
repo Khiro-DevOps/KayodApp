@@ -25,9 +25,9 @@ export default async function EmployeeDetailPage({ params }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, tenant_id")
     .eq("id", user.id)
-    .single<Pick<Profile, "role">>();
+    .single<Pick<Profile, "role" | "tenant_id">>();
 
   const isHR = profile?.role === "hr_manager" || profile?.role === "admin";
   if (!isHR) redirect("/dashboard");
@@ -35,36 +35,27 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const admin = getAdminClient();
   const { data: employee } = await admin
     .from("employees")
-    .select(`*, profiles ( first_name, last_name, email )`)
+    .select(`*, profiles ( first_name, last_name, email ), departments ( id, name )`)
     .eq("id", employeeId)
     .single();
 
   if (!employee) redirect("/hr/employees");
 
-  const [{ data: workLocations }, { data: officeBranches }] = await Promise.all([
-    admin
-      .from("work_locations")
-      .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_default, created_at")
-      .order("name", { ascending: true }),
-    admin
-      .from("office_branches")
-      .select("*")
-      .order("name", { ascending: true })
-      .returns<OfficeBranch[]>(),
-  ]);
+  const { data: departmentsList } = await admin
+    .from("departments")
+    .select("id, name")
+    .order("name", { ascending: true });
 
-  const mergedBranches: OfficeBranch[] = (() => {
-    const byId = new Map<string, OfficeBranch>();
-    (workLocations ?? []).forEach((loc) => {
-      byId.set(loc.id, loc as unknown as OfficeBranch);
-    });
-    (officeBranches ?? []).forEach((branch) => {
-      if (!byId.has(branch.id)) {
-        byId.set(branch.id, branch);
-      }
-    });
-    return Array.from(byId.values());
-  })();
+  const tenantId = profile?.tenant_id ?? employee.tenant_id ?? null;
+  let branchesQuery = admin
+    .from("office_branches")
+    .select("*")
+    .order("name", { ascending: true });
+  if (tenantId) {
+    branchesQuery = branchesQuery.eq("tenant_id", tenantId);
+  }
+  const { data: officeBranches } = await branchesQuery.returns<OfficeBranch[]>();
+  const mergedBranches: OfficeBranch[] = officeBranches ?? [];
 
   const { data: remoteResidence } = await admin
     .from("employee_remote_residences")
@@ -164,13 +155,22 @@ export default async function EmployeeDetailPage({ params }: Props) {
   const linkedJob = employee.profile_id
     ? await getJobPostingPositionForProfile(employee.profile_id)
     : null;
+  const empDept = (employee as { departments?: { name?: string | null } | null }).departments;
   const sourceOfTruth = resolveEmployeeSourceOfTruth({
-    employee: { job_title: employee.job_title, work_mode: employee.work_mode },
+    employee: {
+      job_title: employee.job_title,
+      work_mode: employee.work_mode,
+      departments: empDept ?? null,
+    },
     offer: linkedJob
       ? { job_title: linkedJob.offerTitle, work_setup: linkedJob.offerWorkSetup }
       : null,
     jobPosting: linkedJob
-      ? { title: linkedJob.title, work_setup: linkedJob.jobWorkSetup }
+      ? {
+          title: linkedJob.title,
+          department: linkedJob.departmentName,
+          work_setup: linkedJob.jobWorkSetup,
+        }
       : null,
   });
   const resolvedRole = sourceOfTruth.position;
@@ -190,7 +190,7 @@ export default async function EmployeeDetailPage({ params }: Props) {
               {p ? `${p.first_name} ${p.last_name}` : "Employee Details"}
             </h1>
             <p className="text-sm text-text-muted">
-              {resolvedRole} • {employee.employee_number}
+              {resolvedRole} • {sourceOfTruth.department} • {employee.employee_number}
             </p>
           </div>
         </div>
@@ -210,6 +210,8 @@ export default async function EmployeeDetailPage({ params }: Props) {
           employeeId={employee.id}
           initialWorkMode={sourceOfTruth.workSetup as WorkSetup}
           initialBranchId={employee.work_location_id || linkedJob?.workLocationId || null}
+          initialDepartmentId={employee.department_id ?? linkedJob?.departmentId ?? null}
+          departments={departmentsList ?? []}
           officeBranches={mergedBranches}
           remoteResidence={remoteResidence || null}
         />

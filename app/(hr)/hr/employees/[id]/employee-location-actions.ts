@@ -31,6 +31,32 @@ export async function updateEmployeeLocationAction(formData: FormData) {
   const employeeId = formData.get("employee_id") as string;
   const workMode = formData.get("work_mode") as WorkSetup;
   const workLocationId = (formData.get("work_location_id") as string) || null;
+  const rawDepartmentId = ((formData.get("department_id") as string) || "").trim();
+  const newDepartmentName = ((formData.get("new_department_name") as string) || "").trim();
+
+  let resolvedDepartmentId: string | null =
+    rawDepartmentId && rawDepartmentId !== "__new__" ? rawDepartmentId : null;
+
+  if (newDepartmentName) {
+    const { data: existingDept } = await admin
+      .from("departments")
+      .select("id")
+      .ilike("name", newDepartmentName)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (existingDept?.id) {
+      resolvedDepartmentId = existingDept.id;
+    } else {
+      const { data: createdDept, error: deptErr } = await admin
+        .from("departments")
+        .insert({ name: newDepartmentName })
+        .select("id")
+        .single<{ id: string }>();
+      if (deptErr) throw new Error(deptErr.message);
+      resolvedDepartmentId = createdDept.id;
+    }
+  }
 
   const normalizedWorkMode =
     workMode === "wfh"
@@ -51,6 +77,7 @@ export async function updateEmployeeLocationAction(formData: FormData) {
     .update({
       work_mode: normalizedWorkMode,
       work_location_id: resolvedBranchId,
+      department_id: resolvedDepartmentId,
       updated_at: new Date().toISOString(),
     })
     .eq("id", employeeId)

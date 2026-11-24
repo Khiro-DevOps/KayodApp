@@ -114,7 +114,6 @@ function matchesSearch(job: ManageJobPosting, query: string) {
 
 export default function ManageJobsWorkspace({
   jobs,
-  companyName,
   nextCursor,
   currentCursor,
 }: ManageJobsWorkspaceProps) {
@@ -174,9 +173,6 @@ export default function ManageJobsWorkspace({
             <span className="material-symbols-outlined text-[28px]">work</span>
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              {companyName}
-            </p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
               Manage Jobs
             </h1>
@@ -203,7 +199,6 @@ export default function ManageJobsWorkspace({
   return (
     <div className="flex flex-col gap-6 font-sans">
       <PageHeroHeader
-        eyebrow={companyName}
         title="Manage Jobs"
         subtitle="Create, publish, and manage open roles across your workspace"
         actions={

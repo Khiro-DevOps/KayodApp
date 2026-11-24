@@ -168,14 +168,28 @@ export default function WfhResidenceCard({
           ) : null}
 
           {!showRelocationForm ? (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowRelocationForm(true)}
-                className="rounded-xl border border-[#1E1B4B]/20 bg-white px-4 py-2 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"
-              >
-                Request Location Change
-              </button>
+            <div className="space-y-3">
+              <LocationPinPicker
+                address={remoteResidence?.address ?? ""}
+                latitude={Number(remoteResidence?.latitude ?? 14.5995)}
+                longitude={Number(remoteResidence?.longitude ?? 120.9842)}
+                radius={
+                  (remoteResidence as { radius_meters?: number | null } | null)?.radius_meters ??
+                  remoteResidence?.geofence_radius_meters ??
+                  200
+                }
+                disabled={true}
+                onChange={() => {}}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowRelocationForm(true)}
+                  className="rounded-xl border border-[#1E1B4B]/20 bg-white px-4 py-2 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"
+                >
+                  Request to Change WFH Residence Location
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4 border-t border-slate-100 pt-4">

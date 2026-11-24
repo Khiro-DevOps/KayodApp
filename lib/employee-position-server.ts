@@ -258,7 +258,7 @@ export async function ensureValidWorkLocationId(
 
   const { data: officeBranch } = await admin
     .from("office_branches")
-    .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_default")
+    .select("id, tenant_id, name, address, latitude, longitude, radius_meters, is_primary")
     .eq("id", branchId)
     .maybeSingle<{
       id: string;
@@ -268,19 +268,20 @@ export async function ensureValidWorkLocationId(
       latitude: number | null;
       longitude: number | null;
       radius_meters: number | null;
-      is_default: boolean | null;
+      is_primary: boolean | null;
     }>();
 
   if (officeBranch) {
     const { error: upsertErr } = await admin.from("work_locations").upsert(
       {
         id: officeBranch.id,
+        tenant_id: officeBranch.tenant_id,
         name: officeBranch.name,
         address: officeBranch.address,
         latitude: Number(officeBranch.latitude ?? 14.5995),
         longitude: Number(officeBranch.longitude ?? 120.9842),
         radius_meters: officeBranch.radius_meters ?? 200,
-        is_default: officeBranch.is_default ?? false,
+        is_default: Boolean(officeBranch.is_primary),
       },
       { onConflict: "id" },
     );
@@ -290,12 +291,5 @@ export async function ensureValidWorkLocationId(
     console.error("ensureValidWorkLocationId: mirror to work_locations failed:", upsertErr.message);
   }
 
-  // Fallback to any existing work_locations row so FK never fails
-  const { data: fallbackWl } = await admin
-    .from("work_locations")
-    .select("id")
-    .limit(1)
-    .maybeSingle<{ id: string }>();
-
-  return fallbackWl?.id ?? null;
+  return null;
 }

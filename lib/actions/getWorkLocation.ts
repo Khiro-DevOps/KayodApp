@@ -13,13 +13,13 @@ export interface ClockInReferenceLocation {
 }
 
 const FALLBACK_DEFAULT_LOCATION: WorkLocation = {
-  id: "default-hq",
-  name: "Manila Main Headquarters",
-  address: "Padre Faura St, Ermita, Manila, Metro Manila",
-  latitude: 14.5794,
-  longitude: 120.9822,
+  id: "default-office",
+  name: "Office Branch",
+  address: "",
+  latitude: 14.5995,
+  longitude: 120.9842,
   radius_meters: 200,
-  is_default: true,
+  is_default: false,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
@@ -92,6 +92,36 @@ export async function getEmployeeWorkLocation(
     }
 
     if (emp?.work_location_id) {
+      const { data: officeBranch } = await supabase
+        .from("office_branches")
+        .select("id, name, address, latitude, longitude, radius_meters, is_primary, created_at, updated_at")
+        .eq("id", emp.work_location_id)
+        .maybeSingle<{
+          id: string;
+          name: string;
+          address: string | null;
+          latitude: number;
+          longitude: number;
+          radius_meters: number | null;
+          is_primary: boolean | null;
+          created_at: string;
+          updated_at: string;
+        }>();
+
+      if (officeBranch) {
+        return {
+          id: officeBranch.id,
+          name: officeBranch.name,
+          address: officeBranch.address ?? "",
+          latitude: Number(officeBranch.latitude),
+          longitude: Number(officeBranch.longitude),
+          radius_meters: Number(officeBranch.radius_meters ?? 200),
+          is_default: Boolean(officeBranch.is_primary),
+          created_at: officeBranch.created_at,
+          updated_at: officeBranch.updated_at,
+        };
+      }
+
       const { data: loc } = await supabase
         .from("work_locations")
         .select("*")
@@ -135,23 +165,40 @@ export async function getEmployeeWorkLocation(
     }
   }
 
-  // 3. Fallback to global default site in work_locations table
-  const { data: defaultSite } = await supabase
-    .from("work_locations")
-    .select("*")
-    .eq("is_default", true)
-    .maybeSingle<WorkLocation>();
+  // 3. Fallback to primary/latest office branch in office_branches
+  const { data: primaryBranch } = await supabase
+    .from("office_branches")
+    .select("id, name, address, latitude, longitude, radius_meters, is_primary, created_at, updated_at")
+    .order("is_primary", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{
+      id: string;
+      name: string;
+      address: string | null;
+      latitude: number;
+      longitude: number;
+      radius_meters: number | null;
+      is_primary: boolean | null;
+      created_at: string;
+      updated_at: string;
+    }>();
 
-  if (defaultSite) {
+  if (primaryBranch) {
     return {
-      ...defaultSite,
-      latitude: Number(defaultSite.latitude),
-      longitude: Number(defaultSite.longitude),
-      radius_meters: Number(defaultSite.radius_meters),
+      id: primaryBranch.id,
+      name: primaryBranch.name,
+      address: primaryBranch.address ?? "",
+      latitude: Number(primaryBranch.latitude),
+      longitude: Number(primaryBranch.longitude),
+      radius_meters: Number(primaryBranch.radius_meters ?? 200),
+      is_default: Boolean(primaryBranch.is_primary),
+      created_at: primaryBranch.created_at,
+      updated_at: primaryBranch.updated_at,
     };
   }
 
-  // 4. Ultimate fallback if DB has no seed records yet
+  // 4. Ultimate fallback if DB has no office branches yet
   return FALLBACK_DEFAULT_LOCATION;
 }
 
