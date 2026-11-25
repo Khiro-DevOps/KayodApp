@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
       { source: "/leaves", destination: "/employee/leaves", permanent: false },
       { source: "/leaves/new", destination: "/employee/leaves/new", permanent: false },
       { source: "/schedules", destination: "/employee/schedule", permanent: false },
+      { source: "/employee/home", destination: "/employee/dashboard", permanent: false },
     ];
   },
 };

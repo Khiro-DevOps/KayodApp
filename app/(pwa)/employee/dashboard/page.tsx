@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { Palmtree, Banknote, Calendar, CheckCircle2, ClipboardCheck } from "lucide-react";
+import { Palmtree, Banknote, Calendar, CheckCircle2, ClipboardCheck, ShieldAlert } from "lucide-react";
+import { getNteCountdown } from "@/lib/incident-reports";
 
 import { getEmployeeOnboardingProgress } from "@/app/actions/onboarding-documents";
 import { createClient } from "@/lib/supabase/server";
@@ -95,7 +96,7 @@ export default async function EmployeeDashboardPage({
   }
 
   const currentYear = new Date().getFullYear();
-  const [ledgerBalanceResult, balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult, linkedJob, latestScheduleResult] = await Promise.all([
+  const [ledgerBalanceResult, balanceResult, payslipResult, leaveResult, timeLogResult, onboardingResult, linkedJob, latestScheduleResult, openNteResult] = await Promise.all([
     admin
       .from("employee_leave_balances")
       .select("id, leave_type, year, entitled_days, used_days, pending_days, eligibility, is_active")
@@ -140,6 +141,19 @@ export default async function EmployeeDashboardPage({
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    admin
+      .from("incident_reports")
+      .select("id, case_number, offense_category, nte_deadline_at")
+      .eq("employee_id", employee.id)
+      .eq("status", "nte_issued")
+      .order("nte_deadline_at", { ascending: true })
+      .limit(1)
+      .maybeSingle<{
+        id: string;
+        case_number: string;
+        offense_category: string;
+        nte_deadline_at: string | null;
+      }>(),
   ]);
 
   const sourceOfTruth = resolveEmployeeSourceOfTruth({
@@ -243,6 +257,34 @@ export default async function EmployeeDashboardPage({
         </PwaHeroBanner>
 
         <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 sm:px-6 lg:px-10">
+
+        {openNteResult.data && (() => {
+          const openNte = openNteResult.data;
+          const countdown = getNteCountdown(openNte.nte_deadline_at);
+          return (
+            <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1E1B4B] text-amber-300">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#1E1B4B]">
+                    Action Required · Notice to Explain ({openNte.case_number})
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                    {openNte.offense_category} — {countdown.label}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/employee/notices?case=${openNte.id}`}
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#1E1B4B] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#2d2b68]"
+              >
+                Respond Now
+              </Link>
+            </div>
+          );
+        })()}
 
         {showWelcome && (
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm font-medium text-emerald-900 shadow-sm">

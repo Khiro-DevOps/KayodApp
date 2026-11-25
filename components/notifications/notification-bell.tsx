@@ -311,7 +311,7 @@ export default function NotificationBell({ userId }: { userId?: string | null })
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white shadow-xl rounded-2xl border border-gray-100 z-50 overflow-hidden text-gray-900">
+        <div className="fixed inset-x-3 top-[78px] sm:inset-x-auto sm:top-full sm:absolute sm:right-0 sm:mt-4 sm:w-96 bg-white shadow-xl rounded-2xl border border-gray-100 z-50 overflow-hidden text-gray-900">
           {/* Header Bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-2">

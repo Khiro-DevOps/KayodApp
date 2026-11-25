@@ -16,8 +16,18 @@ import {
   toggleShortBreakAction,
   updateLiveAttendanceLocationAction,
 } from "./actions";
+import { cancelUndertimeRequestAction } from "@/app/actions/undertime";
 import WorkspaceMap from "@/components/schedule/workspace-map";
+import ApplyUndertimeModal from "@/components/undertime/ApplyUndertimeModal";
+import PwaHeroBanner from "@/components/pwa/PwaHeroBanner";
 import { validateAndClassifyOvertimeRequest } from "@/lib/shift-calculations";
+import {
+  computeLeaveOffsetDays,
+  formatTime12h as formatUndertime12h,
+  formatUndertimeTypeLabel,
+  isTodayPht,
+  type UndertimeRequestSummary,
+} from "@/lib/undertime";
 
 const CORRECTION_TYPES = [
   "Accidental Clock-Out",
@@ -27,6 +37,24 @@ const CORRECTION_TYPES = [
 ] as const;
 
 const UNDO_WINDOW_MS = 5 * 60 * 1000;
+
+export interface WeeklyShiftRow {
+  dateStr: string;
+  dayShort: string;
+  dayFull: string;
+  dayNumber: number;
+  isToday: boolean;
+  isPast: boolean;
+  isOff: boolean;
+  isOnsite: boolean;
+  dayMode: "onsite" | "wfh" | "off";
+  leaveType: string | null;
+  shiftTitle: string;
+  statusLabel: string;
+  statusStyle: string;
+  formattedShiftRange: string;
+  scheduledOut: string;
+}
 
 export interface RecentAttendanceLog {
   id: string;
@@ -104,11 +132,19 @@ function formatMmSs(totalSeconds: number): string {
 
 interface ScheduleClientProps {
   employeeId: string;
+  hasSupervisor: boolean;
+  availableVlCredits: number;
   workModel: "onsite" | "wfh" | "hybrid";
+  workSetupLabel: string;
+  todayDailyModelLabel: string;
   todayWorkModel?: "onsite" | "wfh" | "off";
   todayApprovedLeave?: { leave_type: string } | null;
   overtimeRequests?: OvertimeRequestSummary[];
   workModeRequests?: WorkModeRequestSummary[];
+  undertimeRequests?: UndertimeRequestSummary[];
+  weekDays: WeeklyShiftRow[];
+  weekRangeLabel: string;
+  isSchedulePublished: boolean;
   workDays?: string[];
   dailyWorkModes?: Record<string, string> | null;
   isTodayOnsite: boolean;
@@ -123,25 +159,19 @@ interface ScheduleClientProps {
   correctionRequests?: CorrectionRequestSummary[];
   todayDateStr?: string;
   allowedRadiusMeters?: number;
+  locationName: string;
+  locationAddress: string;
   targetOfficeCoords: { lat: number; lng: number; name: string } | null;
   geofenceError?: string | null;
   remoteAddress: string;
 }
 
 function formatTime12h(timeStr: string) {
-  if (!timeStr) return "08:00 AM";
-  const [hStr, mStr] = timeStr.split(":");
-  let h = parseInt(hStr, 10);
-  if (isNaN(h)) return timeStr;
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  const paddedH = h < 10 ? `0${h}` : `${h}`;
-  return `${paddedH}:${mStr || "00"} ${ampm}`;
+  return formatUndertime12h(timeStr);
 }
 
-// Calculate distance in km between two lat/lng points using Haversine formula
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the Earth in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -151,7 +181,7 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10; // 1 decimal place
+  return Math.round(R * c * 10) / 10;
 }
 
 function toPhtTimeInput(iso: string | null | undefined, fallback: string): string {
@@ -169,13 +199,66 @@ function toPhtTimeInput(iso: string | null | undefined, fallback: string): strin
   return `${hh}:${mm}`;
 }
 
+function getUndertimeBadge(req: UndertimeRequestSummary) {
+  if (req.status === "pending_supervisor") {
+    return {
+      label: `Pending Supervisor (${req.undertime_minutes}m)`,
+      cls: "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+  if (req.status === "pending_hr") {
+    return {
+      label: `Pending HR (${req.undertime_minutes}m)`,
+      cls: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    };
+  }
+  if (req.status === "approved") {
+    if (req.undertime_type === "late_in" && req.requested_in) {
+      return {
+        label: `Approved In: ${formatUndertime12h(req.requested_in)}`,
+        cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    }
+    if (
+      req.undertime_type === "half_day_first" ||
+      req.undertime_type === "half_day_second"
+    ) {
+      return {
+        label: `Approved ${formatUndertimeTypeLabel(req.undertime_type)}`,
+        cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    }
+    return {
+      label: `Approved Out: ${formatUndertime12h(req.requested_out)}`,
+      cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (req.status === "rejected") {
+    return {
+      label: "Undertime Rejected",
+      cls: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  return {
+    label: "Cancelled",
+    cls: "border-slate-200 bg-slate-100 text-slate-600",
+  };
+}
+
 export default function ScheduleClient({
-  employeeId,
+  hasSupervisor,
+  availableVlCredits,
   workModel,
+  workSetupLabel,
+  todayDailyModelLabel,
   todayWorkModel = "onsite",
   todayApprovedLeave = null,
   overtimeRequests = [],
   workModeRequests = [],
+  undertimeRequests = [],
+  weekDays,
+  weekRangeLabel,
+  isSchedulePublished,
   workDays = [],
   dailyWorkModes = null,
   isTodayOnsite,
@@ -190,6 +273,8 @@ export default function ScheduleClient({
   correctionRequests = [],
   todayDateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   allowedRadiusMeters = 100,
+  locationName,
+  locationAddress,
   targetOfficeCoords,
   geofenceError,
   remoteAddress,
@@ -201,12 +286,33 @@ export default function ScheduleClient({
   const [todayCompletedLog, setTodayCompletedLog] = useState<RecentAttendanceLog | null>(
     initialTodayCompletedLog
   );
-  const [localRequests, setLocalRequests] = useState<CorrectionRequestSummary[]>(correctionRequests);
+  const [localRequests, setLocalRequests] =
+    useState<CorrectionRequestSummary[]>(correctionRequests);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [elapsedText, setElapsedText] = useState<string>("");
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [optimisticBreakStartIso, setOptimisticBreakStartIso] = useState<string | null>(null);
+
+  // Mobile map collapse state (collapsed by default on <768px, expanded on desktop)
+  const [isMapExpanded, setIsMapExpanded] = useState(true);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsMapExpanded(false);
+    }
+  }, []);
+
+  // Mobile "+ Time Request" menu
+  const [showMobileRequestMenu, setShowMobileRequestMenu] = useState(false);
+
+  // Undertime Request state & modal
+  const [localUndertimeRequests, setLocalUndertimeRequests] =
+    useState<UndertimeRequestSummary[]>(undertimeRequests);
+  const [showUndertimeModal, setShowUndertimeModal] = useState(false);
+  const [utModalDate, setUtModalDate] = useState(todayDateStr);
+  const [utModalScheduledOut, setUtModalScheduledOut] = useState(shiftEnd);
+  const [utLockDate, setUtLockDate] = useState(false);
+  const [cancellingUtId, setCancellingUtId] = useState<string | null>(null);
 
   // Clock-Out confirmation modal state
   const [showClockOutModal, setShowClockOutModal] = useState(false);
@@ -216,13 +322,18 @@ export default function ScheduleClient({
   const [correctionLogId, setCorrectionLogId] = useState<string | null>(null);
   const [correctionDate, setCorrectionDate] = useState(todayDateStr);
   const [correctionType, setCorrectionType] = useState<string>("Wrong Clock-In/Out Time");
-  const [correctionClockInTime, setCorrectionClockInTime] = useState(shiftStart.slice(0, 5) || "08:00");
-  const [correctionClockOutTime, setCorrectionClockOutTime] = useState(shiftEnd.slice(0, 5) || "17:00");
+  const [correctionClockInTime, setCorrectionClockInTime] = useState(
+    shiftStart.slice(0, 5) || "08:00"
+  );
+  const [correctionClockOutTime, setCorrectionClockOutTime] = useState(
+    shiftEnd.slice(0, 5) || "17:00"
+  );
   const [correctionReason, setCorrectionReason] = useState("");
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
 
   // Overtime Request state & modal
-  const [localOtRequests, setLocalOtRequests] = useState<OvertimeRequestSummary[]>(overtimeRequests);
+  const [localOtRequests, setLocalOtRequests] =
+    useState<OvertimeRequestSummary[]>(overtimeRequests);
   const [showOtModal, setShowOtModal] = useState(false);
   const [otWorkDate, setOtWorkDate] = useState(todayDateStr);
   const [otStartTime, setOtStartTime] = useState(shiftStart.slice(0, 5) || "08:00");
@@ -241,14 +352,22 @@ export default function ScheduleClient({
   );
   const [wmReason, setWmReason] = useState("");
   const [submittingWm, setSubmittingWm] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+
+  // Geolocation & network state
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lng: number;
+    accuracy: number;
+  } | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(
     initialActiveLog?.distance_meters ?? null
   );
   const [isInZone, setIsInZone] = useState<boolean>(
     initialActiveLog ? initialActiveLog.zone_status !== "outside_zone" : true
   );
-  const lastSentDistanceRef = useRef<number | null>(initialActiveLog?.distance_meters ?? null);
+  const lastSentDistanceRef = useRef<number | null>(
+    initialActiveLog?.distance_meters ?? null
+  );
   const lastSentInZoneRef = useRef<boolean>(
     initialActiveLog ? initialActiveLog.zone_status !== "outside_zone" : true
   );
@@ -258,9 +377,13 @@ export default function ScheduleClient({
   // Soft-blocking modal state
   const [showOutsideModal, setShowOutsideModal] = useState(false);
   const [flagReason, setFlagReason] = useState("");
-  const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number; accuracy: number; distanceKm: number } | null>(null);
+  const [pendingCoords, setPendingCoords] = useState<{
+    lat: number;
+    lng: number;
+    accuracy: number;
+    distanceKm: number;
+  } | null>(null);
 
-  // Focus/scroll to clock-in card when navigated via Attendance nav item (?view=attendance)
   useEffect(() => {
     if (searchParams.get("view") === "attendance" && attendanceCardRef.current) {
       attendanceCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -268,7 +391,6 @@ export default function ScheduleClient({
     }
   }, [searchParams]);
 
-  // Watch network online/offline status
   useEffect(() => {
     setIsOnline(navigator.onLine);
     const handleOnline = () => setIsOnline(true);
@@ -282,7 +404,6 @@ export default function ScheduleClient({
     };
   }, []);
 
-  // Watch user geolocation for Leaflet map & distance pill
   useEffect(() => {
     if (typeof window !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -313,7 +434,6 @@ export default function ScheduleClient({
     }
   }, [allowedRadiusMeters, targetOfficeCoords]);
 
-  // Continuous live geofence tracking while clocked in
   useEffect(() => {
     if (!activeLog || activeLog.clock_out) return;
     if (typeof window === "undefined" || !navigator.geolocation) return;
@@ -330,7 +450,8 @@ export default function ScheduleClient({
 
         if (targetOfficeCoords) {
           localMeters = Math.round(
-            calculateDistanceKm(lat, lng, targetOfficeCoords.lat, targetOfficeCoords.lng) * 1000
+            calculateDistanceKm(lat, lng, targetOfficeCoords.lat, targetOfficeCoords.lng) *
+              1000
           );
           nextInZone = localMeters <= allowedRadiusMeters;
           setDistanceMeters(localMeters);
@@ -378,7 +499,6 @@ export default function ScheduleClient({
     };
   }, [activeLog, allowedRadiusMeters, targetOfficeCoords]);
 
-  // Keep live elapsed shift timer running when clocked in
   useEffect(() => {
     if (!activeLog || activeLog.clock_out) {
       setElapsedText("");
@@ -408,7 +528,8 @@ export default function ScheduleClient({
   }, [activeLog]);
 
   const activeBreakType: "lunch" | "short_break" | null =
-    activeLog?.active_break_type === "lunch" || activeLog?.active_break_type === "short_break"
+    activeLog?.active_break_type === "lunch" ||
+    activeLog?.active_break_type === "short_break"
       ? activeLog.active_break_type
       : null;
 
@@ -421,9 +542,10 @@ export default function ScheduleClient({
   const undoRemainingSeconds = isWithinUndoWindow
     ? Math.max(0, Math.ceil((undoDeadlineMs - nowMs) / 1000))
     : 0;
-  const isShiftCompletedToday = Boolean(!activeLog && todayCompletedLog && !isWithinUndoWindow);
+  const isShiftCompletedToday = Boolean(
+    !activeLog && todayCompletedLog && !isWithinUndoWindow
+  );
 
-  // 1000ms countdown tick while on lunch, 15-min short break, or 5-min undo window
   useEffect(() => {
     if (!activeBreakType && !isWithinUndoWindow) return;
     const interval = setInterval(() => {
@@ -432,7 +554,6 @@ export default function ScheduleClient({
     return () => clearInterval(interval);
   }, [activeBreakType, isWithinUndoWindow]);
 
-  // Punctuality status badge
   const getPunctualityBadge = () => {
     if (!activeLog) return null;
     if (activeLog.overtime_request_id || todayWorkModel === "off") {
@@ -446,9 +567,16 @@ export default function ScheduleClient({
     const [targetH, targetM] = shiftStart.split(":").map((n) => parseInt(n, 10));
 
     const scheduledDate = new Date(clockInTime);
-    scheduledDate.setHours(Number.isNaN(targetH) ? 8 : targetH, Number.isNaN(targetM) ? 0 : targetM, 0, 0);
+    scheduledDate.setHours(
+      Number.isNaN(targetH) ? 8 : targetH,
+      Number.isNaN(targetM) ? 0 : targetM,
+      0,
+      0
+    );
 
-    const diffMins = Math.floor((clockInTime.getTime() - scheduledDate.getTime()) / (1000 * 60));
+    const diffMins = Math.floor(
+      (clockInTime.getTime() - scheduledDate.getTime()) / (1000 * 60)
+    );
 
     if (diffMins <= 5) {
       return (
@@ -456,13 +584,12 @@ export default function ScheduleClient({
           ✓ On Time
         </span>
       );
-    } else {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-200">
-          ⚠️ Late by {diffMins} mins
-        </span>
-      );
     }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-200">
+        ⚠️ Late by {diffMins} mins
+      </span>
+    );
   };
 
   const submitClockInPayload = async (
@@ -599,6 +726,36 @@ export default function ScheduleClient({
     setLoading(false);
   };
 
+  const openUndertimeModal = (
+    dateStr = todayDateStr,
+    scheduledOutHm = shiftEnd,
+    lockDate = false
+  ) => {
+    setUtModalDate(dateStr);
+    setUtModalScheduledOut(scheduledOutHm);
+    setUtLockDate(lockDate);
+    setShowUndertimeModal(true);
+    setShowMobileRequestMenu(false);
+  };
+
+  const handleCancelUndertime = async (requestId: string) => {
+    setCancellingUtId(requestId);
+    try {
+      const res = await cancelUndertimeRequestAction(requestId);
+      if (!res.success) {
+        toast.error(res.error ?? "Failed to cancel undertime request.");
+        return;
+      }
+      setLocalUndertimeRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: "cancelled" } : r))
+      );
+      toast.success(res.message ?? "Undertime request cancelled.");
+      router.refresh();
+    } finally {
+      setCancellingUtId(null);
+    }
+  };
+
   const openCorrectionModal = (opts?: {
     log?: RecentAttendanceLog | null;
     defaultDate?: string;
@@ -624,6 +781,7 @@ export default function ScheduleClient({
     );
     setCorrectionReason("");
     setShowCorrectionModal(true);
+    setShowMobileRequestMenu(false);
   };
 
   const handleSubmitCorrection = async (e: React.FormEvent) => {
@@ -740,6 +898,7 @@ export default function ScheduleClient({
     }
     setOtReason("");
     setShowOtModal(true);
+    setShowMobileRequestMenu(false);
   };
 
   const otWindowPreview = validateAndClassifyOvertimeRequest({
@@ -906,22 +1065,7 @@ export default function ScheduleClient({
     setLoading(false);
   };
 
-  // Determine Badge State
-  let badgeText = "";
-  let badgeStyle = "";
-
-  if (!isTodayOnsite || workModel === "wfh") {
-    badgeText = "Remote Clock-In Active";
-    badgeStyle = "bg-emerald-100 text-emerald-800 border-emerald-200";
-  } else if (hasOfficeCoordinates) {
-    badgeText = "On-Site Clock-In Active (Geofence Enforced)";
-    badgeStyle = "bg-blue-100 text-blue-800 border-blue-200";
-  } else {
-    badgeText = "On-Site Clock-In Active (Standard Mode)";
-    badgeStyle = "bg-amber-100 text-amber-800 border-amber-200";
-  }
-
-  // Calculate distance pill display (hydrated from attendance_logs.distance_meters + live GPS)
+  // Distance pill display
   const effectiveDistanceMeters = distanceMeters ?? activeLog?.distance_meters ?? null;
   const effectiveIsInZone =
     distanceMeters !== null
@@ -954,504 +1098,855 @@ export default function ScheduleClient({
     distancePillText = "In Work Zone (WFH)";
   }
 
+  const getActiveOrLatestUndertimeForDate = (dateStr: string) => {
+    const matches = localUndertimeRequests.filter((r) => r.work_date === dateStr);
+    return (
+      matches.find((r) =>
+        ["pending_supervisor", "pending_hr", "approved"].includes(r.status)
+      ) ??
+      matches[0] ??
+      null
+    );
+  };
+
+  let modeBadgeText = "";
+  let modeBadgeStyle = "";
+  if (todayApprovedLeave) {
+    modeBadgeText = `On Approved Leave (${todayApprovedLeave.leave_type})`;
+    modeBadgeStyle = "bg-amber-100 text-amber-900 border-amber-300";
+  } else if (todayWorkModel === "off") {
+    modeBadgeText = "Scheduled Rest Day (Off)";
+    modeBadgeStyle = "bg-slate-100 text-slate-700 border-slate-200";
+  } else if (!isTodayOnsite || workModel === "wfh") {
+    modeBadgeText = "Remote / WFH Active";
+    modeBadgeStyle = "bg-emerald-100 text-emerald-800 border-emerald-200";
+  } else if (hasOfficeCoordinates) {
+    modeBadgeText = "On-Site Active (Geofence Enforced)";
+    modeBadgeStyle = "bg-blue-100 text-blue-800 border-blue-200";
+  } else {
+    modeBadgeText = "On-Site Active (Standard Mode)";
+    modeBadgeStyle = "bg-amber-100 text-amber-800 border-amber-200";
+  }
+
+  const zoneSummaryName = targetOfficeCoords?.name || locationName || remoteAddress;
+
   return (
-    <div className="space-y-4">
-      {/* Attendance Action Header Card */}
-      <div
-        ref={attendanceCardRef}
-        tabIndex={-1}
-        className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4 outline-none focus:ring-2 focus:ring-[#2d2b68]/20"
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border max-w-full whitespace-normal break-words leading-normal ${badgeStyle}`}>
-              <span className="h-2 w-2 shrink-0 rounded-full bg-current animate-pulse" />
-              <span className="min-w-0 flex-1">{badgeText}</span>
-            </span>
-            <p className="text-[11px] font-medium text-slate-600 pt-1">
-              Shift: {formatTime12h(shiftStart)} – {formatTime12h(shiftEnd)} · 8 hrs paid · Lunch: {formatTime12h(lunchStart)} – {formatTime12h(lunchEnd)} (1 hr unpaid) · 2 × 15-min paid breaks
-            </p>
-            {activeLog && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="text-xs font-medium text-text-secondary">{elapsedText}</p>
-                {getPunctualityBadge()}
-                {activeBreakType ? (
-                  isOverbreakActive ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-800 border border-rose-300 tabular-nums font-mono">
-                      <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                      Overbreak +{formatMmSs(activeOverbreakSeconds)}
-                    </span>
-                  ) : (
-                    <div
-                      className={`inline-flex flex-col gap-1 rounded-xl border px-3 py-1.5 ${
-                        isOnLunch
-                          ? "bg-sky-50 border-sky-200 text-sky-900"
-                          : "bg-indigo-50 border-indigo-200 text-indigo-900"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-xs font-bold">
-                        <span>
-                          {isOnLunch
-                            ? "On Lunch"
-                            : `On Break (${Math.min(2, Math.max(1, shortBreaksUsed))}/2)`}
-                        </span>
-                        <span className="tabular-nums font-mono">
-                          {formatMmSs(remainingBreakSeconds)} remaining
-                        </span>
-                      </div>
-                      <div className="h-1 w-full rounded-full bg-black/10 overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-500 ${
-                            isOnLunch ? "bg-sky-600" : "bg-indigo-600"
-                          }`}
-                          style={{ width: `${breakProgressPct}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <>
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 border border-slate-200">
-                      1 hr unpaid lunch
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 border border-slate-200">
-                      2 × 15m paid breaks · {Math.max(0, 2 - shortBreaksUsed)} left
-                    </span>
-                    {recordedOverbreak > 0 && (
-                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-300">
-                        Overbreak +{recordedOverbreak}m
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+    <div className="space-y-6 min-w-0">
+      {/* =====================================================================
+          HERO BANNER (Matches /employee/dashboard PwaHeroBanner)
+         ===================================================================== */}
+      <PwaHeroBanner
+        title="My Schedule & Attendance"
+        subtitle="Clock in from your assigned zone and track your weekly shifts"
+        actions={
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => openUndertimeModal(todayDateStr, shiftEnd, false)}
+              className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-[#1E1B4B] shadow-sm hover:bg-indigo-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                schedule_send
+              </span>
+              Apply for Undertime
+            </button>
 
-          <div className="w-full sm:w-auto flex flex-wrap justify-center items-center gap-2">
-            {activeLog && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleToggleLunch}
-                  disabled={loading || isOnShortBreak}
-                  className={`w-full sm:w-auto rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all border disabled:opacity-50 ${
-                    isOnLunch
-                      ? "bg-sky-600 text-white border-sky-700 hover:bg-sky-700"
-                      : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
-                  }`}
-                >
-                  {isOnLunch ? "End Lunch" : "Start Lunch (1 hr)"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleToggleShortBreak}
-                  disabled={loading || isOnLunch || (!isOnShortBreak && shortBreaksUsed >= 2)}
-                  className={`w-full sm:w-auto rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all border disabled:opacity-50 ${
-                    isOnShortBreak
-                      ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
-                      : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
-                  }`}
-                >
-                  {isOnShortBreak
-                    ? `End Break (${shortBreaksUsed}/2)`
-                    : shortBreaksUsed >= 2
-                      ? "Breaks Used (2/2)"
-                      : `15-Min Break (${shortBreaksUsed}/2)`}
-                </button>
-              </>
-            )}
-
-            {!activeLog ? (
-              isWithinUndoWindow ? (
-                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={handleReopenShift}
-                    disabled={loading}
-                    className="w-full sm:w-auto min-w-[240px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">undo</span>
-                    {loading
-                      ? "Reopening Shift..."
-                      : `Reopen Shift (Undo Accidental Clock-Out · ${formatMmSs(undoRemainingSeconds)})`}
-                  </button>
-                  <p className="text-[11px] font-medium text-amber-800">
-                    Clocked out by mistake? Undo within 5 minutes to preserve your original clock-in.
-                  </p>
-                </div>
-              ) : isShiftCompletedToday ? (
-                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full sm:w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-slate-200 px-8 py-3 text-base font-medium text-slate-600 cursor-not-allowed"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">task_alt</span>
-                    Shift Completed Today
-                  </button>
-                </div>
-              ) : todayApprovedLeave ? (
-                <div className="flex flex-col items-center sm:items-end gap-1.5 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full sm:w-auto min-w-[240px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-100 border border-amber-300 px-6 py-3 text-sm font-bold text-amber-900 cursor-not-allowed"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">beach_access</span>
-                    On Approved Leave ({todayApprovedLeave.leave_type})
-                  </button>
-                  <p className="text-[11px] font-medium text-amber-800">
-                    Clock-in locked while on approved leave.
-                  </p>
-                </div>
-              ) : todayWorkModel === "off" ? (
-                todayApprovedOt ? (
-                  <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={handleClockIn}
-                      disabled={loading}
-                      className="w-full sm:w-auto min-w-[240px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">alarm_on</span>
-                      {loading ? "Clocking In..." : "Clock In (Approved Overtime)"}
-                    </button>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                      <span className="font-semibold text-emerald-700">
-                        Approved window: {formatTime12h(todayApprovedOt.start_time.slice(0, 5))} –{" "}
-                        {formatTime12h(todayApprovedOt.end_time.slice(0, 5))}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={cancellingOtId === todayApprovedOt.id}
-                        onClick={() => handleCancelOt(todayApprovedOt.id)}
-                        className="font-semibold text-rose-600 hover:underline disabled:opacity-50"
-                      >
-                        {cancellingOtId === todayApprovedOt.id ? "Cancelling..." : "Cancel Request"}
-                      </button>
-                    </div>
-                  </div>
-                ) : todayPendingOt ? (
-                  <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                    <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-900">
-                      <span className="material-symbols-outlined text-[18px]">hourglass_top</span>
-                      {todayPendingOt.status === "pending_supervisor"
-                        ? "Overtime Request Pending Supervisor Approval"
-                        : "Overtime Request Pending HR Approval"}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={cancellingOtId === todayPendingOt.id}
-                      onClick={() => handleCancelOt(todayPendingOt.id)}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                    >
-                      {cancellingOtId === todayPendingOt.id ? "Cancelling..." : "Cancel Request"}
-                    </button>
-                  </div>
-                ) : todayRejectedOt ? (
-                  <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-800 space-y-0.5">
-                      <p className="font-bold">Overtime Request Declined</p>
-                      {todayRejectedOt.review_note && (
-                        <p className="text-[11px]">HR note: {todayRejectedOt.review_note}</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openOtModal(todayDateStr)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#2d2b68] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">more_time</span>
-                      Request Overtime
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                    <div className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-700">
-                      Scheduled Rest Day: Overtime Requires Prior Approval
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openOtModal(todayDateStr)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#2d2b68] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">more_time</span>
-                      Request Overtime
-                    </button>
-                  </div>
-                )
-              ) : (
-                <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={handleClockIn}
-                    disabled={loading}
-                    className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">alarm_on</span>
-                    {loading ? "Clocking In..." : "Clock In Now"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWmDate(todayDateStr);
-                      setWmMode(todayWorkModel === "onsite" ? "wfh" : "onsite");
-                      setWmReason("");
-                      setShowWorkModeModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
-                    Request Work Mode Change
-                  </button>
-                </div>
-              )
-            ) : (
+            {/* Desktop secondary buttons */}
+            <div className="hidden sm:flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowClockOutModal(true)}
-                disabled={loading}
-                className="w-auto min-w-[220px] inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-8 py-3 text-base font-medium text-white shadow-md transition-all hover:bg-rose-700 active:scale-[0.98] disabled:opacity-50"
+                onClick={() => openOtModal(todayDateStr)}
+                className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
               >
-                <span className="material-symbols-outlined text-[18px]">logout</span>
-                {loading ? "Clocking Out..." : "Clock Out"}
+                <span className="material-symbols-outlined text-[15px]">more_time</span>
+                Request OT
               </button>
-            )}
-          </div>
-        </div>
-
-        {localWorkModeRequests.length > 0 && (
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-[#1E1B4B]">
-              Work Mode Change Requests
-            </p>
-            <div className="space-y-1.5">
-              {localWorkModeRequests.slice(0, 3).map((wm) => (
-                <div
-                  key={wm.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <span className="font-semibold text-slate-900">
-                      {wm.request_date} ·{" "}
-                      {wm.requested_mode === "wfh" ? "WFH" : "Onsite"}
-                    </span>
-                    <p className="truncate text-[11px] text-slate-500">{wm.reason}</p>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                      wm.status === "approved"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : wm.status === "rejected"
-                          ? "bg-rose-100 text-rose-800"
-                          : "bg-amber-100 text-amber-800"
-                    }`}
-                  >
-                    {wm.status.replace(/_/g, " ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {isShiftCompletedToday && todayCompletedLog && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs">
-            <div className="space-y-0.5">
-              <p className="font-bold text-[#1E1B4B]">Shift Completed Today</p>
-              <p className="text-slate-600">
-                Clocked in at {toPhtTimeInput(todayCompletedLog.clock_in, "--:--")} · Clocked out at{" "}
-                {toPhtTimeInput(todayCompletedLog.clock_out, "--:--")}. Need to fix a mistake?
-              </p>
-            </div>
-            {todayCorrection?.status === "pending" ? (
-              <span className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[11px] font-bold text-amber-800">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
-                Correction Pending
-              </span>
-            ) : (
               <button
                 type="button"
                 onClick={() =>
                   openCorrectionModal({
-                    log: todayCompletedLog,
-                    defaultType: "Accidental Clock-Out",
+                    defaultDate: todayDateStr,
+                    defaultType: "Missing Shift",
                   })
                 }
-                className="inline-flex items-center justify-center gap-1.5 self-start sm:self-center rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#2d2b68] transition-colors shrink-0"
+                className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
               >
-                <span className="material-symbols-outlined text-[15px]">edit_calendar</span>
-                Request Attendance Correction
+                <span className="material-symbols-outlined text-[15px]">add_circle</span>
+                Missing Shift
               </button>
-            )}
+            </div>
+
+            {/* Mobile compact "+ Time Request" menu (< 640px) */}
+            <div className="relative sm:hidden">
+              <button
+                type="button"
+                onClick={() => setShowMobileRequestMenu((p) => !p)}
+                className="min-h-[40px] inline-flex items-center gap-1 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                Time Request
+              </button>
+              {showMobileRequestMenu && (
+                <div className="absolute right-0 top-12 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => openOtModal(todayDateStr)}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-[15px] text-[#1E1B4B]">
+                      more_time
+                    </span>
+                    Request OT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openCorrectionModal({
+                        defaultDate: todayDateStr,
+                        defaultType: "Missing Shift",
+                      })
+                    }
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-[15px] text-[#1E1B4B]">
+                      add_circle
+                    </span>
+                    Missing Shift
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-
-        {errorMessage && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
-            {errorMessage}
-          </div>
-        )}
-      </div>
-
-      {/* WORKSPACE LOCATION Card (Stitch Spec) */}
-      <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4">
-        {/* Section Title */}
-        <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
-          WORKSPACE LOCATION
-        </p>
-
-        {/* Map Viewport Container */}
-        <div className="h-48 md:h-56 rounded-2xl overflow-hidden border border-gray-100 relative bg-gray-50">
-          {targetOfficeCoords ? (
-            <WorkspaceMap
-              targetLocation={{
-                lat: targetOfficeCoords.lat,
-                lng: targetOfficeCoords.lng,
-                label: targetOfficeCoords.name,
-              }}
-              userLocation={userLocation}
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
-              <span className="material-symbols-outlined text-[28px] text-amber-600">
-                location_off
-              </span>
-              <p className="text-xs font-semibold text-gray-800">
-                {geofenceError || "Geofence coordinates not configured for your account."}
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Today&apos;s Status</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <p className="text-base font-bold text-[#1E1B4B] sm:text-lg">
+                {todayDailyModelLabel}
               </p>
-              {(!isTodayOnsite || workModel === "wfh" || workModel === "hybrid") ? (
-                <Link
-                  href="/employee/profile"
-                  className="mt-1 inline-flex items-center gap-1 rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E1B4B]/90"
-                >
-                  Set up WFH Location in Profile →
-                </Link>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {/* Bottom Metrics Pill Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Left Pill (Wi-Fi / Network Status) */}
-          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
-            <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">wifi</span>
-            <div>
-              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Network</p>
-              <p className="font-bold text-gray-800">{isOnline ? "Connected / Online" : "Offline"}</p>
+              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1E1B4B]">
+                Work Setup: {workSetupLabel}
+              </span>
             </div>
           </div>
 
-          {/* Right Pill (Distance / Work Zone Indicator) */}
-          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
-            <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">location_on</span>
-            <div>
-              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Proximity</p>
-              <p className="font-bold text-gray-800">{distancePillText}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Read-Only Address Lock Banner */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
-          <p className="font-semibold text-slate-900">
-            Registered Address: <span className="font-bold">{remoteAddress}</span>
-          </p>
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
-            <span className="material-symbols-outlined text-[14px]">lock</span>
-            <span>Managed by HR. Contact your HR administrator to update your designated remote work location.</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Attendance Logs & Correction Requests */}
-      <div className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              Recent Attendance Logs
+          <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Shift Hours (PHT)</p>
+            <p className="mt-1 truncate text-base font-bold text-[#1E1B4B] sm:text-lg">
+              {formatTime12h(shiftStart)} – {formatTime12h(shiftEnd)}
             </p>
-            <p className="text-[11px] text-slate-500">
-              Submit an attendance correction if you missed a punch or clocked out early.
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+              8h paid · Lunch {formatTime12h(lunchStart)}–{formatTime12h(lunchEnd)} · 2×15m breaks
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => openOtModal(todayDateStr)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:text-[#1E1B4B] transition-colors whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined text-[15px]">more_time</span>
-              Request OT
-            </button>
-            <button
-              type="button"
-              onClick={() => openCorrectionModal({ defaultDate: todayDateStr, defaultType: "Missing Shift" })}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined text-[15px]">add_circle</span>
-              Missing Shift
-            </button>
+
+          <div className="rounded-2xl border border-white/20 bg-white p-3.5 text-slate-900 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Assigned Zone</p>
+            <p className="mt-1 truncate text-base font-bold text-[#1E1B4B] sm:text-lg">
+              {locationName}
+            </p>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+              Geofence radius: {allowedRadiusMeters}m
+            </p>
           </div>
         </div>
+      </PwaHeroBanner>
 
-        {recentLogs.length === 0 ? (
-          <p className="text-xs text-slate-500 py-3 text-center">No recent attendance logs yet.</p>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {recentLogs.slice(0, 7).map((log) => {
-              const req = getCorrectionForDateOrLog(log.date, log.id);
-              return (
-                <div
-                  key={log.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 text-xs"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900">{log.date}</span>
-                      {req?.status === "pending" && (
-                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                          Correction Pending
-                        </span>
-                      )}
-                      {req?.status === "approved" && (
-                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                          Corrected
-                        </span>
-                      )}
-                      {req?.status === "rejected" && (
-                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
-                          Correction Rejected
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      In: {log.clock_in ? toPhtTimeInput(log.clock_in, "--:--") : "—"} · Out:{" "}
-                      {log.clock_out ? toPhtTimeInput(log.clock_out, "--:--") : "In progress"}
-                      {log.total_hours != null ? ` · ${log.total_hours}h` : ""}
-                    </p>
-                  </div>
+      {/* Main Content Container */}
+      <div className="mx-auto w-full max-w-[1440px] space-y-5 px-4 sm:px-6 lg:px-10">
+        {/* Clock-In / Clock-Out Command Bar */}
+        <section
+          ref={attendanceCardRef}
+          tabIndex={-1}
+          className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4 outline-none focus:ring-2 focus:ring-[#2d2b68]/20"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-2 min-w-0">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border max-w-full whitespace-normal break-words leading-normal ${modeBadgeStyle}`}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-current animate-pulse" />
+                <span>{modeBadgeText}</span>
+              </span>
 
-                  {req?.status !== "pending" && (
-                    <button
-                      type="button"
-                      onClick={() => openCorrectionModal({ log })}
-                      className="self-start sm:self-center inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-[#1E1B4B] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">edit_note</span>
-                      Request Correction
-                    </button>
+              {activeLog && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <p className="text-xs font-medium text-text-secondary">{elapsedText}</p>
+                  {getPunctualityBadge()}
+                  {activeBreakType ? (
+                    isOverbreakActive ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-800 border border-rose-300 tabular-nums font-mono">
+                        <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                        Overbreak +{formatMmSs(activeOverbreakSeconds)}
+                      </span>
+                    ) : (
+                      <div
+                        className={`inline-flex flex-col gap-1 rounded-xl border px-3 py-1.5 ${
+                          isOnLunch
+                            ? "bg-sky-50 border-sky-200 text-sky-900"
+                            : "bg-indigo-50 border-indigo-200 text-indigo-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-xs font-bold">
+                          <span>
+                            {isOnLunch
+                              ? "On Lunch"
+                              : `On Break (${Math.min(2, Math.max(1, shortBreaksUsed))}/2)`}
+                          </span>
+                          <span className="tabular-nums font-mono">
+                            {formatMmSs(remainingBreakSeconds)} remaining
+                          </span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-black/10 overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-500 ${
+                              isOnLunch ? "bg-sky-600" : "bg-indigo-600"
+                            }`}
+                            style={{ width: `${breakProgressPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 border border-slate-200">
+                        2 × 15m breaks · {Math.max(0, 2 - shortBreaksUsed)} left
+                      </span>
+                      {recordedOverbreak > 0 && (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-300">
+                          Overbreak +{recordedOverbreak}m
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            <div className="w-full sm:w-auto flex flex-wrap justify-start sm:justify-end items-center gap-2">
+              {activeLog && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleToggleLunch}
+                    disabled={loading || isOnShortBreak}
+                    className={`min-h-[40px] w-full sm:w-auto rounded-xl px-3.5 py-2 text-xs font-bold transition-all border disabled:opacity-50 ${
+                      isOnLunch
+                        ? "bg-sky-600 text-white border-sky-700 hover:bg-sky-700"
+                        : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
+                    }`}
+                  >
+                    {isOnLunch ? "End Lunch" : "Start Lunch (1 hr)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToggleShortBreak}
+                    disabled={loading || isOnLunch || (!isOnShortBreak && shortBreaksUsed >= 2)}
+                    className={`min-h-[40px] w-full sm:w-auto rounded-xl px-3.5 py-2 text-xs font-bold transition-all border disabled:opacity-50 ${
+                      isOnShortBreak
+                        ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
+                        : "bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200"
+                    }`}
+                  >
+                    {isOnShortBreak
+                      ? `End Break (${shortBreaksUsed}/2)`
+                      : shortBreaksUsed >= 2
+                        ? "Breaks Used (2/2)"
+                        : `15-Min Break (${shortBreaksUsed}/2)`}
+                  </button>
+                </>
+              )}
+
+              {!activeLog ? (
+                isWithinUndoWindow ? (
+                  <div className="flex flex-col items-start sm:items-end gap-1.5 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handleReopenShift}
+                      disabled={loading}
+                      className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">undo</span>
+                      {loading
+                        ? "Reopening Shift..."
+                        : `Reopen Shift (Undo · ${formatMmSs(undoRemainingSeconds)})`}
+                    </button>
+                    <p className="text-[11px] font-medium text-amber-800">
+                      Clocked out by mistake? Undo within 5 minutes to preserve your clock-in.
+                    </p>
+                  </div>
+                ) : isShiftCompletedToday ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                    Shift Completed Today
+                  </button>
+                ) : todayApprovedLeave ? (
+                  <div className="flex flex-col items-start sm:items-end gap-1 w-full sm:w-auto">
+                    <div className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-amber-100 border border-amber-300 px-5 py-2.5 text-xs sm:text-sm font-bold text-amber-900">
+                      <span className="material-symbols-outlined text-[18px]">beach_access</span>
+                      Clock-in locked while on approved leave ({todayApprovedLeave.leave_type})
+                    </div>
+                  </div>
+                ) : todayWorkModel === "off" ? (
+                  todayApprovedOt ? (
+                    <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={handleClockIn}
+                        disabled={loading}
+                        className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#2d2b68] disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">alarm_on</span>
+                        {loading ? "Clocking In..." : "Clock In (Approved Overtime)"}
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                        <span className="font-semibold text-emerald-700">
+                          Approved window: {formatTime12h(todayApprovedOt.start_time.slice(0, 5))} –{" "}
+                          {formatTime12h(todayApprovedOt.end_time.slice(0, 5))}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={cancellingOtId === todayApprovedOt.id}
+                          onClick={() => handleCancelOt(todayApprovedOt.id)}
+                          className="font-semibold text-rose-600 hover:underline disabled:opacity-50"
+                        >
+                          {cancellingOtId === todayApprovedOt.id ? "Cancelling..." : "Cancel Request"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : todayPendingOt ? (
+                    <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+                      <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-900">
+                        <span className="material-symbols-outlined text-[18px]">hourglass_top</span>
+                        {todayPendingOt.status === "pending_supervisor"
+                          ? "Overtime Request Pending Supervisor Approval"
+                          : "Overtime Request Pending HR Approval"}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={cancellingOtId === todayPendingOt.id}
+                        onClick={() => handleCancelOt(todayPendingOt.id)}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {cancellingOtId === todayPendingOt.id ? "Cancelling..." : "Cancel Request"}
+                      </button>
+                    </div>
+                  ) : todayRejectedOt ? (
+                    <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-800">
+                        <p className="font-bold">Overtime Request Declined</p>
+                        {todayRejectedOt.review_note && (
+                          <p className="text-[11px]">HR note: {todayRejectedOt.review_note}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openOtModal(todayDateStr)}
+                        className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#2d2b68]"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">more_time</span>
+                        Request Overtime
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                      <span className="rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700">
+                        Rest Day: OT Requires Approval
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openOtModal(todayDateStr)}
+                        className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#2d2b68]"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">more_time</span>
+                        Request Overtime
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWmDate(todayDateStr);
+                        setWmMode(todayWorkModel === "onsite" ? "wfh" : "onsite");
+                        setWmReason("");
+                        setShowWorkModeModal(true);
+                      }}
+                      className="min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-2 text-xs font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">swap_horiz</span>
+                      Work Mode Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClockIn}
+                      disabled={loading}
+                      className="min-h-[44px] min-w-[190px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e1b4b] px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#2d2b68] active:scale-[0.98] disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">alarm_on</span>
+                      {loading ? "Clocking In..." : "Clock In Now"}
+                    </button>
+                  </div>
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowClockOutModal(true)}
+                  disabled={loading}
+                  className="min-h-[44px] min-w-[190px] w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-rose-700 active:scale-[0.98] disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">logout</span>
+                  {loading ? "Clocking Out..." : "Clock Out"}
+                </button>
+              )}
+            </div>
           </div>
-        )}
+
+          {localWorkModeRequests.length > 0 && (
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5 space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#1E1B4B]">
+                Work Mode Change Requests
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {localWorkModeRequests.slice(0, 2).map((wm) => (
+                  <div
+                    key={wm.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-slate-900">
+                        {wm.request_date} · {wm.requested_mode === "wfh" ? "WFH" : "Onsite"}
+                      </span>
+                      <p className="truncate text-[11px] text-slate-500">{wm.reason}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                        wm.status === "approved"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : wm.status === "rejected"
+                            ? "bg-rose-100 text-rose-800"
+                            : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {wm.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isShiftCompletedToday && todayCompletedLog && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs">
+              <div className="space-y-0.5">
+                <p className="font-bold text-[#1E1B4B]">Shift Completed Today</p>
+                <p className="text-slate-600">
+                  Clocked in at {toPhtTimeInput(todayCompletedLog.clock_in, "--:--")} · Clocked out at{" "}
+                  {toPhtTimeInput(todayCompletedLog.clock_out, "--:--")}. Need to fix a mistake?
+                </p>
+              </div>
+              {todayCorrection?.status === "pending" ? (
+                <span className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[11px] font-bold text-amber-800">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                  Correction Pending
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openCorrectionModal({
+                      log: todayCompletedLog,
+                      defaultType: "Accidental Clock-Out",
+                    })
+                  }
+                  className="min-h-[40px] inline-flex items-center justify-center gap-1.5 self-start sm:self-center rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#2d2b68] transition-colors shrink-0"
+                >
+                  <span className="material-symbols-outlined text-[15px]">edit_calendar</span>
+                  Request Attendance Correction
+                </button>
+              )}
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+              {errorMessage}
+            </div>
+          )}
+      </section>
+
+      {/* =====================================================================
+          2-COLUMN GRID: CARD 2 (Location & Geofence) + CARD 3 (Weekly & Requests)
+         ===================================================================== */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
+        {/* LEFT COLUMN: Workspace Location & Geofence + Separate Recent Attendance Logs Card */}
+        <div className="lg:col-span-5 space-y-5 min-w-0">
+        {/* CARD 2: Workspace Location & Geofence */}
+        <section className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-4 min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                Workspace Location &amp; Geofence
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-800 truncate">
+                {zoneSummaryName} • {distancePillText} •{" "}
+                {isOnline ? "Online" : "Offline"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMapExpanded((p) => !p)}
+              className="min-h-[36px] shrink-0 inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-indigo-50 hover:text-[#1E1B4B] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[15px]">
+                {isMapExpanded ? "expand_less" : "map"}
+              </span>
+              {isMapExpanded ? "Hide Map" : "Expand Map"}
+            </button>
+          </div>
+
+          {isMapExpanded && (
+            <div className="h-52 md:h-60 rounded-2xl overflow-hidden border border-gray-100 relative bg-gray-50">
+              {targetOfficeCoords ? (
+                <WorkspaceMap
+                  targetLocation={{
+                    lat: targetOfficeCoords.lat,
+                    lng: targetOfficeCoords.lng,
+                    label: targetOfficeCoords.name,
+                  }}
+                  userLocation={userLocation}
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-amber-600">
+                    location_off
+                  </span>
+                  <p className="text-xs font-semibold text-gray-800">
+                    {geofenceError || "Geofence coordinates not configured for your account."}
+                  </p>
+                  {!isTodayOnsite || workModel === "wfh" || workModel === "hybrid" ? (
+                    <Link
+                      href="/employee/profile"
+                      className="mt-1 inline-flex items-center gap-1 rounded-xl bg-[#1E1B4B] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E1B4B]/90"
+                    >
+                      Set up WFH Location in Profile →
+                    </Link>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
+              <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">
+                wifi
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                  Network
+                </p>
+                <p className="font-bold text-gray-800 truncate">
+                  {isOnline ? "Connected / Online" : "Offline"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
+              <span className="material-symbols-outlined text-[18px] text-[#1e1b4b]">
+                location_on
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                  Proximity
+                </p>
+                <p className="font-bold text-gray-800 truncate">{distancePillText}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+            <p className="font-semibold text-slate-900">
+              {locationName} ({allowedRadiusMeters}m radius)
+            </p>
+            <p className="text-[11px] text-slate-600 break-words">
+              {locationAddress || remoteAddress}
+            </p>
+            <div className="flex items-center gap-1.5 pt-0.5 text-[11px] text-slate-500 font-medium">
+              <span className="material-symbols-outlined text-[14px]">lock</span>
+              <span>
+                Managed by HR. Contact HR to update your designated work location.
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* SEPARATE CARD: Recent Attendance Logs (Read-only, no redundant request button) */}
+        <section className="rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-3 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                Recent Attendance Logs
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Your latest clock-in and clock-out entries
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-bold text-slate-700">
+              {recentLogs.length}
+            </span>
+          </div>
+
+          {recentLogs.length === 0 ? (
+            <p className="py-4 text-center text-xs text-slate-500">
+              No recent attendance logs yet.
+            </p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {recentLogs.slice(0, 7).map((log) => {
+                const req = getCorrectionForDateOrLog(log.date, log.id);
+                return (
+                  <div
+                    key={log.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-xs"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">{log.date}</span>
+                        {req?.status === "pending" && (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                            Correction Pending
+                          </span>
+                        )}
+                        {req?.status === "approved" && (
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            Corrected
+                          </span>
+                        )}
+                        {req?.status === "rejected" && (
+                          <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                            Correction Rejected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        In: {log.clock_in ? toPhtTimeInput(log.clock_in, "--:--") : "—"} ·
+                        Out:{" "}
+                        {log.clock_out
+                          ? toPhtTimeInput(log.clock_out, "--:--")
+                          : "In progress"}
+                        {log.total_hours != null ? ` · ${log.total_hours}h` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        </div>
+
+        {/* CARD 3: Weekly Schedule & Undertime Requests (lg:col-span-7) */}
+        <section className="lg:col-span-7 rounded-2xl border border-[#e6e4f0] bg-white p-5 shadow-[0_4px_16px_rgba(39,36,84,0.08)] space-y-5 min-w-0">
+          {/* Top Half: Personal Weekly Shift Calendar */}
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
+                  Personal Weekly Shift Calendar
+                </p>
+                {isSchedulePublished && (
+                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                    Published
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-secondary font-medium">{weekRangeLabel}</p>
+            </div>
+
+            {/* 7-Day Horizontal Date Selector */}
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+              {weekDays.map((day) => {
+                const isToday = isTodayPht(day.dateStr) || day.isToday;
+                return (
+                  <div
+                    key={day.dateStr}
+                    className={`min-w-0 flex flex-col items-center rounded-xl border py-2 px-0.5 text-center text-[11px] sm:text-xs transition-colors ${
+                      isToday
+                        ? "bg-[#0F172A] text-white border-[#0F172A] ring-2 ring-[#1E3A8A]/30 shadow-sm"
+                        : "bg-slate-50 border-slate-200/80 text-slate-700"
+                    }`}
+                  >
+                    <span className={`font-bold ${isToday ? "text-white" : "text-slate-700"}`}>
+                      {day.dayShort}
+                    </span>
+                    <span
+                      className={`mt-0.5 text-[10px] sm:text-[11px] font-bold ${
+                        isToday ? "text-white" : "text-slate-600"
+                      }`}
+                    >
+                      {day.dayNumber}
+                    </span>
+                    <span
+                      className={`mt-1 rounded-full px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold truncate max-w-full ${
+                        isToday
+                          ? "bg-white/15 text-white"
+                          : day.leaveType
+                            ? "bg-amber-100 text-amber-800"
+                            : day.isOff
+                              ? "bg-slate-200/80 text-slate-600"
+                              : day.isOnsite
+                                ? "bg-indigo-100 text-indigo-800"
+                                : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {day.leaveType
+                        ? "Leave"
+                        : day.isOff
+                          ? "Off"
+                          : day.isOnsite
+                            ? "Onsite"
+                            : "WFH"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Daily Shift Rows */}
+            <div className="space-y-2">
+              {weekDays.map((day) => {
+                const isToday = isTodayPht(day.dateStr) || day.isToday;
+                const utReq = getActiveOrLatestUndertimeForDate(day.dateStr);
+                const hasActiveUt =
+                  utReq !== null &&
+                  ["pending_supervisor", "pending_hr", "approved"].includes(utReq.status);
+                const utBadge = utReq ? getUndertimeBadge(utReq) : null;
+                const canRequestUndertime =
+                  !day.isOff &&
+                  !day.leaveType &&
+                  !day.isPast &&
+                  !(isToday && isShiftCompletedToday) &&
+                  !hasActiveUt;
+
+                return (
+                  <div
+                    key={day.dateStr}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-2xl border p-3.5 transition-all ${
+                      isToday
+                        ? "border-slate-300 border-l-4 border-l-[#0F172A] bg-slate-50/70 shadow-sm"
+                        : "border-[#e6e4f0] bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`flex flex-col items-center justify-center rounded-xl border w-11 h-11 shrink-0 ${
+                          isToday
+                            ? "bg-[#0F172A] border-[#0F172A] text-white"
+                            : "bg-[#f7f6fc] border-[#e6e4f0] text-text-primary"
+                        }`}
+                      >
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider ${
+                            isToday ? "text-sky-200" : "text-text-secondary"
+                          }`}
+                        >
+                          {day.dayShort}
+                        </span>
+                        <span className="text-sm font-extrabold leading-tight">
+                          {day.dayNumber}
+                        </span>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="text-sm font-bold text-text-primary">
+                            {day.shiftTitle}
+                          </p>
+                          {!day.isOff && !day.leaveType && (
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                day.isOnsite
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              }`}
+                            >
+                              {day.isOnsite ? "Onsite" : "WFH"}
+                            </span>
+                          )}
+                          {utBadge && utReq?.status !== "cancelled" && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${utBadge.cls}`}
+                            >
+                              {utBadge.label}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-text-secondary font-medium">
+                          {day.leaveType
+                            ? "Approved Leave"
+                            : day.isOff
+                              ? "Scheduled Rest Day"
+                              : day.formattedShiftRange}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {canRequestUndertime && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openUndertimeModal(day.dateStr, day.scheduledOut, true)
+                          }
+                          className="min-h-[36px] inline-flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#1E1B4B] hover:bg-indigo-100 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            schedule_send
+                          </span>
+                          Request Undertime
+                        </button>
+                      )}
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${day.statusStyle}`}
+                      >
+                        {day.statusLabel}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      </div>
       </div>
 
-      {/* Clock-Out Confirmation Modal */}
+      {/* =====================================================================
+          MODALS (Preserved 100%)
+         ===================================================================== */}
+      <ApplyUndertimeModal
+        isOpen={showUndertimeModal}
+        onClose={() => setShowUndertimeModal(false)}
+        initialWorkDate={utModalDate}
+        scheduledOut={utModalScheduledOut}
+        shiftStart={shiftStart}
+        hasSupervisor={hasSupervisor}
+        availableVlCredits={availableVlCredits}
+        lockWorkDate={utLockDate}
+        onSubmitted={(created) => {
+          setLocalUndertimeRequests((prev) => [created, ...prev]);
+          router.refresh();
+        }}
+      />
+
       {showClockOutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900">
@@ -1462,7 +1957,8 @@ export default function ScheduleClient({
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-slate-900">Confirm Clock Out?</h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Clocking out ends your shift for the day. If you are only stepping away, please use{" "}
+                  Clocking out ends your shift for the day. If you are only stepping away,
+                  please use{" "}
                   <span className="font-semibold text-slate-800">Start Break</span> or{" "}
                   <span className="font-semibold text-slate-800">Start Lunch</span> instead.
                 </p>
@@ -1491,13 +1987,14 @@ export default function ScheduleClient({
         </div>
       )}
 
-      {/* Attendance Correction Request Modal */}
       {showCorrectionModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-[#1E1B4B]">Request Attendance Correction</h3>
+                <h3 className="text-base font-bold text-[#1E1B4B]">
+                  Request Attendance Correction
+                </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   HR will review and apply approved timestamp updates to your attendance log.
                 </p>
@@ -1606,7 +2103,6 @@ export default function ScheduleClient({
         </div>
       )}
 
-      {/* Request Work Mode Change Modal */}
       {showWorkModeModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
@@ -1616,7 +2112,8 @@ export default function ScheduleClient({
                   Request Work Mode Change
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Send a last-minute WFH or Onsite request to your Direct Supervisor for approval.
+                  Send a last-minute WFH or Onsite request to your Direct Supervisor for
+                  approval.
                 </p>
               </div>
               <button
@@ -1695,7 +2192,6 @@ export default function ScheduleClient({
         </div>
       )}
 
-      {/* Request Overtime Modal */}
       {showOtModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[92vw] max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
@@ -1755,9 +2251,14 @@ export default function ScheduleClient({
                       } else {
                         const endHm = shiftEnd.slice(0, 5) || "17:00";
                         const [h, m] = endHm.split(":").map(Number);
-                        const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(2, "0");
+                        const nextH = String(((Number.isFinite(h) ? h : 17) + 2) % 24).padStart(
+                          2,
+                          "0"
+                        );
                         setOtStartTime(endHm);
-                        setOtEndTime(`${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`);
+                        setOtEndTime(
+                          `${nextH}:${String(Number.isFinite(m) ? m : 0).padStart(2, "0")}`
+                        );
                       }
                     }
                   }}
@@ -1800,8 +2301,12 @@ export default function ScheduleClient({
                 }`}
               >
                 {otWindowPreview.valid
-                  ? `Duration: ${otWindowPreview.durationHours} hour${otWindowPreview.durationHours === 1 ? "" : "s"}${
-                      otWindowPreview.crossesMidnight ? " (Cross-midnight +1 calendar day)" : ""
+                  ? `Duration: ${otWindowPreview.durationHours} hour${
+                      otWindowPreview.durationHours === 1 ? "" : "s"
+                    }${
+                      otWindowPreview.crossesMidnight
+                        ? " (Cross-midnight +1 calendar day)"
+                        : ""
                     }`
                   : otWindowPreview.error}
               </div>
@@ -1847,7 +2352,6 @@ export default function ScheduleClient({
         </div>
       )}
 
-      {/* Soft-Blocking Outside Zone Modal */}
       {showOutsideModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-[90vw] min-w-[300px] sm:w-full max-w-md bg-white p-6 rounded-2xl shadow-xl mx-auto space-y-4 z-50 text-slate-900">
@@ -1856,9 +2360,15 @@ export default function ScheduleClient({
                 ⚠️
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-gray-900">Outside Designated Work Zone</h3>
+                <h3 className="text-base font-bold text-gray-900">
+                  Outside Designated Work Zone
+                </h3>
                 <p className="text-xs text-gray-600 leading-relaxed">
-                  You appear to be outside your designated work zone ({pendingCoords?.distanceKm ? `${pendingCoords.distanceKm} km` : "distance preview"}). Please enter a brief reason for HR review before clocking in.
+                  You appear to be outside your designated work zone (
+                  {pendingCoords?.distanceKm
+                    ? `${pendingCoords.distanceKm} km`
+                    : "distance preview"}
+                  ). Please enter a brief reason for HR review before clocking in.
                 </p>
               </div>
             </div>

@@ -337,11 +337,20 @@ export default function HRSchedulesClient({
               <th className="px-4 py-3.5">Employee Name &amp; Role</th>
               <th className="px-4 py-3.5">Work Setup</th>
               <th className="px-4 py-3.5">Shift Hours</th>
-              {DAYS_SHORT.map((day) => (
-                <th key={day} className="px-3 py-3.5 text-center">
-                  {day}
-                </th>
-              ))}
+              {DAYS_SHORT.map((day, dayIdx) => {
+                const isTodayCol = dayIdx === todayIndex;
+                return (
+                  <th key={day} className="px-3 py-3.5 text-center">
+                    {isTodayCol ? (
+                      <span className="inline-flex items-center rounded-lg bg-[#0F172A] px-2.5 py-1 text-white shadow-xs">
+                        {day}
+                      </span>
+                    ) : (
+                      <span>{day}</span>
+                    )}
+                  </th>
+                );
+              })}
               <th className="px-4 py-3.5 text-right">Action</th>
             </tr>
           </thead>
@@ -399,7 +408,12 @@ export default function HRSchedulesClient({
                     </div>
                   </td>
                   {DAYS_SHORT.map((_, dayIdx) => (
-                    <td key={dayIdx} className="px-2 py-3.5 text-center whitespace-nowrap">
+                    <td
+                      key={dayIdx}
+                      className={`px-2 py-3.5 text-center whitespace-nowrap ${
+                        dayIdx === todayIndex ? "bg-slate-900/[0.02]" : ""
+                      }`}
+                    >
                       {renderDayBadge(emp, dayIdx)}
                     </td>
                   ))}

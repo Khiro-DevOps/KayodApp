@@ -10,9 +10,11 @@ import {
 } from "@/lib/work-arrangement";
 import { parseHybridScheduleNotes } from "@/lib/hybrid-schedule";
 import TeamHubClient, {
+  type SupervisorFiledIncident,
   type TeamApprovalItem,
   type TeamDirectReport,
 } from "./team-hub-client";
+import type { SupervisorUndertimeItem } from "@/components/undertime/SupervisorUndertimeQueue";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -305,12 +307,14 @@ export default async function EmployeeTeamPage() {
   // Phase 2: Fetch pending Leave & Overtime requests from direct reports for Supervisor Queue
   const reportById = new Map(directReports.map((r) => [r.id, r]));
   const pendingApprovals: TeamApprovalItem[] = [];
+  const pendingUndertimes: SupervisorUndertimeItem[] = [];
 
   if (directReportIds.length > 0) {
     const [
       { data: pendingLeaves, error: leavesErr },
       { data: pendingOts, error: otsErr },
       { data: pendingWorkModes, error: wmErr },
+      { data: pendingUtRows, error: utErr },
     ] = await Promise.all([
       admin
         .from("leave_requests")
@@ -330,7 +334,55 @@ export default async function EmployeeTeamPage() {
         .in("employee_id", directReportIds)
         .eq("status", "pending_supervisor")
         .order("created_at", { ascending: false }),
+      admin
+        .from("undertime_requests")
+        .select(
+          "id, employee_id, work_date, undertime_type, scheduled_in, scheduled_out, requested_in, requested_out, undertime_minutes, reason, coverage_notes, deduction_mode, created_at"
+        )
+        .in("employee_id", directReportIds)
+        .eq("status", "pending_supervisor")
+        .order("work_date", { ascending: true }),
     ]);
+
+    if (utErr) {
+      console.warn("EmployeeTeamPage pendingUndertimes query warning:", utErr.message);
+    }
+    for (const row of pendingUtRows ?? []) {
+      const u = row as {
+        id: string;
+        employee_id: string;
+        work_date: string;
+        undertime_type?: "early_out" | "late_in" | "half_day_first" | "half_day_second";
+        scheduled_in?: string | null;
+        scheduled_out: string;
+        requested_in?: string | null;
+        requested_out: string | null;
+        undertime_minutes: number;
+        reason: string;
+        coverage_notes: string | null;
+        deduction_mode: "payroll_deduction" | "leave_offset";
+        created_at: string | null;
+      };
+      const member = reportById.get(u.employee_id);
+      pendingUndertimes.push({
+        id: u.id,
+        employeeId: u.employee_id,
+        employeeName: member?.fullName ?? "Direct Report",
+        employeeInitials: member?.initials ?? "DR",
+        employeeJobTitle: member?.jobTitle ?? "Staff",
+        workDate: u.work_date,
+        undertimeType: u.undertime_type ?? "early_out",
+        scheduledIn: u.scheduled_in ?? null,
+        scheduledOut: u.scheduled_out,
+        requestedIn: u.requested_in ?? null,
+        requestedOut: u.requested_out,
+        undertimeMinutes: u.undertime_minutes,
+        reason: u.reason,
+        coverageNotes: u.coverage_notes ?? null,
+        deductionMode: u.deduction_mode ?? "payroll_deduction",
+        createdAt: u.created_at ?? null,
+      });
+    }
 
     if (leavesErr) {
       console.error("EmployeeTeamPage pendingLeaves query error:", leavesErr.message);
@@ -442,6 +494,65 @@ export default async function EmployeeTeamPage() {
     }
   }
 
+  // Fetch operational status of Incident Reports filed by this supervisor (no confidential HR/explanation/sanction fields)
+  const { data: rawFiledIncidents } = await admin
+    .from("incident_reports")
+    .select(
+      `
+      id,
+      case_number,
+      employee_id,
+      incident_date,
+      offense_category,
+      policy_violated,
+      description,
+      status,
+      nte_issued_at,
+      nte_deadline_at,
+      resolved_at,
+      created_at,
+      employee:employees!employee_id(
+        job_title,
+        profile:profiles!profile_id(first_name, last_name)
+      )
+    `,
+    )
+    .eq("reported_by", user.id)
+    .order("created_at", { ascending: false });
+
+  const filedIncidents: SupervisorFiledIncident[] = (rawFiledIncidents ?? []).map(
+    (row) => {
+      const r = row as Record<string, unknown>;
+      const emp = Array.isArray(r.employee) ? r.employee[0] : r.employee;
+      const empObj = (emp ?? {}) as Record<string, unknown>;
+      const prof = Array.isArray(empObj.profile)
+        ? empObj.profile[0]
+        : empObj.profile;
+      const profObj = (prof ?? {}) as Record<string, unknown>;
+      const employeeName =
+        [profObj.first_name, profObj.last_name]
+          .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+          .join(" ") || "Employee";
+
+      return {
+        id: String(r.id),
+        caseNumber: String(r.case_number),
+        employeeId: String(r.employee_id),
+        employeeName,
+        employeePosition: (empObj.job_title as string | null) ?? "Staff",
+        incidentDate: String(r.incident_date),
+        offenseCategory: String(r.offense_category),
+        policyViolated: (r.policy_violated as string | null) ?? null,
+        description: String(r.description),
+        status: String(r.status) as SupervisorFiledIncident["status"],
+        nteIssuedAt: (r.nte_issued_at as string | null) ?? null,
+        nteDeadlineAt: (r.nte_deadline_at as string | null) ?? null,
+        resolvedAt: (r.resolved_at as string | null) ?? null,
+        createdAt: String(r.created_at),
+      };
+    },
+  );
+
   return (
     <PageContainer>
       <div className="space-y-6">
@@ -484,6 +595,8 @@ export default async function EmployeeTeamPage() {
           <TeamHubClient
             directReports={directReports}
             pendingApprovals={pendingApprovals}
+            pendingUndertimes={pendingUndertimes}
+            filedIncidents={filedIncidents}
             queryError={directReportsError?.message ?? null}
             todayDateLabel={todayPht}
           />

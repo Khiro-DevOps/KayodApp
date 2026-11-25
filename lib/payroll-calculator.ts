@@ -1,6 +1,8 @@
 import {
   computeUnexcusedAbsences,
+  resolveEffectiveShiftWindow,
   type ApprovedLeaveLike,
+  type ApprovedUndertimeLike,
 } from "@/lib/attendance-absent";
 import {
   computeNsdMinutes,
@@ -29,6 +31,17 @@ export interface PayrollApprovedOvertime {
   overtime_type?: string | null;
 }
 
+export interface PayrollApprovedUndertime {
+  work_date?: string | null;
+  undertime_type?: string | null;
+  scheduled_out?: string | null;
+  requested_in?: string | null;
+  requested_out?: string | null;
+  undertime_minutes?: number | null;
+  deduction_mode?: string | null;
+  status?: string | null;
+}
+
 export interface ContractCompItem {
   label: string;
   amount: number;
@@ -48,6 +61,7 @@ export interface ComputeEmployeeDemoPayslipInput {
   attendanceLogs: PayrollAttendanceLog[];
   approvedLeaves: ApprovedLeaveLike[];
   approvedOvertimes?: PayrollApprovedOvertime[];
+  approvedUndertimes?: PayrollApprovedUndertime[];
   contractMonthlyAllowance?: number;
   contractAttendanceIncentive?: number;
   contractAllowances?: Array<{ label: string; amount: number }>;
@@ -89,6 +103,8 @@ export interface ComputedDemoPayslip {
     taxableIncome: number;
     totalLateMinutes: number;
     lateDeduction: number;
+    totalApprovedUndertimeMinutes: number;
+    undertimeDeduction: number;
     totalOverbreakMinutes: number;
     overbreakDeduction: number;
     unexcusedAbsentDays: number;
@@ -315,11 +331,25 @@ export function computeEmployeeDemoPayslip(
     const clockInMs = Date.parse(log.clock_in);
     if (Number.isNaN(clockInMs)) continue;
 
+    const logDateIsoForWindow =
+      (log.date ? String(log.date).slice(0, 10) : null) ??
+      toPhtDateStr(clockInMs);
+    const effectiveWindow = resolveEffectiveShiftWindow(
+      {
+        workDate: logDateIsoForWindow,
+        scheduledIn: input.shiftStart,
+        scheduledOut: input.shiftEnd,
+      },
+      (input.approvedUndertimes ?? []).filter(
+        (u): u is ApprovedUndertimeLike => Boolean(u.work_date)
+      )
+    );
+
     // Cross-midnight-safe shift window resolution (handles Graveyard 22:00–07:00)
     const { shiftStartUtcMs, shiftEndUtcMs } = resolveShiftWindowForClockIn(
       clockInMs,
-      input.shiftStart,
-      input.shiftEnd
+      effectiveWindow.effectiveIn,
+      effectiveWindow.effectiveOut
     );
 
     let rawLateMinutes = 0;
@@ -416,6 +446,9 @@ export function computeEmployeeDemoPayslip(
     shiftEnd: input.shiftEnd,
     attendanceLogs: input.attendanceLogs,
     approvedLeaves: input.approvedLeaves,
+    approvedUndertimes: (input.approvedUndertimes ?? []).filter(
+      (u): u is ApprovedUndertimeLike => Boolean(u.work_date && u.requested_out)
+    ),
   });
 
   const itemizedIncentives = (input.contractIncentives ?? []).filter((i) => i.amount > 0);
@@ -463,6 +496,20 @@ export function computeEmployeeDemoPayslip(
     nightDiffPay + hrBonuses + attendanceIncentiveAwarded + performanceIncentivesAwarded
   );
 
+  const totalApprovedUndertimeMinutes = (input.approvedUndertimes ?? []).reduce(
+    (sum, ut) => {
+      const statusOk = !ut.status || String(ut.status).toLowerCase() === "approved";
+      const modeOk = (ut.deduction_mode ?? "payroll_deduction") === "payroll_deduction";
+      const workDate = ut.work_date ? String(ut.work_date).slice(0, 10) : null;
+      const inPeriod =
+        !workDate || (workDate >= input.periodStart && workDate <= input.periodEnd);
+      const mins = Math.max(0, Math.floor(Number(ut.undertime_minutes ?? 0)));
+      return statusOk && modeOk && inPeriod ? sum + mins : sum;
+    },
+    0
+  );
+  const undertimeDeduction = round2((dailyRate / 480) * totalApprovedUndertimeMinutes);
+
   const lateDeduction = round2((totalLateMinutes / 60) * hourlyRate);
   const overbreakDeduction = round2((totalOverbreakMinutes / 60) * hourlyRate);
   const absenceDeduction = round2(unexcusedAbsentDays * dailyRate);
@@ -509,7 +556,11 @@ export function computeEmployeeDemoPayslip(
   );
 
   const otherDeductions = round2(
-    lateDeduction + overbreakDeduction + absenceDeduction + hrOtherDeductions
+    lateDeduction +
+      undertimeDeduction +
+      overbreakDeduction +
+      absenceDeduction +
+      hrOtherDeductions
   );
   const totalDeductions = round2(
     sss + philhealth + pagibig + withholdingTax + otherDeductions
@@ -535,6 +586,11 @@ export function computeEmployeeDemoPayslip(
   ];
   if (isProrated && startDateIso) {
     remarksParts.push(`Prorated from start date ${startDateIso}`);
+  }
+  if (totalApprovedUndertimeMinutes > 0) {
+    remarksParts.push(
+      `Undertime: ${totalApprovedUndertimeMinutes}m (-₱${undertimeDeduction.toFixed(2)})`
+    );
   }
   if (totalOverbreakMinutes > 0) {
     remarksParts.push(`Overbreak deduction: ${totalOverbreakMinutes}m (-₱${overbreakDeduction.toFixed(2)})`);
@@ -588,6 +644,8 @@ export function computeEmployeeDemoPayslip(
       taxableIncome,
       totalLateMinutes,
       lateDeduction,
+      totalApprovedUndertimeMinutes,
+      undertimeDeduction,
       totalOverbreakMinutes,
       overbreakDeduction,
       unexcusedAbsentDays,

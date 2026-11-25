@@ -33,6 +33,59 @@ import {
   saveWorkModeOverrideAction,
   updateDirectReportScheduleAction,
 } from "./actions";
+import SupervisorUndertimeQueue, {
+  type SupervisorUndertimeItem,
+} from "@/components/undertime/SupervisorUndertimeQueue";
+import { getTodayPhtDayShort } from "@/lib/undertime";
+import { OFFENSE_CATEGORIES, formatManilaDate, type IncidentStatus } from "@/lib/incident-reports";
+import { createIncidentReportAction } from "@/app/actions/incident-reports";
+
+export interface SupervisorFiledIncident {
+  id: string;
+  caseNumber: string;
+  employeeId: string;
+  employeeName: string;
+  employeePosition: string;
+  incidentDate: string;
+  offenseCategory: string;
+  policyViolated: string | null;
+  description: string;
+  status: IncidentStatus;
+  nteIssuedAt: string | null;
+  nteDeadlineAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+function getSupervisorIncidentStatusMeta(status: IncidentStatus): {
+  label: string;
+  badgeClass: string;
+} {
+  switch (status) {
+    case "draft":
+      return {
+        label: "Pending HR Review",
+        badgeClass: "border-slate-200 bg-slate-100 text-slate-700",
+      };
+    case "nte_issued":
+      return {
+        label: "NTE Issued (Awaiting Explanation)",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-800",
+      };
+    case "explanation_submitted":
+    case "under_review":
+      return {
+        label: "Under HR Review",
+        badgeClass: "border-indigo-200 bg-indigo-50 text-indigo-800",
+      };
+    case "resolved":
+    case "dismissed":
+      return {
+        label: "Closed by HR",
+        badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-800",
+      };
+  }
+}
 
 export interface TeamApprovalItem {
   id: string;
@@ -179,11 +232,15 @@ function getTodayModeBadgeClasses(
 export default function TeamHubClient({
   directReports,
   pendingApprovals = [],
+  pendingUndertimes = [],
+  filedIncidents = [],
   queryError = null,
   todayDateLabel = "",
 }: {
   directReports: TeamDirectReport[];
   pendingApprovals?: TeamApprovalItem[];
+  pendingUndertimes?: SupervisorUndertimeItem[];
+  filedIncidents?: SupervisorFiledIncident[];
   queryError?: string | null;
   todayDateLabel?: string;
 }) {
@@ -242,6 +299,63 @@ export default function TeamHubClient({
   };
   const [searchQuery, setSearchQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<WorkModeFilter>("All");
+
+  // Supervisor Incident Report modal state
+  const [irTargetMember, setIrTargetMember] = useState<TeamDirectReport | null>(null);
+  const [irIncidentDate, setIrIncidentDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [irOffenseCategory, setIrOffenseCategory] = useState<string>(
+    OFFENSE_CATEGORIES[0],
+  );
+  const [irPolicyViolated, setIrPolicyViolated] = useState("");
+  const [irDescription, setIrDescription] = useState("");
+  const [irEvidenceFiles, setIrEvidenceFiles] = useState<File[]>([]);
+  const [expandedIncidentIds, setExpandedIncidentIds] = useState<Record<string, boolean>>({});
+
+  const toggleIncidentExpanded = (id: string) => {
+    setExpandedIncidentIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleOpenIrModal = (member: TeamDirectReport) => {
+    setIrTargetMember(member);
+    setIrIncidentDate(new Date().toISOString().slice(0, 10));
+    setIrOffenseCategory(OFFENSE_CATEGORIES[0]);
+    setIrPolicyViolated("");
+    setIrDescription("");
+    setIrEvidenceFiles([]);
+  };
+
+  const handleSubmitSupervisorIr = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!irTargetMember) return;
+
+    const fd = new FormData();
+    fd.set("employeeId", irTargetMember.id);
+    fd.set("incidentDate", irIncidentDate);
+    fd.set("offenseCategory", irOffenseCategory);
+    if (irPolicyViolated.trim()) {
+      fd.set("policyViolated", irPolicyViolated.trim());
+    }
+    fd.set("description", irDescription.trim());
+    for (const file of irEvidenceFiles) {
+      fd.append("evidence", file);
+    }
+
+    startTransition(async () => {
+      const res = await createIncidentReportAction(fd);
+      if (!res.success) {
+        toast.error(res.error || "Failed to submit incident report.");
+        return;
+      }
+      toast.success(
+        res.message ||
+          `Draft incident report filed for ${irTargetMember.fullName} and routed to HR.`,
+      );
+      setIrTargetMember(null);
+      router.refresh();
+    });
+  };
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"wfh" | "onsite">("wfh");
   const [overrideReason, setOverrideReason] = useState<string>("");
@@ -488,6 +602,13 @@ export default function TeamHubClient({
     });
   };
 
+  const todayShortDay = useMemo(() => {
+    if (todayDateLabel && /^\d{4}-\d{2}-\d{2}$/.test(todayDateLabel)) {
+      return getTodayPhtDayShort(new Date(`${todayDateLabel}T12:00:00+08:00`));
+    }
+    return getTodayPhtDayShort();
+  }, [todayDateLabel]);
+
   const filteredReports = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return directReports.filter((member) => {
@@ -548,7 +669,7 @@ export default function TeamHubClient({
           }`}
         >
           <span>Approvals</span>
-          {pendingApprovals.length > 0 && (
+          {pendingApprovals.length + pendingUndertimes.length > 0 && (
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                 activeTab === "approvals"
@@ -556,7 +677,7 @@ export default function TeamHubClient({
                   : "bg-amber-100 text-amber-800"
               }`}
             >
-              {pendingApprovals.length}
+              {pendingApprovals.length + pendingUndertimes.length}
             </span>
           )}
         </button>
@@ -742,6 +863,29 @@ export default function TeamHubClient({
                           <p className="truncate text-[11px] text-[#5d5a75]">
                             {daysSummary}
                           </p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {ALL_WEEK_DAYS_SHORT.map((dayShort) => {
+                              const isTodayPill =
+                                dayShort.toLowerCase() === todayShortDay.toLowerCase();
+                              const dayAssigned = member.dailyWorkModes
+                                ? member.dailyWorkModes[dayShort] !== "rest"
+                                : normalizeShortWorkDays(member.workDays).includes(dayShort);
+                              return (
+                                <span
+                                  key={dayShort}
+                                  className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold ${
+                                    isTodayPill
+                                      ? "border-[#0F172A] bg-[#0F172A] text-white shadow-xs"
+                                      : dayAssigned
+                                        ? "border-slate-200/80 bg-slate-50 text-slate-700"
+                                        : "border-slate-200/60 bg-white text-slate-400"
+                                  }`}
+                                >
+                                  {dayShort}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         <div className="min-w-0 space-y-0.5">
@@ -759,18 +903,28 @@ export default function TeamHubClient({
                     </div>
 
                     {/* Card Footer */}
-                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
                         <span className="h-2 w-2 rounded-full bg-emerald-500" />
                         Active
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => openMemberModal(member)}
-                        className="inline-flex items-center justify-center rounded-xl border border-[#1E1B4B]/20 bg-white px-3 py-1.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"
-                      >
-                        View Schedule &amp; Details
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenIrModal(member)}
+                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Report Incident
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openMemberModal(member)}
+                          className="inline-flex items-center justify-center rounded-xl border border-[#1E1B4B]/20 bg-white px-3 py-1.5 text-xs font-semibold text-[#1E1B4B] transition-colors hover:bg-[#1E1B4B] hover:text-white"
+                        >
+                          View Schedule &amp; Details
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -779,20 +933,29 @@ export default function TeamHubClient({
           )}
         </div>
       ) : activeTab === "approvals" ? (
-        pendingApprovals.length === 0 ? (
-          <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
-              <CalendarCheck2 className="h-7 w-7" />
+        <div className="space-y-6">
+          {pendingUndertimes.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-[#171542]">
+                Undertime Requests ({pendingUndertimes.length})
+              </h2>
+              <SupervisorUndertimeQueue items={pendingUndertimes} />
             </div>
-            <h2 className="mt-4 text-lg font-bold text-[#171542]">
-              All Caught Up!
-            </h2>
-            <p className="mx-auto mt-1.5 max-w-md text-sm text-[#5d5a75]">
-              No pending leave or overtime requests from your direct reports
-              require supervisor review right now.
-            </p>
-          </div>
-        ) : (
+          )}
+          {pendingApprovals.length === 0 && pendingUndertimes.length === 0 ? (
+            <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
+                <CalendarCheck2 className="h-7 w-7" />
+              </div>
+              <h2 className="mt-4 text-lg font-bold text-[#171542]">
+                All Caught Up!
+              </h2>
+              <p className="mx-auto mt-1.5 max-w-md text-sm text-[#5d5a75]">
+                No pending leave, overtime, or undertime requests from your direct reports
+                require supervisor review right now.
+              </p>
+            </div>
+          ) : pendingApprovals.length > 0 ? (
           <div className="space-y-3">
             {pendingApprovals.map((item) => {
               const busy = isPending && processingApprovalId === item.id;
@@ -892,7 +1055,8 @@ export default function TeamHubClient({
               );
             })}
           </div>
-        )
+        ) : null}
+        </div>
       ) : (
         <div className="rounded-3xl border border-indigo-100/80 bg-white/85 px-6 py-12 text-center shadow-[0_8px_30px_rgb(30,27,75,0.04)] backdrop-blur-md">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDE9F9] text-[#1E1B4B]">
@@ -1128,12 +1292,21 @@ export default function TeamHubClient({
                       <div className="space-y-1.5">
                         {ALL_WEEK_DAYS_SHORT.map((day) => {
                           const mode = editDailyModes[day] ?? "rest";
+                          const isTodayRow = day.toLowerCase() === todayShortDay.toLowerCase();
                           return (
                             <div
                               key={day}
-                              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-2.5 py-1.5"
+                              className={`flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 ${
+                                isTodayRow
+                                  ? "border-[#0F172A] bg-[#0F172A] text-white"
+                                  : "border-slate-200/80 bg-slate-50/60"
+                              }`}
                             >
-                              <span className="w-10 text-xs font-bold text-[#171542]">
+                              <span
+                                className={`w-10 text-xs font-bold ${
+                                  isTodayRow ? "text-white" : "text-[#171542]"
+                                }`}
+                              >
                                 {day}
                               </span>
                               <div className="grid grid-cols-3 gap-1 flex-1 max-w-[240px]">
@@ -1497,6 +1670,202 @@ export default function TeamHubClient({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* Supervisor Report Incident Modal */}
+      {irTargetMember ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                  Confidential Draft to HR
+                </p>
+                <h2 className="mt-0.5 text-lg font-bold text-[#171542]">
+                  Report Incident — {irTargetMember.fullName}
+                </h2>
+                <p className="mt-1 text-xs text-[#5d5a75]">
+                  This report routes to HR Admin for review. The employee will
+                  not see it unless HR formally issues a Notice to Explain.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIrTargetMember(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitSupervisorIr} className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold text-[#171542]">
+                    Incident Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={irIncidentDate}
+                    onChange={(e) => setIrIncidentDate(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#171542]">
+                    Offense Category
+                  </label>
+                  <select
+                    value={irOffenseCategory}
+                    onChange={(e) => setIrOffenseCategory(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                  >
+                    {OFFENSE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171542]">
+                  Policy / Rule Violated (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={irPolicyViolated}
+                  onChange={(e) => setIrPolicyViolated(e.target.value)}
+                  placeholder="e.g., Attendance Policy Sec. 3.1"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171542]">
+                  Factual Description
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  minLength={10}
+                  value={irDescription}
+                  onChange={(e) => setIrDescription(e.target.value)}
+                  placeholder="Provide objective facts, dates, times, and context..."
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-[#171542] focus:border-[#1E1B4B] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171542]">
+                  Supporting Evidence (Optional, max 10 MB each)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) =>
+                    setIrEvidenceFiles(Array.from(e.target.files ?? []))
+                  }
+                  className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIrTargetMember(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="rounded-xl bg-[#1E1B4B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2d2b68] disabled:opacity-50"
+                >
+                  {isPending ? "Submitting..." : "Submit Draft to HR"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* My Filed Incident Reports (Operational Status Log Only) */}
+      {filedIncidents.length > 0 ? (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-[#171542]">
+                My Filed Incident Reports
+              </h2>
+              <p className="text-xs text-[#5d5a75]">
+                Operational status of incident reports you submitted to HR. Employee explanations and HR sanctions remain confidential.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+              {filedIncidents.length}
+            </span>
+          </div>
+
+          <div className="mt-3 divide-y divide-slate-100">
+            {filedIncidents.map((inc) => {
+              const statusMeta = getSupervisorIncidentStatusMeta(inc.status);
+              const isExpanded = Boolean(expandedIncidentIds[inc.id]);
+              return (
+                <div key={inc.id} className="py-3 first:pt-1 last:pb-0">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[#1E1B4B]">
+                          {inc.caseNumber}
+                        </span>
+                        <span className="text-sm font-semibold text-[#171542]">
+                          {inc.employeeName}
+                        </span>
+                        <span className="text-xs text-[#5d5a75]">
+                          · {inc.employeePosition}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-[#5d5a75]">
+                        Incident: {formatManilaDate(inc.incidentDate)} · {inc.offenseCategory}
+                        {inc.policyViolated ? ` — ${inc.policyViolated}` : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusMeta.badgeClass}`}
+                      >
+                        {statusMeta.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleIncidentExpanded(inc.id)}
+                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        {isExpanded ? "Hide Details" : "View Details"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded ? (
+                    <div className="mt-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-700">
+                      <p className="font-semibold text-slate-500">
+                        Your Submitted Description
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">
+                        {inc.description}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       ) : null}
     </div>
   );

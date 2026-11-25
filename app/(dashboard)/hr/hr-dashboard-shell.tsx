@@ -96,6 +96,12 @@ const navGroups: NavGroup[] = [
         requiredPermission: "workforce:view",
       },
       {
+        label: "Incident Reports",
+        href: "/hr/incidents",
+        icon: "gavel",
+        requiredPermission: "ir:manage",
+      },
+      {
         label: "Office Branches",
         href: "/hr/settings/branches",
         icon: "storefront",

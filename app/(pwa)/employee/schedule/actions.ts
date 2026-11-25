@@ -12,6 +12,7 @@ import {
   computeOvertimeWindowMinutes,
   validateAndClassifyOvertimeRequest,
 } from "@/lib/shift-calculations";
+import { resolveEffectiveShiftWindow } from "@/lib/attendance-absent";
 
 export type ClockInPayload = {
   latitude: number;
@@ -324,8 +325,26 @@ export async function clockInAction(payload: ClockInPayload): Promise<ClockInRes
 
   const clockInNow = new Date();
   const isRestDayWork = geofence.effectiveWorkMode === "off" || todayDailyModel === "off";
-  const effectiveShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
-  const effectiveShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+  const scheduledShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
+  const scheduledShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+
+  const { data: approvedUndertimeToday } = await supabaseAdmin
+    .from("undertime_requests")
+    .select("work_date, undertime_type, requested_in, requested_out, status")
+    .eq("employee_id", employee.id)
+    .eq("work_date", todayDateStr)
+    .eq("status", "approved")
+    .maybeSingle();
+
+  const { effectiveIn: effectiveShiftStart, effectiveOut: effectiveShiftEnd } =
+    resolveEffectiveShiftWindow(
+      {
+        workDate: todayDateStr,
+        scheduledIn: scheduledShiftStart,
+        scheduledOut: scheduledShiftEnd,
+      },
+      approvedUndertimeToday
+    );
 
   // Phase 3: Cross-midnight-safe late calculation (rest-day work is never marked late)
   const shiftMetrics = isRestDayWork || overtimeRequestId
@@ -427,8 +446,30 @@ export async function clockOutAction(logId: string): Promise<{ success: true; me
     .limit(1)
     .maybeSingle<{ shift_start?: string | null; shift_end?: string | null }>();
 
-  const effectiveShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
-  const effectiveShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+  const scheduledShiftStart = latestSchedule?.shift_start ?? employee.shift_start ?? "08:00";
+  const scheduledShiftEnd = latestSchedule?.shift_end ?? employee.shift_end ?? "17:00";
+
+  // Phase 3: Shift expected clock-in/out window if an approved undertime/half-day exists
+  const clockInDatePht = log.clock_in
+    ? new Date(log.clock_in).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+    : getTodayLocalDateStr();
+  const { data: approvedUndertime } = await supabaseAdmin
+    .from("undertime_requests")
+    .select("work_date, undertime_type, requested_in, requested_out, status")
+    .eq("employee_id", employee.id)
+    .eq("work_date", clockInDatePht)
+    .eq("status", "approved")
+    .maybeSingle();
+
+  const { effectiveIn: effectiveShiftStart, effectiveOut: effectiveShiftEnd } =
+    resolveEffectiveShiftWindow(
+      {
+        workDate: clockInDatePht,
+        scheduledIn: scheduledShiftStart,
+        scheduledOut: scheduledShiftEnd,
+      },
+      approvedUndertime
+    );
 
   // Phase 3: Cross-midnight-safe worked hours, undertime, and 10% NSD (22:00–06:00 PHT)
   const shiftMetrics = calculateShiftAttendanceMetrics({

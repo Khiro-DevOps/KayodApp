@@ -12,6 +12,7 @@ import HRAttendanceClient, {
   type HROvertimeRequestRow,
   type HROvertimeEmployeeOption,
 } from "./hr-attendance-client";
+import type { HrUndertimeItem } from "@/components/undertime/HrUndertimeQueue";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,6 +32,8 @@ type RawAttendanceLog = {
   status: string | null;
   active_break_type: string | null;
   break_status: string | null;
+  lunch_start: string | null;
+  break_start: string | null;
   short_breaks_used: number | null;
   overbreak_minutes: number | null;
   total_lunch_minutes: number | null;
@@ -81,6 +84,8 @@ export default async function HRAttendancePage() {
       status,
       active_break_type,
       break_status,
+      lunch_start,
+      break_start,
       short_breaks_used,
       overbreak_minutes,
       total_lunch_minutes,
@@ -341,13 +346,19 @@ export default async function HRAttendancePage() {
 
     const overbreakMinutes = l.overbreak_minutes ?? 0;
     let breakStatusLabel: AttendanceRow["breakStatusLabel"] = null;
+    let activeBreakStartedAt: string | null = null;
+    let activeBreakQuotaSeconds: number | null = null;
     if (l.clock_in) {
       if (l.clock_out) {
         breakStatusLabel = "Clocked Out";
       } else if (l.active_break_type === "lunch" || l.break_status === "on_lunch") {
         breakStatusLabel = "On Lunch";
+        activeBreakStartedAt = l.lunch_start ?? null;
+        activeBreakQuotaSeconds = Math.max(0, 60 - (l.total_lunch_minutes ?? 0)) * 60;
       } else if (l.active_break_type === "short_break" || l.break_status === "on_break") {
         breakStatusLabel = (l.short_breaks_used ?? 0) >= 2 ? "On Break (2/2)" : "On Break (1/2)";
+        activeBreakStartedAt = l.break_start ?? null;
+        activeBreakQuotaSeconds = 900;
       } else {
         breakStatusLabel = "Working";
       }
@@ -395,6 +406,8 @@ export default async function HRAttendancePage() {
       lateMinutes,
       breakStatusLabel,
       overbreakMinutes,
+      activeBreakStartedAt,
+      activeBreakQuotaSeconds,
       date: l.clock_in
         ? new Date(l.clock_in).toLocaleDateString("en-PH", {
             year: "numeric",
@@ -711,11 +724,96 @@ export default async function HRAttendancePage() {
     };
   });
 
+  // Fetch HR Undertime Requests
+  let utQuery = admin
+    .from("undertime_requests")
+    .select(
+      "id, tenant_id, employee_id, work_date, undertime_type, scheduled_in, scheduled_out, requested_in, requested_out, undertime_minutes, leave_credits_deducted, reason, coverage_notes, deduction_mode, status, supervisor_acted_at, hr_acted_at, rejection_reason, created_at"
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (tenantId) {
+    utQuery = utQuery.eq("tenant_id", tenantId);
+  }
+  const { data: rawUtRows } = await utQuery;
+
+  const utEmpIds = Array.from(
+    new Set((rawUtRows ?? []).map((u) => (u as { employee_id: string }).employee_id).filter(Boolean))
+  );
+  const utEmpNameMap = new Map<string, { name: string; jobTitle: string | null }>();
+  if (utEmpIds.length > 0) {
+    const { data: utEmps } = await admin
+      .from("employees")
+      .select("id, job_title, profiles ( first_name, last_name )")
+      .in("id", utEmpIds);
+    for (const e of utEmps ?? []) {
+      const empRow = e as {
+        id: string;
+        job_title: string | null;
+        profiles:
+          | { first_name: string | null; last_name: string | null }
+          | Array<{ first_name: string | null; last_name: string | null }>
+          | null;
+      };
+      const prof = Array.isArray(empRow.profiles) ? empRow.profiles[0] : empRow.profiles;
+      const name =
+        [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() || "Employee";
+      utEmpNameMap.set(empRow.id, { name, jobTitle: empRow.job_title ?? null });
+    }
+  }
+
+  const undertimeRequests: HrUndertimeItem[] = (rawUtRows ?? []).map((r) => {
+    const row = r as {
+      id: string;
+      employee_id: string;
+      work_date: string;
+      undertime_type?: HrUndertimeItem["undertimeType"];
+      scheduled_in?: string | null;
+      scheduled_out: string;
+      requested_in?: string | null;
+      requested_out: string | null;
+      undertime_minutes: number;
+      leave_credits_deducted?: number | null;
+      reason: string;
+      coverage_notes: string | null;
+      deduction_mode: "payroll_deduction" | "leave_offset";
+      status: HrUndertimeItem["status"];
+      supervisor_acted_at: string | null;
+      hr_acted_at: string | null;
+      rejection_reason: string | null;
+      created_at: string;
+    };
+    const empInfo = utEmpNameMap.get(row.employee_id);
+    return {
+      id: row.id,
+      employeeId: row.employee_id,
+      employeeName: empInfo?.name ?? "Employee",
+      employeeJobTitle: empInfo?.jobTitle ?? null,
+      workDate: row.work_date,
+      undertimeType: row.undertime_type ?? "early_out",
+      scheduledIn: row.scheduled_in ?? null,
+      scheduledOut: row.scheduled_out,
+      requestedIn: row.requested_in ?? null,
+      requestedOut: row.requested_out,
+      undertimeMinutes: row.undertime_minutes,
+      leaveCreditsDeducted: Number(row.leave_credits_deducted ?? 0),
+      reason: row.reason,
+      coverageNotes: row.coverage_notes ?? null,
+      deductionMode: row.deduction_mode ?? "payroll_deduction",
+      status: row.status,
+      supervisorActedAt: row.supervisor_acted_at ?? null,
+      hrActedAt: row.hr_acted_at ?? null,
+      rejectionReason: row.rejection_reason ?? null,
+      createdAt: row.created_at,
+    };
+  });
+
   return (
     <HRAttendanceClient
       rows={rows}
       correctionRequests={correctionRequests}
       overtimeRequests={overtimeRequests}
+      undertimeRequests={undertimeRequests}
       activeEmployees={activeEmployeeOptions}
       todayDateStr={todayPht}
       tenantId={tenantId}

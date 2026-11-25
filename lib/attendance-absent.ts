@@ -10,6 +10,16 @@ export interface ApprovedLeaveLike {
   leave_type?: string | null;
 }
 
+export interface ApprovedUndertimeLike {
+  work_date: string;
+  undertime_type?: string | null;
+  requested_in?: string | null;
+  requested_out?: string | null;
+  undertime_minutes?: number | null;
+  deduction_mode?: string | null;
+  status?: string | null;
+}
+
 export interface ComputeUnexcusedAbsencesInput {
   periodStart: string;
   periodEnd: string;
@@ -18,7 +28,83 @@ export interface ComputeUnexcusedAbsencesInput {
   shiftEnd?: string | null;
   attendanceLogs: AttendanceLogLike[];
   approvedLeaves: ApprovedLeaveLike[];
+  approvedUndertimes?: ApprovedUndertimeLike[];
   now?: Date;
+}
+
+function addMinutesToHm(hm: string, deltaMinutes: number): string {
+  const [hStr, mStr] = hm.split(":");
+  const h = Number.parseInt(hStr ?? "8", 10);
+  const m = Number.parseInt(mStr ?? "0", 10);
+  const base = (Number.isFinite(h) ? h : 8) * 60 + (Number.isFinite(m) ? m : 0);
+  const wrapped = ((base + deltaMinutes) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(
+    wrapped % 60
+  ).padStart(2, "0")}`;
+}
+
+export function resolveEffectiveShiftWindow(
+  shift: {
+    workDate: string;
+    scheduledIn?: string | null;
+    scheduledOut?: string | null;
+  },
+  approvedUndertime?: ApprovedUndertimeLike | ApprovedUndertimeLike[] | null
+): { effectiveIn: string; effectiveOut: string } {
+  const baseIn = (shift.scheduledIn ?? "08:00").trim() || "08:00";
+  const baseOut = (shift.scheduledOut ?? "17:00").trim() || "17:00";
+
+  if (!approvedUndertime) {
+    return { effectiveIn: baseIn, effectiveOut: baseOut };
+  }
+
+  const list = Array.isArray(approvedUndertime) ? approvedUndertime : [approvedUndertime];
+  const targetDate = shift.workDate.slice(0, 10);
+  const match = list.find(
+    (ut) =>
+      ut.work_date?.slice(0, 10) === targetDate &&
+      (!ut.status || ut.status.toLowerCase() === "approved")
+  );
+
+  if (!match) {
+    return { effectiveIn: baseIn, effectiveOut: baseOut };
+  }
+
+  const utType = String(match.undertime_type ?? "early_out").toLowerCase();
+  if (utType === "late_in") {
+    return {
+      effectiveIn: match.requested_in ? match.requested_in : baseIn,
+      effectiveOut: baseOut,
+    };
+  }
+  if (utType === "half_day_first") {
+    return {
+      effectiveIn: match.requested_in ? match.requested_in : addMinutesToHm(baseIn, 300),
+      effectiveOut: baseOut,
+    };
+  }
+  if (utType === "half_day_second") {
+    return {
+      effectiveIn: baseIn,
+      effectiveOut: match.requested_out ? match.requested_out : addMinutesToHm(baseIn, 240),
+    };
+  }
+
+  return {
+    effectiveIn: baseIn,
+    effectiveOut: match.requested_out ? match.requested_out : baseOut,
+  };
+}
+
+export function resolveEffectiveShiftEnd(
+  workDate: string,
+  scheduledOut: string | null | undefined,
+  approvedUndertimes?: ApprovedUndertimeLike[] | null
+): string {
+  return resolveEffectiveShiftWindow(
+    { workDate, scheduledOut },
+    approvedUndertimes
+  ).effectiveOut;
 }
 
 export interface ComputeUnexcusedAbsencesResult {
@@ -125,8 +211,18 @@ export function computeUnexcusedAbsences(
     }
     const dayToken = DAY_INDEX_TO_SHORT[cursor.getUTCDay()];
 
+    const effectiveShiftEnd = resolveEffectiveShiftEnd(
+      dayIso,
+      input.shiftEnd,
+      input.approvedUndertimes
+    );
+    const effectiveShiftEndMinutes =
+      effectiveShiftEnd === (input.shiftEnd ?? "17:00")
+        ? shiftEndMinutes
+        : parseShiftMinutes(effectiveShiftEnd);
+
     const isTodayBeforeShiftEnd =
-      dayIso === todayPht && nowPhtMinutes < shiftEndMinutes;
+      dayIso === todayPht && nowPhtMinutes < effectiveShiftEndMinutes;
 
     if (!isTodayBeforeShiftEnd && normalizedWorkDays.has(dayToken)) {
       const hasClockIn = clockedInDates.has(dayIso);

@@ -10,6 +10,9 @@ import {
   reviewAttendanceCorrectionAction,
   reviewOvertimeRequestAction,
 } from "./actions";
+import HrUndertimeQueue, {
+  type HrUndertimeItem,
+} from "@/components/undertime/HrUndertimeQueue";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type AttendanceRow = {
@@ -32,6 +35,8 @@ export type AttendanceRow = {
     | "Clocked Out"
     | null;
   overbreakMinutes?: number;
+  activeBreakStartedAt?: string | null;
+  activeBreakQuotaSeconds?: number | null;
   date: string;
   clockIn: string | null;
   clockOut: string | null;
@@ -103,6 +108,7 @@ type Props = {
   rows: AttendanceRow[];
   correctionRequests?: HRCorrectionRequestRow[];
   overtimeRequests?: HROvertimeRequestRow[];
+  undertimeRequests?: HrUndertimeItem[];
   activeEmployees?: HROvertimeEmployeeOption[];
   todayDateStr?: string;
   metrics: Metrics;
@@ -170,20 +176,21 @@ function WorkModelBadge({
     label: effectiveModel,
     cls: "bg-gray-100 text-gray-700",
   };
+  const displayLabel = workSetup === "hybrid" ? `Hybrid: ${label}` : label;
   return (
-    <div className="flex flex-col items-start gap-1">
-      <span
-        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${cls}`}
-      >
-        {label}
-      </span>
-      {workSetup === "hybrid" && (
-        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-          Work Setup: Hybrid
-        </span>
-      )}
-    </div>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${cls}`}
+    >
+      {displayLabel}
+    </span>
   );
+}
+
+function formatOverbreakMmSs(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 // ─── Avatar initials ──────────────────────────────────────────────────────────
@@ -235,6 +242,7 @@ export default function HRAttendanceClient({
   rows,
   correctionRequests = [],
   overtimeRequests = [],
+  undertimeRequests = [],
   activeEmployees = [],
   todayDateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   metrics,
@@ -247,6 +255,17 @@ export default function HRAttendanceClient({
   const [todayOnly, setTodayOnly] = useState(hasTodayLogs);
   const [showCorrections, setShowCorrections] = useState(false);
   const [showOvertimeQueue, setShowOvertimeQueue] = useState(false);
+  const [showUndertimeQueue, setShowUndertimeQueue] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  const hasActiveBreaks = rows.some((r) => Boolean(r.activeBreakStartedAt));
+  useEffect(() => {
+    if (!hasActiveBreaks) return;
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [hasActiveBreaks]);
   const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
   const [actingRequestId, setActingRequestId] = useState<string | null>(null);
   const [otNotesById, setOtNotesById] = useState<Record<string, string>>({});
@@ -309,6 +328,7 @@ export default function HRAttendanceClient({
   const pendingOtCount = overtimeRequests.filter((r) =>
     ["pending", "pending_hr", "pending_supervisor"].includes(r.status)
   ).length;
+  const pendingUtCount = undertimeRequests.filter((r) => r.status === "pending_hr").length;
 
   const filteredOvertime = useMemo(() => {
     if (!search.trim()) return overtimeRequests;
@@ -536,6 +556,32 @@ export default function HRAttendanceClient({
             )}
           </button>
 
+          {/* Undertime Requests Toggle */}
+          <button
+            id="attendance-undertime-toggle"
+            type="button"
+            onClick={() => setShowUndertimeQueue((p) => !p)}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap ${
+              showUndertimeQueue
+                ? "border-[#1E1B4B] bg-[#1E1B4B] text-white shadow-sm"
+                : "border-indigo-200 bg-indigo-50/70 text-[#1E1B4B] hover:bg-indigo-100"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[15px]">schedule_send</span>
+            Undertime
+            {pendingUtCount > 0 && (
+              <span
+                className={`ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                  showUndertimeQueue
+                    ? "bg-amber-400 text-slate-900"
+                    : "bg-[#1E1B4B] text-white"
+                }`}
+              >
+                {pendingUtCount > 99 ? "99+" : pendingUtCount}
+              </span>
+            )}
+          </button>
+
           {/* Correction Requests Toggle */}
           <button
             id="attendance-corrections-toggle"
@@ -587,6 +633,17 @@ export default function HRAttendanceClient({
       </div>
 
       {/* ── Overtime Requests Review Queue ─────────────────────────────────── */}
+      {(showUndertimeQueue || pendingUtCount > 0) && (
+        <SolidSurfaceCard className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-[#1E1B4B]">
+              Undertime Verification Queue
+            </h2>
+          </div>
+          <HrUndertimeQueue items={undertimeRequests} />
+        </SolidSurfaceCard>
+      )}
+
       {(showOvertimeQueue || pendingOtCount > 0) && (
         <SolidSurfaceCard className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
@@ -1024,30 +1081,59 @@ export default function HRAttendanceClient({
 
                   {/* Break / Status */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
-                    {row.breakStatusLabel ? (
-                      <div className="flex flex-col items-start gap-0.5">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
-                            row.breakStatusLabel === "Working"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : row.breakStatusLabel === "On Lunch"
-                                ? "border-sky-200 bg-sky-50 text-sky-700"
-                                : row.breakStatusLabel.startsWith("On Break")
-                                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                                  : row.breakStatusLabel === "Overbreak"
-                                    ? "border-amber-300 bg-amber-50 text-amber-800"
-                                    : "border-slate-200 bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {row.breakStatusLabel}
-                        </span>
-                        {(row.overbreakMinutes ?? 0) > 0 ? (
-                          <span className="text-[10px] font-medium text-amber-700">
-                            +{row.overbreakMinutes}m overbreak
+                    {row.breakStatusLabel ? (() => {
+                      const startedMs = row.activeBreakStartedAt
+                        ? Date.parse(row.activeBreakStartedAt)
+                        : NaN;
+                      const quotaSec = row.activeBreakQuotaSeconds ?? null;
+                      const elapsedSec =
+                        Number.isFinite(startedMs) && quotaSec !== null
+                          ? Math.max(0, Math.floor((nowMs - startedMs) / 1000))
+                          : 0;
+                      const isLiveOverbreak =
+                        Number.isFinite(startedMs) &&
+                        quotaSec !== null &&
+                        elapsedSec > quotaSec;
+                      const liveOverbreakSec = isLiveOverbreak
+                        ? elapsedSec - quotaSec + (row.overbreakMinutes ?? 0) * 60
+                        : 0;
+                      const effectiveStatusLabel = isLiveOverbreak
+                        ? "Overbreak"
+                        : row.breakStatusLabel;
+
+                      return (
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
+                              effectiveStatusLabel === "Working"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : effectiveStatusLabel === "On Lunch"
+                                  ? "border-sky-200 bg-sky-50 text-sky-700"
+                                  : effectiveStatusLabel.startsWith("On Break")
+                                    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                    : effectiveStatusLabel === "Overbreak"
+                                      ? "border-rose-300 bg-rose-100 text-rose-800"
+                                      : "border-slate-200 bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {isLiveOverbreak && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
+                            )}
+                            <span>{effectiveStatusLabel}</span>
+                            {isLiveOverbreak && (
+                              <span className="tabular-nums font-mono">
+                                +{formatOverbreakMmSs(liveOverbreakSec)}
+                              </span>
+                            )}
                           </span>
-                        ) : null}
-                      </div>
-                    ) : (
+                          {!isLiveOverbreak && (row.overbreakMinutes ?? 0) > 0 ? (
+                            <span className="text-[10px] font-medium text-amber-700">
+                              +{row.overbreakMinutes}m overbreak
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })() : (
                       <span className="text-text-muted">—</span>
                     )}
                   </td>
